@@ -2,7 +2,7 @@
 
 ![version](https://img.shields.io/badge/version-0.25.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.25.0**（MINOR——DEV-089 的 0.24.1 机械臂反馈批：钣金组合能力 `sheetmetal_base_flange`（native 矩形平面壁 + 90° 法兰，回执逐项列出 `composed_features`，不声称等价于单特征基体法兰）；按几何选择器唯一定位边/面（含装配坐标空间）、按特征与符号定位尺寸、`coincident`/`concentric` 关系词与 `mate_offset`/`align_offset` 求解、距离+角度倒角、方向线性阵列、`plan_file` 从受控本地 JSON 提交计划；公开工具 108，`surface_loft`/模板/导入/断言沿用 0.24.0） · [版本说明](docs/RELEASE_NOTES_0.25.0.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
+当前正式版 **0.25.0**（MINOR——DEV-089 的 0.24.1 机械臂反馈批：钣金组合能力 `sheetmetal_base_flange`（native 矩形平面壁 + 90° 法兰，回执逐项列出 `composed_features`，不声称等价于单特征基体法兰）；按几何选择器唯一定位边/面（含装配坐标空间）、按特征与符号定位尺寸、`coincident`/`concentric` 关系词与 `mate_offset`/`align_offset` 求解、距离+角度倒角、方向线性阵列、`plan_file` 从受控本地 JSON 提交计划；公开工具 108。本版同时包含 0.24.1 的启动参数、无图形会话容错、worker 启动回退与 toolkit 提示（BUG-125—128）） · [版本说明](docs/RELEASE_NOTES_0.25.0.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 

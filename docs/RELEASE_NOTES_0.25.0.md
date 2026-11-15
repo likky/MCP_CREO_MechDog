@@ -5,7 +5,7 @@
 - 类型：MINOR（新增公开工具与计划操作/参数，无破坏性改名）
 - 日期：2026-11-15
 - 公开工具：**108 个**（0.24.0 为 107），新增 `creo_sheetmetal_base_flange`
-- 主台账：[BACKLOG](BACKLOG.md) · 发布记录：[RELEASE-0.25.0](validation/RELEASE-0.25.0.md) · 工作卡：[DEV-089](work-items/DEV-089.md)
+- 主台账：[BACKLOG](BACKLOG.md) · 发布记录：[RELEASE-0.25.0](validation/RELEASE-0.25.0.md) · 工作卡：[DEV-090](work-items/DEV-090.md)
 
 ## 对外可见变化
 
@@ -59,8 +59,9 @@
 
 ## 验证
 
-- 离线：`tools/dev_check.py --work-item DEV-089` 为 `success=true`（全量 3632 项单测通过、`lint_findings=0`、`unformatted_files=0`）；`bridge.py build` 退出码 0。
-- Creo 12.4.0.0（`release_numeric=44`）实机，逐项回执写在 [DEV-089](work-items/DEV-089.md)：
+- 离线：`tools/dev_check.py --work-item DEV-090` 为 `success=true`（全量 3655 项单测通过、`lint_findings=0`、`unformatted_files=0`）；`bridge.py build` 退出码 0。
+- 合并说明：本版基于已发布的 0.24.1 合入，因此同样包含其启动参数、无图形会话容错、worker 启动回退与 toolkit 提示（BUG-125—128）；该批验收沿用 [0.24.1 记录](validation/RELEASE-0.24.1.md)，本版未重复实机。
+- Creo 12.4.0.0（`release_numeric=44`）实机，逐项回执写在 [DEV-090](work-items/DEV-090.md)：
   - 组合首壁：job `f85ddda1…`，体积 770.185802 mm³ / 上界 770.185796 mm³，包络 `u 0…8 / v 0…20 / n −12…2`，`composed_features` = 平面壁 49 + 法兰 104，`saved_file_reloaded_and_verified=true`。
   - 几何选择器：边与面各一例成功、远端点点例被拒；装配坐标面选择器成功，偏离平面 40 mm 与移动组件使用装配坐标均被拒。
   - 符号定位尺寸：`{feature:49,symbol:"d9"}` 重载后 value=12.0；错误符号被拒。

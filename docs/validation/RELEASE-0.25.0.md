@@ -4,7 +4,7 @@
 - 日期：2026-11-15
 - 版本说明：[RELEASE_NOTES_0.25.0](../RELEASE_NOTES_0.25.0.md)
 - 主台账：[BACKLOG](../BACKLOG.md)
-- 工作卡：[DEV-089](../work-items/DEV-089.md)
+- 工作卡：[DEV-090](../work-items/DEV-090.md)
 - 受测提交：`v0.25.0` 标签指向的 `main` 提交（标签对象与提交号在[POSTCHECK](../development/RELEASE-POSTCHECK-2026-11-07.md) 的 `## v0.25.0` 段登记）
 
 ## 包内容对照（相对 0.24.0）
@@ -23,17 +23,18 @@
 ## 验证
 
 - 环境：Windows x64、Python 3.12、Creo 12.4.0.0（`release_numeric=44`）与匹配 Toolkit SDK、MSVC x64。
-- 离线：`tools/dev_check.py --work-item DEV-089` → `success=true`（`Ran 3632 tests`、`OK`；`lint_findings=0`、`unformatted_files=0`；受测源码指纹 `556c1985…`，基于 `7b74358` 且发布文档提交前为 dirty）；`bridge.py build` 退出码 0（`build/creo_worker.exe`）；`tools/check_release_records.py --version 0.25.0` → exit 0；`tools/check_backlog_counts.py` → `consistent=true`（186 个 ID）。
-- 实机：组合首壁 job `f85ddda1…`（体积 770.185802 / 上界 770.185796 mm³、包络 `u 0…8 / v 0…20 / n −12…2`、`composed_features` = 49 + 104、保存重载通过）、几何选择器边/面与装配坐标、符号定位尺寸、`mate_offset=5` 残差 0.0 与随动、70° 角度倒角两例、方向线阵两例，均有成功与拒绝用例，逐条回执见 [DEV-089](../work-items/DEV-089.md)。
+- 离线：`tools/dev_check.py --work-item DEV-090` → `success=true`（`Ran 3655 tests`、`OK`；`lint_findings=0`、`unformatted_files=0`；受测源码指纹 `295767cd…`，基于 `9a7a3d9` 且发布文档提交前为 dirty）；`bridge.py build` 退出码 0（`build/creo_worker.exe`）；`tools/check_release_records.py --version 0.25.0` → exit 0；`tools/check_backlog_counts.py` → `consistent=true`（186 个 ID）。
+- 合并基线：本版从已发布的 0.24.1（`e1ee731`）合入，包内含其启动参数、无图形容错、worker 回退与 toolkit 提示；该批实机证据见 [RELEASE-0.24.1](RELEASE-0.24.1.md)，本版未重复实测。
+- 实机：组合首壁 job `f85ddda1…`（体积 770.185802 / 上界 770.185796 mm³、包络 `u 0…8 / v 0…20 / n −12…2`、`composed_features` = 49 + 104、保存重载通过）、几何选择器边/面与装配坐标、符号定位尺寸、`mate_offset=5` 残差 0.0 与随动、70° 角度倒角两例、方向线阵两例，均有成功与拒绝用例，逐条回执见 [DEV-090](../work-items/DEV-090.md)。
 - 未测：T6c 区域切除、T7 弧端点与两阶段形状误差、`parallel`/`distance`、多约束求解与装配保存重载、Creo 9/10 实机、WorkBuddy 黑盒；组合首壁与反馈参照 792.323 mm³ 不等价（差约 22 mm³，中面加厚 vs 单侧加厚）。
 
 ## 逐 ID 状态核对
 
-成员：本版只交付 [DEV-089](../work-items/DEV-089.md) 一项汇总卡，其 T1—T8 子项均在该卡内登记，不另拆台账行。
+成员：本版只交付 [DEV-090](../work-items/DEV-090.md) 一项汇总卡，其 T1—T8 子项均在该卡内登记，不另拆台账行。该卡原以 DEV-089 登记，因与 0.24.1 已归档的 DEV-089（安装文档预检）编号冲突改为 DEV-090。0.24.1 自身的 [BUG-125](../work-items/BUG-125.md)—[BUG-128](../work-items/BUG-128.md) 已随 0.24.1 发布并归档，不重复列入本版交付。
 
 | ID / 工作卡 | 技术状态 | 交付版本 | 剩余范围 | 卡首页 | 主台账 | 差异说明 | 版本说明 | 开发入口 | 实际 Release |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| [DEV-089](../work-items/DEV-089.md) | 部分交付（T1/T2/T3 组合/T4/T5/T6a/T6b/T8 与 T7 诊断措辞已交付；T6c、T7 弧端点与两阶段形状误差、`parallel`/`distance`、多约束求解与装配保存重载未交付） | 0.25.0（子项） | T6c 区域切除、T7 弧端点与两阶段形状误差、`parallel`/`distance`、多约束求解、装配保存重载、Creo 10 与 WorkBuddy 黑盒 | 部分交付，剩余待验收 | 部分交付，剩余待验收 | 无 | 已列入 | 已列入 | `v0.25.0` |
+| [DEV-090](../work-items/DEV-090.md) | 部分交付（T1/T2/T3 组合/T4/T5/T6a/T6b/T8 与 T7 诊断措辞已交付；T6c、T7 弧端点与两阶段形状误差、`parallel`/`distance`、多约束求解与装配保存重载未交付） | 0.25.0（子项） | T6c 区域切除、T7 弧端点与两阶段形状误差、`parallel`/`distance`、多约束求解、装配保存重载、Creo 10 与 WorkBuddy 黑盒 | 部分交付，剩余待验收 | 部分交付，剩余待验收 | 无 | 已列入 | 已列入 | `v0.25.0` |
 
 ## 未纳入本版
 
