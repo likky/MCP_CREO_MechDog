@@ -1,6 +1,6 @@
 # 统一开发台账
 
-2026-11-15 [DEV-089](work-items/DEV-089.md)：核对指定 0.24.1 机械臂反馈与当前 0.24.0 源码、本机 SDK 及既有条目，建立[分批计划](superpowers/plans/2026-11-15-feedback-0241-sheetmetal-assembly.md)。先做输入/引用与装配一致性，再推进独立基体法兰、静态配合和细节特征；gear 独立预研。当前只完成离线规划，未实现、编译或连接 Creo，未提交/发布；新增本卡后当前行数 186（BUG 83 / FEAT 64 / DEV 39）。
+2026-11-15 [DEV-089](work-items/DEV-089.md)：核对指定 0.24.1 机械臂反馈与当时 0.24.0 源码、本机 SDK 及既有条目，建立[分批计划](superpowers/plans/2026-11-15-feedback-0241-sheetmetal-assembly.md)。按用户决定 T3 以“组合能力”开放为 `sheetmetal_base_flange`（native 平面壁 + 90° 法兰、回执 `composed_features`，不声称等价单特征基体法兰），同批交付 T1 几何选择器（含装配坐标空间）、T2 约束偏移语义、T4 符号定位尺寸、T5 `coincident`/`concentric`、T6a 距离+角度倒角、T6b 方向线阵、T8 `plan_file` 与 T7 诊断措辞；公开工具 107→108。Creo 12.4.0.0 实机取得回执（组合法兰 job `f85ddda1…` 体积 770.185802 / 上界 770.185796 mm³、保存重载通过；倒角、线阵、尺寸、选择器与装配约束各有成功与拒绝用例）；T6c 区域切除、T7 弧端点与两阶段形状误差、`parallel`/`distance`、多约束求解与装配保存重载、Creo 10 与 WorkBuddy 黑盒未验。已随 [0.25.0 发布记录](validation/RELEASE-0.25.0.md)发布。新增本卡后当前行数 186（BUG 83 / FEAT 64 / DEV 39）。
 
 2026-11-13 [DEV-088](work-items/DEV-088.md)：明确开发 AI 自主承担参照取样、取树、单变量对照、引用重绑与重建/独立验收，不让维护者代做技术判断；离线核验、四情境只读试用和终审通过，移入[完成档案](BACKLOG_COMPLETED.md)。保留当次实机确认与缺口报告，本次未编译或真实取样。
 
@@ -79,9 +79,9 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
 | 开发中 | 7 |
-| 部分交付，剩余待验收 | 41 |
+| 部分交付，剩余待验收 | 42 |
 | 部分交付，剩余待规划 | 6 |
-| 待规划 | 44 |
+| 待规划 | 43 |
 
 BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与真实缺口，勿重复派工。
 
@@ -277,7 +277,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
-| [DEV-089](work-items/DEV-089.md) | P1 | 待规划 | 未排期 | 0.24.1 机械臂反馈离线计划已形成；引用解析、基体法兰、静态配合、细节特征分批推进。先核版本/原始输入和 BUG-036/041；实机须当次确认，gear/G2 独立取证。 |
+| [DEV-089](work-items/DEV-089.md) | P1 | 部分交付，剩余待验收 | 0.25.0（子项） | 0.25.0 已交付 T1 几何选择器（含装配坐标）、T2 约束偏移语义、T3 组合式 `sheetmetal_base_flange`、T4 符号定位尺寸、T5 静态配合词、T6a 距离+角度倒角、T6b 方向线阵、T8 `plan_file` 与 T7 诊断措辞。剩余：T6c 区域切除（缺 B-REGION 稳定签名）、T7 弧端点与两阶段形状误差、`parallel`/`distance` 配合、多约束同时求解与装配保存重载、Creo 10 与 WorkBuddy 黑盒；见 [发布记录](validation/RELEASE-0.25.0.md)。 |
 | [FEAT-065](work-items/FEAT-065.md) | P1 | 已交付 0.21.0（M1/M2）、0.22.0（M3/M4）与 0.23.1（补充）子项；剩余未排期 | 未排期 | 已发布：2—32 截面、2—8 条第二方向导线、截面/导线接受已有曲线与边、首末收敛点、边来源首/末截面的 `tangent`，quilt 边 ID 由 `creo_measure_surface_group` 的 `open_edge_records` 给出；0.23.1 起已有实体模型不再误拒 `surface_loft`（BUG-119），YZ@X 与 XZ@Y 正交平面截面实机通过。剩余：`curvature`/`normal`/导线边界无实测依据仍拒绝；非平面相邻面与两端朝向不同的相切未测；`ADV_VIA_CRV`；`boundary_conditions` 不在 compact 保护集合内；Creo 9/10 与 WorkBuddy 黑盒。见 [0.22.0 发布记录](validation/RELEASE-0.22.0.md) 与 [0.23.1 发布记录](validation/RELEASE-0.23.1.md)。 |
 | [DEV-003](BACKLOG_COMPLETED.md#legacy-dev-003) | P2 | 待规划 | 未排期 | 整理 C++ 的执行上下文、模块接口和资源由谁创建、释放，再用受影响的 SDK 构建并运行原生测试。 |
 | [DEV-004](BACKLOG_COMPLETED.md#legacy-dev-004) | P2 | 待规划 | 未排期 | 在 DEV-003 完成后，让各模块可以独立编译，并整理原生测试目录。检查构建缓存、安装、保存重载和失败回滚。 |
