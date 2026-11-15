@@ -291,6 +291,15 @@
 - Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.25.0`；四附件为 `MCP_CREO_MechDog-0.25.0-source.zip`、`MCP_CREO_MechDog-0.25.0-source.zip.sha256`、`MCP_CREO_MechDog-0.25.0-seed-library.zip` 与 `MCP_CREO_MechDog-0.25.0-seed-library.zip.sha256`；`source.zip` 的摘要见同名 sidecar，不写入包内。
 - 本版新增 `native/base_flange.cpp`、`native/geometry_selectors.cpp`、`native/linear_pattern.cpp`，并修改 `native/advanced.cpp`、`native/generic.cpp`、`native/sketch_coordinates.cpp`，升级后必须重编译 worker。
 - 包内快照与 `main` 的差异：实际 Release id、发布时间、四个附件摘要与本段回填只存在于 `main`，按冻结规则不改写、不重发已发布附件。
+- Release：id `446058283`，非 draft、非 prerelease，`published_at=2026-11-15T12:51:01Z`，target `main`（`38bee48692d67d7f962d21ad713abbaa821c2fa7`，标签对象 `f617e5d26d326a0b51d52f298141e965a63d2041`）。
+- 发布后核对：`tools/check_release_assets.py --tag v0.25.0` → exit 0，「v0.25.0: four assets downloaded and verified; both sidecars match」。远端 digest、本地重算与 sidecar 内容逐一致：
+
+| 附件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.25.0-source.zip` | 10 238 309 | `a1e949a302d1a0003dd9f98c0a44ec9e7096cda740fced526b09dec26f126d40` |
+| `MCP_CREO_MechDog-0.25.0-source.zip.sha256` | 101 | `68486baf77050e947b00651003982926b47b193a1e5033fc35c1e449ee584174` |
+| `MCP_CREO_MechDog-0.25.0-seed-library.zip` | 493 442 | `f8cf62d21d8c9d513fe6335e8e82b8064f48be642ad6a009cd433aa3257705fc` |
+| `MCP_CREO_MechDog-0.25.0-seed-library.zip.sha256` | 107 | `a89288276cf7182dda630998da03130f544dfb2ddc5d7e4145b45f547d83864b` |
 
 ## v0.24.0（2026-11-13）
 
