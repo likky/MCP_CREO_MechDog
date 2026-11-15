@@ -18,6 +18,27 @@
 
 其它参数中的 datum_feature 继续代表基准平面。`{"kind":"datum_plane","axis":"z"}` 的 axis 表示平面法向，不能用作旋转轴。阵列轴必须先于 leader；必要时创建独立基准轴，再用 creo_reorder_features 调整顺序。高层工具和 execute_plan 使用同一规范化逻辑，非法轴类型、缺少 ID/标签会在入队前返回可操作示例，revision 防护保持有效。
 
+## 方向（线性）阵列
+
+计划操作 `linear_pattern` 用模型坐标单位向量表达方向，不接收轴引用：
+
+```json
+{"op": "linear_pattern", "label": "rows", "leader": "hole", "direction": [1, 0, 0], "spacing": 42, "count": 2, "flip": false}
+```
+
+`direction` 必须是长度 1 的 `[x,y,z]`（容差 1e-6），`spacing` 为大于 0 的毫米中心距，`count` 含首例且至少 2，`flip` 只反转方向。Creo 仍需要一个真实方向参考，因此原生把向量绑定到与其平行（余弦 1-1e-9）的第一条直边（按 id 升序），没有直边时绑定到法向平行的第一个平面；参考自身的朝向决定元素树 flip，`flip` 不依赖假设的边方向。绑不到任何参考时明确拒绝并给出候选数，不发明基准轴。2026-11-15 Creo 12.4 实机：100×30×10 板上 Ø4 通孔沿 +X、间距 42、数量 2，两孔中心 x=10/52；`flip=true` 时同一 leader 从 x=52 得到 x=52/10，均保存重载通过。
+
+## 距离+角度倒角
+
+`chamfer` 保持 `size`/`distance`（等距腿）不变；新增 `chamfer_type="distance_angle"`，同时要求 `angle_deg`（0–180，不含端点）与 `angle_reference`（角度所依据、并量取腿距的面）：
+
+```json
+{"op": "chamfer", "label": "bevel", "size": 3, "references": [{"edge": {"kind": "geometry_selector", "target": "edge", "endpoints_mm": [[0,0,10],[50,0,10]], "tolerance_mm": 0.001}}], "chamfer_type": "distance_angle", "angle_deg": 70, "angle_reference": {"kind": "geometry_selector", "target": "surface", "axis": [0,0,1], "points_mm": [[25,15,10]], "tolerance_mm": 0.001}}
+```
+
+2026-11-15 Creo 12.4 实机测量（50×30×10 块、70°、腿距 3 mm）：`PRO_CHM_ANG_X_D` 的 `PRO_E_RNDCH_LEG1` 是线性腿距、`LEG2` 是角度（写反时特征 status=6）；腿距量在 `angle_reference` 指定的面上，另一面腿长为 3·tan70°=8.2424 mm，去除体积与 0.5·3·8.2424·50 一致，保存重载通过。`chamfer_type` 只是准入别名，native 载荷仍靠 `angle_deg`/`angle_reference` 存在与否区分，等距倒角载荷与旧版一致。
+
+
 ## 显式平面几何 ID（BUG-084 / T03）
 
 `datum_plane.id` 使用当前模型 `creo_inspect_model(section="datum_planes")` 返回的**基准平面几何 ID**；`plane.id` 使用当前模型中经验证为平面的几何 ID；`surface.id` 沿用面几何 ID，草图支撑面仍须确实平面。特征标签使用 `datum_feature`。特征 ID 与几何 ID 不互换，同一个数字也不能靠类型猜测重解释。
@@ -213,6 +234,7 @@
 | surface_loft.boundary_conditions | 最多 4 个 `{"boundary","condition"}`，每个边界一次；只公开 `tangent`，限 `first_section`/`last_section` 且该截面是只有一个相邻面的 `{"kind":"edge","id":N}`，方向固定为顺着相邻面延伸；`free` 任意边界可用；`curvature`、`normal`、导线边界上的非 `free` 在提交前拒绝（FEAT-065 M4） |
 | surface_offset.reference | 裸 quilt 或 quilt_feature 引用；距离字段是 `distance`，结果为会增加实体体积的偏置壁；源 quilt id 不是新结果 quilt，实测距离可用性见 offset_distance_status |
 | sheetmetal_flange.edge | 裸引用（计划路径 `operations[i].edge`），两种形态：`{"kind":"edge","id":N}`，`id` 取当前 `creo_inspect_model` 的边 ID；或 `{"kind":"edge_geometry","endpoints_mm":[[x,y,z],[x,y,z]],"tolerance_mm":1e-6}`，用当前模型坐标毫米的两端点点名一条直线边，原生在执行每个 op 时重查当前几何、要求无向唯一匹配，因此计划可跨边 ID 重排。`tolerance_mm` 可省略（默认 1e-6，范围 1e-9..1000），不接受单位字段；0/多候选、非有限坐标、退化边或无法换算模型长度单位时明确拒绝。两种形态都不得再加 edge/reference 包装。首壁来源为 `native_planar` 时，报错只指向 `creo_sheetmetal_planar_wall` 的 frame/envelope；只有 `sheetmetal_wall` 转换首壁才引用 `wall_contract`；来源未知不给旧首壁配方 |
+| sheetmetal_base_flange.section | 由两条直线组成的开口 90° 折线：`[{"type":"line","start":[u,v,0],"end":[u,v,0]}, {...}]`，必须按给定顺序 end-to-start 连续、两段互相垂直、条数恰为 2；其余条数、非 90° 折角、共线折返与断链在入口（schema）就拒绝。只取两段长度和 90° 折角：第一段是有标签的 `native_planar` 矩形平面壁（同时生成 `<label>_sk`），第二段挂在壁自由端的 90° 法兰（`<label>_leg2`）。因此这是**两个特征**，结果 `composed_features` 逐一列出两者的特征 ID 与参数，不声称单特征基体法兰，也不等价于 0.24.1 反馈里那个中面加厚的原生基体法兰（体积口径不同）。单侧加厚：板沿 +normal 占 0..thickness，折弯腿在板的另一侧；`second_leg_mm` 是自板外表面起算的自由腿长，故原生法兰高 = `second_leg + thickness`；包络为 `first_leg × width × (second_leg + thickness)`，体积上界 = `(first+second)×width×thickness − (1−π/4)((R+t)²−R²)×width`，实测偏离超过 1 mm³ 或 0.5% 即失败。`radius` 为内半径，`k_factor` ∈ (0,1] 且 Y = K·π/2；`origin=[u0,v0]` 与 `sheetmetal_planar_wall` 同义；label ≤ 22 字符（要留出两个后缀）。实测（Creo 12.4.0.0，2026-11-15）：腿 8/12、t=2、宽 20、R=0.7366、K=0.5 得到 770.1858 mm³、包络 8×20×14，与上界差 6.4e-6 mm³，保存重载核验通过 |
 | sheetmetal_unbend/flat_pattern/bend_back.fixed_surface | 裸面引用，如 `{"kind":"surface","id":N}`，取自当前巡检；`references` 省略时作用全部折弯，能否固定由原生执行判定 |
 | sheetmetal_flange.relief | 可选对象 `{type:"none"\|"rectangular", ends:"both"\|"side1"\|"side2", width:>0, depth:>=0}`；省略等于 `none`（两端保持 `PRO_BEND_RLF_NONE`）。宽深是**绝对模型单位**、不按板厚缩放；`rip`/`stretch`/`obround`/`param`、角部释放与边撕裂不支持。这是 **bend-end relief**，不是 corner relief 或斜接，当前未证明能解决角部重叠；传入它也不会跳过 `adjacent_bend_ends` 创建前拒绝。释放是创建期属性，改它要删除/抑制折边后重建，没有就地改释放的入口 |
 | sheetmetal_flange.end_trim_mm | 可选正数（`>0`，上限 100000，布尔拒绝），模型单位；省略时元素树与旧行为逐字一致。**Creo 把它读作「距链端各内缩 setback」还是「自截面起算的壁长」尚未实机确认**，属诊断参数：先在自由壁上用实测体积分类再依赖修剪几何（开发分支未发布） |

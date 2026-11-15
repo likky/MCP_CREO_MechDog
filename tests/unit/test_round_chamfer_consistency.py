@@ -15,11 +15,19 @@ from pydantic import ValidationError
 import bridge
 import generic_bridge as general
 import server
-from creo_mechdog.schema import RoundOp, validate_operations
+from creo_mechdog.schema import ChamferOp, RoundOp, validate_operations
 
 ROOT = Path(__file__).resolve().parents[2]
 
 REFS = [{"edge": {"kind": "edge", "id": 7}}]
+
+# DEV-089 T6a split the shared round/chamfer model: each op now owns its own
+# fields, and the payload-level compatibility below is what stays frozen.
+FINISH_MODELS = {"round": RoundOp, "chamfer": ChamferOp}
+
+
+def finish_model(payload):
+    return FINISH_MODELS[payload["op"]].model_validate(payload)
 
 
 def operation(op, **overrides):
@@ -51,7 +59,7 @@ class RoundChamferAliasTests(unittest.TestCase):
             with self.subTest(op=op):
                 payload = {"op": op, "label": "x", "size": 1.0, alias: 2.0, "references": REFS}
                 with self.assertRaises(ValidationError) as raised:
-                    RoundOp.model_validate(payload)
+                    finish_model(payload)
                 self.assertIn("not both", str(raised.exception))
                 with self.assertRaises(ValueError) as plan_error:
                     validate_operations([payload])
@@ -62,7 +70,7 @@ class RoundChamferAliasTests(unittest.TestCase):
             with self.subTest(op=op):
                 payload = {"op": op, "label": "x", wrong: 2.0, "references": REFS}
                 with self.assertRaises(ValidationError) as raised:
-                    RoundOp.model_validate(payload)
+                    finish_model(payload)
                 self.assertIn(f"does not accept '{wrong}'", str(raised.exception))
 
     def test_both_aliases_or_missing_value_are_rejected(self):
@@ -75,14 +83,17 @@ class RoundChamferAliasTests(unittest.TestCase):
         for payload in payloads:
             with self.subTest(payload=payload):
                 with self.assertRaises(ValidationError):
-                    RoundOp.model_validate(payload)
+                    finish_model(payload)
 
     def test_execute_plan_schema_publishes_the_alias_fields(self):
         tools = {tool.name: tool for tool in asyncio.run(server.mcp.list_tools())}
         schema = tools["creo_execute_plan"].input_schema
         properties = schema["$defs"]["RoundOp"]["properties"]
-        for name in ("radius", "distance", "size"):
+        for name in ("radius", "size"):
             self.assertIn(name, properties)
+        chamfer = schema["$defs"]["ChamferOp"]["properties"]
+        for name in ("distance", "size", "chamfer_type", "angle_deg", "angle_reference"):
+            self.assertIn(name, chamfer)
 
 
 class StandaloneToolMappingTests(unittest.IsolatedAsyncioTestCase):

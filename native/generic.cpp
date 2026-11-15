@@ -363,9 +363,50 @@ struct DimensionTarget {
     std::string owner_name;
 };
 
+struct DimensionSymbolScan {
+    std::string symbol;
+    std::vector<int> ids;
+};
+static ProError dimension_symbol_visit(ProDimension *dimension, ProError status, ProAppData data) {
+    if (status)
+        return PRO_TK_NO_ERROR;
+    auto *scan = (DimensionSymbolScan *)data;
+    ProName symbol = L"";
+    if (ProDimensionSymbolGet(dimension, symbol) != PRO_TK_NO_ERROR)
+        return PRO_TK_NO_ERROR;
+    if (utf8(symbol) == scan->symbol)
+        scan->ids.push_back(dimension->id);
+    return PRO_TK_NO_ERROR;
+}
+// DEV-089 T4: resolve a dimension by owner feature + Creo symbol. Only the
+// feature's own dimensions are searched, and exactly one symbol match is
+// required: the first D2 in the whole model is never picked.
+static int dimension_id_by_symbol(const J &value) {
+    const std::string symbol = value.at("symbol").get<std::string>();
+    ProFeature owner = feature(value.at("feature"));
+    DimensionSymbolScan scan;
+    scan.symbol = symbol;
+    CK(ProFeatureDimensionVisit(&owner, dimension_symbol_visit, nullptr, &scan));
+    if (scan.ids.size() == 1)
+        return scan.ids[0];
+    if (scan.ids.empty())
+        throw std::runtime_error(
+            "Dimension symbol '" + symbol + "' matched no dimension owned by feature id " +
+            std::to_string(owner.id) +
+            "; read the dimension symbol from creo_inspect_model or pass {id:N}");
+    std::string ids;
+    for (int id : scan.ids)
+        ids += (ids.empty() ? "" : ", ") + std::to_string(id);
+    throw std::runtime_error(
+        "Dimension symbol '" + symbol + "' matched " + std::to_string(scan.ids.size()) +
+        " dimensions owned by feature id " + std::to_string(owner.id) + " (ids " + ids +
+        "); the symbol is not unique inside that feature, pass an explicit id");
+}
+
 static DimensionTarget read_dimension_target(ProMdl board, const J &value) {
     DimensionTarget target = {};
-    target.id = value["id"].get<int>();
+    target.id = value.contains("id") && !value["id"].is_null() ? value["id"].get<int>()
+                                                               : dimension_id_by_symbol(value);
     target.requested = value["value"].get<double>();
     CK(ProModelitemInit(board, target.id, PRO_DIMENSION, &target.dim));
     ProBoolean relation_driven = PRO_B_FALSE;
@@ -1108,6 +1149,15 @@ static J inspection(bool require_healthy = true) {
     result["parameters"] = params;
     return result;
 }
+#include "geometry_selectors.cpp"
+
+// DEV-089 T1: set only while resolving the assembly side of a constraint that
+// names a placed component. The moving component is never described here: it has
+// no solved pose yet, so an assembly-space selector on it is refused rather than
+// resolved against a guessed position.
+static bool occurrence_placement_available = false;
+static ProMatrix occurrence_placement = {};
+
 static ProSelection resolve(const J &r) {
     // BUG-094 backstop: fail with a clear message instead of a JSON missing-key error.
     if (!r.is_object() || !r.contains("kind") || !r["kind"].is_string())
@@ -1120,6 +1170,42 @@ static ProSelection resolve(const J &r) {
                     if (g["type"].get<int>() == PRO_CSYS)
                         return selection(g["id"], PRO_CSYS);
         throw std::runtime_error("No default coordinate system found");
+    }
+    if (r.at("kind") == "geometry_selector") {
+        // DEV-089 T1: resolve one physical edge/face by measured geometry so a
+        // plan survives a rebuild that renumbers ids. Zero or multiple matches
+        // are refused with the candidate count; the first candidate is never
+        // chosen. An assembly-space selector is mapped into the placed
+        // component's frame first (see occurrence_placement_available).
+        const std::string selector_space = r.value("coordinate_space", "model");
+        J selector = r;
+        if (selector_space == "assembly") {
+            if (!occurrence_placement_available)
+                throw std::runtime_error(
+                    "geometry_selector coordinate_space='assembly' needs a placed component "
+                    "context: use it on assembly_reference of a component constraint that names "
+                    "assembly_component, not on the moving component or a part feature");
+            selector = selector_to_component_model(r, occurrence_placement);
+        } else if (selector_space != "model") {
+            throw std::runtime_error(
+                "geometry_selector coordinate_space must be 'model' or 'assembly', not '" +
+                selector_space + "'");
+        }
+        MillimeterScale selector_scale =
+            length_scale_to_mm((ProMdl)board, inspect_length_units(board));
+        if (!selector_scale.known)
+            throw std::runtime_error(
+                "geometry_selector cannot convert the model length unit to millimetres; pass an "
+                "explicit geometry id from creo_inspect_model instead");
+        GeometrySelectorOutcome selector_outcome =
+            match_geometry_selector(selector, inspection(false), selector_scale.scale);
+        if (!selector_outcome.matched) {
+            stage_operation_result({{"geometry_selector_diagnostic", selector_outcome.diagnostic}});
+            throw std::runtime_error(selector_outcome.error);
+        }
+        stage_operation_result({{"geometry_selector_resolution", selector_outcome.diagnostic}});
+        return selection(selector_outcome.id,
+                         selector_outcome.target == "edge" ? PRO_EDGE : PRO_SURFACE);
     }
     if (r.at("kind") == "quilt_feature")
         return resolve_quilt_reference(r, (ProSolid)board, inspect_length_units(board),
@@ -3963,11 +4049,18 @@ static J generic_round(const J &op, bool chamfer) {
     ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
     integer(root, PRO_E_FEATURE_TYPE, chamfer ? PRO_FEAT_CHAMFER : PRO_FEAT_ROUND);
     text(root, PRO_E_STD_FEATURE_NAME, wide(op.at("label")).c_str());
+    // DEV-089 T6a: PRO_CHM_ANG_X_D needs both legs plus the reference face the
+    // angle and the leg distance are measured on (ProChamfer.h Table: LEG2
+    // required for AnglexD, PRO_E_RNDCH_REFERENCE_SURFACE required for that
+    // schema). The angle is written in degrees like PRO_E_DRAFT_ANGLE_1; which
+    // leg carries it is a live measurement recorded in docs/work-items/DEV-089.md.
+    const bool angle_chamfer = chamfer && op.contains("angle_deg");
     ProElement sets = node(root, PRO_E_RNDCH_SETS);
     for (auto refs : op["references"]) {
         ProElement set = node(sets, PRO_E_RNDCH_SET);
         if (chamfer) {
-            integer(set, PRO_E_RNDCH_DIMENSIONAL_SCHEMA, PRO_CHM_D_X_D);
+            integer(set, PRO_E_RNDCH_DIMENSIONAL_SCHEMA,
+                    angle_chamfer ? PRO_CHM_ANG_X_D : PRO_CHM_D_X_D);
             integer(set, PRO_E_RNDCH_CHAMFER_SHAPE, PRO_CHM_TANGENT_LEGS);
         } else {
             integer(set, PRO_E_RNDCH_SHAPE_OPTIONS, PRO_ROUND_TYPE_CONSTANT);
@@ -3990,10 +4083,25 @@ static J generic_round(const J &op, bool chamfer) {
             ProSelectionFree(&e);
             curve_collection(node(r, PRO_E_STD_CURVE_COLLECTION_APPL), J::array({refs.at("edge")}));
         }
+        if (angle_chamfer) {
+            ProSelection face = resolve(op.at("angle_reference"));
+            ref(r, PRO_E_RNDCH_REFERENCE_SURFACE, face);
+            ProSelectionFree(&face);
+        }
         ProElement radius = node(node(set, PRO_E_RNDCH_RADII), PRO_E_RNDCH_RADIUS),
                    leg = node(radius, PRO_E_RNDCH_LEG1);
         integer(leg, PRO_E_RNDCH_LEG_TYPE, PRO_ROUND_RADIUS_TYPE_VALUE);
+        // Live evidence (job 2089d13d..., docs/work-items/DEV-089.md): for
+        // PRO_CHM_ANG_X_D Creo reads LEG1 as the linear distance and LEG2 as the
+        // angle. Writing the angle into LEG1 produced d11=70.0 carried as a
+        // linear dimension and d12=3.0 carried as an angle (type 21), and the
+        // feature then failed regeneration with status 6.
         real(leg, PRO_E_RNDCH_LEG_VALUE, op.at("size"));
+        if (angle_chamfer) {
+            ProElement angle_leg = node(radius, PRO_E_RNDCH_LEG2);
+            integer(angle_leg, PRO_E_RNDCH_LEG_TYPE, PRO_ROUND_RADIUS_TYPE_VALUE);
+            real(angle_leg, PRO_E_RNDCH_LEG_VALUE, op.at("angle_deg"));
+        }
     }
     integer(root, PRO_E_RNDCH_ATTACH_TYPE, PRO_ROUND_ATTACHED);
     node(root, PRO_E_RNDCH_TRANSITIONS);
@@ -4003,6 +4111,12 @@ static J generic_round(const J &op, bool chamfer) {
     // Echo the applied leg value so callers can compare it with their input,
     // and report the tree-proven set application beside the requested count.
     J details = {{"size", op.at("size")}};
+    if (angle_chamfer) {
+        details["chamfer_type"] = "distance_angle";
+        details["angle_deg"] = op.at("angle_deg");
+    } else if (chamfer) {
+        details["chamfer_type"] = "equal_distance";
+    }
     details["reference_application"] = round_reference_application(f, (int)op["references"].size());
     return details;
 }
@@ -4386,7 +4500,12 @@ static J choice_inspection(const J &holder, const char *key);
 #include "sketch_edit.cpp"
 #include "planar_wall.h"
 #include "planar_wall.cpp"
+// DEV-089 T3: composed open-polyline base flange (planar wall + 90 degree
+// flange). Included after planar_wall.cpp because it reuses that file's
+// measured body, volume and envelope helpers.
+#include "base_flange.cpp"
 #include "placement.cpp"
+#include "linear_pattern.cpp"
 #include "feature_state.cpp"
 // FEAT-053: three-point datum plane ({kind:'through_points'}). Each label names
 // a datum_points feature contributing exactly one PRO_POINT; three non-collinear
@@ -4626,6 +4745,8 @@ static void execute_operation_body(const J &op) {
         details = generic_feature_state(op);
     else if (kind == "axis_pattern")
         generic_axis_pattern(op);
+    else if (kind == "linear_pattern")
+        generic_linear_pattern(op);
     else if (kind == "geometry_transform")
         generic_transform(op);
     else if (kind == "set_geometry_transform")
@@ -4688,6 +4809,8 @@ static void execute_operation_body(const J &op) {
         generic_sheetmetal_planar_wall(op);
     else if (kind == "resize_sheetmetal_planar_wall")
         generic_resize_sheetmetal_planar_wall(op);
+    else if (kind == "sheetmetal_base_flange")
+        generic_sheetmetal_base_flange(op);
     else if (kind == "sheetmetal_flange" || kind == "sheetmetal_flange_profile")
         generic_sheetmetal_flange(op);
     else if (kind == "sheetmetal_corner_relief")

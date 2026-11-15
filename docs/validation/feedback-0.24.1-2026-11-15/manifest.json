@@ -1,0 +1,13 @@
+{
+  "work_item": "DEV-089",
+  "archived_on": "2026-11-15",
+  "scope": "Only the user-specified report; referenced TXT, plans, logs and models were not supplied.",
+  "files": [
+    {
+      "original_path": "C:\\Users\\Administrator\\Downloads\\0.24.1\\2026-11-14-CREO-0.24.1-钣金基体法兰与装配配合语义缺口.md",
+      "archived_path": "report.md",
+      "bytes": 23438,
+      "sha256": "631069bc728fc51cfa7d863f9e13e786b69625f7425205130bf9bfeced45ee42"
+    }
+  ]
+}

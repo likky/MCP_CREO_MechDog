@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 import bridge
 import creo_startup
 import generic_bridge as general
-from creo_mechdog import seeds, update_check
+from creo_mechdog import plan_files, seeds, update_check
 from creo_mechdog.adoption import adopt
 from creo_mechdog.appearance import preview_recolor, submit_recolor
 from creo_mechdog.assembly_replay import plan_assembly_rebuild
@@ -857,13 +857,14 @@ async def creo_install_seed_library(
 
 @mcp.tool(annotations=CREATE)
 async def creo_execute_plan(
-    operations: list[Operation],
+    operations: list[Operation] | None = None,
     model_id: str | None = None,
     model_name: str | None = None,
     expected_revision: int | None = None,
     assertions: dict[str, Any] | None = None,
     model_type: Literal["part", "sheetmetal", "assembly", "drawing"] = "part",
     timeout_seconds: int | None = None,
+    plan_file: str | None = None,
 ) -> dict[str, Any]:
     """Execute an ordered general feature plan. Omit model_id to create a new model of
     model_type ("part" by default).
@@ -901,10 +902,28 @@ async def creo_execute_plan(
     round/chamfer use `size` (mm); as a standalone-tool alias they also accept
     radius (round) or distance (chamfer), but providing the alias together with
     size is rejected instead of silently preferring one.
+
+    plan_file is an alternative to operations: an absolute local JSON file holding
+    just the operations array. The file is read once (UTF-8, optional BOM), its
+    bytes are hashed and reported back as plan_file.sha256, and duplicate keys,
+    non-finite numbers, UNC/device paths and files over 16 MiB are refused. The
+    parsed array then passes the same capability, revision, busy and transaction
+    admission as an inline plan. Providing both operations and plan_file is
+    rejected.
     """
-    return await invoke(
+    plan_file_record: dict[str, Any] | None = None
+    if plan_file is not None:
+        if operations:
+            raise ValueError("creo_execute_plan accepts either operations or plan_file, not both")
+        operations, plan_file_record = plan_files.load_plan_operations(plan_file)
+        payload = operations
+    else:
+        if not operations:
+            raise ValueError("creo_execute_plan requires operations or plan_file")
+        payload = dump_plan_operations(operations)
+    result = await invoke(
         general.submit,
-        dump_plan_operations(operations),
+        payload,
         model_id,
         model_name,
         expected_revision,
@@ -912,6 +931,9 @@ async def creo_execute_plan(
         model_type=model_type,
         timeout_seconds=timeout_seconds,
     )
+    if plan_file_record is not None and isinstance(result, dict):
+        result["plan_file"] = plan_file_record
+    return result
 
 
 @mcp.tool(annotations=CREATE)
@@ -1895,6 +1917,69 @@ async def creo_resize_sheetmetal_planar_wall(
                 "feature": feature,
                 "length": length,
                 "width": width,
+            }
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+    return payload
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_sheetmetal_base_flange(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    section: list[dict[str, Any]],
+    width: float,
+    thickness: float,
+    radius: float = 1.0,
+    k_factor: float = 0.5,
+    plane: Literal["XY", "XZ", "YZ"] = "XY",
+    origin: list[float] | None = None,
+) -> dict[str, Any]:
+    """Create a first sheetmetal wall from an open two-line (90 degree) chain, as two features.
+
+    This is a COMPOSED operation, not one base-flange feature. `section` must be exactly two
+    straight lines sharing one endpoint and perpendicular to each other (90 degree bend only);
+    each line is {type:"line", start:[u,v,0], end:[u,v,0]} in sketch coordinates. The first leg
+    becomes a native unattached planar wall (label, plus its sketch label_sk) and the second leg
+    becomes a 90 degree flange (label_leg2) attached to that wall's free end edge - the edge is
+    found by geometry from the wall's own measured frame, never by a guessed element id.
+
+    Measured contract (Creo 12.4.0.0, DEV-089 T3):
+    - the sheet is thickened one-sided along +normal; the flange grows on the opposite side of
+      the plate and its gauge stays inside the plate's end face;
+    - `second_leg_mm` is the free second leg measured from the plate's outer face, so the native
+      flange height is second_leg + thickness;
+    - the composed envelope is first_leg x width x (second_leg + thickness);
+    - Y = k_factor * pi / 2 is passed to the flange; k_factor must be in (0, 1];
+    - the composed volume is (first_leg + second_leg) * width * thickness minus the quarter
+      annulus between radius and radius + thickness, and the job fails if the measured volume or
+      the signed envelope leaves that bound (1 mm3 or 0.5%, whichever is larger).
+    Only the chain's leg lengths and its 90 degree corner reach the features; `origin=[u0,v0]`
+    shifts the whole rectangle in the sketch frame like creo_sheetmetal_planar_wall. Because the
+    wall is a first wall, the model must be an empty sheetmetal model from
+    creo_new_sheetmetal(template="native_planar"). The label is limited to 22 characters (the
+    operation also creates <label>_sk and <label>_leg2), and all three names must be free.
+    Verification is measured: read the operation result's composed_features (the two real
+    features with their ids), first_leg_mm/second_leg_mm/width_mm/thickness_mm/radius_mm/
+    k_factor/y_factor, volume_mm3 against expected_volume_mm3, and envelope.u/v/n.
+    """
+    payload = await invoke(
+        general.submit,
+        [
+            {
+                "op": "sheetmetal_base_flange",
+                "label": label,
+                "plane": plane,
+                "section": section,
+                "width": width,
+                "thickness": thickness,
+                "radius": radius,
+                "k_factor": k_factor,
+                "origin": list(origin) if origin is not None else [0.0, 0.0],
             }
         ],
         model_id,

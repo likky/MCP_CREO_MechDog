@@ -305,7 +305,8 @@ class ReferenceContractTests(unittest.TestCase):
 
     def test_schema_examples_list_all_three_axis_forms(self):
         tools = {tool.name: tool for tool in asyncio.run(server.mcp.list_tools())}
-        # 107 adds creo_quilt_merge (FEAT-039/H03, live 2026-11-08) on top of
+        # 108 adds creo_sheetmetal_base_flange (DEV-089 T3, live 2026-11-15) on
+        # top of creo_quilt_merge (FEAT-039/H03, live 2026-11-08) and
         # the read-only creo_measure_surface_curvature (DEV-074/H08, live
         # 2026-11-08); creo_surface_boundary_fill is gated (DEV-074/H09).
         # 105 = 104 that carry creo_surface_round (DEV-074/H08, live 2026-11-08),
@@ -313,7 +314,7 @@ class ReferenceContractTests(unittest.TestCase):
         # the read-only creo_measure_surface_group (FEAT-039/H04).
         # 104 = 102 that carry creo_surface_trim (live P3), creo_project_curve
         # (live S04) and creo_surface_offset (live S07, 2026-11-05).
-        self.assertEqual(len(tools), 107)
+        self.assertEqual(len(tools), 108)
         axis = tools["creo_axis_pattern"].input_schema["properties"]["axis"]
         self.assertEqual(
             {form["properties"]["kind"]["const"] for form in axis["oneOf"]},

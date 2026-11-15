@@ -61,7 +61,7 @@ class ModelingCandidateGateTests(unittest.TestCase):
         import server
 
         names = {tool.name for tool in asyncio.run(server.mcp.list_tools())}
-        self.assertEqual(len(names), 107)
+        self.assertEqual(len(names), 108)
         for op in candidate_operations():
             self.assertNotIn("creo_" + op["op"], names)
 

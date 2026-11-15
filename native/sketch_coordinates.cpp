@@ -964,6 +964,22 @@ static void enforce_geometry_deviation(const J &report, const char *context) {
             std::string message = std::string(context) +
                                   " changed the supplied geometry; maximum deviation mm=" +
                                   std::to_string(stage["max_deviation_mm"].get<double>());
+            // DEV-089 T7: a failure receipt has to say which stage failed, how
+            // much of the deviation was shape rather than rigid motion, and
+            // which effective threshold rejected it. The values are reported as
+            // measurements only; no relaxed tolerance is suggested.
+            message += ", stage=" + std::string(name);
+            if (stage["shape_deviation_mm"].is_number())
+                message += ", shape_deviation_mm=" +
+                           std::to_string(stage["shape_deviation_mm"].get<double>());
+            if (stage["rigid"].is_boolean())
+                message += std::string(", rigid=") + (stage_rigid ? "true" : "false");
+            if (stage["translation_magnitude_mm"].is_number())
+                message += ", translation_mm=" +
+                           std::to_string(stage["translation_magnitude_mm"].get<double>());
+            message += ", effective_tolerance_mm=" + std::to_string(tolerance) +
+                       ", tolerance_source=" + report.value("tolerance_source", "unknown") +
+                       ", enforced=true";
             if (stage_rigid)
                 message += " (the whole profile translated as a rigid body by " +
                            std::to_string(stage["translation_magnitude_mm"].get<double>()) +

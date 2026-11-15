@@ -15,7 +15,8 @@ class CapabilitySummaryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_shipped_summaries_match_registered_tools_and_family_modes(self):
         tools = {tool.name for tool in await server.mcp.list_tools()}
-        # 107 adds creo_quilt_merge (FEAT-039/H03, live 2026-11-08), the
+        # 108 adds creo_sheetmetal_base_flange (DEV-089 T3, live 2026-11-15),
+        # creo_quilt_merge (FEAT-039/H03, live 2026-11-08), the
         # read-only creo_measure_surface_curvature (DEV-074/H08, live
         # 2026-11-08), creo_surface_round (DEV-074/H08, live 2026-11-08),
         # creo_surface_loft (FEAT-009/H02, live 2026-11-07) and the read-only
@@ -25,7 +26,7 @@ class CapabilitySummaryTests(unittest.IsolatedAsyncioTestCase):
         # and the read-only creo_get_mass_properties (FEAT-057).
         # 104 = 102 that carry creo_surface_trim (live P3), creo_project_curve
         # (live S04) and creo_surface_offset (live S07, 2026-11-05).
-        self.assertEqual(len(tools), 107)
+        self.assertEqual(len(tools), 108)
         status = server._support_status()
         families = capabilities.families()
         for summary, family in (

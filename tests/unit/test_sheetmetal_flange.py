@@ -1543,8 +1543,9 @@ class EdgeGeometryNativeTest(unittest.TestCase):
 
     def test_every_flange_edge_use_goes_through_the_shared_resolver(self) -> None:
         self.assertIn("static ProSelection resolve_flange_edge(const J &edge_ref)", self.source)
+        self.assertIn('std::string kind = edge_ref.value("kind", "");', self.source)
         self.assertIn(
-            'if (edge_ref.value("kind", "") == "edge")\n        return resolve(edge_ref);',
+            'if (kind == "edge")\n        return resolve(edge_ref);',
             self.source,
         )
         self.assertEqual(self.source.count('resolve_flange_edge(op["edge"])'), 4)

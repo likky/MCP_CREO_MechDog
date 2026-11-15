@@ -659,6 +659,11 @@ def submit(
             for operation in operations
             for name in native_planar_wall.internal_labels(operation)
         ]
+        # DEV-089 T3: the composed base flange creates its wall, that wall's
+        # sketch and a flange label, so all three names are protected the same way.
+        from creo_mechdog import sheetmetal as sheetmetal_contract
+
+        names.extend(sheetmetal_contract.declared_base_flange_names(operations))
         duplicate = reserved.intersection(names)
         if duplicate:
             raise ValueError(f"Feature labels already exist: {sorted(duplicate)}")
@@ -699,6 +704,11 @@ def submit(
             if isinstance(saved, dict) and isinstance(saved.get("features"), list):
                 features = saved["features"]
         native_planar_wall.validate_plan(model if not new else None, operations, aliases, features)
+        # DEV-089 T3: the composed base flange hosts the same first planar wall,
+        # so it needs the same "empty sheetmetal model" admission up front.
+        sheetmetal_contract.validate_base_flange_plan(
+            model if not new else None, operations, aliases
+        )
         # FEAT-052: recolor_assembly admission and payload resolution share one
         # path for the standalone tool and execute_plan (the verified
         # checkpoint, appearance baseline, family grouping and complete

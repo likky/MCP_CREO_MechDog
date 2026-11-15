@@ -1737,8 +1737,15 @@ static int flange_geometry_edge_id(const J &edge_ref) {
         "); use a smaller tolerance_mm or endpoints that belong to exactly one edge");
 }
 static ProSelection resolve_flange_edge(const J &edge_ref) {
-    if (edge_ref.value("kind", "") == "edge")
+    std::string kind = edge_ref.value("kind", "");
+    if (kind == "edge")
         return resolve(edge_ref);
+    if (kind == "geometry_selector") {
+        if (edge_ref.value("target", "") != "edge")
+            throw std::runtime_error(
+                "sheetmetal_flange geometry_selector must target an edge, not a surface");
+        return resolve(edge_ref);
+    }
     return selection(flange_geometry_edge_id(edge_ref), PRO_EDGE);
 }
 
@@ -2109,13 +2116,19 @@ static ProSelection component_reference(ProAsmcomp *component, const J &referenc
     ProSelection local;
     board = child;
     aliases = component_aliases_for(component->id, saved_aliases);
+    // DEV-089 T1: the moving component is being placed by this very job, so it
+    // has no solved occurrence pose. An assembly-space selector cannot name it.
+    const bool saved_placement = occurrence_placement_available;
+    occurrence_placement_available = false;
     try {
         local = resolve(reference);
     } catch (...) {
+        occurrence_placement_available = saved_placement;
         board = saved;
         aliases = saved_aliases;
         throw;
     }
+    occurrence_placement_available = saved_placement;
     board = saved;
     aliases = saved_aliases;
     ProModelitem mi;
@@ -2155,13 +2168,29 @@ static ProSelection assembly_reference(const J &constraint) {
         aliases = component_aliases_for(sibling_component->id, saved_aliases);
     }
     ProSelection local;
+    bool saved_placement = occurrence_placement_available;
+    ProMatrix saved_matrix;
+    memcpy(saved_matrix, occurrence_placement, sizeof(ProMatrix));
+    occurrence_placement_available = false;
+    if (sibling_component) {
+        // DEV-089 T1: the sibling is an already placed component, so its
+        // occurrence placement maps assembly coordinates into that part's frame.
+        // Only the assembly side uses this window; the moving component is
+        // resolved with it cleared so its pose is never guessed.
+        CK(ProAsmcompPositionGet(sibling_component, occurrence_placement));
+        occurrence_placement_available = true;
+    }
     try {
         local = resolve(reference);
     } catch (...) {
+        occurrence_placement_available = saved_placement;
+        memcpy(occurrence_placement, saved_matrix, sizeof(ProMatrix));
         board = saved;
         aliases = saved_aliases;
         throw;
     }
+    occurrence_placement_available = saved_placement;
+    memcpy(occurrence_placement, saved_matrix, sizeof(ProMatrix));
     board = saved;
     aliases = saved_aliases;
     ProModelitem mi;
@@ -2204,6 +2233,15 @@ static void component_constraints(ProAsmcomp *c, const J &constraints) {
         auto found = types.find(type);
         if (found == types.end())
             throw std::runtime_error("Unsupported assembly constraint type: " + type);
+        // DEV-089 T2 / BUG-041 backstop: PRO_ASM_MATE/PRO_ASM_ALIGN/INSERT/CSYS
+        // carry no offset, so a stored value would be read as zero and the pose
+        // would not match the request. The Python contract rejects this first.
+        const double requested_offset = spec.value("offset", 0.0);
+        if ((type == "mate" || type == "align" || type == "insert" || type == "csys") &&
+            fabs(requested_offset) > 1e-12)
+            throw std::runtime_error("Assembly constraint type '" + type +
+                                     "' has no offset; use mate_offset or align_offset instead "
+                                     "of storing a value the kernel ignores");
         if (spec.contains("assembly_component") && !spec.at("assembly_component").is_null() &&
             feature_id(spec.at("assembly_component")) == c->id)
             throw std::runtime_error("A component constraint cannot reference its own component "

@@ -136,6 +136,37 @@ class SchemaShape(unittest.TestCase):
         self.assertEqual(op.values[0].value, 30.0)
 
 
+class SymbolTarget(unittest.TestCase):
+    """DEV-089 T4: target a dimension by owning feature plus Creo symbol."""
+
+    def test_symbol_target_is_accepted_without_an_id(self):
+        checked = DimensionValue.model_validate(
+            {"feature": "boss_base", "symbol": "d12", "value": 30}
+        )
+        self.assertIsNone(checked.id)
+        self.assertEqual(checked.feature, "boss_base")
+        self.assertEqual(checked.symbol, "d12")
+
+    def test_digit_string_feature_becomes_an_id(self):
+        checked = DimensionValue.model_validate({"feature": "42", "symbol": "d12", "value": 30})
+        self.assertEqual(checked.feature, 42)
+
+    def test_mixed_or_incomplete_targets_are_rejected(self):
+        for payload in (
+            {"id": 12, "feature": "boss_base", "symbol": "d12", "value": 30},
+            {"id": 12, "symbol": "d12", "value": 30},
+            {"feature": "boss_base", "value": 30},
+            {"symbol": "d12", "value": 30},
+            {"value": 30},
+            {"feature": True, "symbol": "d12", "value": 30},
+            {"feature": "boss_base", "symbol": "   ", "value": 30},
+            {"id": True, "value": 30},
+            {"id": -1, "value": 30},
+        ):
+            with self.subTest(payload=payload), self.assertRaises(ValidationError):
+                DimensionValue.model_validate(payload)
+
+
 class NativeContract(unittest.TestCase):
     """The native copy must read every target before writing the first value."""
 
@@ -163,6 +194,11 @@ class NativeContract(unittest.TestCase):
             '{"editable", relation_code == PRO_TK_NO_ERROR ? J(relation_driven != PRO_B_TRUE)',
             self.source,
         )
+
+    def test_symbol_target_resolves_inside_the_owning_feature_only(self):
+        self.assertIn("ProFeatureDimensionVisit(&owner, dimension_symbol_visit", self.source)
+        self.assertIn("scan.ids.size() == 1", self.source)
+        self.assertIn("the symbol is not unique inside that feature", self.source)
 
 
 if __name__ == "__main__":

@@ -18,8 +18,9 @@ from pydantic import (
     model_validator,
 )
 
-from creo_mechdog import f08_contract
+from creo_mechdog import assembly_constraints, f08_contract, geometry_selectors
 from creo_mechdog import schema_base as _schema_base
+from creo_mechdog import sheetmetal as _sheetmetal
 from creo_mechdog.flange_profile import FlangeProfile
 from creo_mechdog.geometry_deviation import validate_tolerance_mm
 from creo_mechdog.hole_standards import resolve_standard_hole, tip_cone_height_mm
@@ -668,6 +669,50 @@ class AxisPatternOp(StrictModel):
         return self
 
 
+class LinearPatternOp(StrictModel):
+    """DEV-089 T6b: native direction pattern (translation, spacing, instances).
+
+    ``direction`` is a unit vector in model coordinates; ``spacing`` is the
+    centre-to-centre distance in mm and ``count`` includes the leader. ``flip``
+    only reverses the direction. The native side binds the vector to a real
+    model direction reference (a straight edge first, then a planar face) and
+    publishes which reference it used.
+    """
+
+    op: Literal["linear_pattern"]
+    label: Label
+    leader: str | int
+    direction: Point3
+    spacing: Annotated[float, Field(gt=0, le=100000)]
+    count: Annotated[int, Field(ge=2, le=360)] = 2
+    flip: StrictBool = False
+
+    @field_validator("spacing", mode="before")
+    @classmethod
+    def real_spacing(cls, value: Any) -> Any:
+        if isinstance(value, bool) or type(value) not in (int, float):
+            raise ValueError("linear_pattern spacing must be a numeric mm length")
+        return value
+
+    @field_validator("direction", mode="before")
+    @classmethod
+    def unit_direction(cls, value: Any) -> Any:
+        if not isinstance(value, list) or len(value) != 3:
+            raise ValueError("linear_pattern direction must be an [x,y,z] vector")
+        for component in value:
+            if isinstance(component, bool) or not isinstance(component, (int, float)):
+                raise ValueError("linear_pattern direction components must be numbers")
+            if not math.isfinite(component):
+                raise ValueError("linear_pattern direction components must be finite")
+        length = math.sqrt(sum(component * component for component in value))
+        if abs(length - 1.0) > 1e-6:
+            raise ValueError(
+                "linear_pattern direction must be a unit vector in model coordinates "
+                f"(received length {length:.12g})"
+            )
+        return [float(component) for component in value]
+
+
 def equivalent_rotation_deg(value: float) -> float:
     """Map an angle into (-180, 180] so a rejected request can name the usable value."""
     angle = math.fmod(value, 360.0)
@@ -939,7 +984,7 @@ class HoleOp(StrictModel):
 
 
 class RoundOp(StrictModel):
-    op: Literal["round", "chamfer"]
+    op: Literal["round"]
     label: Label
     size: Annotated[
         Positive | None,
@@ -972,7 +1017,7 @@ class RoundOp(StrictModel):
         # Standalone-tool compatibility: round accepts radius and chamfer accepts
         # distance as an alias for size. Aliases are excluded from serialization,
         # so the native request always carries a single size field.
-        alias, other = ("radius", "distance") if self.op == "round" else ("distance", "radius")
+        alias, other = "radius", "distance"
         if getattr(self, other) is not None:
             raise ValueError(f"op '{self.op}' does not accept '{other}'; use '{alias}' or 'size'")
         if self.size is not None and getattr(self, alias) is not None:
@@ -981,6 +1026,124 @@ class RoundOp(StrictModel):
             if getattr(self, alias) is None:
                 raise ValueError(f"Provide 'size' or '{alias}' for op '{self.op}'")
             self.size = getattr(self, alias)
+        # DEV-089 T1: a reference may be a geometric anchor selector instead of
+        # a rebuild-unstable id. Validate the frozen selector shape here so the
+        # executor never receives a malformed filter.
+        geometry_selectors.validate_reference_list(self.references, f"{self.op}.references")
+        return self
+
+
+class ChamferOp(StrictModel):
+    """DEV-089 T6a: equal-distance chamfer plus the documented distance-angle schema.
+
+    ``equal_distance`` keeps the historical ``size``/``distance`` payload. In
+    ``distance_angle`` the leg distance is measured on ``angle_reference`` (the
+    face the angle is taken from) and ``angle_deg`` is the angle between the
+    chamfer face and that reference face; the probe that fixes this reading is
+    recorded in docs/work-items/DEV-089.md.
+    """
+
+    op: Literal["chamfer"]
+    label: Label
+    size: Annotated[
+        Positive | None,
+        Field(
+            default=None,
+            description="Chamfer leg distance in mm; the distance alias is accepted too",
+        ),
+    ]
+    distance: Annotated[
+        Positive | None,
+        Field(
+            default=None,
+            exclude=True,
+            description="Alias for size when op=chamfer (mm); rejected when size is also given",
+        ),
+    ]
+    radius: Annotated[
+        Positive | None,
+        Field(
+            default=None,
+            exclude=True,
+            description="Rejected: a chamfer has no radius; use size or distance",
+        ),
+    ]
+    references: Annotated[list[dict[str, Any]], Field(min_length=1, max_length=100)]
+    chamfer_type: Annotated[
+        Literal["equal_distance", "distance_angle"],
+        Field(
+            default="equal_distance",
+            exclude=True,
+            description="equal_distance keeps the historical size-only tree; "
+            "distance_angle requires angle_deg and angle_reference",
+        ),
+    ]
+    angle_deg: Annotated[
+        float | None,
+        Field(
+            default=None,
+            description="Angle between the chamfer face and angle_reference in degrees "
+            "(distance_angle only)",
+        ),
+    ]
+    angle_reference: Annotated[
+        dict[str, Any] | None,
+        Field(
+            default=None,
+            description="Surface the angle is measured from and the leg distance is taken on "
+            "(distance_angle only); a face reference such as {kind:'surface',id:N} or a "
+            "geometry_selector targeting a surface",
+        ),
+    ]
+
+    @field_validator("angle_deg", mode="before")
+    @classmethod
+    def real_angle(cls, value: Any) -> Any:
+        if value is not None and (
+            isinstance(value, bool) or type(value) not in (int, float) or not math.isfinite(value)
+        ):
+            raise ValueError("angle_deg must be a finite number of degrees")
+        return value
+
+    @model_validator(mode="after")
+    def resolve_mode(self):
+        if self.radius is not None:
+            raise ValueError("op 'chamfer' does not accept 'radius'; use 'distance' or 'size'")
+        if self.size is not None and self.distance is not None:
+            raise ValueError("Provide either 'distance' or 'size' for op 'chamfer', not both")
+        if self.size is None:
+            if self.distance is None:
+                raise ValueError("Provide 'size' or 'distance' for op 'chamfer'")
+            self.size = self.distance
+        geometry_selectors.validate_reference_list(self.references, f"{self.op}.references")
+        if self.chamfer_type == "equal_distance":
+            if self.angle_deg is not None or self.angle_reference is not None:
+                raise ValueError(
+                    "angle_deg/angle_reference require chamfer_type='distance_angle'; an "
+                    "equal-distance chamfer is defined by size alone"
+                )
+        else:
+            if self.angle_deg is None:
+                raise ValueError("chamfer_type='distance_angle' requires angle_deg")
+            if not 0 < self.angle_deg < 180:
+                raise ValueError("angle_deg must be between 0 and 180 degrees")
+            if self.angle_reference is None:
+                raise ValueError(
+                    "chamfer_type='distance_angle' requires angle_reference: the face the angle "
+                    "is measured from and the leg distance is taken on"
+                )
+            if (
+                isinstance(self.angle_reference, dict)
+                and self.angle_reference.get("kind") == geometry_selectors.GEOMETRY_SELECTOR_KIND
+            ):
+                normalized = geometry_selectors.validate_geometry_selector(
+                    self.angle_reference, "surface"
+                )
+                if normalized["target"] != "surface":
+                    raise ValueError(
+                        "chamfer angle_reference geometry_selector must target a surface"
+                    )
+                self.angle_reference = normalized
         return self
 
 
@@ -1044,7 +1207,13 @@ class ShellOp(StrictModel):
 
 
 class DimensionValue(StrictModel):
-    id: int
+    # DEV-089 T4: a dimension is targeted by its current id, or by the owning
+    # feature plus the Creo dimension symbol printed by creo_inspect_model. The
+    # symbol form survives rebuilds that renumber dimension ids; it never means
+    # another CAD system's "D2" role, and an ambiguous symbol is refused.
+    id: int | None = None
+    feature: str | int | None = None
+    symbol: str | None = None
     value: float
     # FEAT-004 guards: pin what the plan observed so a shifted dimension is
     # refused instead of moved. All three are optional, so old payloads keep
@@ -1060,6 +1229,62 @@ class DimensionValue(StrictModel):
         if isinstance(value, bool):
             raise ValueError("dimension values are numbers of model units, not booleans")
         return value
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def id_is_a_current_reference(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, bool) or type(value) is not int or not 0 <= value <= 2147483647:
+            raise ValueError(
+                "dimension id must be the nonnegative 32-bit integer printed by creo_inspect_model"
+            )
+        return value
+
+    @field_validator("feature", mode="before")
+    @classmethod
+    def feature_reference(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            raise ValueError("dimension feature is a feature label or id, not a boolean")
+        if isinstance(value, str) and re.fullmatch(r"[0-9]+", value):
+            value = int(value)
+        if type(value) is int:
+            if not 0 <= value <= 2147483647:
+                raise ValueError("dimension feature ids must be nonnegative 32-bit integers")
+            return value
+        if isinstance(value, str) and re.fullmatch(_LABEL_PATTERN, value):
+            return value
+        raise ValueError(
+            "dimension feature must be a feature label starting with a lowercase letter "
+            "([a-z0-9_], at most 28 characters) or a nonnegative feature id"
+        )
+
+    @field_validator("symbol", mode="before")
+    @classmethod
+    def symbol_text(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("dimension symbol must be a non-empty string such as 'd12'")
+        return value
+
+    @model_validator(mode="after")
+    def target_form(self):
+        has_symbol_form = self.feature is not None or self.symbol is not None
+        if self.id is not None and has_symbol_form:
+            raise ValueError(
+                "A dimension target is either {id,...} or {feature,symbol,...}; mixing them "
+                "would leave two possible targets"
+            )
+        if self.id is None:
+            if self.feature is None or self.symbol is None:
+                raise ValueError(
+                    "A dimension requires either id, or both feature and symbol; "
+                    "the symbol is the Creo dimension symbol read from creo_inspect_model"
+                )
+        return self
 
     @field_validator("expected_owner", mode="before")
     @classmethod
@@ -1333,6 +1558,57 @@ class SheetmetalPlanarWallOp(StrictModel):
         return self
 
 
+class SheetmetalBaseFlangeOp(StrictModel):
+    """DEV-089 T3: open-polyline base flange composed from two native features.
+
+    The chain is built as a rectangular planar wall (`<label>`, first leg) plus
+    a 90 degree flange on that wall's free end edge (`<label>_leg2`, second
+    leg). It is deliberately not one base-flange feature: the job result lists
+    `composed_features` and both features stay addressable by label.
+
+    Contract, measured on Creo 12.4.0.0 (2026-11-15):
+    - the sheet is thickened one-sided along +normal (the wall spans
+      0..thickness) and the flange grows on the opposite side of the plate;
+    - `second_leg_mm` is the free leg measured from the plate's outer face, so
+      the native flange height is `second_leg + thickness`;
+    - the envelope is `first_leg x width x (second_leg + thickness)`, and the
+      volume bound is `creo_mechdog.sheetmetal.base_flange_expected_volume`;
+    - this batch composes exactly two perpendicular lines. The drawn
+      coordinates contribute their lengths only; `origin` shifts the whole
+      rectangle in the sketch frame like `sheetmetal_planar_wall`.
+    """
+
+    op: Literal["sheetmetal_base_flange"]
+    label: Label
+    plane: Literal["XY", "XZ", "YZ"] | dict[str, Any] = "XY"
+    section: list[dict[str, Any]]
+    width: Positive
+    thickness: Positive
+    radius: Positive = 1.0
+    k_factor: Annotated[float, Field(gt=0, le=1)] = 0.5
+    origin: list[float] = Field(default_factory=lambda: [0.0, 0.0])
+
+    @field_validator("origin", mode="before")
+    @classmethod
+    def origin_is_two_finite_mm(cls, value: Any) -> Any:
+        # Same [u0, v0] rule as the planar wall; one definition only.
+        return SheetmetalPlanarWallOp.origin_is_two_finite_mm(value)
+
+    @model_validator(mode="after")
+    def composed_names_fit_and_chain_is_admissible(self):
+        # The wall also creates <label>_sk and the flange becomes <label>_leg2,
+        # so the label has to leave room for both suffixes.
+        if len(self.label) > 22:
+            raise ValueError("sheetmetal_base_flange label must be at most 22 characters")
+        if not isinstance(self.plane, str) and any(abs(value) > 0 for value in self.origin):
+            raise ValueError(
+                "sheetmetal_base_flange origin is a sketch-local offset on XY/XZ/YZ; "
+                "a dictionary plane carries its own origin"
+            )
+        _sheetmetal.base_flange_geometry(self.section)
+        return self
+
+
 class SheetmetalPlanarWallResizeOp(StrictModel):
     """FEAT-058: resize the rectangular planar wall in place.
 
@@ -1463,6 +1739,14 @@ class SheetmetalFlangeOp(StrictModel):
     @field_validator("edge", mode="before")
     @classmethod
     def edge_is_a_current_reference(cls, value: Any) -> Any:
+        if (
+            isinstance(value, dict)
+            and value.get("kind") == geometry_selectors.GEOMETRY_SELECTOR_KIND
+        ):
+            normalized = geometry_selectors.validate_geometry_selector(value, "edge")
+            if normalized["target"] != "edge":
+                raise ValueError("sheetmetal_flange geometry_selector must target an edge")
+            return normalized
         if not isinstance(value, dict) or value.get("kind") not in {"edge", "edge_geometry"}:
             raise ValueError(
                 "sheetmetal_flange edge must be {kind:'edge',id:N} or "
@@ -1574,7 +1858,20 @@ class SheetmetalUnbendOp(StrictModel):
 
 
 class AssemblyConstraint(StrictModel):
-    type: Literal["mate", "align", "mate_offset", "align_offset", "insert", "csys"]
+    type: Literal[
+        "mate",
+        "align",
+        "mate_offset",
+        "align_offset",
+        "insert",
+        "csys",
+        # DEV-089 T5 relationship words; normalized to a proven native type or
+        # refused with the named evidence gap before dispatch.
+        "coincident",
+        "concentric",
+        "parallel",
+        "distance",
+    ]
     assembly_reference: dict[str, Any]
     component_reference: dict[str, Any]
     offset: float = 0
@@ -1603,6 +1900,39 @@ class AssemblyConstraint(StrictModel):
             "assembly_component must be a component label starting with a lowercase letter "
             "([a-z0-9_], at most 28 characters) or a nonnegative feature ID"
         )
+
+    @model_validator(mode="after")
+    def offset_matches_type(self):
+        # DEV-089 T5: relationship words become a proven native type, or are
+        # refused with the specific missing evidence. Normalize before the
+        # offset rule so "coincident with offset" is judged as mate, not as a
+        # separate type that silently keeps the value.
+        if self.type in assembly_constraints.SEMANTIC_TYPES:
+            normalized = assembly_constraints.normalize_constraint_type(
+                {
+                    "type": self.type,
+                    "assembly_reference": self.assembly_reference,
+                    "component_reference": self.component_reference,
+                }
+            )
+            self.type = normalized["type"]
+        # DEV-089 T2 / BUG-041: PRO_ASM_MATE and PRO_ASM_ALIGN have no offset in
+        # Creo. The executor used to store the value anyway, so a request that
+        # read as "mate with offset 25" was solved as a zero-offset mate. Refuse
+        # the ambiguous pair instead of silently dropping or reinterpreting it.
+        if self.type in ("mate", "align") and abs(self.offset) > 1e-12:
+            raise ValueError(
+                f"Assembly constraint type '{self.type}' has no offset; offset={self.offset} "
+                "would be stored but not applied. Use 'mate_offset' or 'align_offset' with the "
+                "same references, or set offset=0"
+            )
+        if self.type in ("insert", "csys") and abs(self.offset) > 1e-12:
+            raise ValueError(
+                f"Assembly constraint type '{self.type}' has no offset; offset={self.offset} "
+                "would be stored but not applied. Remove the offset or use mate_offset/"
+                "align_offset"
+            )
+        return self
 
 
 class AssembleOp(AssemblyPose):
@@ -2379,6 +2709,7 @@ Operation = Annotated[
         FeatureGroupOp,
         ReorderOp,
         AxisPatternOp,
+        LinearPatternOp,
         GeometryTransformOp,
         TransformUpdateOp,
         AirfoilSketchOp,
@@ -2391,6 +2722,7 @@ Operation = Annotated[
         RevolveOp,
         HoleOp,
         RoundOp,
+        ChamferOp,
         PlaneOp,
         AxisOp,
         ShellOp,
@@ -2405,6 +2737,7 @@ Operation = Annotated[
         DraftOp,
         SheetmetalWallOp,
         SheetmetalPlanarWallOp,
+        SheetmetalBaseFlangeOp,
         SheetmetalPlanarWallResizeOp,
         SheetmetalFlangeOp,
         SheetmetalFlangeProfileOp,
@@ -2703,6 +3036,13 @@ def validate_operations(operations: list[dict]) -> list[dict]:
                     # SheetmetalFlangeOp.edge_is_a_current_reference; every other
                     # operation rejects the kind in its own field validator.
                     pass
+                elif k == geometry_selectors.GEOMETRY_SELECTOR_KIND:
+                    # DEV-089 T1: a rebuild-stable geometric anchor. RoundOp and
+                    # SheetmetalFlangeOp validate it in their own field
+                    # validators; the plan walk accepts the kind and re-checks
+                    # the shared shape so an unvalidated operation cannot slip it
+                    # through.
+                    geometry_selectors.validate_geometry_selector(x, path)
                 elif k == "bodies":
                     # B4/F08: scope.kind names a body set, not a model reference.
                     # f08_contract owns its shape (kind + body_ids) and the
