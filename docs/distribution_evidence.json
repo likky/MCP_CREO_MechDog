@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "note": "Reviewed TXT evidence that ships byte-exact in the source package. Add a file here only after checking it contains no configuration, logs, user models or SDK/license data.",
+  "files": [
+    {
+      "path": "docs/validation/DEV-028-WorkBuddy-report-20261016.txt",
+      "bytes": 12891,
+      "sha256": "24e56989d3100566cc408b640291ee9081a10330f8c356643bb30df0cbaa63f7",
+      "reason": "DEV-028 historical WorkBuddy evidence referenced by the release notes (pre-existing special case)."
+    },
+    {
+      "path": "docs/validation/track-feedback-2026-10-16/track-modeling-rev2.txt",
+      "bytes": 41143,
+      "sha256": "1ec3872b0cd8cb92dd7c266c60d0839a3baa1f14371df53262c06706e610f9f9",
+      "reason": "track-modeling feedback evidence referenced by the validation index (pre-existing special case)."
+    },
+    {
+      "path": "docs/validation/feedback-0.23.2-2026-11-12/originals/MANIFEST-SHA256.txt",
+      "bytes": 4230,
+      "sha256": "ea71293d1031aa14010d859b935262df32078c78ba5253bfc5fd95390c3e3b20",
+      "reason": "Archived 0.23.2 original-file digest list referenced by that feedback manifest."
+    }
+  ]
+}

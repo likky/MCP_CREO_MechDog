@@ -1,0 +1,31 @@
+{
+  "work_item": "DEV-091",
+  "archived_on": "2026-11-16",
+  "scope": "Four user-specified Markdown reports only. Referenced TXT, plans, probe receipts, CAD models and logs were not included in this folder.",
+  "files": [
+    {
+      "original_path": "C:\\Users\\Administrator\\Downloads\\0.25.0\\2026-11-15-CREO-0.25.0-新增coincident与geometry_selector仍无法消费TXT锚点致61条配合零建立.md",
+      "archived_path": "assembly.md",
+      "bytes": 23702,
+      "sha256": "ac5cc685954c63d73a5e2eb7db9fe217e59ddfa573ae78b5bfad497c1170100a"
+    },
+    {
+      "original_path": "C:\\Users\\Administrator\\Downloads\\0.25.0\\2026-11-15-CREO-0.25.0-Arm7区域切除签名已存在于TXT却被列为缺签名且G2圆角仍未开放.md",
+      "archived_path": "arm7.md",
+      "bytes": 13550,
+      "sha256": "a3540c485a9f0912b3b7d6f951a1e63280360c4f89a0e19d0db23b644d6a9a46"
+    },
+    {
+      "original_path": "C:\\Users\\Administrator\\Downloads\\0.25.0\\2026-11-15-CREO-0.25.0-sheetmetal_base_flange把板宽20建到Z向致Arm2装配位置偏移9.57mm.md",
+      "archived_path": "sheetmetal.md",
+      "bytes": 16984,
+      "sha256": "ee2f7fb2ea2a7adc27075e6f2f3321c0d5e8e07ec1dc895d630a6f72f6b03c96"
+    },
+    {
+      "original_path": "C:\\Users\\Administrator\\Downloads\\0.25.0\\2026-11-15CREO10.0.0.0-0.25.0-逐ID表可换非交付ID仍判current且交付版本列不校验与上一版标签误写0.24.0.md",
+      "archived_path": "release.md",
+      "bytes": 21171,
+      "sha256": "8d6450cbf67a8163b693a037e628063e4a1852fbef3b00d9dcbd433c7842f9fe"
+    }
+  ]
+}

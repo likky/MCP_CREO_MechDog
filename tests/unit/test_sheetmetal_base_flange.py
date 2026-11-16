@@ -259,6 +259,64 @@ class ComposedSchemaTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             SheetmetalBaseFlangeOp.model_validate({**self.REFERENCE, "origin": [0.0]})
 
+    def test_width_direction_assertion_is_optional_and_kept_verbatim(self):
+        # BUG-129: the assertion says where the width must end up. It must not
+        # rotate the first wall: plane/origin keep their existing meaning.
+        operation = SheetmetalBaseFlangeOp.model_validate(self.REFERENCE)
+        self.assertIsNone(operation.expected_width_direction_world)
+        self.assertEqual(operation.width_direction_tolerance_deg, 0.5)
+        asserted = SheetmetalBaseFlangeOp.model_validate(
+            {
+                **self.REFERENCE,
+                "plane": "YZ",
+                "expected_width_direction_world": [1, 0, 0],
+                "width_direction_tolerance_deg": 0.25,
+            }
+        )
+        self.assertEqual(asserted.plane, "YZ")
+        self.assertEqual(asserted.origin, [0.0, 0.0])
+        self.assertEqual(asserted.expected_width_direction_world, [1.0, 0.0, 0.0])
+        self.assertEqual(asserted.width_direction_tolerance_deg, 0.25)
+
+    def test_width_direction_must_be_a_finite_unit_vector(self):
+        for value in (
+            [0, 0, 0],
+            [0, 0, 2],
+            [0, 0, 0.5],
+            [0, 0],
+            [0, 0, "1"],
+            [0, 0, float("nan")],
+            [0, 0, float("inf")],
+            [True, 0, 0],
+        ):
+            with self.subTest(value=value), self.assertRaises(ValidationError):
+                SheetmetalBaseFlangeOp.model_validate(
+                    {**self.REFERENCE, "expected_width_direction_world": value}
+                )
+
+    def test_width_direction_tolerance_bounds(self):
+        for value in (0, -1, 90.1, True):
+            with self.subTest(value=value), self.assertRaises(ValidationError):
+                SheetmetalBaseFlangeOp.model_validate(
+                    {**self.REFERENCE, "width_direction_tolerance_deg": value}
+                )
+
+    def test_yz_width_remains_local_v(self):
+        # The assertion does not move the width from local v: plane YZ still
+        # produces the same sketch origin and the same requested rectangle.
+        without = SheetmetalBaseFlangeOp.model_validate(self.REFERENCE)
+        with_assertion = SheetmetalBaseFlangeOp.model_validate(
+            {**self.REFERENCE, "expected_width_direction_world": [1, 0, 0]}
+        )
+        for field in ("plane", "origin", "width", "thickness", "radius", "section"):
+            self.assertEqual(getattr(with_assertion, field), getattr(without, field))
+
+    def test_old_callers_without_the_assertion_stay_compatible(self):
+        operation = SheetmetalBaseFlangeOp.model_validate(self.REFERENCE)
+        dumped = operation.model_dump(exclude_none=True)
+        self.assertNotIn("expected_width_direction_world", dumped)
+        self.assertIn("plane", dumped)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -26,6 +26,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .geometry_selectors import validate_geometry_selector
+
 SEMANTIC_TYPES = ("coincident", "concentric", "parallel", "distance")
 
 #: Relationship word -> proven native constraint type.
@@ -45,8 +47,34 @@ UNVERIFIED = {
     ),
 }
 
-FACE_REFERENCE_KINDS = frozenset({"surface", "plane", "datum_plane", "datum_feature"})
-COAXIAL_REFERENCE_KINDS = frozenset({"surface"})
+FACE_REFERENCE_KINDS = frozenset(
+    {"surface", "plane", "datum_plane", "datum_feature", "geometry_selector"}
+)
+COAXIAL_REFERENCE_KINDS = frozenset({"surface", "geometry_selector"})
+
+
+def _selector_reference(reference: dict[str, Any], path: str, kind: str) -> dict[str, Any]:
+    """A selector is an anchor, not a face-kind claim: check what it may resolve to.
+
+    ``coincident``/mate needs a real plane, but only the resolved native surface
+    can prove that, so the native side re-checks the surface type after
+    resolution. ``concentric``/insert needs a cylinder; requiring ``radius_mm``
+    here guarantees the selector cannot resolve to a plane in the first place.
+    """
+    normalized = validate_geometry_selector(reference, path)
+    if normalized.get("target") != "surface":
+        raise ValueError(
+            f"{path}: a {kind} reference needs a surface selector "
+            f"({{kind:'geometry_selector',target:'surface',...}}), not "
+            f"target={normalized.get('target')!r}"
+        )
+    if kind == "concentric" and "radius_mm" not in normalized:
+        raise ValueError(
+            f"{path}: a concentric selector needs radius_mm (and preferably axis) so it can "
+            "only resolve to a cylindrical surface; a points-only selector could also hit a "
+            "plane and insert cannot use it"
+        )
+    return normalized
 
 
 def _reference_kind(reference: Any, path: str) -> str:
@@ -66,6 +94,7 @@ def normalize_constraint_type(constraint: dict[str, Any]) -> dict[str, Any]:
         return constraint
     if kind in UNVERIFIED:
         raise ValueError(f"Assembly relationship '{kind}' is not supported yet: {UNVERIFIED[kind]}")
+    normalized = dict(constraint)
     if kind == "coincident":
         for key in ("assembly_reference", "component_reference"):
             reference = constraint.get(key)
@@ -73,8 +102,11 @@ def normalize_constraint_type(constraint: dict[str, Any]) -> dict[str, Any]:
             if reference_kind not in FACE_REFERENCE_KINDS:
                 raise ValueError(
                     f"constraint.{key}: 'coincident' maps to mate and needs a face reference "
-                    f"(surface/plane/datum_plane/datum_feature), not '{reference_kind}'"
+                    f"(surface/plane/datum_plane/datum_feature/geometry_selector), not "
+                    f"'{reference_kind}'"
                 )
+            if reference_kind == "geometry_selector":
+                normalized[key] = _selector_reference(reference, f"constraint.{key}", kind)
     if kind == "concentric":
         for key in ("assembly_reference", "component_reference"):
             reference = constraint.get(key)
@@ -85,6 +117,7 @@ def normalize_constraint_type(constraint: dict[str, Any]) -> dict[str, Any]:
                     f"{{kind:'surface',id:N}} reference, not '{reference_kind}'; axis/edge "
                     "coaxiality would need the unverified LINE_PARL/LINE_DIST path"
                 )
-    normalized = dict(constraint)
+            if reference_kind == "geometry_selector":
+                normalized[key] = _selector_reference(reference, f"constraint.{key}", kind)
     normalized["type"] = MAPPING[kind]
     return normalized

@@ -147,6 +147,74 @@ class GeometrySelectorContractTests(unittest.TestCase):
                 }
             )
 
+    def test_single_point_names_one_finite_edge(self):
+        # FEAT-068 A0: a TXT midpoint is an anchor, not an endpoint pair.
+        selector = {
+            "kind": "geometry_selector",
+            "target": "edge",
+            "point_mm": [0, 0, 20],
+            "tolerance_mm": 0.5,
+        }
+        normalized = validate_geometry_selector(selector)
+        self.assertEqual(normalized["point_mm"], [0.0, 0.0, 20.0])
+        self.assertNotIn("endpoints_mm", normalized)
+        with self.assertRaises(ValueError):
+            validate_geometry_selector({**selector, "tolerance_mm": 0})
+        with self.assertRaises(ValueError):
+            validate_geometry_selector({**selector, "axis": [0, 0, 1]})
+
+    def test_circular_edge_needs_centre_and_radius_together(self):
+        selector = {
+            "kind": "geometry_selector",
+            "target": "edge",
+            "center_mm": [0, 0, 10],
+            "radius_mm": 5,
+            "axis": [0, 0, 1],
+            "tolerance_mm": 0.2,
+        }
+        normalized = validate_geometry_selector(selector)
+        self.assertEqual(normalized["center_mm"], [0.0, 0.0, 10.0])
+        self.assertEqual(normalized["radius_mm"], 5)
+        self.assertEqual(normalized["axis"], [0.0, 0.0, 1.0])
+        for bad in (
+            {key: value for key, value in selector.items() if key != "radius_mm"},
+            {key: value for key, value in selector.items() if key != "center_mm"},
+            {**selector, "radius_mm": 0},
+            {**selector, "radius_mm": 1001},
+            {**selector, "endpoints_mm": [[0, 0, 0], [0, 0, 1]]},
+            {**selector, "axis": [0, 0, 2]},
+        ):
+            with self.subTest(selector=bad), self.assertRaises(ValueError):
+                validate_geometry_selector(bad)
+        # A point on the circle is an angular filter for split rims, not a
+        # second way to name the centre.
+        with_point = validate_geometry_selector({**selector, "point_mm": [5, 0, 10]})
+        self.assertEqual(with_point["point_mm"], [5.0, 0.0, 10.0])
+        self.assertEqual(with_point["center_mm"], [0.0, 0.0, 10.0])
+
+    def test_endpoints_still_accept_an_optional_point_filter(self):
+        normalized = validate_geometry_selector(
+            edge_selector(point_mm=[0, 0, 20], tolerance_mm=0.5)
+        )
+        self.assertEqual(normalized["point_mm"], [0.0, 0.0, 20.0])
+        self.assertEqual(len(normalized["endpoints_mm"]), 2)
+
+    def test_round_and_flange_accept_single_point_edge_selectors(self):
+        selector = {
+            "kind": "geometry_selector",
+            "target": "edge",
+            "point_mm": [0, 0, 20],
+            "tolerance_mm": 0.5,
+        }
+        accepted = RoundOp.model_validate(
+            {"op": "round", "label": "r1", "size": 1, "references": [{"edge": selector}]}
+        )
+        self.assertEqual(accepted.references[0]["edge"]["point_mm"], [0.0, 0.0, 20.0])
+        flange = SheetmetalFlangeOp.model_validate(
+            {"op": "sheetmetal_flange", "label": "fl1", "edge": selector, "height": 10}
+        )
+        self.assertEqual(flange.edge["point_mm"], [0.0, 0.0, 20.0])
+
 
 if __name__ == "__main__":
     unittest.main()

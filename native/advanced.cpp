@@ -2142,6 +2142,36 @@ static ProSelection component_reference(ProAsmcomp *component, const J &referenc
     CK(ProSelectionAlloc(&path, &mi, &contextual));
     return contextual;
 }
+// FEAT-068 A1: a geometric selector resolves to a surface id, but a constraint
+// is only legal on a real plane (mate) or a real cylinder (insert). The Python
+// layer can only filter by shape, so the measured type is re-checked here after
+// resolution instead of trusting the selector.
+static void require_constraint_surface_type(ProSelection selection, const char *role,
+                                            bool plane_required) {
+    ProModelitem mi;
+    CK(ProSelectionModelitemGet(selection, &mi));
+    if (mi.type != PRO_SURFACE)
+        throw std::runtime_error(std::string(role) +
+                                 " selector resolved to a non-surface item; name a surface "
+                                 "selector or an explicit {kind:'surface',id:N}");
+    ProSurface surface;
+    CK(ProSurfaceInit((ProSolid)mi.owner, mi.id, &surface));
+    ProGeomitemdata *data = nullptr;
+    CK(ProSurfaceDataGet(surface, &data));
+    int actual = data && data->data.p_surface_data ? data->data.p_surface_data->type : -1;
+    if (data)
+        ProGeomitemdataFree(&data);
+    if (plane_required && actual != PRO_SRF_PLANE)
+        throw std::runtime_error(
+            std::string(role) + " selector resolved to surface type " + std::to_string(actual) +
+            ", but coincident/mate needs a real plane (PRO_SRF_PLANE); a cylindrical or free-form "
+            "surface is not silently accepted as a plane");
+    if (!plane_required && actual != PRO_SRF_CYL)
+        throw std::runtime_error(
+            std::string(role) + " selector resolved to surface type " + std::to_string(actual) +
+            ", but concentric/insert needs a real cylinder (PRO_SRF_CYL); add radius_mm so the "
+            "selector cannot match a plane, or pass an explicit cylindrical surface id");
+}
 // T09: the assembly side of a constraint is either the assembly's own geometry
 // (no assembly_component) or a same-level sibling component named explicitly by
 // label or feature id. The sibling's model is the resolution context, so a
@@ -2250,6 +2280,14 @@ static void component_constraints(ProAsmcomp *c, const J &constraints) {
         CK(ProAsmcompconstraintTypeSet(list[i], found->second));
         ProSelection a = assembly_reference(spec),
                      b = component_reference(c, spec["component_reference"]);
+        // FEAT-068 A1: resolved selector references must be the surface type
+        // their relationship requires, not merely something the selector shape
+        // allowed.
+        const bool plane_required = spec.value("type", std::string()) == "mate";
+        if (spec["assembly_reference"].value("kind", std::string()) == "geometry_selector")
+            require_constraint_surface_type(a, "assembly_reference", plane_required);
+        if (spec["component_reference"].value("kind", std::string()) == "geometry_selector")
+            require_constraint_surface_type(b, "component_reference", plane_required);
         CK(ProAsmcompconstraintAsmreferenceSet(list[i], a, constraint_side(spec, "assembly_side")));
         CK(ProAsmcompconstraintCompreferenceSet(list[i], b,
                                                 constraint_side(spec, "component_side")));

@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 from creo_mechdog.release_integrity import (
+    approved_evidence_files,
     seed_library_files,
     template_library_files,
     validate_asset_paths,
@@ -89,6 +90,9 @@ def source_files():
     # BUG-123: element tree templates ship with their manifest, which is also the
     # allowlist and the digest record checked by validate_release_inputs().
     files.extend(template_library_files(ROOT))
+    # DEV-083 (0.25.0 feedback P2-1): reviewed TXT evidence ships byte-exact from
+    # its own manifest instead of widening the `docs` allowlist to every .txt.
+    files.extend(approved_evidence_files(ROOT))
     for path in files:
         if not path.is_file() or path.is_symlink():
             raise ValueError(f"Missing source file or unexpected symlink: {path}")
@@ -116,7 +120,11 @@ def main():
     except ValueError as error:
         print(f"Source package refused: {error}", file=sys.stderr)
         raise SystemExit(2) from None
-    files = source_files()
+    try:
+        files = source_files()
+    except ValueError as error:
+        print(f"Source package refused: {error}", file=sys.stderr)
+        raise SystemExit(2) from None
     if args.stage:
         stage = args.stage.resolve()
         if stage == ROOT or ROOT in stage.parents or stage in ROOT.parents:

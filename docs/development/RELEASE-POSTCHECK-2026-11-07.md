@@ -9,6 +9,16 @@
 - 环境：Windows x64；Python 3.12 虚拟环境（`.venv`）；`gh` 已登录；源码目录 `C:\i0182`（`origin/main` 的独立工作树，0.18.2 开发分支），核对对象是已发布远端 Release，不受工作区改动影响。
 - 命令输出原文见本轮 `build/postcheck/postcheck.log`；下表 digest 由 GitHub Release API 的 `assets[].digest` 读出，与本地重算结果一致。
 
+## v0.26.0（2026-11-16）
+
+- 版本与范围：`0.26.0` MINOR 部分交付，公开工具仍 108；交付 [DEV-083](../work-items/DEV-083.md)、[DEV-090](../work-items/DEV-090.md)、[DEV-091](../work-items/DEV-091.md)、[BUG-129](../work-items/BUG-129.md)、[FEAT-068](../work-items/FEAT-068.md) 与 [FEAT-069](../work-items/FEAT-069.md) 的已完成子项，发布记录见 [RELEASE-0.26.0](../validation/RELEASE-0.26.0.md)。
+- 打包顺序：`tools\package_seeds.py` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools\package.py`（内置四附件与发布记录门禁）→ 标签/发布 → `tools\check_release_assets.py --tag v0.26.0`。
+- 种子包 SHA256 `b16328fa2f114dcd3f5f520645e63a68752c9a3e1dd049f5a7f778fedd899d5c`（24 个文件、9 个种子，两次构建摘要一致；包内 `seed_manifest.json` 声明 `compatible_server_version=0.26.0`）。
+- 源码包 `MCP_CREO_MechDog-0.26.0-source.zip` 由发布提交源码构建，`package.py` 的四附件门禁与发布记录门禁均通过；字节数与 SHA256 见同名 sidecar，不写入包内文件。
+- Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.26.0`；四附件为 `MCP_CREO_MechDog-0.26.0-source.zip`、`MCP_CREO_MechDog-0.26.0-source.zip.sha256`、`MCP_CREO_MechDog-0.26.0-seed-library.zip` 与 `MCP_CREO_MechDog-0.26.0-seed-library.zip.sha256`；`source.zip` 的摘要见同名 sidecar，不写入包内。
+- 发布后核对：发布后执行，当前未验证。本段是打包时点快照；远端标签指向、Release 元数据、四个附件摘要与 `tools\check_release_assets.py --tag v0.26.0` 的结果在发布后追加到 `main`，不改写已冻结包。
+- 本版修改 `native/base_flange.cpp`、`native/geometry_selectors.cpp`、`native/advanced.cpp`、`native/generic.cpp`，升级后必须重编译 worker。
+
 ## v0.24.1（2026-11-13）
 
 - 版本与范围：`0.24.1` PATCH，公开工具仍 107；交付 [BUG-125](../work-items/BUG-125.md)、[BUG-126](../work-items/BUG-126.md)、[BUG-127](../work-items/BUG-127.md)、[BUG-128](../work-items/BUG-128.md) 与 [DEV-089](../work-items/DEV-089.md)，五项无保留范围、按台账规则归档至[完成档案](../BACKLOG_COMPLETED.md)；发布记录见 [RELEASE-0.24.1](../validation/RELEASE-0.24.1.md)。
@@ -300,6 +310,8 @@
 | `MCP_CREO_MechDog-0.25.0-source.zip.sha256` | 101 | `68486baf77050e947b00651003982926b47b193a1e5033fc35c1e449ee584174` |
 | `MCP_CREO_MechDog-0.25.0-seed-library.zip` | 493 442 | `f8cf62d21d8c9d513fe6335e8e82b8064f48be642ad6a009cd433aa3257705fc` |
 | `MCP_CREO_MechDog-0.25.0-seed-library.zip.sha256` | 107 | `a89288276cf7182dda630998da03130f544dfb2ddc5d7e4145b45f547d83864b` |
+
+- 发布记录勘误（文档，不改已发布附件）：[RELEASE-0250-ERRATA-2026-11-16](../development/RELEASE-0250-ERRATA-2026-11-16.md) 补记直接前版应为 `0.24.1`、0.24.0 单测统计口径，以及 0.26.0 起的发布前后证据规则。
 
 ## v0.24.0（2026-11-13）
 

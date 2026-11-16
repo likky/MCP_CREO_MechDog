@@ -52,65 +52,173 @@ static std::string selector_id_list(const std::vector<int> &ids) {
     return text;
 }
 
+static double selector_vector_norm(const V &value) {
+    return sqrt(dot(value, value));
+}
+
+static V selector_cross(const V &first, const V &second) {
+    return {first[1] * second[2] - first[2] * second[1],
+            first[2] * second[0] - first[0] * second[2],
+            first[0] * second[1] - first[1] * second[0]};
+}
+
+static std::string selector_edge_error(const std::string &form, const std::vector<int> &matches,
+                                       int candidates, double tolerance) {
+    if (matches.empty()) {
+        std::string text = "geometry_selector edge " + form + " matched none of the " +
+                           std::to_string(candidates) +
+                           " eligible model edges (tolerance_mm=" + std::to_string(tolerance) + ")";
+        if (form == "point_mm") {
+            text += "; a single point only matches a finite straight edge - name a circular edge "
+                    "with center_mm+radius_mm instead of its centre point";
+        } else if (form == "circular") {
+            text += "; re-read creo_inspect_model edges[].arc origin/radius and pass current "
+                    "model coordinates";
+        } else {
+            text += "; re-read creo_inspect_model edges[].start/end and pass current "
+                    "coordinates, or use {kind:'edge',id:N}";
+        }
+        return text;
+    }
+    return "geometry_selector edge " + form + " matched " + std::to_string(matches.size()) +
+           " edges (ids " + selector_id_list(matches) +
+           "); use a smaller tolerance_mm or an anchor that belongs to exactly one edge";
+}
+
 static GeometrySelectorOutcome match_geometry_edge_selector(const J &selector, const J &state,
                                                             double mm_scale, double tolerance) {
     GeometrySelectorOutcome outcome;
     outcome.target = "edge";
+    const bool circular = selector.contains("center_mm") || selector.contains("radius_mm");
+    std::string form = circular                            ? "circular"
+                       : selector.contains("endpoints_mm") ? "endpoints"
+                                                           : "point_mm";
     std::vector<int> matches;
     J matched = J::array();
-    J nearest = J::array();
-    int straight = 0;
-    V expected[2] = {vec(selector.at("endpoints_mm").at(0)),
-                     vec(selector.at("endpoints_mm").at(1))};
-    for (const auto &edge : state.value("edges", J::array())) {
-        if (!edge.contains("start") || !edge.contains("end"))
-            continue; // arcs and undimensioned curves are not straight edges
-        straight++;
-        V first = scale(vec(edge["start"]), mm_scale);
-        V second = scale(vec(edge["end"]), mm_scale);
-        // Undirected: a straight edge has no meaningful start.
-        double forward = std::max(selector_component_error(first, expected[0]),
-                                  selector_component_error(second, expected[1]));
-        double reverse = std::max(selector_component_error(second, expected[0]),
-                                  selector_component_error(first, expected[1]));
-        double error = std::min(forward, reverse);
-        if (error > tolerance)
-            continue;
-        if (selector.contains("point_mm")) {
-            V point = vec(selector["point_mm"]);
-            if (selector_segment_distance(point, first, second) > tolerance)
+    int candidates = 0;
+    if (circular) {
+        V center = vec(selector["center_mm"]);
+        const double radius = selector["radius_mm"].get<double>();
+        const bool filter_axis = selector.contains("axis");
+        const double axis_tolerance = selector.value("axis_tolerance_deg", 0.5);
+        const double cosine_limit = std::cos(axis_tolerance * 3.14159265358979323846 / 180.0);
+        const V requested = filter_axis ? normalized(vec(selector["axis"])) : V{0, 0, 0};
+        for (const auto &edge : state.value("edges", J::array())) {
+            if (!edge.contains("arc"))
+                continue; // only measured circular edges are eligible
+            candidates++;
+            const J &arc = edge["arc"];
+            V arc_center = scale(vec(arc["origin"]), mm_scale);
+            const double arc_radius = arc["radius"].get<double>() * mm_scale;
+            if (fabs(arc_radius - radius) > tolerance)
                 continue;
+            if (selector_component_error(arc_center, center) > tolerance)
+                continue;
+            if (filter_axis) {
+                V arc_axis = selector_cross(vec(arc["v1"]), vec(arc["v2"]));
+                const double axis_length = selector_vector_norm(arc_axis);
+                if (axis_length <= 1e-9)
+                    continue; // no measured plane normal, so no axis filter can pass
+                arc_axis = scale(arc_axis, 1.0 / axis_length);
+                if (fabs(dot(arc_axis, requested)) < cosine_limit)
+                    continue;
+            }
+            if (selector.contains("point_mm")) {
+                // FEAT-068 A0: a full rim is often split into two arcs with the
+                // same centre and radius. The point selects the piece whose
+                // measured angular span contains it; it must lie on the circle.
+                V arc_v1 = normalized(vec(arc["v1"]));
+                V arc_v2 = normalized(vec(arc["v2"]));
+                V normal = selector_cross(arc_v1, arc_v2);
+                const double normal_length = selector_vector_norm(normal);
+                if (normal_length <= 1e-9)
+                    continue;
+                normal = scale(normal, 1.0 / normal_length);
+                V point = vec(selector["point_mm"]);
+                V radial = {point[0] - arc_center[0], point[1] - arc_center[1],
+                            point[2] - arc_center[2]};
+                if (fabs(dot(radial, normal)) > tolerance)
+                    continue;
+                if (fabs(selector_vector_norm(radial) - radius) > tolerance)
+                    continue;
+                const double two_pi = 2.0 * 3.14159265358979323846;
+                const double start_angle = arc["start_angle"].get<double>();
+                const double raw_span = arc["end_angle"].get<double>() - start_angle;
+                if (raw_span < two_pi - 1e-6) {
+                    double span = raw_span;
+                    if (span < 0)
+                        span += two_pi;
+                    double offset =
+                        std::atan2(dot(radial, arc_v2), dot(radial, arc_v1)) - start_angle;
+                    offset = std::fmod(offset, two_pi);
+                    if (offset < 0)
+                        offset += two_pi;
+                    const double angular_tolerance = tolerance / std::max(radius, 1e-9) + 1e-6;
+                    if (offset > span + angular_tolerance)
+                        continue;
+                }
+            }
+            matches.push_back(edge["id"].get<int>());
+            matched.push_back({{"id", edge["id"]},
+                               {"radius_mm", arc_radius},
+                               {"center_error_mm", selector_component_error(arc_center, center)}});
         }
-        matches.push_back(edge["id"].get<int>());
-        matched.push_back({{"id", edge["id"]}, {"endpoint_error_mm", error}});
+    } else {
+        V expected[2] = {vec(selector.contains("endpoints_mm") ? selector.at("endpoints_mm").at(0)
+                                                               : selector.at("point_mm")),
+                         V{0, 0, 0}};
+        if (selector.contains("endpoints_mm"))
+            expected[1] = vec(selector.at("endpoints_mm").at(1));
+        for (const auto &edge : state.value("edges", J::array())) {
+            if (!edge.contains("start") || !edge.contains("end"))
+                continue; // arcs and undimensioned curves are not straight edges
+            candidates++;
+            V first = scale(vec(edge["start"]), mm_scale);
+            V second = scale(vec(edge["end"]), mm_scale);
+            double error = 0;
+            if (selector.contains("endpoints_mm")) {
+                // Undirected: a straight edge has no meaningful start.
+                double forward = std::max(selector_component_error(first, expected[0]),
+                                          selector_component_error(second, expected[1]));
+                double reverse = std::max(selector_component_error(second, expected[0]),
+                                          selector_component_error(first, expected[1]));
+                error = std::min(forward, reverse);
+                if (error > tolerance)
+                    continue;
+                if (selector.contains("point_mm")) {
+                    V point = vec(selector["point_mm"]);
+                    if (selector_segment_distance(point, first, second) > tolerance)
+                        continue;
+                }
+            } else {
+                // FEAT-068 A0: one point on one finite straight edge. The
+                // distance is measured to the segment, never to its infinite
+                // line, so a point beyond an endpoint cannot match.
+                error = selector_segment_distance(expected[0], first, second);
+                if (error > tolerance)
+                    continue;
+            }
+            matches.push_back(edge["id"].get<int>());
+            matched.push_back({{"id", edge["id"]}, {"anchor_error_mm", error}});
+        }
     }
     if (matches.size() == 1) {
         outcome.matched = true;
         outcome.id = matches[0];
         outcome.diagnostic = {{"target", "edge"},
+                              {"form", form},
                               {"matched_geometry_id", matches[0]},
-                              {"candidate_count", straight},
+                              {"candidate_count", candidates},
                               {"tolerance_mm", tolerance}};
         return outcome;
     }
     outcome.diagnostic = {{"target", "edge"},
+                          {"form", form},
                           {"coordinate_space", "model"},
                           {"tolerance_mm", tolerance},
-                          {"candidate_count", straight},
+                          {"candidate_count", candidates},
                           {"matched_ids", J(matches)}};
-    if (matches.empty()) {
-        outcome.error =
-            "geometry_selector edge endpoints matched none of the " + std::to_string(straight) +
-            " straight model edges (tolerance_mm=" + std::to_string(tolerance) +
-            "); re-read creo_inspect_model edges[].start/end and pass current coordinates, or "
-            "use {kind:'edge',id:N}";
-    } else {
-        outcome.error = "geometry_selector edge endpoints matched " +
-                        std::to_string(matches.size()) + " edges (ids " +
-                        selector_id_list(matches) +
-                        "); use a smaller tolerance_mm or endpoints that belong to exactly one "
-                        "edge";
-    }
+    outcome.error = selector_edge_error(form, matches, candidates, tolerance);
     return outcome;
 }
 
@@ -184,6 +292,23 @@ static GeometrySelectorOutcome match_geometry_surface_selector(const J &selector
                     all_on_surface = false;
                     break;
                 }
+                // A coaxial cylinder is often reported as several pieces (and a
+                // large plane can also be split); the infinite-surface offset is
+                // identical for all of them. Require the point to be inside the
+                // reported piece's own bounding box so one anchor names one piece.
+                if (surface.contains("bbox") && surface["bbox"].is_array() &&
+                    surface["bbox"].size() == 2) {
+                    V low = scale(vec(surface["bbox"][0]), mm_scale);
+                    V high = scale(vec(surface["bbox"][1]), mm_scale);
+                    for (int axis = 0; axis < 3; axis++)
+                        if (point[axis] < low[axis] - tolerance ||
+                            point[axis] > high[axis] + tolerance) {
+                            all_on_surface = false;
+                            break;
+                        }
+                }
+                if (!all_on_surface)
+                    break;
             }
             if (!all_on_surface)
                 continue;

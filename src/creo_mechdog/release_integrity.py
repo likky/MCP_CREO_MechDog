@@ -33,6 +33,28 @@ TEMPLATE_MANIFEST = "templates/elemtree/manifest.json"
 RECORDS_ENFORCED_FROM = (0, 23, 1)
 _PLACEHOLDERS = ("待回填", "待发布后回填", "发布后在此段回填", "PENDING", "准备态")
 
+# DEV-083 (0.25.0 feedback): the per-ID gate only checked the rows that were
+# already present, so replacing the single delivered row with a legal but
+# unrelated ID still printed "current". A version that has a frozen delivery
+# snapshot in this directory is checked against that set instead of trusting the
+# table to describe itself. Historical releases have no snapshot and keep the
+# old checks.
+DELIVERY_SNAPSHOT_DIR = "docs/releases"
+DELIVERY_SNAPSHOT_SCHEMA = 1
+COMPLETION_ARCHIVE = "docs/BACKLOG_COMPLETED.md"
+DISTRIBUTION_EVIDENCE = "docs/distribution_evidence.json"
+_REMOTE_VERIFICATION_STATES = ("pending", "verified")
+_REMOTE_VERIFIED_NOTE = "发布后执行，当前未验证"
+_REMOTE_CLAIM = re.compile(
+    r"(--tag\s+v?\d+\.\d+\.\d+[^\n]{0,160}?exit\s*0"
+    r"|exit\s*0[^\n]{0,160}?--tag"
+    r"|four assets downloaded and verified"
+    r"|四附件[^\n]{0,80}下载[^\n]{0,80}(?:通过|一致))"
+)
+_PREVIOUS_VERSION_PATTERN = re.compile(r"上一版本[：:]\s*`?(v?\d+\.\d+\.\d+)`?")
+_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
+_WORK_ID_PATTERN = re.compile(r"[A-Z]+-\d+")
+
 RELEASE_ASSET_NAME = "MCP_CREO_MechDog"
 _HEX = set("0123456789abcdefABCDEF")
 
@@ -557,7 +579,7 @@ def _status_class(text: str) -> str:
         return "partial"
     if "已交付" in value and ("剩余" in value or "子项" in value):
         return "partial"
-    if "已交付" in value:
+    if "已交付" in value or "已完成" in value:
         return "delivered"
     if "开发中" in value:
         return "developing"
@@ -636,6 +658,220 @@ def _card_status(card: str) -> str:
     return match.group(1) if match is not None else summary.split("。", 1)[0]
 
 
+def _delivery_snapshot(version: str, read) -> dict | None:
+    """The frozen delivery scope for ``version``, or ``None`` before adoption.
+
+    The snapshot is written by a human/agent from the actual changes, the main
+    ledger and the work cards, and then frozen. It must never be derived from
+    the per-ID table it is used to check.
+    """
+    name = f"{DELIVERY_SNAPSHOT_DIR}/{version}.json"
+    text = read(name)
+    if text is None:
+        return None
+    try:
+        document = json.loads(text)
+    except ValueError as error:
+        raise ValueError(f"{name} is not readable JSON: {error}") from error
+    if not isinstance(document, dict):
+        raise ValueError(f"{name} is not a JSON object")
+    if document.get("schema_version") != DELIVERY_SNAPSHOT_SCHEMA:
+        raise ValueError(f"{name} schema_version must be {DELIVERY_SNAPSHOT_SCHEMA}")
+    if document.get("version") != version:
+        raise ValueError(f"{name} declares version {document.get('version')!r}, expected {version}")
+    previous = document.get("previous_version")
+    if not isinstance(previous, str):
+        raise ValueError(f"{name} has no previous_version")
+    try:
+        previous_tuple = _release_version_tuple(previous)
+        current_tuple = _release_version_tuple(version)
+    except ValueError as error:
+        raise ValueError(f"{name}: {error}") from error
+    if previous_tuple >= current_tuple:
+        raise ValueError(f"{name} previous_version {previous} is not older than {version}")
+    if document.get("previous_release_tag") != f"v{previous}":
+        raise ValueError(
+            f"{name} previous_release_tag {document.get('previous_release_tag')!r} must be "
+            f"'v{previous}'"
+        )
+    commit = document.get("previous_release_commit")
+    if not isinstance(commit, str) or _COMMIT_PATTERN.fullmatch(commit) is None:
+        raise ValueError(f"{name} previous_release_commit must be a 40-character commit id")
+    state = document.get("remote_verification")
+    if state not in _REMOTE_VERIFICATION_STATES:
+        raise ValueError(f"{name} remote_verification must be one of {_REMOTE_VERIFICATION_STATES}")
+    ids = document.get("delivery_ids")
+    if not isinstance(ids, list) or not ids:
+        raise ValueError(f"{name} delivery_ids must be a non-empty list")
+    delivery_ids: set[str] = set()
+    for item in ids:
+        if not isinstance(item, str) or _WORK_ID_PATTERN.fullmatch(item) is None:
+            raise ValueError(f"{name} has an invalid delivery id: {item!r}")
+        if item in delivery_ids:
+            raise ValueError(f"{name} lists delivery id {item} more than once")
+        delivery_ids.add(item)
+    return {
+        "path": name,
+        "delivery_ids": delivery_ids,
+        "previous_version": previous,
+        "remote_verification": state,
+    }
+
+
+def release_delivery_ids(version: str, read) -> set[str]:
+    """The frozen delivery-ID set for ``version`` (see :func:`_delivery_snapshot`)."""
+    snapshot = _delivery_snapshot(version, read)
+    if snapshot is None:
+        raise ValueError(f"No delivery snapshot exists for {version}: {DELIVERY_SNAPSHOT_DIR}")
+    return set(snapshot["delivery_ids"])
+
+
+def _archived_status(archive: str, work_id: str) -> str | None:
+    """The status cell of ``work_id`` in the completion archive, or ``None``."""
+    for line in archive.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        cells = _split_row(stripped)
+        if len(cells) < 3 or _is_separator(cells):
+            continue
+        if f"[{work_id}]" not in cells[0]:
+            continue
+        return cells[2]
+    return None
+
+
+def _previous_version_problems(text: str, snapshot: dict, origin: str) -> list[str]:
+    """Every ``上一版本：X`` label must name the frozen direct predecessor."""
+    problems = []
+    seen = False
+    for value in _PREVIOUS_VERSION_PATTERN.findall(text):
+        seen = True
+        if value.lstrip("v") != snapshot["previous_version"]:
+            problems.append(
+                f"{origin}: 上一版本 {value!r} differs from {snapshot['path']} "
+                f"previous_version {snapshot['previous_version']!r}"
+            )
+    if not seen:
+        problems.append(
+            f"{origin}: must state '上一版本：{snapshot['previous_version']}' so the comparison "
+            f"baseline matches {snapshot['path']}"
+        )
+    return problems
+
+
+def approved_evidence_files(root: Path) -> list[Path]:
+    """The TXT evidence files explicitly approved for the source package.
+
+    The packager uses this list instead of widening the ``docs`` allowlist to
+    every ``.txt``. Each entry is a repository-relative path with its own byte
+    count and SHA256, so a changed or missing file is refused before the ZIP is
+    written.
+    """
+    root = Path(root)
+    manifest = root / DISTRIBUTION_EVIDENCE
+    if not manifest.is_file() or manifest.is_symlink():
+        raise ValueError(f"Distribution evidence manifest is missing: {manifest}")
+    document = _read_json(manifest)
+    if document.get("schema_version") != 1:
+        raise ValueError(f"{DISTRIBUTION_EVIDENCE} schema_version must be 1")
+    entries = document.get("files")
+    if not isinstance(entries, list) or not entries:
+        raise ValueError(f"{DISTRIBUTION_EVIDENCE} names no files")
+    files: list[Path] = []
+    seen: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError(f"{DISTRIBUTION_EVIDENCE} has an entry that is not an object")
+        name = entry.get("path")
+        if not isinstance(name, str) or not name:
+            raise ValueError(f"{DISTRIBUTION_EVIDENCE} has an entry without a path")
+        relative = PurePosixPath(name)
+        if (
+            relative.is_absolute()
+            or ".." in relative.parts
+            or "\\" in name
+            or relative.suffix != ".txt"
+            or not relative.parts
+            or relative.parts[0] != "docs"
+        ):
+            raise ValueError(
+                f"{DISTRIBUTION_EVIDENCE} has an unsafe or non-TXT evidence path: {name!r}"
+            )
+        if name in seen:
+            raise ValueError(f"{DISTRIBUTION_EVIDENCE} names {name} more than once")
+        seen.add(name)
+        target = root / name
+        if not target.is_file() or target.is_symlink():
+            raise ValueError(f"Approved evidence file is missing or is a symlink: {target}")
+        data = target.read_bytes()
+        declared_bytes = entry.get("bytes")
+        if not isinstance(declared_bytes, int) or declared_bytes != len(data):
+            raise ValueError(
+                f"Approved evidence {name} is {len(data)} bytes but the manifest declares "
+                f"{declared_bytes}"
+            )
+        declared = entry.get("sha256")
+        if not isinstance(declared, str) or _DIGEST_PATTERN.fullmatch(declared) is None:
+            raise ValueError(f"{DISTRIBUTION_EVIDENCE} has no valid sha256 for {name}")
+        digest = hashlib.sha256(data).hexdigest()
+        if digest != declared:
+            raise ValueError(
+                f"Approved evidence {name} is {digest} but the manifest declares {declared}; "
+                "update the archive instead of shipping changed bytes"
+            )
+        files.append(target)
+    return files
+
+
+def _distribution_problems(read, origin: str) -> list[str]:
+    """Structure and presence of the approved TXT evidence list.
+
+    Digest and byte checks need the real tree and belong to
+    :func:`approved_evidence_files`; this variant also runs against ``source.zip``
+    members, where only presence is knowable.
+    """
+    text = read(DISTRIBUTION_EVIDENCE)
+    if text is None:
+        return [f"{origin}: missing {DISTRIBUTION_EVIDENCE}"]
+    try:
+        document = json.loads(text)
+    except ValueError:
+        return [f"{origin}: {DISTRIBUTION_EVIDENCE} is not readable JSON"]
+    if not isinstance(document, dict) or document.get("schema_version") != 1:
+        return [f"{origin}: {DISTRIBUTION_EVIDENCE} schema_version must be 1"]
+    entries = document.get("files")
+    if not isinstance(entries, list) or not entries:
+        return [f"{origin}: {DISTRIBUTION_EVIDENCE} names no files"]
+    problems = []
+    seen: set[str] = set()
+    for entry in entries:
+        name = entry.get("path") if isinstance(entry, dict) else None
+        if not isinstance(name, str) or not name:
+            problems.append(f"{origin}: {DISTRIBUTION_EVIDENCE} has an entry without a path")
+            continue
+        relative = PurePosixPath(name)
+        if (
+            relative.is_absolute()
+            or ".." in relative.parts
+            or "\\" in name
+            or relative.suffix != ".txt"
+            or not relative.parts
+            or relative.parts[0] != "docs"
+        ):
+            problems.append(
+                f"{origin}: {DISTRIBUTION_EVIDENCE} has an unsafe or non-TXT path {name!r}"
+            )
+            continue
+        if name in seen:
+            problems.append(f"{origin}: {DISTRIBUTION_EVIDENCE} names {name} more than once")
+            continue
+        seen.add(name)
+        if not read(name):
+            problems.append(f"{origin}: approved evidence {name} is missing")
+    return problems
+
+
 def _backlog_rows(backlog: str) -> list[tuple[str, list[str]]]:
     """``[ID](work-items/...)`` rows of the main backlog with at least 3 cells."""
     rows: list[tuple[str, list[str]]] = []
@@ -661,6 +897,7 @@ def _record_problems(
     seed_digest: str | None,
     *,
     require_sidecar_note: bool,
+    snapshot: dict | None = None,
 ) -> list[str]:
     """Problems in one POSTCHECK section or ``RELEASE-<version>.md`` record."""
     problems = []
@@ -683,6 +920,17 @@ def _record_problems(
         r"摘要[^\n]{0,24}sidecar|sidecar[^\n]{0,24}摘要", text
     ):
         problems.append(f"{origin}: must state that the source.zip digest is in its sidecar")
+    if snapshot is not None and snapshot["remote_verification"] == "pending":
+        # A package frozen before publication cannot know the remote result.
+        # Writing the later `exit 0` into the packaged snapshot is the P3-5
+        # pattern from the 0.25.0 feedback.
+        claim = _REMOTE_CLAIM.search(text)
+        if claim is not None:
+            problems.append(
+                f"{origin}: claims remote verification {claim.group(0).strip()!r}, but "
+                f"{snapshot['path']} declares remote_verification='pending'; write "
+                f"'{_REMOTE_VERIFIED_NOTE}' instead"
+            )
     return problems
 
 
@@ -721,83 +969,154 @@ def _link_problems(text: str, origin: str, base_dir: str, exists) -> list[str]:
 
 
 def _work_item_problems(version: str, record: str, read, origin: str) -> list[str]:
-    """Cross-check the release's per-ID table and every active delivery row."""
+    """Cross-check the release's per-ID table and every active delivery row.
+
+    From the first version with a frozen delivery snapshot the table's ID set
+    must equal that snapshot, its ``交付版本``/``实际 Release`` columns must name
+    this release, and a difference note may no longer excuse a literal main
+    ledger mismatch. IDs already moved to the completion archive stay valid.
+    """
     backlog = read("docs/BACKLOG.md")
     if backlog is None:
         return [f"{origin}: missing docs/BACKLOG.md for the per-ID check"]
     header, rows = _id_table(record)
     if not rows:
         return [f"{origin}: RELEASE-{version}.md has no '逐 ID 状态核对' table rows"]
+    try:
+        snapshot = _delivery_snapshot(version, read)
+    except ValueError as error:
+        return [f"{origin}: {error}"]
     problems = []
+    if snapshot is not None:
+        for column in ("交付版本", "实际 Release"):
+            if not any(column in title for title in header):
+                problems.append(
+                    f"{origin}: the per-ID table has no {column!r} column required by "
+                    f"{snapshot['path']}"
+                )
+    archive = read(COMPLETION_ARCHIVE) or ""
     checked = set()
     for work_id, cells in rows:
         checked.add(work_id)
         status = _work_item_status(backlog, work_id)
+        archived_status = None
         if status is None:
-            problems.append(f"{origin}: {work_id} is missing from docs/BACKLOG.md")
+            archived_status = _archived_status(archive, work_id)
+            status = archived_status
+        if status is None:
+            problems.append(
+                f"{origin}: {work_id} is missing from docs/BACKLOG.md and {COMPLETION_ARCHIVE}"
+            )
             continue
         card = read(f"docs/work-items/{work_id}.md")
         if card is None:
             problems.append(f"{origin}: missing docs/work-items/{work_id}.md")
             continue
-        if version not in "\n".join(card.splitlines()[:12]):
+        if archived_status is None and version not in "\n".join(card.splitlines()[:12]):
             problems.append(
                 f"{origin}: docs/work-items/{work_id}.md first 12 lines do not mention {version}"
             )
         explanation = _cell(header, cells, "差异说明")
         explained = explanation.strip() not in _EXPLANATION_NONE
         backlog_class = _status_class(status)
-        for title in ("技术状态", "卡首页"):
-            value = _cell(header, cells, title)
-            if not value or _status_class(value) == "other":
-                continue
-            if _status_class(value) != backlog_class and not explained:
+        if snapshot is not None:
+            delivery = _cell(header, cells, "交付版本")
+            if delivery.strip() != version:
                 problems.append(
-                    f"{origin}: {work_id} {title} {value!r} differs from docs/BACKLOG.md {status!r}"
+                    f"{origin}: {work_id} 交付版本 {delivery!r} must be exactly {version}"
                 )
+            released = _cell(header, cells, "实际 Release")
+            if released.strip() != f"v{version}":
+                problems.append(f"{origin}: {work_id} 实际 Release {released!r} must be v{version}")
+            if archived_status is not None and backlog_class not in ("delivered", "partial"):
+                problems.append(
+                    f"{origin}: {work_id} is archived as {archived_status!r}, which is not a "
+                    "delivered class; an unknown state is never read as delivered"
+                )
+        if archived_status is None:
+            for title in ("技术状态", "卡首页"):
+                value = _cell(header, cells, title)
+                if not value or _status_class(value) == "other":
+                    continue
+                if _status_class(value) != backlog_class and not explained:
+                    problems.append(
+                        f"{origin}: {work_id} {title} {value!r} differs from "
+                        f"docs/BACKLOG.md {status!r}"
+                    )
+            summary = _card_summary(card)
+            if not summary:
+                problems.append(
+                    f"{origin}: docs/work-items/{work_id}.md has no '分类：' line in its first "
+                    "12 lines"
+                )
+            elif _status_class(_card_status(card)) != backlog_class and not explained:
+                problems.append(
+                    f"{origin}: work card {work_id} says {summary!r} but docs/BACKLOG.md "
+                    f"says {status!r}"
+                )
+        # A note may explain a conservative status-class difference, never an
+        # identity/version/link error: the main ledger cell stays literal.
         ledger_cell = _cell(header, cells, "主台账")
-        if ledger_cell and ledger_cell.strip() != status.strip() and not explained:
+        ledger_excused = explained and snapshot is None
+        if ledger_cell and ledger_cell.strip() != status.strip() and not ledger_excused:
             problems.append(
                 f"{origin}: {work_id} 主台账 cell {ledger_cell!r} differs from "
-                f"docs/BACKLOG.md {status!r}"
-            )
-        summary = _card_summary(card)
-        if not summary:
-            problems.append(
-                f"{origin}: docs/work-items/{work_id}.md has no '分类：' line in its first 12 lines"
-            )
-        elif _status_class(_card_status(card)) != backlog_class and not explained:
-            problems.append(
-                f"{origin}: work card {work_id} says {summary!r} but docs/BACKLOG.md "
-                f"says {status!r}"
+                f"{_ledger_name(archived_status)} {status!r}"
             )
         if f"已交付 {version}" in " | ".join(cells) and backlog_class in (
             "developing",
             "unplanned",
         ):
             problems.append(
-                f"{origin}: {work_id} claims 已交付 {version} but docs/BACKLOG.md says {status}"
+                f"{origin}: {work_id} claims 已交付 {version} but the ledger says {status}"
+            )
+    if snapshot is not None:
+        expected = set(snapshot["delivery_ids"])
+        missing = sorted(expected - checked)
+        extra = sorted(checked - expected)
+        if missing:
+            problems.append(
+                f"{origin}: per-ID table is missing frozen delivery id(s) {missing} from "
+                f"{snapshot['path']}"
+            )
+        if extra:
+            problems.append(
+                f"{origin}: per-ID table lists id(s) {extra} that are not in the frozen "
+                f"delivery set {snapshot['path']}"
             )
     for work_id, cells in _backlog_rows(backlog):
         if work_id in checked:
             continue
         status = cells[2]
         backlog_class = _status_class(status)
-        if backlog_class not in ("partial", "delivered"):
+        if backlog_class not in ("partial", "delivered", "developing", "unplanned"):
             continue
         card = read(f"docs/work-items/{work_id}.md")
         if card is None:
-            problems.append(
-                f"{origin}: docs/work-items/{work_id}.md is missing for a {status!r} row"
-            )
+            if backlog_class in ("partial", "delivered"):
+                problems.append(
+                    f"{origin}: docs/work-items/{work_id}.md is missing for a {status!r} row"
+                )
             continue
         summary = _card_summary(card)
-        if summary and _status_class(_card_status(card)) != backlog_class:
+        if not summary:
+            continue
+        card_class = _status_class(_card_status(card))
+        if backlog_class in ("partial", "delivered") and card_class != backlog_class:
             problems.append(
                 f"{origin}: work card {work_id} says {summary!r} but docs/BACKLOG.md "
                 f"says {status!r}"
             )
+        elif backlog_class in ("developing", "unplanned") and card_class == "delivered":
+            problems.append(
+                f"{origin}: work card {work_id} says {summary!r} but docs/BACKLOG.md still "
+                f"says {status!r}"
+            )
     return problems
+
+
+def _ledger_name(archived_status: str | None) -> str:
+    return COMPLETION_ARCHIVE if archived_status is not None else "docs/BACKLOG.md"
 
 
 def _version_problems(version: str, read, origin: str) -> list[str]:
@@ -838,6 +1157,13 @@ def _version_problems(version: str, read, origin: str) -> list[str]:
 
 def _records_problems(version: str, read, exists, origin: str) -> list[str]:
     problems = _version_problems(version, read, origin)
+    try:
+        snapshot = _delivery_snapshot(version, read)
+    except ValueError as error:
+        problems.append(f"{origin}: {error}")
+        snapshot = None
+    if snapshot is not None:
+        problems.extend(_distribution_problems(read, origin))
     seed_digest = None
     record = read(TRUSTED_RECORD)
     if record is None:
@@ -868,12 +1194,17 @@ def _records_problems(version: str, read, exists, origin: str) -> list[str]:
                     f"{origin}:POSTCHECK v{version}",
                     seed_digest,
                     require_sidecar_note=False,
+                    snapshot=snapshot,
                 )
             )
     notes = read(f"docs/RELEASE_NOTES_{version}.md")
     if notes is None:
         problems.append(f"{origin}: missing docs/RELEASE_NOTES_{version}.md")
-    else:
+    elif snapshot is not None:
+        problems.extend(
+            _previous_version_problems(notes, snapshot, f"{origin}:RELEASE_NOTES_{version}.md")
+        )
+    if notes is not None:
         problems.extend(
             _link_problems(notes, f"{origin}:RELEASE_NOTES_{version}.md", "docs", exists)
         )
@@ -888,11 +1219,24 @@ def _records_problems(version: str, read, exists, origin: str) -> list[str]:
                 f"{origin}:RELEASE-{version}.md",
                 seed_digest,
                 require_sidecar_note=True,
+                snapshot=snapshot,
             )
         )
         problems.extend(
             _link_problems(release, f"{origin}:RELEASE-{version}.md", "docs/validation", exists)
         )
+        if snapshot is not None:
+            problems.extend(
+                _previous_version_problems(release, snapshot, f"{origin}:RELEASE-{version}.md")
+            )
+            if (
+                snapshot["remote_verification"] == "pending"
+                and _REMOTE_VERIFIED_NOTE not in release
+            ):
+                problems.append(
+                    f"{origin}:RELEASE-{version}.md must state '{_REMOTE_VERIFIED_NOTE}' "
+                    f"while {snapshot['path']} declares remote_verification='pending'"
+                )
         problems.extend(_work_item_problems(version, release, read, origin))
     return problems
 
@@ -937,6 +1281,14 @@ def validate_release_records(
     problems = (
         [] if base is None else _records_problems(version, read_tree, exists_tree, "source tree")
     )
+    if base is not None and (base / DELIVERY_SNAPSHOT_DIR / f"{version}.json").is_file():
+        # Byte-exact TXT distribution: a changed or missing approved file is a
+        # packaging error, not a documentation note. Versions without a delivery
+        # snapshot predate this rule and keep their historical checks.
+        try:
+            approved_evidence_files(base)
+        except ValueError as error:
+            problems.append(f"source tree: {error}")
     if source_zip is None:
         return problems
     archive_path = Path(source_zip)

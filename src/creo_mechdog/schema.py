@@ -1587,12 +1587,49 @@ class SheetmetalBaseFlangeOp(StrictModel):
     radius: Positive = 1.0
     k_factor: Annotated[float, Field(gt=0, le=1)] = 0.5
     origin: list[float] = Field(default_factory=lambda: [0.0, 0.0])
+    # BUG-129: an expectation, never a rotation control. The width direction is
+    # still decided by the requested plane's native frame (the receipt reports
+    # the measured world direction); this field only lets the caller say which
+    # world direction the width must end up on and have the job refuse a mismatch.
+    expected_width_direction_world: list[float] | None = None
+    width_direction_tolerance_deg: Annotated[float, Field(gt=0, le=90)] = 0.5
 
     @field_validator("origin", mode="before")
     @classmethod
     def origin_is_two_finite_mm(cls, value: Any) -> Any:
         # Same [u0, v0] rule as the planar wall; one definition only.
         return SheetmetalPlanarWallOp.origin_is_two_finite_mm(value)
+
+    @field_validator("width_direction_tolerance_deg", mode="before")
+    @classmethod
+    def tolerance_is_not_a_boolean(cls, value: Any) -> Any:
+        if isinstance(value, bool):
+            raise ValueError("width_direction_tolerance_deg must be a number of degrees")
+        return value
+
+    @field_validator("expected_width_direction_world", mode="before")
+    @classmethod
+    def width_direction_is_a_unit_vector(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if not isinstance(value, (list, tuple)) or len(value) != 3:
+            raise ValueError("expected_width_direction_world must be [x, y, z]")
+        direction = []
+        for index, item in enumerate(value):
+            if isinstance(item, bool) or type(item) not in (int, float):
+                raise ValueError(f"expected_width_direction_world[{index}] must be a finite number")
+            number = float(item)
+            if not math.isfinite(number):
+                raise ValueError(f"expected_width_direction_world[{index}] must be finite")
+            direction.append(number)
+        length = math.sqrt(sum(component * component for component in direction))
+        if abs(length - 1.0) > 1e-6:
+            raise ValueError(
+                "expected_width_direction_world must be a unit vector (length 1 within 1e-6); "
+                f"got length {length!r}. This field is an assertion, not a way to rotate the "
+                "first wall; choose the plane for the actual orientation."
+            )
+        return direction
 
     @model_validator(mode="after")
     def composed_names_fit_and_chain_is_admissible(self):
@@ -1916,6 +1953,10 @@ class AssemblyConstraint(StrictModel):
                 }
             )
             self.type = normalized["type"]
+            # FEAT-068 A1: keep the validated selector (coordinate_space,
+            # tolerance, unit axis) so the dispatched job is the one checked.
+            self.assembly_reference = normalized["assembly_reference"]
+            self.component_reference = normalized["component_reference"]
         # DEV-089 T2 / BUG-041: PRO_ASM_MATE and PRO_ASM_ALIGN have no offset in
         # Creo. The executor used to store the value anyway, so a request that
         # read as "mate with offset 25" was solved as a zero-offset mate. Refuse

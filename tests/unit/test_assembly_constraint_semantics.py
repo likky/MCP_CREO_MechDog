@@ -160,5 +160,98 @@ class SemanticRelationshipTests(unittest.TestCase):
         self.assertEqual(checked["constraints"][0]["type"], "insert")
 
 
+def surface_selector(**overrides):
+    selector = {
+        "kind": "geometry_selector",
+        "target": "surface",
+        "points_mm": [[10, 0, 1]],
+        "tolerance_mm": 0.2,
+    }
+    selector.update(overrides)
+    return selector
+
+
+class SelectorConstraintTests(unittest.TestCase):
+    """FEAT-068 A1: a unique anchor may name a constraint's face pair."""
+
+    def test_coincident_accepts_unique_planar_selector(self):
+        checked = AssemblyConstraint.model_validate(
+            {
+                "type": "coincident",
+                "assembly_reference": surface_selector(),
+                "component_reference": surface_selector(points_mm=[[0, 5, 1]]),
+            }
+        )
+        self.assertEqual(checked.type, "mate")
+        self.assertEqual(checked.component_reference["coordinate_space"], "model")
+
+    def test_coincident_rejects_an_edge_selector(self):
+        with self.assertRaises(ValueError):
+            AssemblyConstraint.model_validate(
+                {
+                    "type": "coincident",
+                    "assembly_reference": {
+                        "kind": "geometry_selector",
+                        "target": "edge",
+                        "point_mm": [0, 0, 10],
+                        "tolerance_mm": 0.2,
+                    },
+                    "component_reference": surface_selector(),
+                }
+            )
+
+    def test_concentric_requires_a_radius_filter(self):
+        with self.assertRaises(ValueError):
+            AssemblyConstraint.model_validate(
+                {
+                    "type": "concentric",
+                    "assembly_reference": surface_selector(axis=[0, 0, 1]),
+                    "component_reference": surface_selector(
+                        axis=[0, 0, 1], radius_mm=5, center_mm=[0, 0, 0]
+                    ),
+                }
+            )
+
+    def test_concentric_accepts_unique_cylinder_selector(self):
+        checked = AssemblyConstraint.model_validate(
+            {
+                "type": "concentric",
+                "assembly_reference": surface_selector(
+                    axis=[0, 0, 1], radius_mm=5, center_mm=[0, 0, 0]
+                ),
+                "component_reference": surface_selector(
+                    axis=[0, 0, 1], radius_mm=5, center_mm=[0, 0, 10]
+                ),
+            }
+        )
+        self.assertEqual(checked.type, "insert")
+        self.assertEqual(checked.assembly_reference["radius_mm"], 5)
+
+    def test_selector_plan_keeps_the_mapped_type(self):
+        checked = validate_operations(
+            [
+                {
+                    "op": "component_constraints",
+                    "component": "pin",
+                    "constraints": [
+                        {
+                            "type": "concentric",
+                            "assembly_reference": surface_selector(
+                                axis=[0, 0, 1], radius_mm=5, center_mm=[0, 0, 0]
+                            ),
+                            "component_reference": surface_selector(
+                                axis=[0, 0, 1], radius_mm=5, center_mm=[0, 0, 10]
+                            ),
+                        }
+                    ],
+                }
+            ]
+        )[0]
+        self.assertEqual(checked["constraints"][0]["type"], "insert")
+        self.assertEqual(
+            checked["constraints"][0]["assembly_reference"]["kind"], "geometry_selector"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

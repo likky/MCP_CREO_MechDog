@@ -14,9 +14,12 @@ one physical edge or face can describe it geometrically instead:
 The frozen batch-1 vocabulary is deliberately narrow:
 
 * ``target`` is ``edge`` or ``surface``.
-* An edge selector lists exactly two endpoints and matches them in either
-  direction (a straight edge has no "start"); an optional ``point_mm`` must lie
-  on the matched segment and only filters candidates.
+* An edge selector has three admitted forms (DEV-083/FEAT-068 A0):
+  ``endpoints_mm`` (two endpoints, matched in either direction, with an optional
+  ``point_mm`` filter), ``point_mm`` alone (one point that must lie on exactly
+  one finite straight edge), or ``center_mm`` + ``radius_mm`` (+ optional
+  ``axis``) for a circular edge. A single point is never treated as a circle's
+  centre and a centre is never treated as a point on the edge.
 * A surface selector needs at least one of ``points_mm``, ``center_mm``,
   ``radius_mm`` or ``axis``. ``points_mm`` must lie on the surface, ``axis`` is
   the surface normal (plane) or axis (cylinder) compared sign-insensitively with
@@ -76,8 +79,10 @@ _ALLOWED_KEYS = frozenset(
 
 DESCRIPTION = (
     "A geometric anchor selector is {kind:'geometry_selector',target:'edge'|'surface',"
-    "tolerance_mm:>0,...}. Edges take exactly two endpoints_mm (matched in either "
-    "direction) plus an optional point_mm on the edge; surfaces take points_mm on the "
+    "tolerance_mm:>0,...}. Edges take endpoints_mm (two endpoints, either direction) with an "
+    "optional point_mm filter, point_mm alone for one finite straight edge, or "
+    "center_mm+radius_mm (+axis, +point_mm on the arc span) for a circular edge; surfaces take "
+    "points_mm on the "
     "surface and/or center_mm/radius_mm/axis with axis_tolerance_deg for the direction. "
     "It must match exactly one current model item; zero or multiple matches are refused. "
     "coordinate_space is 'model' (default) or 'assembly'; an assembly-space selector is only "
@@ -172,21 +177,56 @@ def validate_geometry_selector(value: Any, path: str = "selector") -> dict[str, 
     }
 
     if target == "edge":
-        for field in ("points_mm", "center_mm", "radius_mm", "axis"):
-            if field in value:
+        if "points_mm" in value:
+            raise ValueError(
+                f"{path}.points_mm is a surface filter; an edge selector uses endpoints_mm, "
+                "point_mm, or center_mm/radius_mm for a circular edge"
+            )
+        circular_fields = ("center_mm", "radius_mm")
+        if any(field in value for field in circular_fields):
+            if "endpoints_mm" in value:
                 raise ValueError(
-                    f"{path}.{field} is a surface filter; an edge selector matches on "
-                    "endpoints_mm (and the optional point_mm), and a circular edge is not "
-                    "admitted in this batch"
+                    f"{path}: a circular edge selector (center_mm/radius_mm) cannot also carry "
+                    "endpoints_mm; choose one form"
                 )
-        if "endpoints_mm" not in value:
-            raise ValueError(f"{path}.endpoints_mm is required for an edge selector")
-        endpoints = _points(value["endpoints_mm"], f"{path}.endpoints_mm", 2, 2)
-        if endpoints[0] == endpoints[1]:
-            raise ValueError(f"{path}.endpoints_mm must name two distinct points")
-        normalized["endpoints_mm"] = endpoints
-        if "point_mm" in value:
-            normalized["point_mm"] = _point(value["point_mm"], f"{path}.point_mm")
+            if "center_mm" not in value or "radius_mm" not in value:
+                raise ValueError(
+                    f"{path}: a circular edge selector needs both center_mm and radius_mm; a "
+                    "single one would match every circle or every edge through a point"
+                )
+            center = _point(value["center_mm"], f"{path}.center_mm")
+            radius = _number(value["radius_mm"], f"{path}.radius_mm")
+            if radius <= 0 or radius > MAX_TOLERANCE_MM:
+                raise ValueError(
+                    f"{path}.radius_mm must be greater than 0 and at most {MAX_TOLERANCE_MM} mm"
+                )
+            normalized["center_mm"] = center
+            normalized["radius_mm"] = radius
+            if "axis" in value:
+                normalized["axis"] = _unit_vector(value["axis"], f"{path}.axis")
+            # A point on the circle narrows a split rim to the piece whose arc
+            # actually spans that angle; a centre point is never inferred.
+            if "point_mm" in value:
+                normalized["point_mm"] = _point(value["point_mm"], f"{path}.point_mm")
+            return normalized
+        if "axis" in value:
+            raise ValueError(
+                f"{path}.axis only accompanies a circular edge selector with center_mm/radius_mm"
+            )
+        if "endpoints_mm" in value:
+            endpoints = _points(value["endpoints_mm"], f"{path}.endpoints_mm", 2, 2)
+            if endpoints[0] == endpoints[1]:
+                raise ValueError(f"{path}.endpoints_mm must name two distinct points")
+            normalized["endpoints_mm"] = endpoints
+            if "point_mm" in value:
+                normalized["point_mm"] = _point(value["point_mm"], f"{path}.point_mm")
+            return normalized
+        if "point_mm" not in value:
+            raise ValueError(
+                f"{path}: an edge selector needs endpoints_mm (two finite endpoints), point_mm "
+                "(one point on the edge), or center_mm/radius_mm for a circular edge"
+            )
+        normalized["point_mm"] = _point(value["point_mm"], f"{path}.point_mm")
         return normalized
 
     if "endpoints_mm" in value or "point_mm" in value:

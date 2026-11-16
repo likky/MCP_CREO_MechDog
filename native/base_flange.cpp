@@ -227,7 +227,31 @@ static void generic_sheetmetal_base_flange(const J &op) {
                 "] mm; the flange did not attach to the wall's free end on the expected side");
     }
 
-    // 4) One terminal record for the requested operation, listing the two
+    // 4) BUG-129: report the measured width direction instead of leaving the
+    //    caller to guess from `plane`. The direction is the sketch frame's own
+    //    v axis; `expected_width_direction_world` only asserts against it and is
+    //    never used to rotate or project the rectangle.
+    V width_axis = normalized(v_axis);
+    const double width_tolerance = op.value("width_direction_tolerance_deg", 0.5);
+    if (op.contains("expected_width_direction_world") &&
+        !op["expected_width_direction_world"].is_null()) {
+        V expected = normalized(vec(op["expected_width_direction_world"]));
+        const double limit = std::cos(width_tolerance * acos(-1.0) / 180.0);
+        if (fabs(dot(width_axis, expected)) < limit)
+            throw std::runtime_error(
+                "sheetmetal_base_flange width runs along model v = world (" +
+                std::to_string(width_axis[0]) + ", " + std::to_string(width_axis[1]) + ", " +
+                std::to_string(width_axis[2]) + ") but expected_width_direction_world is (" +
+                std::to_string(expected[0]) + ", " + std::to_string(expected[1]) + ", " +
+                std::to_string(expected[2]) + ") within " + std::to_string(width_tolerance) +
+                " deg; choose the plane that gives the expected frame instead of treating this "
+                "assertion as a rotation");
+    }
+    log("BASE_FLANGE_WIDTH_AXIS x=%.9f y=%.9f z=%.9f\n", width_axis[0], width_axis[1],
+        width_axis[2]);
+    J mass = mass_properties_json(J::object());
+
+    // 5) One terminal record for the requested operation, listing the two
     //    features it really created instead of pretending to be one feature.
     const J *flange_meta = alias_entry(flange_label);
     J composed = J::array();
@@ -244,31 +268,37 @@ static void generic_sheetmetal_base_flange(const J &op) {
          {"height_mm", second_leg + thickness},
          {"angle_deg", 90.0},
          {"radius_mm", radius}});
-    stage_operation_result({{"op", "sheetmetal_base_flange"},
-                            {"feature", label},
-                            {"feature_id", wall_meta->value("feature_id", J(nullptr))},
-                            {"composed", true},
-                            {"single_feature", false},
-                            {"composed_features", composed},
-                            {"sketch", sketch_label},
-                            {"flange_label", flange_label},
-                            {"first_leg_mm", first_leg},
-                            {"second_leg_mm", second_leg},
-                            {"width_mm", width},
-                            {"thickness_mm", thickness},
-                            {"radius_mm", radius},
-                            {"k_factor", k_factor},
-                            {"y_factor", y_factor},
-                            {"bend_angle_deg", 90.0},
-                            {"flange_height_mm", second_leg + thickness},
-                            {"volume_mm3", measured},
-                            {"expected_volume_mm3", expected},
-                            {"volume_delta_mm3", measured - expected},
-                            {"straight_volume_mm3", straight},
-                            {"bend_removed_mm3", removed},
-                            {"frame", frame},
-                            {"envelope", envelope},
-                            {"bounds_mm", bounds},
-                            {"sheetmetal_body", bodies.sheetmetal > 0},
-                            {"material_bodies", bodies.material}});
+    stage_operation_result(
+        {{"op", "sheetmetal_base_flange"},
+         {"feature", label},
+         {"feature_id", wall_meta->value("feature_id", J(nullptr))},
+         {"composed", true},
+         {"single_feature", false},
+         {"composed_features", composed},
+         {"sketch", sketch_label},
+         {"flange_label", flange_label},
+         {"first_leg_mm", first_leg},
+         {"second_leg_mm", second_leg},
+         {"width_mm", width},
+         {"thickness_mm", thickness},
+         {"radius_mm", radius},
+         {"k_factor", k_factor},
+         {"y_factor", y_factor},
+         {"bend_angle_deg", 90.0},
+         {"flange_height_mm", second_leg + thickness},
+         {"volume_mm3", measured},
+         {"expected_volume_mm3", expected},
+         {"volume_delta_mm3", measured - expected},
+         {"straight_volume_mm3", straight},
+         {"bend_removed_mm3", removed},
+         {"frame", frame},
+         {"envelope", envelope},
+         {"bounds_mm", bounds},
+         {"width_direction_frame", "model"},
+         {"width_direction_world", xyz(width_axis.data())},
+         {"width_direction_tolerance_deg", width_tolerance},
+         {"width_expected", op.value("expected_width_direction_world", J(nullptr))},
+         {"center_of_mass_mm", mass.value("center_of_mass_mm", J(nullptr))},
+         {"sheetmetal_body", bodies.sheetmetal > 0},
+         {"material_bodies", bodies.material}});
 }

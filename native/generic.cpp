@@ -675,6 +675,18 @@ static ProError inspect_edge(ProEdge edge, ProError status, ProAppData) {
             if (!ProLinedataGet(c, a, b)) {
                 item["start"] = xyz(a);
                 item["end"] = xyz(b);
+            } else {
+                // FEAT-068 A0: a circular edge is named by its own measured
+                // centre/radius, never by pretending a centre point lies on the
+                // edge. Raw arc frame vectors stay visible so the selector's
+                // optional axis has a measured basis instead of a guess.
+                ProVector arc_v1, arc_v2, arc_origin;
+                double arc_start = 0, arc_end = 0, arc_radius = 0;
+                if (!ProArcdataGet(c, arc_v1, arc_v2, arc_origin, &arc_start, &arc_end,
+                                   &arc_radius))
+                    item["arc"] = {{"origin", xyz(arc_origin)}, {"radius", arc_radius},
+                                   {"start_angle", arc_start},  {"end_angle", arc_end},
+                                   {"v1", xyz(arc_v1)},         {"v2", xyz(arc_v2)}};
             }
         }
         ProGeomitemdataFree(&data);

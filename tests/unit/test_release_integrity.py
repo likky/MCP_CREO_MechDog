@@ -366,5 +366,88 @@ class SeedPackagerAllowlistTests(unittest.TestCase):
         self.assertRegex(seeds.expected_archive_sha256(), r"^[a-f0-9]{64}$")
 
 
+class DistributionEvidenceTests(unittest.TestCase):
+    """DEV-083 R3: reviewed TXT evidence ships byte-exact, nothing else does."""
+
+    def write_manifest(self, root: Path, name: str, data: bytes, *, bytes_: int | None = None):
+        (root / "docs").mkdir(parents=True, exist_ok=True)
+        target = root / name
+        if ".." not in name.replace("\\", "/").split("/") and name.startswith("docs/"):
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+        document = {
+            "schema_version": 1,
+            "files": [
+                {
+                    "path": name,
+                    "bytes": len(data) if bytes_ is None else bytes_,
+                    "sha256": hashlib.sha256(data).hexdigest(),
+                }
+            ],
+        }
+        (root / release_integrity.DISTRIBUTION_EVIDENCE).write_text(
+            json.dumps(document), encoding="utf-8"
+        )
+
+    def test_approved_txt_is_shipped_byte_exact(self):
+        packaged = {path.relative_to(ROOT).as_posix(): path for path in package.source_files()}
+        for path in release_integrity.approved_evidence_files(ROOT):
+            relative = path.relative_to(ROOT).as_posix()
+            self.assertIn(relative, packaged)
+            self.assertEqual(packaged[relative].read_bytes(), path.read_bytes())
+        self.assertIn(
+            "docs/validation/feedback-0.23.2-2026-11-12/originals/MANIFEST-SHA256.txt", packaged
+        )
+
+    def test_unapproved_txt_is_excluded(self):
+        packaged = {path.relative_to(ROOT).as_posix() for path in package.source_files()}
+        unapproved = (
+            "docs/validation/feedback-0.23.2-2026-11-12/originals/源数据/"
+            "简易护卫舰_跨软件三维建模自然语言说明.txt"
+        )
+        self.assertNotIn(unapproved, packaged)
+
+    def test_missing_or_changed_evidence_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.write_manifest(root, "docs/evidence.txt", b"evidence")
+            self.assertEqual(
+                [path.name for path in release_integrity.approved_evidence_files(root)],
+                ["evidence.txt"],
+            )
+            (root / "docs/evidence.txt").write_bytes(b"changed!")
+            with self.assertRaisesRegex(ValueError, "but the manifest declares"):
+                release_integrity.approved_evidence_files(root)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.write_manifest(root, "docs/evidence.txt", b"evidence")
+            (root / "docs/evidence.txt").unlink()
+            with self.assertRaisesRegex(ValueError, "missing"):
+                release_integrity.approved_evidence_files(root)
+
+    def test_declared_byte_count_mismatch_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.write_manifest(root, "docs/evidence.txt", b"evidence", bytes_=1)
+            with self.assertRaisesRegex(ValueError, "bytes"):
+                release_integrity.approved_evidence_files(root)
+
+    def test_unsafe_or_unapproved_txt_paths_are_rejected(self):
+        for name in (
+            "../evidence.txt",
+            "docs/../evidence.txt",
+            "docs/evidence.md",
+            "evidence.txt",
+        ):
+            with tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                self.write_manifest(root, name, b"evidence")
+                with (
+                    self.subTest(path=name),
+                    self.assertRaisesRegex(ValueError, "unsafe or non-TXT"),
+                ):
+                    release_integrity.approved_evidence_files(root)
+
+
 if __name__ == "__main__":
     unittest.main()
