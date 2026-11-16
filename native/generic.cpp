@@ -4071,8 +4071,7 @@ static J generic_round(const J &op, bool chamfer) {
     // creation in the installed SDK help; the value is opt-in and this branch
     // writes no CONIC_VALUE/CONIC_DEP_OPT (the help only requires those for
     // PRO_ROUND_CONIC_ENABLE). Chamfer has no conic concept.
-    const bool curvature_continuous =
-        !chamfer && op.value("curvature_continuous", false);
+    const bool curvature_continuous = !chamfer && op.value("curvature_continuous", false);
     ProElement sets = node(root, PRO_E_RNDCH_SETS);
     for (auto refs : op["references"]) {
         ProElement set = node(sets, PRO_E_RNDCH_SET);
@@ -4083,8 +4082,7 @@ static J generic_round(const J &op, bool chamfer) {
         } else {
             integer(set, PRO_E_RNDCH_SHAPE_OPTIONS, PRO_ROUND_TYPE_CONSTANT);
             integer(node(set, PRO_E_RNDCH_COMPOUND_CONIC), PRO_E_RNDCH_CONIC_TYPE,
-                    curvature_continuous ? PRO_ROUND_CURV_CONTINUOUS
-                                         : PRO_ROUND_CONIC_DISABLE);
+                    curvature_continuous ? PRO_ROUND_CURV_CONTINUOUS : PRO_ROUND_CONIC_DISABLE);
             integer(node(set, PRO_E_RNDCH_COMPOUND_SPINE), PRO_E_RNDCH_BALL_SPINE,
                     PRO_ROUND_ROLLING_BALL);
         }
