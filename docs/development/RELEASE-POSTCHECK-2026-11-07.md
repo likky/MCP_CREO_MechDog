@@ -16,7 +16,17 @@
 - 种子包 SHA256 `b16328fa2f114dcd3f5f520645e63a68752c9a3e1dd049f5a7f778fedd899d5c`（24 个文件、9 个种子，两次构建摘要一致；包内 `seed_manifest.json` 声明 `compatible_server_version=0.26.0`）。
 - 源码包 `MCP_CREO_MechDog-0.26.0-source.zip` 由发布提交源码构建，`package.py` 的四附件门禁与发布记录门禁均通过；字节数与 SHA256 见同名 sidecar，不写入包内文件。
 - Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.26.0`；四附件为 `MCP_CREO_MechDog-0.26.0-source.zip`、`MCP_CREO_MechDog-0.26.0-source.zip.sha256`、`MCP_CREO_MechDog-0.26.0-seed-library.zip` 与 `MCP_CREO_MechDog-0.26.0-seed-library.zip.sha256`；`source.zip` 的摘要见同名 sidecar，不写入包内。
-- 发布后核对：发布后执行，当前未验证。本段是打包时点快照；远端标签指向、Release 元数据、四个附件摘要与 `tools\check_release_assets.py --tag v0.26.0` 的结果在发布后追加到 `main`，不改写已冻结包。
+- 发布后核对（2026-11-16 14:15 +08:00 / 06:15Z）：`tools\check_release_assets.py --tag v0.26.0` → exit 0，「v0.26.0: four assets downloaded and verified; both sidecars match」。远端 digest、本地重算与 sidecar 内容逐一致：
+
+| 附件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.26.0-source.zip` | 10 343 533 | `578bb8ed7e6cc3db53ea9e82d001f55cc96be6741ce4c30c0641fcc1b470d8a6` |
+| `MCP_CREO_MechDog-0.26.0-source.zip.sha256` | 101 | `dd177e4732f65a841602c86f3dd1d5eb2e4f2708c66080d2dd0e595fcdd6893a` |
+| `MCP_CREO_MechDog-0.26.0-seed-library.zip` | 493 444 | `b16328fa2f114dcd3f5f520645e63a68752c9a3e1dd049f5a7f778fedd899d5c` |
+| `MCP_CREO_MechDog-0.26.0-seed-library.zip.sha256` | 107 | `47000b83231263d085ab76924cf47a85f138853cbd7458b4d92daf6d2e19fdcc` |
+
+- Release 元数据：id `446671020`，非 draft、非 prerelease，`created_at=2026-11-16T06:14:59Z`，`published_at=2026-11-16T06:15:23Z`，target `main`（提交 `13609bc5a2889d02ab04e0b62364ca99c29dca02`，标签对象 `6d2e16ec73ed2ad8c362c63cdaf9195df8c87a4e`）。
+- 包内快照与 `main` 的差异：已冻结源码包内的 POSTCHECK/发布记录仍是打包时点措辞（`remote_verification=pending`），本段实际结果与 `docs/releases/0.26.0.json` 的 `verified` 只存在于 `main`，不改写、不重发已发布附件。
 - 本版修改 `native/base_flange.cpp`、`native/geometry_selectors.cpp`、`native/advanced.cpp`、`native/generic.cpp`，升级后必须重编译 worker。
 
 ## v0.24.1（2026-11-13）

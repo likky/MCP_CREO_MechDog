@@ -4,7 +4,7 @@
   "previous_version": "0.25.0",
   "previous_release_tag": "v0.25.0",
   "previous_release_commit": "38bee48692d67d7f962d21ad713abbaa821c2fa7",
-  "remote_verification": "pending",
+  "remote_verification": "verified",
   "delivery_ids": [
     "DEV-083",
     "DEV-090",
