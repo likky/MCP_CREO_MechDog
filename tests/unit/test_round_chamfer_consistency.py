@@ -96,6 +96,31 @@ class RoundChamferAliasTests(unittest.TestCase):
             self.assertIn(name, chamfer)
 
 
+class CurvatureContinuousProbeTests(unittest.TestCase):
+    """DEV-090 G2 probe: the flag is opt-in, round-only and strictly boolean."""
+
+    def test_flag_is_opt_in_and_round_only(self):
+        self.assertEqual(validate_operations([operation("round")])[0], operation("round"))
+        flagged = operation("round", curvature_continuous=True)
+        self.assertEqual(validate_operations([flagged])[0], flagged)
+        with self.assertRaises(ValidationError):
+            finish_model(operation("chamfer", curvature_continuous=True))
+
+    def test_flag_rejects_non_bool(self):
+        for value in (0, 1, "true"):
+            with self.subTest(value=value):
+                with self.assertRaises(ValidationError):
+                    finish_model(operation("round", curvature_continuous=value))
+
+    def test_execute_plan_schema_publishes_flag(self):
+        tools = {tool.name: tool for tool in asyncio.run(server.mcp.list_tools())}
+        properties = tools["creo_execute_plan"].input_schema["$defs"]["RoundOp"]["properties"]
+        self.assertIn("curvature_continuous", properties)
+        self.assertNotIn(
+            "curvature_continuous", tools["creo_execute_plan"].input_schema["$defs"]["ChamferOp"]
+        )
+
+
 class StandaloneToolMappingTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         (ROOT / ".tmp").mkdir(exist_ok=True)

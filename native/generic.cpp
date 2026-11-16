@@ -4067,6 +4067,12 @@ static J generic_round(const J &op, bool chamfer) {
     // schema). The angle is written in degrees like PRO_E_DRAFT_ANGLE_1; which
     // leg carries it is a live measurement recorded in docs/work-items/DEV-089.md.
     const bool angle_chamfer = chamfer && op.contains("angle_deg");
+    // DEV-090 G2 probe: PRO_ROUND_CURV_CONTINUOUS is documented for round
+    // creation in the installed SDK help; the value is opt-in and this branch
+    // writes no CONIC_VALUE/CONIC_DEP_OPT (the help only requires those for
+    // PRO_ROUND_CONIC_ENABLE). Chamfer has no conic concept.
+    const bool curvature_continuous =
+        !chamfer && op.value("curvature_continuous", false);
     ProElement sets = node(root, PRO_E_RNDCH_SETS);
     for (auto refs : op["references"]) {
         ProElement set = node(sets, PRO_E_RNDCH_SET);
@@ -4077,7 +4083,8 @@ static J generic_round(const J &op, bool chamfer) {
         } else {
             integer(set, PRO_E_RNDCH_SHAPE_OPTIONS, PRO_ROUND_TYPE_CONSTANT);
             integer(node(set, PRO_E_RNDCH_COMPOUND_CONIC), PRO_E_RNDCH_CONIC_TYPE,
-                    PRO_ROUND_CONIC_DISABLE);
+                    curvature_continuous ? PRO_ROUND_CURV_CONTINUOUS
+                                         : PRO_ROUND_CONIC_DISABLE);
             integer(node(set, PRO_E_RNDCH_COMPOUND_SPINE), PRO_E_RNDCH_BALL_SPINE,
                     PRO_ROUND_ROLLING_BALL);
         }
@@ -4123,6 +4130,8 @@ static J generic_round(const J &op, bool chamfer) {
     // Echo the applied leg value so callers can compare it with their input,
     // and report the tree-proven set application beside the requested count.
     J details = {{"size", op.at("size")}};
+    if (!chamfer && curvature_continuous)
+        details["curvature_continuous"] = true;
     if (angle_chamfer) {
         details["chamfer_type"] = "distance_angle";
         details["angle_deg"] = op.at("angle_deg");

@@ -4,7 +4,7 @@
 
 分类：**部分交付，剩余待验收**。类型：功能 / 区域选择切除。优先级：P2。目标版本：未排期。
 
-本批：0.26.0 交付子项（部分交付）交付 `region_selection` 契约与三套原始签名测试；原生选区创建/输出侧未证，未接 `ExtrudeOp`，能力保持不开放。
+本批：0.26.0 交付子项（部分交付）交付 `region_selection` 契约与三套原始签名测试；原生选区创建/输出侧未证，未接 `ExtrudeOp`，能力保持不开放。2026-11-16 追加：`ProSurfReg.h` 的 “Surface Region” 实为 `PRO_FEAT_SPLIT_SURF`（草图/链分割曲面），不是拉伸截面里的区域复选，G1 仍不开放。
 
 来源：[0.25.0 Arm7反馈原件](../validation/feedback-0.25.0-2026-11-16/arm7.md)，关联 DEV-090 T6c、T7；范围见[计划G1/G2](../superpowers/plans/2026-11-16-feedback-0250.md#g1g2按稳定签名选区切除p1p2feat-069)。
 

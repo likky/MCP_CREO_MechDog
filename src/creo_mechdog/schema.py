@@ -1011,6 +1011,23 @@ class RoundOp(StrictModel):
         ),
     ]
     references: Annotated[list[dict[str, Any]], Field(min_length=1, max_length=100)]
+    curvature_continuous: Annotated[
+        bool | None,
+        Field(
+            default=None,
+            description="G2 probe (DEV-090): write PRO_ROUND_CURV_CONTINUOUS instead of "
+            "PRO_ROUND_CONIC_DISABLE. The 2026-11-16 SDK help documents the value as "
+            "'curvature continuous rounds' and does not require CONIC_VALUE/CONIC_DEP_OPT "
+            "for it; it stays opt-in until the live probe records acceptance and geometry",
+        ),
+    ] = None
+
+    @field_validator("curvature_continuous", mode="before")
+    @classmethod
+    def real_flag(cls, value: Any) -> Any:
+        if value is not None and type(value) is not bool:
+            raise ValueError("curvature_continuous must be true or false")
+        return value
 
     @model_validator(mode="after")
     def resolve_size(self):
