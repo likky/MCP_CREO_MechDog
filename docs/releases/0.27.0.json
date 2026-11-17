@@ -4,7 +4,7 @@
   "previous_version": "0.26.0",
   "previous_release_tag": "v0.26.0",
   "previous_release_commit": "13609bc5a2889d02ab04e0b62364ca99c29dca02",
-  "remote_verification": "pending",
+  "remote_verification": "verified",
   "delivery_ids": [
     "BUG-106",
     "BUG-122",
