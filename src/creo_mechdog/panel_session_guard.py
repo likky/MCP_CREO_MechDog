@@ -24,13 +24,17 @@ The record lives next to ``toolkit.lock`` and is read on every Toolkit entry, so
 guard written by a previous server process keeps protecting the session after a
 restart. Nothing here connects to Creo, retries, or clears protection by itself.
 
-Recovery today is deliberately narrow and partly manual: the two automatic retires
-are the native exit observation in the job result and a runner that provably never
-started. No MCP tool can retire a guard whose exit nobody observed yet — the
-documented reconcile token that would do it is D5 work, not delivered here. Until it
-lands, a human who has confirmed in Creo that the panel is closed (or that the old
-Creo session ended) removes this one file, and the next Toolkit entry succeeds; the
-messages below say so instead of pointing at a tool that cannot help.
+Three retires exist and nothing else may release a guard:
+
+- the native exit observation in the job result (the panel backend reporting a closed
+  dialog with evidence);
+- a runner that provably never started, so no dialog could have opened;
+- ``creo_reconcile_model(action="confirm_panel_closed", confirm_panel_closed=true)``,
+  which a human runs after checking Creo. It goes through the reconcile evidence
+  token, so the token expires like every other recovery token and the confirmed
+  record keeps the job, nonce, profile, digest and who confirmed it. It frees the
+  session protection only; the model's own unknown outcome stays unknown and still
+  needs its own reconcile action.
 """
 
 from __future__ import annotations
@@ -108,6 +112,43 @@ def inspect(root: Path | None = None) -> dict | None:
     return {**record, "status": "active"}
 
 
+def summary(root: Path | None = None) -> dict | None:
+    """The guard as a client may see it: who holds the session and how to release it.
+
+    The nonce stays out of this view: it is the binding between a job and its own
+    marker files, and nothing outside the job needs it. What a client needs is the
+    holder's identity, whether the Toolkit channel is blocked, and the one supported
+    way to end that block.
+    """
+    record = inspect(root)
+    if record is None:
+        return None
+    if record.get("status") == "unknown":
+        return {
+            "state": "unknown",
+            "blocks_toolkit": True,
+            "reason": record.get("reason"),
+            "release": (
+                "An unreadable guard cannot be retired by a tool: confirm in Creo that no panel is "
+                f"open, then remove {guard_path(root)}"
+            ),
+        }
+    return {
+        "state": "active",
+        "job_id": record.get("job_id"),
+        "model_id": record.get("model_id"),
+        "profile_id": record.get("profile_id"),
+        "mode": record.get("mode"),
+        "since": record.get("created_at"),
+        "blocks_toolkit": True,
+        "release": (
+            "Only a native exit observation, or creo_reconcile_model with "
+            "action=confirm_panel_closed and confirm_panel_closed=true for this model, retires "
+            "the guard; a dead pid, a cancelled job or an acknowledgement do not"
+        ),
+    }
+
+
 def reserve(
     job_id: str,
     *,
@@ -128,8 +169,8 @@ def reserve(
             raise PanelSessionLocked(
                 f"A previous resident panel cannot be ruled out ({current.get('reason')}). "
                 "No native work was started. Confirm in Creo that no panel is open, then "
-                f"remove {guard_path(root)} before starting another panel run; no MCP tool can "
-                "retire an unreadable guard.",
+                f"remove {guard_path(root)} before starting another panel run; an unreadable "
+                "guard cannot be retired by a tool.",
                 current,
             )
         if current["job_id"] != job_id:
@@ -137,8 +178,8 @@ def reserve(
                 "Another resident panel job still owns the Creo session: "
                 f"job_id={current['job_id']}, profile_id={current.get('profile_id')}, "
                 f"model_id={current.get('model_id')}, since {current.get('created_at')}. "
-                "A new job cannot start beside it; only that job's confirmed exit or a human "
-                f"who verified the panel is closed can retire {guard_path(root)}.",
+                "A new job cannot start beside it; creo_reconcile_model on that model with "
+                "action=confirm_panel_closed releases it once the panel is confirmed closed.",
                 current,
             )
         return current
@@ -191,8 +232,9 @@ def require_clear(
         f"job_id={current['job_id']}, profile_id={current.get('profile_id')}, "
         f"model_id={current.get('model_id')}, since {current.get('created_at')}. Native work is "
         "refused for every model until that exit is confirmed; local job and log queries stay "
-        "available, and creo_reconcile_model cannot lift this protection in this build. No "
-        "Toolkit call was made.",
+        "available. creo_reconcile_model with action=confirm_panel_closed on that model releases "
+        "this protection once a human has confirmed the panel is closed. No Toolkit call was "
+        "made.",
         current,
     )
 

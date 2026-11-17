@@ -14,7 +14,7 @@ from pathlib import Path
 
 import bridge
 import generic_bridge as general
-from creo_mechdog import inspection_refs, model_registry
+from creo_mechdog import inspection_refs, model_registry, panel_session_guard
 from creo_mechdog.legacy_recovery import previous_boot_evidence
 from creo_mechdog.recovery import process_identity
 from creo_mechdog.windows_boot import boot_info
@@ -26,6 +26,7 @@ ACTIONS = (
     "abandon_new",
     "ack_no_mutation",
     "ack_failure",
+    "confirm_panel_closed",
 )
 # BUG-110: actions that touch a saved model or its component ownership stay
 # limited to parts and sheetmetal; the two acknowledgements are metadata-only.
@@ -245,7 +246,7 @@ def admission_failure_message(message: str) -> str:
     return (
         message + " Action: read-only reads (creo_export_model, creo_dump_feature_tree, "
         "creo_measure_*) are not gated by this compare; to keep editing, run "
-        "creo_reconcile_model to see the six actions and apply one (restore_baseline keeps "
+        "creo_reconcile_model to see the available actions and apply one (restore_baseline keeps "
         "the saved file, accept_saved adopts the file the GUI saved), then retry with the "
         "revision it returns."
     )
@@ -551,15 +552,53 @@ def _snapshot(model_id: str) -> dict:
     }
 
 
-def _pending_job_status(model: dict) -> str | None:
-    """Status of the model's pending job, or None when it cannot be read."""
-    job_id = model.get("pending_job")
+def _job_status(job_id: object) -> str | None:
+    """Status of one job record, or None when it cannot be read."""
     if not isinstance(job_id, str) or not bridge.JOB_ID.fullmatch(job_id):
         return None
     try:
         return bridge.get_job(job_id, "compact").get("status")
     except (OSError, ValueError):
         return None
+
+
+def _pending_job_status(model: dict) -> str | None:
+    """Status of the model's pending job, or None when it cannot be read."""
+    return _job_status(model.get("pending_job"))
+
+
+def _panel_guard_state(model: dict) -> dict:
+    """The resident panel guard as it applies to this model.
+
+    BUG-120/D4.4: a guard blocks every Toolkit entry, including the actions above, so
+    the only way out is an action that takes no Toolkit call. It stays model-scoped:
+    the operator confirms a panel that a job of this model opened, and only while that
+    job has already reached a terminal status — a live runner may still be driving the
+    dialog, and confirming a panel shut from here would be a guess.
+    """
+    guard = panel_session_guard.inspect(bridge.ROOT)
+    if guard is None:
+        return {"active": False, "job_id": None, "status": None, "available": False}
+    if guard.get("status") != "active":
+        return {
+            "active": True,
+            "readable": False,
+            "job_id": None,
+            "status": None,
+            "available": False,
+            "reason": guard.get("reason"),
+        }
+    job_id = guard.get("job_id")
+    return {
+        "active": True,
+        "readable": True,
+        "job_id": job_id,
+        "model_id": guard.get("model_id"),
+        "profile_id": guard.get("profile_id"),
+        "since": guard.get("created_at"),
+        "status": _job_status(job_id),
+        "mine": guard.get("model_id") == model.get("model_id"),
+    }
 
 
 def _actions(snapshot: dict, live: dict | None) -> dict:
@@ -680,6 +719,30 @@ def _actions(snapshot: dict, live: dict | None) -> dict:
             else "Rollback of the failed job did not succeed; inspect before acknowledging"
             if model.get("rollback_status") == "failed"
             else "Explicit apply with confirm_failure_ack=true, matching evidence and an "
+            "idempotency key required"
+        ),
+    }
+    guard = _panel_guard_state(model)
+    terminal = general.CANCEL_TERMINAL_STATUSES
+    states["confirm_panel_closed"] = {
+        "available": bool(
+            guard.get("active")
+            and guard.get("readable")
+            and guard.get("mine")
+            and guard.get("status") in terminal
+        ),
+        "reason": (
+            "No resident panel guard holds the Creo session"
+            if not guard.get("active")
+            else "The panel guard cannot be read; a tool cannot retire it"
+            if not guard.get("readable")
+            else f"The active panel guard belongs to model {guard.get('model_id')!r}; confirm "
+            "the panel on that model"
+            if not guard.get("mine")
+            else "The panel job has not reached a terminal status, so the dialog may still be "
+            "driven; retry after the job ends"
+            if guard.get("status") not in terminal
+            else "Explicit apply with confirm_panel_closed=true, matching evidence and an "
             "idempotency key required"
         ),
     }
@@ -813,6 +876,9 @@ def inspect(model_id: str, live: bool = False) -> dict:
         "owners": snapshot["owners"],
         "live": visible_live,
         "actions": _actions(snapshot, realtime),
+        # BUG-120/D4.4: a resident panel that may still be open holds the whole Creo
+        # session, so the state is reported here as well as in the action list.
+        "panel_session_guard": panel_session_guard.summary(bridge.ROOT),
         "evidence_token": token,
         "evidence_at": bridge.now(),
         "expires_in_seconds": TOKEN_SECONDS,
@@ -976,6 +1042,66 @@ def _ack_model_after(
     }
 
 
+def _retire_panel_guard(model_id: str, record: dict, idempotency_key: str) -> dict:
+    """Release the session guard after a human confirmed the panel is closed.
+
+    The evidence names the guard's own job, nonce and profile plus the reconcile
+    token that was current when the operator looked, so a later reader can tell which
+    guard was retired and on whose word. The model's unknown outcome is untouched.
+    """
+    guard = panel_session_guard.inspect(bridge.ROOT)
+    if not isinstance(guard, dict) or guard.get("status") != "active":
+        raise ValueError(
+            "No active resident panel guard to retire; nothing was changed. The Toolkit "
+            "channel is already usable again."
+        )
+    if guard.get("model_id") != model_id:
+        raise ValueError(
+            f"The active panel guard belongs to model {guard.get('model_id')!r}, not {model_id!r}; "
+            "confirm the panel on the model whose job opened it"
+        )
+    try:
+        retired = panel_session_guard.retire(
+            guard["job_id"],
+            reason="a human confirmed the resident panel is closed",
+            evidence={
+                "ui_closed_confirmed": True,
+                "operator_confirmed": True,
+                "evidence_token": record.get("token"),
+                "idempotency_key": idempotency_key,
+                "confirmed_via": "creo_reconcile_model.confirm_panel_closed",
+                "guard_nonce": guard.get("nonce"),
+                "guard_profile_id": guard.get("profile_id"),
+                "guard_model_id": guard.get("model_id"),
+            },
+            root=bridge.ROOT,
+        )
+    except panel_session_guard.PanelSessionLocked as exc:
+        raise ValueError(str(exc)) from None
+    model = record["snapshot"]["model"]
+    return {
+        "model_id": model_id,
+        "action": "confirm_panel_closed",
+        "panel_session_guard": {
+            "state": "retired",
+            "job_id": retired.get("job_id"),
+            "profile_id": retired.get("profile_id"),
+            "retired_at": retired.get("retired_at"),
+        },
+        "revision": model.get("revision"),
+        "status": model.get("status"),
+        "pending_job": model.get("pending_job"),
+        "model_unchanged": True,
+        "automatic_replay_allowed": False,
+        "message": (
+            "The panel guard is retired, so Toolkit entries are no longer refused. The model's "
+            "own outcome was not touched: its status, revision and pending job are unchanged, so "
+            "if it is still unknown_outcome finish it with its own reconciliation action after "
+            "checking the geometry."
+        ),
+    }
+
+
 def apply(
     model_id: str,
     action: str,
@@ -985,6 +1111,7 @@ def apply(
     idempotency_key: str,
     confirm_zero_mutation: bool = False,
     confirm_failure_ack: bool = False,
+    confirm_panel_closed: bool = False,
 ) -> dict:
     if (
         action not in ACTIONS
@@ -1003,6 +1130,14 @@ def apply(
             "ack_failure records that the failed job is accepted as failed and makes the model "
             "ready again without touching its revision, files or components; inspect the failed "
             "job and the model in Creo, then pass confirm_failure_ack=true to acknowledge"
+        )
+    if action == "confirm_panel_closed" and confirm_panel_closed is not True:
+        raise ValueError(
+            "confirm_panel_closed releases the session-wide protection that a resident panel may "
+            "still hold, which refuses every native job for every model until it is released. "
+            "Check in Creo that no panel or dialog from this job is open (and that the old Creo "
+            "session ended if you closed Creo), then pass confirm_panel_closed=true. It never "
+            "changes the model's status, revision or pending job."
         )
     if expected_pending_job_id is not None and (
         not isinstance(expected_pending_job_id, str)
@@ -1032,6 +1167,8 @@ def apply(
         arguments["confirm_zero_mutation"] = True
     if action == "ack_failure":
         arguments["confirm_failure_ack"] = True
+    if action == "confirm_panel_closed":
+        arguments["confirm_panel_closed"] = True
     file = _journal(model_id, idempotency_key)
     # A duplicate query does not contend for Toolkit or repeat native work.
     existing = _read(file)
@@ -1040,6 +1177,14 @@ def apply(
             raise ValueError("Idempotency key already belongs to another recovery request")
         resume_committed(existing["job_id"])
         return bridge.get_job(existing["job_id"], "compact")
+    if action == "confirm_panel_closed":
+        # BUG-120/D4.4: metadata only, and deliberately outside the Toolkit lock —
+        # the guard this action retires is exactly what refuses that lock. Nothing
+        # about the model's status, revision or pending job changes here.
+        record = _validate_evidence(
+            model_id, evidence_token, expected_revision, expected_pending_job_id, action
+        )
+        return _retire_panel_guard(model_id, record, idempotency_key)
     launch_error = None
     try:
         with bridge.toolkit_lock(operation="submit_reconciliation", model_id=model_id):
@@ -1461,6 +1606,7 @@ def reconcile(
     idempotency_key: str | None = None,
     confirm_zero_mutation: bool = False,
     confirm_failure_ack: bool = False,
+    confirm_panel_closed: bool = False,
 ) -> dict:
     if mode == "inspect":
         if action is not None:
@@ -1487,4 +1633,5 @@ def reconcile(
         idempotency_key,
         confirm_zero_mutation,
         confirm_failure_ack,
+        confirm_panel_closed,
     )
