@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-17（BUG-120 续批：恢复/D5/D8）：[BUG-120](work-items/BUG-120.md)补齐`creo_reconcile_model`的`confirm_panel_closed`恢复动作（令牌+人工确认+不取Toolkit锁，只解除会话保护不改模型unknown）、worker前取消退役预留、`panel_receipt`回执投影（未确证退出强制失败、quilt/选取/面组/面积/关联/树完成冒充均记问题、bbox保近似标记）、panel库打包门禁（manifest白名单+认证摘要+路径逃逸拒绝，空库为合法关闭态）。3964单测与Ruff通过。仍未编译、未连接Creo：D2/D3原生后端、D6/D7目标机验收、发布待专门批次；工具数不变。
+
 2026-11-17（BUG-120 D1/D4离线实现）：[BUG-120](work-items/BUG-120.md)落地不依赖构建授权的三批：`creo_surface_loft`的`creation_route`契约与按路线准入/能力分路线披露、panel profile认证与候选票据库、面板等待阶段预算接入`worker.log`看门狗、跨模型持久会话guard（拦截所有Toolkit入口，仅原生退出观测或runner未启动可退役）。3918项单测与Ruff通过。未编译执行器、未连接Creo：原生后端、协议4/ABI2、几何保存重载、目标机验收与分发均未实施；guard本版无MCP侧退役动作，需人工确认面板已关闭后删除`panel_session_guard.json`，已列入后续任务。109工具数不变。
 
 2026-11-17（BUG-120计划纳入0.27.0）：以已发布fc1efae及发布后f6da633为基线更新[D1—D8计划](superpowers/plans/2026-11-17-bug120-resident-panel-implementation.md)，复用BUG-122准入/Python unknown与BUG-131作业控制；D4补强制cancel和面板Quit分界、面板等待看门狗接线、跨模型持久会话保护。最终实体可选复用STL导出，BUG-130下版余项及装配/G2/原生选区保留独立范围；109工具数不因内部模块增加。仅计划/台账更新，无新产品实现或Creo操作，不改已发布记录/附件。
