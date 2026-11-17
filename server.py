@@ -3048,6 +3048,7 @@ async def creo_surface_loft(
     interpolation: Literal["straight", "smooth"] = "straight",
     guides: Annotated[list[str | int | dict[str, Any]], Field(max_length=8)] | None = None,
     boundary_conditions: Annotated[list[dict[str, str]], Field(max_length=4)] | None = None,
+    creation_route: Literal["element_tree", "resident_panel"] | None = None,
 ) -> dict[str, Any]:
     """Create a native boundary-blend surface quilt through section sketches.
 
@@ -3094,6 +3095,16 @@ async def creo_surface_loft(
     a 90 deg seam), 'normal' (indistinguishable from free on that geometry) and
     any non-free condition on first_guide/last_guide (not measured) are refused
     before a job is queued.
+
+    creation_route (BUG-120/D1) chooses the creation path. Omitted or
+    'element_tree' keeps everything above. 'resident_panel' replays recorded Creo UI
+    commands through the resident callback instead of building an element tree, and
+    in this version publishes 2-8 MCP-owned sketch labels only: each label must own
+    one open non-composite curve, and guides, points, boundary_conditions and
+    template are refused. It is refused before a job unless the loaded worker
+    declares a panel backend and a certified UI profile for this release exists;
+    read creo_capabilities.routes.resident_panel for both facts. It never falls back
+    to the element tree.
     """
     operation: dict[str, Any] = dict(
         op="surface_loft", label=label, sections=sections, interpolation=interpolation
@@ -3102,6 +3113,8 @@ async def creo_surface_loft(
         operation["guides"] = guides
     if boundary_conditions:
         operation["boundary_conditions"] = boundary_conditions
+    if creation_route is not None:
+        operation["creation_route"] = creation_route
     return await invoke(
         general.submit,
         [operation],

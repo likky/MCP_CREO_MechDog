@@ -1,0 +1,5 @@
+{
+  "contract": "panel-profiles-v1",
+  "notes": "BUG-120/D1: no resident_panel UI profile is recorded yet. A profile lists the exact recorded command slots and the SHA-256 of that frozen text (commands are hashed as canonical JSON with sorted keys and no spaces). status=candidate means the text was prepared but never accepted on a target host; status=certified additionally requires certification.file under templates/panel/certifications whose JSON record carries profile_digest equal to the profile digest. Until a profile is certified, creo_surface_loft with creation_route=resident_panel is refused before a job exists.",
+  "profiles": []
+}

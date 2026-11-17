@@ -18,8 +18,10 @@ import bridge
 from creo_mechdog import component_changes, feature_state, model_registry, operation_results
 from creo_mechdog.capabilities import (
     WORKER_CONDITIONAL_OPERATIONS,
+    is_panel_route,
     require_available,
     require_kernel_completion,
+    require_panel_route,
     require_worker_availability,
 )
 from creo_mechdog.model_queries import inspect_page, list_page, model_summary
@@ -767,10 +769,18 @@ def submit(
             raise ValueError("import_geometry creates a model and cannot run read-only")
         if model_type != "part":
             raise ValueError(f"import_geometry imports into a part model, not into a {model_type}")
-    if any(op["op"] in WORKER_CONDITIONAL_OPERATIONS for op in operations):
+    panel_requests = [op for op in operations if is_panel_route(op)]
+    if panel_requests or any(op["op"] in WORKER_CONDITIONAL_OPERATIONS for op in operations):
         identity = bridge.surface_loft_admission_identity()
+        # BUG-120/D1: the tree gates cover the element_tree route only, so a panel
+        # request never inherits the boundary-blend element-id refusal.
         require_worker_availability(operations, identity)
         require_kernel_completion(operations, identity)
+        if panel_requests:
+            # The panel route needs its own worker declaration and a versioned UI
+            # profile admitted for this request; either one missing refuses here,
+            # before a job or the Toolkit channel is touched.
+            require_panel_route(identity)
     assertions = Assertions.model_validate(assertions or {}).model_dump(exclude_none=True)
     if loft_seed and (model_id is not None or readonly or model_type != "part"):
         raise ValueError("Native loft seed initialization is only available for a new part")

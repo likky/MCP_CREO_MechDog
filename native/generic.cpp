@@ -4823,6 +4823,7 @@ static J choice_inspection(const J &holder, const char *key);
 #include "surface_trim.cpp"
 #include "surface_group.cpp"
 #include "surface_curvature.cpp"
+#include "surface_loft_panel.h"
 #include "surface_loft.cpp"
 #include "surface_round.cpp"
 #include "surface_boundary_fill.cpp"
@@ -5119,8 +5120,19 @@ static void execute_operation_body(const J &op) {
         generic_surface_offset(op);
     else if (kind == "surface_trim")
         generic_surface_trim(op);
-    else if (kind == "surface_loft")
-        generic_surface_loft(op);
+    else if (kind == "surface_loft") {
+        // BUG-120/D1: creation_route names the backend. An explicit panel request
+        // never falls back to the element tree, because only the panel route is
+        // expected to complete on a host whose kernel refuses the tree readback.
+        std::string route = "element_tree";
+        auto route_it = op.find("creation_route");
+        if (route_it != op.end() && route_it->is_string())
+            route = route_it->get<std::string>();
+        if (route == "resident_panel")
+            generic_surface_loft_panel(op);
+        else
+            generic_surface_loft(op);
+    }
     else if (kind == "surface_boundary_fill")
         generic_surface_boundary_fill(op);
     else if (kind == "surface_round")

@@ -377,6 +377,54 @@ class SurfaceLoftOp(StrictModel):
     # BUG-123/B2: read the tree from a dumped template instead of building it.
     # The receipt then reports tree_source="template_xml" and the parsed counts.
     template: LoftTemplate | None = None
+    # BUG-120/D1: which creation path the request asks for. Omitted keeps every
+    # earlier request on the element tree; "resident_panel" replays recorded Creo
+    # UI commands through the resident callback instead. The panel route has its
+    # own narrower input subset (see the validator below) and never falls back to
+    # the tree.
+    creation_route: Literal["element_tree", "resident_panel"] | None = None
+
+    @model_validator(mode="after")
+    def resident_panel_is_a_curve_subset(self):
+        # BUG-120/D1 stage A: the panel route replays the recorded boundary-blend
+        # UI on real source curves, so it accepts 2-8 MCP-owned sketch labels and
+        # nothing the tree route's SDK-bound reference forms add. Refusing here
+        # keeps the request out of the native panel queue: the client learns the
+        # limit before a job exists instead of after a UI run.
+        if self.creation_route != "resident_panel":
+            return self
+        if len(self.sections) > 8:
+            raise ValueError(
+                "creation_route='resident_panel' publishes 2-8 sections in this version "
+                f"(the request has {len(self.sections)}); split the surface or use the "
+                "element_tree route, which keeps 2-32"
+            )
+        for index, value in enumerate(self.sections):
+            if isinstance(value, str):
+                continue
+            form = (
+                "a bare feature id"
+                if isinstance(value, int) and not isinstance(value, bool)
+                else f"the reference {_loft_input_text(value)}"
+            )
+            raise ValueError(
+                f"creation_route='resident_panel' sections[{index}] is {form}: the panel route "
+                "resolves each section from an MCP-owned sketch label, so pass the sketch label "
+                "(a string). Curve, edge, point and bare-id forms stay on the element_tree route"
+            )
+        for field, value in (
+            ("guides", self.guides),
+            ("boundary_conditions", self.boundary_conditions),
+            ("template", self.template),
+        ):
+            if value:
+                raise ValueError(
+                    f"creation_route='resident_panel' does not accept {field} in this version: "
+                    "the panel route builds first-direction curves only, and a second direction, "
+                    "a boundary condition or a template tree is not part of its recorded command "
+                    "sequence. Remove the field or use creation_route='element_tree'"
+                )
+        return self
 
     @model_validator(mode="after")
     def template_route_limits(self):

@@ -1002,22 +1002,42 @@ def _parse_worker_build_info(payload: object, worker_sha256: str) -> dict | None
         return None
     requirements = loft.get("sdk_requirements")
     missing = loft.get("missing_sdk_requirements")
+    projected = {
+        "surface_loft": {
+            "available": loft["available"],
+            "state": loft.get("state"),
+            "sdk_requirements": (
+                list(requirements) if isinstance(requirements, list) else ["Probbl.h"]
+            ),
+            "missing_sdk_requirements": (list(missing) if isinstance(missing, list) else []),
+        }
+    }
+    # BUG-120/D1: the resident panel route is a separate backend and its own
+    # declaration. A worker that predates it simply omits the key, which admission
+    # reads as "not declared" rather than as a supported route.
+    panel = features.get("surface_loft_panel")
+    if isinstance(panel, dict) and isinstance(panel.get("available"), bool):
+        projected["surface_loft_panel"] = {
+            "available": panel["available"],
+            "state": panel.get("state"),
+            "sdk_requirements": (
+                list(panel["sdk_requirements"])
+                if isinstance(panel.get("sdk_requirements"), list)
+                else []
+            ),
+            "missing_sdk_requirements": (
+                list(panel["missing_sdk_requirements"])
+                if isinstance(panel.get("missing_sdk_requirements"), list)
+                else []
+            ),
+        }
     return {
         "identity_status": "verified",
         "identity_schema": payload["identity_schema"],
         "source_digest": digest,
         "worker_sha256": worker_sha256,
         "identity_source": "worker_self_report",
-        "features": {
-            "surface_loft": {
-                "available": loft["available"],
-                "state": loft.get("state"),
-                "sdk_requirements": (
-                    list(requirements) if isinstance(requirements, list) else ["Probbl.h"]
-                ),
-                "missing_sdk_requirements": (list(missing) if isinstance(missing, list) else []),
-            }
-        },
+        "features": projected,
     }
 
 
