@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 from creo_mechdog.release_integrity import (
     approved_evidence_files,
+    panel_profile_library_files,
     seed_library_files,
     template_library_files,
     validate_asset_paths,
@@ -90,6 +91,9 @@ def source_files():
     # BUG-123: element tree templates ship with their manifest, which is also the
     # allowlist and the digest record checked by validate_release_inputs().
     files.extend(template_library_files(ROOT))
+    # BUG-120/D1: resident-panel UI profiles ship the same way; an unreferenced
+    # file is not packaged, and a refused library fails before the ZIP exists.
+    files.extend(panel_profile_library_files(ROOT))
     # DEV-083 (0.25.0 feedback P2-1): reviewed TXT evidence ships byte-exact from
     # its own manifest instead of widening the `docs` allowlist to every .txt.
     files.extend(approved_evidence_files(ROOT))

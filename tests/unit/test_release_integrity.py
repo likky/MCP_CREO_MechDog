@@ -17,7 +17,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import bridge
-from creo_mechdog import release_integrity, seeds
+from creo_mechdog import panel_profiles, release_integrity, seeds
 from tools import package, package_seeds
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -165,6 +165,49 @@ class SeedArchiveValidationTests(SeedArchiveFixture):
         (self.root / "docs/seed_package.json").unlink()
         with self.assertRaisesRegex(ValueError, "Trusted seed package record is missing"):
             release_integrity.validate_seed_archive(self.root, self.archive)
+
+    def test_the_empty_panel_library_is_a_valid_release_input(self):
+        # BUG-120/D1: the shipped manifest lists no profile yet. That is the
+        # closed state the packager must accept, not an absent library.
+        summary = release_integrity.validate_release_inputs(self.root, self.archive)
+        self.assertEqual(summary["panel_certification_count"], 0)
+
+    def test_a_missing_panel_manifest_refuses_the_release_inputs(self):
+        (self.root / "templates/panel/manifest.json").unlink()
+        with self.assertRaisesRegex(ValueError, "panel profile manifest is missing"):
+            release_integrity.validate_release_inputs(self.root, self.archive)
+
+    def test_a_stale_panel_certification_refuses_the_release_inputs(self):
+        library = self.root / "templates" / "panel"
+        (library / "certifications").mkdir()
+        record = library / "certifications" / "creo10-panel-smoke.json"
+        record.write_text(json.dumps({"profile_digest": "0" * 64}), encoding="utf-8")
+        commands = {"sketch_slot": "Sketch>"}
+        (library / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "contract": panel_profiles.CONTRACT,
+                    "profiles": [
+                        {
+                            "profile_id": "creo10-panel-smoke",
+                            "status": "certified",
+                            "release_numeric": 10,
+                            "creo_release": "Creo 10.0.0.0",
+                            "commands": commands,
+                            "digest": panel_profiles.command_digest(commands),
+                            "certification": {
+                                "file": record.name,
+                                "digest": hashlib.sha256(record.read_bytes()).hexdigest(),
+                                "environment": {"host": "win32"},
+                            },
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(ValueError, "no longer certified"):
+            release_integrity.validate_release_inputs(self.root, self.archive)
 
 
 class SeedArchiveInstallTests(SeedArchiveFixture):
@@ -447,6 +490,145 @@ class DistributionEvidenceTests(unittest.TestCase):
                     self.assertRaisesRegex(ValueError, "unsafe or non-TXT"),
                 ):
                     release_integrity.approved_evidence_files(root)
+
+
+class PanelLibraryFixture(unittest.TestCase):
+    """A source tree carrying one resident-panel profile library (BUG-120/D1)."""
+
+    commands = {"sketch_slot": "Sketch>", "blend_slot": "Insert>Blend"}
+
+    def setUp(self):
+        self.temp = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.root = self.temp / "source"
+        self.library = self.root / "templates" / "panel"
+        self.manifest = self.library / "manifest.json"
+        self.library.mkdir(parents=True)
+        self.digest = panel_profiles.command_digest(self.commands)
+
+    def profile(self, **overrides) -> dict:
+        entry = {
+            "profile_id": "creo10-panel-smoke",
+            "status": "certified",
+            "release_numeric": 10,
+            "creo_release": "Creo 10.0.0.0",
+            "commands": dict(self.commands),
+            "digest": self.digest,
+        }
+        entry.update(overrides)
+        return entry
+
+    def write_manifest(self, *profiles: dict) -> Path:
+        document = {"contract": panel_profiles.CONTRACT, "profiles": list(profiles)}
+        self.manifest.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+        return self.manifest
+
+    def write_certification(
+        self, name: str = "creo10-panel-smoke.json", *, profile_digest: str | None = None
+    ) -> Path:
+        directory = self.library / "certifications"
+        directory.mkdir(exist_ok=True)
+        path = directory / name
+        record = {"profile_digest": self.digest if profile_digest is None else profile_digest}
+        path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+        return path
+
+    def certification(self, path: Path, **overrides) -> dict:
+        entry = {
+            "file": path.relative_to(self.library / "certifications").as_posix(),
+            "digest": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "environment": {"host": "win32", "creo_release": "10.0.0.0"},
+        }
+        entry.update(overrides)
+        return entry
+
+
+class PanelLibraryAllowlistTests(PanelLibraryFixture):
+    """Only the manifest and the certification records it names are shipped."""
+
+    def test_a_certified_profile_ships_its_manifest_and_record(self):
+        record = self.write_certification()
+        self.write_manifest(self.profile(certification=self.certification(record)))
+        self.assertEqual(
+            release_integrity.panel_profile_library_files(self.root), [self.manifest, record]
+        )
+
+    def test_a_record_nobody_references_is_not_shipped(self):
+        shipped = self.write_certification("shipped.json")
+        stray = self.write_certification("stray.json")
+        self.write_manifest(self.profile(certification=self.certification(shipped)))
+        files = release_integrity.panel_profile_library_files(self.root)
+        self.assertIn(shipped, files)
+        self.assertNotIn(stray, files)
+
+    def test_the_shipped_repository_library_is_empty_and_closed(self):
+        # No profile has been accepted on a target host yet: the manifest alone
+        # ships and admission refuses the route instead of replaying unknown text.
+        manifest = ROOT / "templates/panel/manifest.json"
+        self.assertEqual(release_integrity.panel_profile_library_files(ROOT), [manifest])
+        self.assertEqual(panel_profiles.profiles(ROOT), [])
+
+    def test_the_source_package_ships_the_panel_manifest(self):
+        packaged = {path.relative_to(ROOT).as_posix() for path in package.source_files()}
+        self.assertIn("templates/panel/manifest.json", packaged)
+
+    def test_the_packager_uses_the_shared_panel_allowlist(self):
+        source = (ROOT / "tools" / "package.py").read_text(encoding="utf-8")
+        self.assertIn("panel_profile_library_files(ROOT)", source)
+
+
+class PanelLibraryRefusalTests(PanelLibraryFixture):
+    """A missing, changed or escaping record fails before the ZIP is written."""
+
+    def test_a_missing_manifest_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "panel profile manifest is missing"):
+            release_integrity.panel_profile_library_files(self.root)
+
+    def test_a_referenced_certification_that_is_missing_is_refused(self):
+        self.write_manifest(
+            self.profile(
+                certification={
+                    "file": "absent.json",
+                    "digest": hashlib.sha256(b"{}").hexdigest(),
+                    "environment": {"host": "win32"},
+                }
+            )
+        )
+        with self.assertRaisesRegex(ValueError, "is missing"):
+            release_integrity.panel_profile_library_files(self.root)
+
+    def test_a_certification_path_that_escapes_the_library_is_refused(self):
+        self.write_manifest(
+            self.profile(
+                certification={
+                    "file": "../escape.json",
+                    "digest": hashlib.sha256(b"{}").hexdigest(),
+                    "environment": {"host": "win32"},
+                }
+            )
+        )
+        with self.assertRaisesRegex(ValueError, "must stay inside"):
+            release_integrity.panel_profile_library_files(self.root)
+
+    def test_a_changed_certification_record_is_refused(self):
+        record = self.write_certification()
+        self.write_manifest(self.profile(certification=self.certification(record)))
+        record.write_bytes(record.read_bytes() + b"\n")
+        with self.assertRaisesRegex(ValueError, "does not match"):
+            release_integrity.panel_profile_library_files(self.root)
+
+    def test_a_certification_for_older_commands_is_refused(self):
+        record = self.write_certification(profile_digest="0" * 64)
+        self.write_manifest(self.profile(certification=self.certification(record)))
+        with self.assertRaisesRegex(ValueError, "no longer certified"):
+            release_integrity.panel_profile_library_files(self.root)
+
+    def test_the_gate_reuses_the_profile_module_rules(self):
+        # A digest that does not match its own command text is refused by
+        # creo_mechdog.panel_profiles; the packaging gate must not carry a second
+        # copy of that rule that could disagree with it.
+        self.write_manifest(self.profile(digest="0" * 64))
+        with self.assertRaisesRegex(ValueError, "does not match its frozen command text"):
+            release_integrity.panel_profile_library_files(self.root)
 
 
 if __name__ == "__main__":
