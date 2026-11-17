@@ -648,6 +648,11 @@ def cancel_job(job_id: str) -> dict:
     bridge.write_json(manifest_file, manifest, durable=True)
     if termination.get("returncode") == 0:
         bridge.clear_channel_claim(job_id)
+    if not started:
+        # BUG-120/D4.4: a job cancelled before any worker existed cannot have opened a
+        # panel, so its reserve is retired on that positive evidence. A job killed
+        # after the worker started keeps the guard: the dialog may still be open.
+        _retire_panel_guard_for_cancel(job_id)
     try:
         request = bridge.read_json(directory / "request.json")
     except (OSError, ValueError):
@@ -727,6 +732,27 @@ def _run_worker_with_watchdog(
         manifest["stall_watchdog"] = stall_state
         raise WorkerStalled(str(stall_state.get("message")))
     return proc.returncode
+
+
+def _retire_panel_guard_for_cancel(job_id: str) -> None:
+    """Release a panel reserve whose job was cancelled before any worker started."""
+    guard = panel_session_guard.inspect(bridge.ROOT)
+    if guard is None or guard.get("status") != "active" or guard.get("job_id") != job_id:
+        return
+    try:
+        panel_session_guard.retire(
+            job_id,
+            reason="cancelled before any worker started",
+            evidence={
+                "no_ui_started_confirmed": True,
+                "source": "cancel_before_worker",
+                "job_id": job_id,
+            },
+            root=bridge.ROOT,
+        )
+    except (ValueError, OSError, panel_session_guard.PanelSessionLocked):
+        # The guard stays: an unproven release is worse than a refused job.
+        return
 
 
 def _panel_exit_evidence(result: object) -> dict | None:

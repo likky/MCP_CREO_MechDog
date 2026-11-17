@@ -322,6 +322,31 @@ class ToolkitEntriesAreGated(unittest.TestCase):
         guard = panel_session_guard.inspect(self.root)
         self.assertEqual(sorted(guard["executor_identity"]), ["source_digest", "worker_sha256"])
 
+    def test_cancelling_before_the_worker_starts_retires_the_reserve(self):
+        accepted = self.reserve_via_submit()
+        with patch.object(
+            general, "_terminate_process_tree", return_value={"attempted": False, "returncode": 0}
+        ):
+            outcome = general.cancel_job(accepted["job_id"])
+        self.assertTrue(outcome["cancelled"])
+        self.assertEqual(outcome["status"], "cancelled")
+        self.assertFalse(outcome["worker_started"])
+        self.assertIsNone(panel_session_guard.inspect(self.root))
+
+    def test_cancelling_after_the_worker_starts_keeps_the_guard(self):
+        accepted = self.reserve_via_submit()
+        manifest_file = bridge.job_path(accepted["job_id"]) / "job.json"
+        manifest = bridge.read_json(manifest_file)
+        manifest.update(status="running", worker_started=True, runner_pid=2147483647)
+        bridge.write_json(manifest_file, manifest, durable=True)
+        with patch.object(
+            general, "_terminate_process_tree", return_value={"attempted": True, "returncode": 0}
+        ):
+            outcome = general.cancel_job(accepted["job_id"])
+        self.assertEqual(outcome["status"], "unknown_outcome")
+        self.assertTrue(outcome["worker_started"])
+        self.assertEqual(panel_session_guard.inspect(self.root)["status"], "active")
+
     def test_an_ordinary_submission_is_unaffected_without_a_guard(self):
         with patch.object(bridge.subprocess, "Popen") as popen:
             general.submit([], model_name="plain_model")
