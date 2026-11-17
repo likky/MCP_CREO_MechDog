@@ -5128,10 +5128,18 @@ static void execute_operation_body(const J &op) {
         auto route_it = op.find("creation_route");
         if (route_it != op.end() && route_it->is_string())
             route = route_it->get<std::string>();
-        if (route == "resident_panel")
+        // Only an absent field falls back to the element tree. An unrecognised
+        // route is refused, because silently building the tree is exactly the
+        // fallback BUG-120 rules out.
+        if (route == "element_tree")
+            generic_surface_loft(op);
+        else if (route == "resident_panel")
             generic_surface_loft_panel(op);
         else
-            generic_surface_loft(op);
+            throw std::runtime_error(
+                "SURFACE_LOFT_UNKNOWN_ROUTE: creation_route must be element_tree or "
+                "resident_panel; no feature was created and the request was not retried on "
+                "another route.");
     }
     else if (kind == "surface_boundary_fill")
         generic_surface_boundary_fill(op);

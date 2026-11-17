@@ -171,12 +171,18 @@ class ManifestValidation(Library):
             panel_profiles.profiles(self.root)
 
 
-def identity(worker_sha=WORKER_SHA):
-    return {
+def identity(worker_sha=WORKER_SHA, release_numeric=42, nested=True):
+    record = {
         "identity_status": "verified",
         "worker_sha256": worker_sha,
         "source_digest": "c" * 64,
     }
+    if release_numeric is not None:
+        if nested:
+            record["features"] = {"surface_loft": {"release_numeric": release_numeric}}
+        else:
+            record["release_numeric"] = release_numeric
+    return record
 
 
 def ticket(workspace, **overrides):
@@ -283,6 +289,34 @@ class CandidateAdmission(Library):
         self.assertEqual(admission["candidate"]["bindings"]["loader_sha256"], "e" * 64)
         self.assertEqual(admission["candidate"]["unchecked_bindings"], ["loader_sha256"])
 
+    def test_a_candidate_may_run_before_the_host_release_is_recorded(self):
+        admission = panel_profiles.admit_for_request(
+            identity(release_numeric=None), root=self.root, environ=ticket(self.workspace)
+        )
+        self.assertEqual(admission["mode"], "candidate")
+        self.assertEqual(admission["unverified_bindings"], ["host_release_numeric"])
+        self.assertIsNone(admission["host_release_numeric"])
+
+    def test_a_candidate_on_another_release_is_refused(self):
+        with self.assertRaisesRegex(
+            panel_profiles.PanelProfileError, "never re-used across releases"
+        ):
+            panel_profiles.admit_for_request(
+                identity(release_numeric=43), root=self.root, environ=ticket(self.workspace)
+            )
+
+    def test_a_ticket_for_another_release_is_refused(self):
+        with self.assertRaisesRegex(panel_profiles.PanelProfileError, "issued for release_numeric"):
+            panel_profiles.admit_for_request(
+                identity(), root=self.root, environ=ticket(self.workspace, release_numeric=43)
+            )
+
+    def test_a_non_integer_ticket_release_is_refused(self):
+        with self.assertRaisesRegex(panel_profiles.PanelProfileError, "must be an integer"):
+            panel_profiles.admit_for_request(
+                identity(), root=self.root, environ=ticket(self.workspace, release_numeric="42")
+            )
+
 
 class CertifiedAdmission(Library):
     def setUp(self):
@@ -295,6 +329,8 @@ class CertifiedAdmission(Library):
         self.assertEqual(admission["mode"], "certified")
         self.assertIsNone(admission["candidate"])
         self.assertEqual(admission["release_numeric"], 42)
+        self.assertEqual(admission["host_release_numeric"], 42)
+        self.assertEqual(admission["unverified_bindings"], [])
         self.assertEqual(admission["certification"]["environment"]["creo_release"], "10.0.0.0")
 
     def test_a_certified_profile_also_serves_the_driver_ticket(self):
@@ -302,6 +338,26 @@ class CertifiedAdmission(Library):
             identity(), root=self.root, environ=ticket(str(self.root.resolve()))
         )
         self.assertEqual(admission["mode"], "certified")
+
+    def test_a_top_level_host_release_is_matched_too(self):
+        admission = panel_profiles.admit_for_request(
+            identity(nested=False), root=self.root, environ={}
+        )
+        self.assertEqual(admission["host_release_numeric"], 42)
+
+    def test_a_host_on_another_release_is_refused(self):
+        with self.assertRaisesRegex(
+            panel_profiles.PanelProfileError, "never re-used across releases"
+        ):
+            panel_profiles.admit_for_request(
+                identity(release_numeric=43), root=self.root, environ={}
+            )
+
+    def test_an_unrecorded_host_release_is_refused_for_a_normal_client(self):
+        with self.assertRaisesRegex(panel_profiles.PanelProfileError, "no recorded host release"):
+            panel_profiles.admit_for_request(
+                identity(release_numeric=None), root=self.root, environ={}
+            )
 
 
 if __name__ == "__main__":

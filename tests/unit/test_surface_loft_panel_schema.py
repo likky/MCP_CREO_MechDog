@@ -9,9 +9,11 @@ templates stay on the element tree, and the refusal happens while validating the
 
 from __future__ import annotations
 
+import asyncio
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 from creo_mechdog.schema import validate_operations
 
@@ -121,6 +123,28 @@ class PanelRouteRefusesTheTreeOnlyForms(unittest.TestCase):
             with self.assertRaises(ValueError) as caught:
                 validate_operations([panel(template={"file": str(tree)})])
             self.assertIn("does not accept template", str(caught.exception))
+
+
+class ToolWrapperForwardsTheRoute(unittest.TestCase):
+    def test_the_tool_only_forwards_an_explicit_route(self):
+        import server
+
+        captured = AsyncMock(return_value={"status": "accepted"})
+        base = dict(model_id="m", expected_revision=1, label="loft_surface", sections=["a", "b"])
+        with patch.object(server, "invoke", captured):
+            asyncio.run(server.creo_surface_loft(**base))
+            self.assertNotIn("creation_route", captured.call_args.args[1][0])
+            asyncio.run(server.creo_surface_loft(**base, creation_route="resident_panel"))
+            self.assertEqual(captured.call_args.args[1][0]["creation_route"], "resident_panel")
+            asyncio.run(server.creo_surface_loft(**base, creation_route="element_tree"))
+            self.assertEqual(captured.call_args.args[1][0]["creation_route"], "element_tree")
+
+    def test_the_tool_schema_publishes_both_routes(self):
+        import server
+
+        tools = {tool.name: tool for tool in asyncio.run(server.mcp.list_tools())}
+        schema = tools["creo_surface_loft"].input_schema["properties"]["creation_route"]
+        self.assertEqual(sorted(schema["anyOf"][0]["enum"]), ["element_tree", "resident_panel"])
 
 
 if __name__ == "__main__":

@@ -152,8 +152,21 @@ class PanelRouteIsDisclosedSeparately(unittest.TestCase):
         projected = capabilities.project_worker_availability(
             families, identity(panel={"available": False, "state": "not_implemented"})
         )
-        self.assertTrue(projected["surface_loft"]["available"])
-        self.assertEqual(projected["surface_loft"]["availability"], "available")
+        entry = projected["surface_loft"]
+        self.assertTrue(entry["available"])
+        self.assertEqual(entry["availability"], "available")
+        self.assertNotIn("unavailable_reason", entry)
+        self.assertFalse(entry["routes"]["resident_panel"]["runtime_ready"])
+
+    def test_a_missing_tree_feature_still_discloses_both_routes(self):
+        families = {"surface_loft": {"available": True, "enabled": True}}
+        unverified = {"identity_status": "worker_missing"}
+        projected = capabilities.project_worker_availability(families, unverified)
+        routes = projected["surface_loft"]["routes"]
+        self.assertTrue(routes["element_tree"]["default"])
+        self.assertIsNone(routes["element_tree"]["available"])
+        self.assertEqual(routes["element_tree"]["state"], "not_declared")
+        self.assertFalse(routes["resident_panel"]["runtime_ready"])
 
 
 class SubmissionRefusesBeforeTheChannel(unittest.TestCase):
@@ -206,6 +219,36 @@ class SubmissionRefusesBeforeTheChannel(unittest.TestCase):
     def test_a_worker_without_the_declaration_projects_only_the_tree_feature(self):
         raw = self.parsed_identity()
         self.assertNotIn("surface_loft_panel", raw["features"])
+
+    def test_a_non_boolean_panel_flag_is_not_a_declaration(self):
+        raw = self.parsed_identity(panel={"available": "yes", "state": "ready"})
+        self.assertNotIn("surface_loft_panel", raw["features"])
+
+    def test_a_mixed_plan_keeps_the_tree_refusal(self):
+        raw = bridge._parse_worker_build_info(
+            {
+                "identity_schema": 1,
+                "source_digest": "a" * 64,
+                "features": {
+                    "surface_loft": {
+                        "available": False,
+                        "state": "bnbln_element_ids_missing",
+                        "sdk_requirements": ["PRO_E_BNBLN_CURVES"],
+                        "missing_sdk_requirements": ["PRO_E_BNBLN_CURVES"],
+                    },
+                    "surface_loft_panel": {"available": True, "state": "ready"},
+                },
+            },
+            WORKER_SHA,
+        )
+        with (
+            patch.object(bridge, "worker_build_identity", return_value=raw),
+            patch.object(bridge, "toolkit_lock") as lock,
+        ):
+            with self.assertRaisesRegex(ValueError, "compiled out of the current worker"):
+                general.submit([panel_op(), {**tree_op(), "label": "loft_tree"}])
+            lock.assert_not_called()
+        self.assertFalse((self.root / "jobs").exists())
 
 
 if __name__ == "__main__":

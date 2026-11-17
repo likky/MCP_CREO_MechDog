@@ -56,7 +56,8 @@ PROFILE_KEYS = frozenset(
 CERTIFICATION_KEYS = frozenset({"file", "digest", "environment"})
 CANDIDATE_REQUIRED = ("profile_id", "run_id", "workspace", "profile_digest")
 CANDIDATE_OPTIONAL = ("worker_sha256", "loader_sha256", "payload_sha256")
-CANDIDATE_KEYS = frozenset(CANDIDATE_REQUIRED + CANDIDATE_OPTIONAL)
+CANDIDATE_INT_OPTIONAL = ("release_numeric",)
+CANDIDATE_KEYS = frozenset(CANDIDATE_REQUIRED + CANDIDATE_OPTIONAL + CANDIDATE_INT_OPTIONAL)
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -261,10 +262,44 @@ def find_profile(profile_id: str, root: Path | None = None) -> PanelProfile:
     )
 
 
-def certified_profile(root: Path | None = None) -> PanelProfile:
-    """The profile normal clients may use, or a refusal that names why there is none."""
+def host_release(identity: object) -> int | None:
+    """The Creo release this executor last reported, or None when nothing recorded it.
+
+    A profile is measured on one release, so admission needs the host's own number
+    rather than a guess from the Python environment. The worker's build-info does
+    not carry it; the recorded surface_loft observation does, both at the top level
+    and inside its evidence block.
+    """
+    if not isinstance(identity, dict):
+        return None
+    release = identity.get("release_numeric")
+    if type(release) is int:
+        return release
+    features = identity.get("features")
+    loft = features.get("surface_loft") if isinstance(features, dict) else None
+    if not isinstance(loft, dict):
+        return None
+    release = loft.get("release_numeric")
+    if type(release) is int:
+        return release
+    evidence = loft.get("evidence")
+    release = evidence.get("release_numeric") if isinstance(evidence, dict) else None
+    return release if type(release) is int else None
+
+
+def certified_profile(root: Path | None = None, release_numeric: int | None = None) -> PanelProfile:
+    """The profile normal clients may use, or a refusal that names why there is none.
+
+    ``release_numeric`` prefers the profile measured on the release the host
+    reported, so a library that later holds two certified releases never serves the
+    wrong one. When none matches, the first certified profile is returned so
+    admission reports the release mismatch by name instead of "no profile".
+    """
     entries = profiles(root)
     certified = [profile for profile in entries if profile.status == "certified"]
+    if release_numeric is not None:
+        matching = [profile for profile in certified if profile.release_numeric == release_numeric]
+        certified = matching or certified
     if certified:
         return certified[0]
     candidates = ", ".join(
@@ -274,10 +309,9 @@ def certified_profile(root: Path | None = None) -> PanelProfile:
         "creation_route='resident_panel' has no certified UI profile for this release: "
         f"{MANIFEST} lists {'candidate(s) ' + candidates if candidates else 'no profiles'}. "
         "A profile becomes certified only after the documented target-host acceptance run; "
-        f"a candidate is usable only by the development driver, which sets {CANDIDATE_ENV} "
-        "(tools/test_surface_loft_panel.py --live --candidate-profile). Normal clients cannot "
-        "select a candidate and no native job was queued. Keep the element_tree route for "
-        "supported hosts."
+        f"a candidate is usable only by the development driver, which sets {CANDIDATE_ENV} for "
+        "its own --candidate-profile run. Normal clients cannot select a candidate and no "
+        "native job was queued. Keep the element_tree route for supported hosts."
     )
 
 
@@ -302,6 +336,9 @@ def candidate_ticket(environ: dict | None = None) -> dict | None:
     for key in CANDIDATE_OPTIONAL:
         if ticket.get(key) is not None:
             ticket[key] = _digest_shape(ticket[key], f"{CANDIDATE_ENV}.{key}")
+    for key in CANDIDATE_INT_OPTIONAL:
+        if ticket.get(key) is not None and type(ticket[key]) is not int:
+            raise PanelProfileError(f"{CANDIDATE_ENV}.{key} must be an integer Creo release number")
     return ticket
 
 
@@ -313,7 +350,11 @@ def admit_for_request(
 ) -> dict:
     """Admit the profile this request may use: the ticket's, else the certified one."""
     ticket = candidate_ticket(environ)
-    profile = find_profile(ticket["profile_id"], root) if ticket else certified_profile(root)
+    profile = (
+        find_profile(ticket["profile_id"], root)
+        if ticket
+        else certified_profile(root, host_release(identity))
+    )
     return admit(profile.profile_id, identity, root=root, environ=environ)
 
 
@@ -334,8 +375,46 @@ def admit(
     profile additionally needs the driver ticket to match this workspace, this
     profile digest and — when the ticket names them — the worker, loader and payload
     digests of the executor that would run the job.
+
+    Both modes compare the host's recorded Creo release with the release the profile
+    was measured on: a mismatch always refuses, and a normal client refuses an
+    unknown release too. The development driver may run a candidate while the host
+    release is still unrecorded, because the test itself is what produces that
+    observation; the admission record then says so instead of implying a match.
     """
     profile = find_profile(profile_id, root)
+    ticket = candidate_ticket(environ)
+    release = host_release(identity)
+    unverified: list[str] = []
+    if release is None:
+        if ticket is None:
+            raise PanelProfileError(
+                f"panel profile {profile.profile_id!r} was measured on Creo "
+                f"release_numeric={profile.release_numeric} ({profile.creo_release}), but this "
+                "worker has no recorded host release, so the profile cannot be matched to it. "
+                "No native job was queued. A certified profile is bound to one release; run a "
+                "recorded job on this host first, or use the element_tree route."
+            )
+        unverified.append("host_release_numeric")
+    elif release != profile.release_numeric:
+        raise PanelProfileError(
+            f"panel profile {profile.profile_id!r} was measured on Creo "
+            f"release_numeric={profile.release_numeric} ({profile.creo_release}), but this host "
+            f"reports release_numeric={release}. A profile is never re-used across releases; "
+            "no native job was queued."
+        )
+    if ticket is not None and ticket.get("release_numeric") is not None:
+        if ticket["release_numeric"] != profile.release_numeric:
+            raise PanelProfileError(
+                f"the candidate ticket was issued for release_numeric={ticket['release_numeric']}, "
+                f"but profile {profile.profile_id!r} is measured on "
+                f"{profile.release_numeric}; re-record the profile instead of reusing a ticket"
+            )
+        if release is not None and release != ticket["release_numeric"]:
+            raise PanelProfileError(
+                f"the candidate ticket was issued for release_numeric={ticket['release_numeric']}, "
+                f"but this host reports {release}; no native job was queued"
+            )
     if profile.status == "certified":
         return {
             "profile_id": profile.profile_id,
@@ -343,16 +422,17 @@ def admit(
             "profile_digest": profile.digest,
             "release_numeric": profile.release_numeric,
             "creo_release": profile.creo_release,
+            "host_release_numeric": release,
+            "unverified_bindings": unverified,
             "certification": profile.certification,
             "candidate": None,
         }
-    ticket = candidate_ticket(environ)
     if ticket is None:
         raise PanelProfileError(
             f"panel profile {profile.profile_id!r} is a candidate: it was never accepted on a "
             "target host, so only the development driver may use it and normal clients cannot. "
-            f"Set {CANDIDATE_ENV} from tools/test_surface_loft_panel.py --live "
-            "--candidate-profile, or use a certified profile. No native job was queued."
+            f"Set {CANDIDATE_ENV} from the driver's --candidate-profile run, or use a certified "
+            "profile. No native job was queued."
         )
     if ticket["profile_id"] != profile.profile_id:
         raise PanelProfileError(
@@ -399,6 +479,8 @@ def admit(
         "profile_digest": profile.digest,
         "release_numeric": profile.release_numeric,
         "creo_release": profile.creo_release,
+        "host_release_numeric": release,
+        "unverified_bindings": unverified,
         "certification": None,
         "candidate": {
             "run_id": ticket["run_id"],

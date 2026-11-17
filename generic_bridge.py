@@ -770,6 +770,7 @@ def submit(
         if model_type != "part":
             raise ValueError(f"import_geometry imports into a part model, not into a {model_type}")
     panel_requests = [op for op in operations if is_panel_route(op)]
+    panel_admission = None
     if panel_requests or any(op["op"] in WORKER_CONDITIONAL_OPERATIONS for op in operations):
         identity = bridge.surface_loft_admission_identity()
         # BUG-120/D1: the tree gates cover the element_tree route only, so a panel
@@ -779,8 +780,9 @@ def submit(
         if panel_requests:
             # The panel route needs its own worker declaration and a versioned UI
             # profile admitted for this request; either one missing refuses here,
-            # before a job or the Toolkit channel is touched.
-            require_panel_route(identity)
+            # before a job or the Toolkit channel is touched. The admission record
+            # travels with the request so the job names the profile and mode it ran.
+            panel_admission = require_panel_route(identity)
     assertions = Assertions.model_validate(assertions or {}).model_dump(exclude_none=True)
     if loft_seed and (model_id is not None or readonly or model_type != "part"):
         raise ValueError("Native loft seed initialization is only available for a new part")
@@ -1114,6 +1116,12 @@ def submit(
             request["loft_seed"] = loft_seed
         if region_adaptation:
             request["region_adaptation"] = region_adaptation
+        if panel_admission:
+            # BUG-120/D1: which frozen profile and which mode (certified or
+            # candidate) this job was admitted with. The native side ignores it; it
+            # is the job's own record so a receipt never reads as released support
+            # when the run was a candidate.
+            request["panel_admission"] = panel_admission
         manifest = {
             "job_id": job_id,
             "kind": "generic",

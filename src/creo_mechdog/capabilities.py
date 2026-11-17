@@ -218,7 +218,11 @@ def is_panel_route(op: dict) -> bool:
 
 
 def _tree_route_operations(operations: list[dict]) -> list[dict]:
-    return [op for op in operations if op.get("op") == "surface_loft" and not is_panel_route(op)]
+    return [
+        op
+        for op in operations
+        if op.get("op") in WORKER_CONDITIONAL_OPERATIONS and not is_panel_route(op)
+    ]
 
 
 def _verified_worker_feature(identity: object, name: str) -> dict | None:
@@ -380,8 +384,12 @@ def _panel_route_document(identity: object) -> dict:
         if not feature["available"]:
             document["reason"] = "the panel backend is compiled out of this worker"
     try:
-        profile = panel_profiles.certified_profile()
-    except panel_profiles.PanelProfileError as exc:
+        profile = panel_profiles.certified_profile(
+            release_numeric=panel_profiles.host_release(identity)
+        )
+    except (ValueError, OSError, TypeError, KeyError) as exc:
+        # Disclosure fails closed: a manifest this release cannot read must not turn
+        # creo_capabilities into an error while the route is closed anyway.
         document["profile"] = {"status": "uncertified", "reason": str(exc)}
     else:
         document["profile"] = {"status": "certified", **profile.document()}
@@ -405,7 +413,23 @@ def project_worker_availability(
     """
     feature = _verified_worker_feature(identity, "surface_loft")
     entry = families_doc.get("surface_loft")
-    if feature is None or not isinstance(entry, dict):
+    if not isinstance(entry, dict):
+        return families_doc
+    if feature is None:
+        # No verified tree declaration: the top-level fields keep their published
+        # meaning, and the routes block still reports both routes by name so a
+        # missing tree feature cannot hide a declared panel backend.
+        entry["routes"] = {
+            "element_tree": {
+                "default": True,
+                "available": None,
+                "state": "not_declared",
+                "request_field": "creation_route omitted or 'element_tree'",
+                "scope": "keeps 2-32 sections, guides, boundary conditions and template trees",
+                "reason": "the loaded worker did not declare a verified surface_loft feature",
+            },
+            "resident_panel": _panel_route_document(identity),
+        }
         return families_doc
     available = feature["available"]
     entry["available"] = available
