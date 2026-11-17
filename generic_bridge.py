@@ -1474,6 +1474,25 @@ def run_generic_job(job_id: str, manifest: dict):
                     # BUG-120/D4.4: a confirmed panel exit is the only result-side
                     # evidence that frees the session guard.
                     _retire_panel_guard_after_result(job_id, result)
+                    # BUG-120/D5: a resident-panel run is only successful when its
+                    # exit was observed and the product is this run's. The projection
+                    # also downgrades a claimed tree completion.
+                    from creo_mechdog import panel_receipt
+
+                    panel_receipt.annotate(
+                        result,
+                        admission=request.get("panel_admission"),
+                        inputs=request["operations"],
+                        prior_inspection=prior_state.get("inspection"),
+                        route=next(
+                            (
+                                op.get("creation_route")
+                                for op in request["operations"]
+                                if op.get("op") == "surface_loft"
+                            ),
+                            None,
+                        ),
+                    )
                     # FEAT-052: project the native recolor block into the
                     # stable result shape (missing fields stay unknown and are
                     # never fabricated).
