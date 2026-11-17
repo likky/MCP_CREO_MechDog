@@ -1,0 +1,17 @@
+{
+  "request_id": "T1C-CANCEL-MACRO-02",
+  "model": "T1C_MID",
+  "curves": [
+    {
+      "owner": "T1C_MID",
+      "geom_id": 45,
+      "role": "first_dir",
+      "spatial": "mid y=20 z=3"
+    }
+  ],
+  "wait_seconds": 20,
+  "select_command": "MechDogT1CSelectB",
+  "tail": "quit_yes",
+  "marker_path": "probe\\host3\\probe_end_marker_v2b.json",
+  "post_scan": false
+}

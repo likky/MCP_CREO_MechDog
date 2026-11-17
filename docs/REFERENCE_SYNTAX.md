@@ -245,6 +245,18 @@
 | round/chamfer 尺寸字段 | 独立工具 `creo_round.radius`、`creo_chamfer.distance` 与计划操作 `size` 是同一数值（mm）：round 计划也接受 `radius`、chamfer 计划也接受 `distance` 作为 `size` 别名；别名与 `size` 同现或用于另一种操作时明确拒绝。任务提交回显 `operations[].size`，终态 `result.operations[].size` 回显原生应用值（compact 返回同样保留） |
 | create_sketch.plane | 主平面字符串 `XY/XZ/YZ`；字典形式为 `{"reference":{"kind":"datum_plane","id":N},"origin":[x,y,z],"u_axis":[x,y,z]}`，reference 也可取已验证平面 `plane`/`surface` 几何 ID 或 `datum_feature` 标签；origin/u_axis 可省略，reference 容器必需 |
 
+### 钣金首壁的 width 作用轴（BUG-129）
+
+`sheetmetal_base_flange.width` 固定沿草图 v 轴。命名字典平面的默认帧如下（u 为第一段长度方向，v 为宽度方向）：
+
+| `plane` | u | v / `width` |
+| --- | --- | --- |
+| `XY` | +X | **+Y** |
+| `XZ` | +X | **+Z** |
+| `YZ` | +Y | **+Z** |
+
+这是默认帧，不是旋转能力：作业回执的 `width_direction_world` 是原生实测的 v 轴，调用方应以此核对；`expected_width_direction_world` 只做断言并在不匹配时拒绝，**不会**旋转或投影矩形。若需要把 `width` 改到另一根世界轴，必须改变草图方位，属于独立 FEAT，不在本工具内静默改变。`plane="YZ"` 时 20 mm 宽度落在 **+Z**，不是 +Y 或 +X。
+
 ### 主平面 offset 与切除方向（DEV-081/F11）
 
 `offset` 是 `plane_coordinate`：主平面在自身轴上的**全局坐标值，不是沿法向的位移**；`direction`（extrude/revolve）才是相对该法向的 `positive`/`negative`。

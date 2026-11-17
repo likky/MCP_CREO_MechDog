@@ -464,6 +464,10 @@ FEAT-042首阶段历史：显式接管用户已打开模型的受控入口 `creo
 
 **BUG-020（原登记）**：STEP 导出会留下 *_out.log.N。需要说明哪些文件是交付产物、哪些是诊断附件，只清理本作业生成的副产物。检查 STEP 仍有效、用户文件未受影响。文件清理由开发者检查，MCP 黑盒只验证返回的文件说明。
 
+**2026-11-17 离线补录（BUG-020）**：新增 `creo_mechdog.export_artifacts`，在作业终结时只扫描本作业 `output` 目录：名称含 `_out.log` 的 Creo 诊断摘录移动到 `output/diagnostics/`，作业结果新增 `export_artifacts`、`export_diagnostics` 与 `export_diagnostics_note`；`.stp/.step/.igs/.iges/.stl` 与调用方其它文件不移动、不删除。非导出计划完全不动文件。4 项单测通过。真实 Creo STEP/IGES 导出与用户文件归属仍待实机复测。
+
+**2026-11-17 实机通过（BUG-020，本机 Creo 12.4.0.0）**：30×20×10 方块执行 `export(step)`，job `defe4eb0b...` `succeeded`；`.stp` 8622 字节、头部 `ISO-10303-21`；`b020step_880934__out.log.1`（4401 字节）已移动到 `output/diagnostics/`，`export_artifacts=["output/b020step_880934.stp"]`、`export_diagnostics=["output/diagnostics/b020step_880934__out.log.1"]`，`saved_file_reloaded_and_verified=true`；`preview.jpg` 等其它文件未被移动。证据 `build/live_bug020/20261117T100224_defe4eb0/report.json`（SHA256 `c5dae447f4658c44cf54c9effbbde199a3382a1767ccd647d1002f01eca4568e`）。STEP/IGES 与用户文件归属在真实导出上闭环。
+
 <a id="legacy-dev-003"></a>
 
 **DEV-003（原登记）**：整理 C++ 的执行上下文、模块接口和资源由谁创建、释放，再用受影响的 SDK 构建并运行原生测试。

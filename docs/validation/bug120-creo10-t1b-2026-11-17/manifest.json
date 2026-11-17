@@ -1,0 +1,61 @@
+{
+  "source": "C:\\Users\\Administrator\\Downloads\\2026-11-17_t1b_id_driven_blend",
+  "scope": "User feedback text originals only; binaries and PRT stay in original package",
+  "files": [
+    {
+      "path": "T1B_REPORT.md",
+      "bytes": 21931,
+      "sha256": "51882f2e71fd7dee54c9da03e39962078553811a74248e030e1b4016d3248a47"
+    },
+    {
+      "path": "T1B_STATUS.md",
+      "bytes": 5178,
+      "sha256": "6686292d534e5ce4b0b59a795d2b7c02ab5403610da5e51dfa392d644c3c3089"
+    },
+    {
+      "path": "evidence/matrix_summary.json",
+      "bytes": 16132,
+      "sha256": "97ff4b3b7afec39ae2239779a0715deafb8c3b116581ca07e45aa216aa5fc185"
+    },
+    {
+      "path": "probe/host/probe_host.cpp",
+      "bytes": 12703,
+      "sha256": "0e6ad89ec8d3081abb3ebcc09b09b9827e30a9197319c35a4484835ab025f0a4"
+    },
+    {
+      "path": "probe/host/session_steps.jsonl",
+      "bytes": 16063,
+      "sha256": "7db36875863c8055f97b06777d6dbf354be47daa86101fef428d3a6cf23c7023"
+    },
+    {
+      "path": "probe/t1b_probe.cpp",
+      "bytes": 29286,
+      "sha256": "515fa36a365bc3e1ff116117a7f974afa6d61802eca29a5b66101058b6749fc3"
+    },
+    {
+      "path": "probe/summarize.py",
+      "bytes": 11567,
+      "sha256": "fceb8c9df0f235a7f3e6d1b70d345f1d37fef39753591a7ab867a3c6a9961819"
+    },
+    {
+      "path": "probe/probe_driver.py",
+      "bytes": 1845,
+      "sha256": "5cb7e23e18b2f904cd2b6900ba6dd2dc0883cd88031c244ae6a34780c15d8ea1"
+    },
+    {
+      "path": "probe/case.py",
+      "bytes": 2831,
+      "sha256": "83e7abc6d900775d293fd803eb8907062881b9c5afc67e7733aab6f96bee7bf6"
+    },
+    {
+      "path": "probe/build_probe.cmd",
+      "bytes": 952,
+      "sha256": "fdabb5a0007cf6cd7493e49d7c37d082f4929280d74451c74745ca67e850ba98"
+    },
+    {
+      "path": "probe/host/build_host.cmd",
+      "bytes": 903,
+      "sha256": "e284e560780be6f36ee4641335588afa2718e85380ff49fddb0ba711da179709"
+    }
+  ]
+}

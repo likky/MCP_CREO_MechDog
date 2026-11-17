@@ -1,0 +1,11 @@
+{
+  "app_name": "T1CProbeV2B",
+  "connect_code": 0,
+  "exec_file": "D://my//MCP_CREO_MechDog//test_runs//2026-11-17_t1c_closure//probe//host3//probe_host_v2b.dll",
+  "handle_non_null": true,
+  "load_code": 0,
+  "success": true,
+  "text_dir": "D://my//MCP_CREO_MechDog//test_runs//2026-11-17_t1c_closure//probe//host3",
+  "user_error_code": 0,
+  "user_string": ""
+}

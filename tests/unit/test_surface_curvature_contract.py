@@ -134,10 +134,11 @@ class SurfaceCurvatureRegistrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(properties["samples_per_direction"]["default"], 12)
         self.assertEqual(properties["faces"]["minItems"], 1)
         self.assertEqual(properties["faces"]["maxItems"], 2)
-        # 108 = 109 minus the gated creo_surface_boundary_fill (DEV-074/H09);
-        # creo_quilt_merge (FEAT-039/H03) was published on 2026-11-08 and
-        # creo_sheetmetal_base_flange (DEV-089 T3) on 2026-11-15.
-        self.assertEqual(len(tools), 108)
+        # 109 = 110 minus the gated creo_surface_boundary_fill (DEV-074/H09);
+        # creo_quilt_merge (FEAT-039/H03) was published on 2026-11-08,
+        # creo_sheetmetal_base_flange (DEV-089 T3) on 2026-11-15 and
+        # creo_cancel_job (BUG-131) with the job-control work.
+        self.assertEqual(len(tools), 109)
 
     def test_capability_family_publishes_the_numeric_equivalence(self):
         self.assertIn("creo_measure_surface_curvature", families()["surface_chain"]["tools"])

@@ -2,9 +2,12 @@
 
 import math
 import unittest
+from unittest.mock import patch
 
 from pydantic import ValidationError
 
+import generic_bridge as general
+import server
 from creo_mechdog.schema import SheetmetalBaseFlangeOp
 from creo_mechdog.sheetmetal import (
     base_flange_create_problem,
@@ -316,6 +319,43 @@ class ComposedSchemaTests(unittest.TestCase):
         dumped = operation.model_dump(exclude_none=True)
         self.assertNotIn("expected_width_direction_world", dumped)
         self.assertIn("plane", dumped)
+
+
+class BaseFlangeToolSchemaTests(unittest.IsolatedAsyncioTestCase):
+    """P4-2/P5-1: the standalone tool used to drop the width assertion.
+
+    ``creo_execute_plan`` accepted ``expected_width_direction_world`` but
+    ``creo_sheetmetal_base_flange`` had no such parameter, so callers of the
+    standalone tool could not assert the direction at all.
+    """
+
+    async def submit(self, **kwargs):
+        recorded: list[list[dict]] = []
+
+        def fake_submit(operations, *_args, **_kwargs):
+            recorded.append(operations)
+            return {"job_id": "a" * 32, "operations_view": "normalized"}
+
+        with (
+            patch.object(general, "submit", side_effect=fake_submit),
+            patch.object(server.startup, "require_ready"),
+        ):
+            await server.creo_sheetmetal_base_flange(
+                "d" * 32, 0, "base1", RIGHT_ANGLE, 20.0, 1.5, **kwargs
+            )
+        return recorded[0][0]
+
+    async def test_width_assertion_reaches_the_operation_payload(self):
+        operation = await self.submit(
+            expected_width_direction_world=[0, 0, 1], width_direction_tolerance_deg=0.25
+        )
+        self.assertEqual(operation["expected_width_direction_world"], [0.0, 0.0, 1.0])
+        self.assertEqual(operation["width_direction_tolerance_deg"], 0.25)
+
+    async def test_omitted_assertion_keeps_the_old_payload(self):
+        operation = await self.submit()
+        self.assertNotIn("expected_width_direction_world", operation)
+        self.assertNotIn("width_direction_tolerance_deg", operation)
 
 
 if __name__ == "__main__":

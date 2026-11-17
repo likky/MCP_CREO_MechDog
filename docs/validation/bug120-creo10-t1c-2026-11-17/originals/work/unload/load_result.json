@@ -1,0 +1,9 @@
+{
+  "app_name": "T1CProbeV2",
+  "connect_code": 0,
+  "exec_file": "",
+  "failure": "handle_not_found",
+  "handle_get_code": -4,
+  "success": false,
+  "text_dir": ""
+}

@@ -128,6 +128,7 @@ _SOURCE_NAMES = (
     "src/creo_mechdog/windows_boot.py",
     "src/creo_mechdog/window_observations.py",
     "src/creo_mechdog/schema.py",
+    "src/creo_mechdog/sketch_regions.py",
     "src/creo_mechdog/surface_ops.py",
     "src/creo_mechdog/sheetmetal_candidates.py",
     "src/creo_mechdog/flange_profile.py",
@@ -173,6 +174,9 @@ _SOURCE_NAMES = (
     "native/adoption_source.h",
     "native/inspection_sidecar.h",
     "native/inspection_units.h",
+    "native/stl_file_check.h",
+    "native/stl_mesh_check.h",
+    "native/stl_export.h",
     "native/axis_geometry.h",
     "native/assembly_units.h",
     "native/drawing.cpp",
@@ -442,6 +446,16 @@ async def creo_get_job(
     return await invoke(
         bridge.get_job, job_id, detail, section, limit, cursor, sections, wait_seconds
     )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_cancel_job(
+    job_id: str = Field(
+        description="The job_id returned by a modeling tool or creo_execute_plan.",
+    ),
+) -> dict[str, Any]:
+    """Cancel a queued or running job and free the channel reservation. Cancellation is not a rollback: a job cancelled after its native worker started returns status=unknown_outcome with geometry_may_have_changed=true and keeps the model reservation, so finish with creo_session_status and creo_reconcile_model. A job cancelled before any worker started returns status=cancelled and leaves the model reusable (ready, or failed for a new model that never saved). An already terminal job is reported unchanged with cancelled=false; a runner that could not be terminated leaves the job running with cancel_requested_at recorded. Poll creo_get_job after cancelling; this tool never retries, never restarts Creo and never deletes user files."""
+    return await invoke(general.cancel_job, job_id)
 
 
 @mcp.tool(annotations=CREATE)
@@ -885,6 +899,16 @@ async def creo_execute_plan(
     Sketch/extrude/revolve and later features reference earlier feature labels.
     Existing models require expected_revision. Stops at first error; existing models
     roll back to their saved checkpoint. assertions supports require_solid and volume_mm3.
+
+    An extrude may name one closed region of an earlier sketch with
+    region={signature_yz_mm, frame?, tolerance_mm?} instead of consuming the whole
+    sketch (FEAT-069/P1). The signature is matched offline against the sketch's own
+    entity endpoints; exactly one loop must match. A derived sketch with the same
+    plane and copied entities is inserted immediately before the extrude, and the
+    response/job record carries region_adaptation (source label, derived label,
+    signature hash, entity names). Only coordinate-defined sketches with simple
+    closed loops are accepted; circles/rectangles/ellipses cannot be named by a
+    boundary signature, and this is not a native sketch-region selection.
 
     Main-plane offset is a plane_coordinate: XY -> origin [0,0,offset], normal [0,0,1];
     YZ -> origin [offset,0,0], normal [1,0,0]; XZ -> origin [0,offset,0], normal
@@ -1939,6 +1963,8 @@ async def creo_sheetmetal_base_flange(
     k_factor: float = 0.5,
     plane: Literal["XY", "XZ", "YZ"] = "XY",
     origin: list[float] | None = None,
+    expected_width_direction_world: list[float] | None = None,
+    width_direction_tolerance_deg: float = 0.5,
 ) -> dict[str, Any]:
     """Create a first sheetmetal wall from an open two-line (90 degree) chain, as two features.
 
@@ -1967,22 +1993,30 @@ async def creo_sheetmetal_base_flange(
     Verification is measured: read the operation result's composed_features (the two real
     features with their ids), first_leg_mm/second_leg_mm/width_mm/thickness_mm/radius_mm/
     k_factor/y_factor, volume_mm3 against expected_volume_mm3, and envelope.u/v/n.
+
+    expected_width_direction_world / width_direction_tolerance_deg are the same assertion
+    creo_execute_plan accepts (BUG-129): when the measured width direction differs from the
+    expected world vector by more than the tolerance, the job fails and rolls back. They only
+    assert; they never rotate the wall, so a mismatch means choosing another plane or the
+    planar_wall + flange path.
     """
+    operation: dict[str, Any] = {
+        "op": "sheetmetal_base_flange",
+        "label": label,
+        "plane": plane,
+        "section": section,
+        "width": width,
+        "thickness": thickness,
+        "radius": radius,
+        "k_factor": k_factor,
+        "origin": list(origin) if origin is not None else [0.0, 0.0],
+    }
+    if expected_width_direction_world is not None:
+        operation["expected_width_direction_world"] = list(expected_width_direction_world)
+        operation["width_direction_tolerance_deg"] = width_direction_tolerance_deg
     payload = await invoke(
         general.submit,
-        [
-            {
-                "op": "sheetmetal_base_flange",
-                "label": label,
-                "plane": plane,
-                "section": section,
-                "width": width,
-                "thickness": thickness,
-                "radius": radius,
-                "k_factor": k_factor,
-                "origin": list(origin) if origin is not None else [0.0, 0.0],
-            }
-        ],
+        [operation],
         model_id,
         None,
         expected_revision,
@@ -2627,6 +2661,17 @@ async def creo_save_model(model_id: str, expected_revision: int) -> dict[str, An
 async def creo_export_model(
     model_id: str,
     format: Literal["step", "stl", "iges", "jpeg", "pdf", "native_bundle"] = "step",
+    stl_options: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description=(
+                "STL only: optional quality request such as "
+                '{"chord_height_mm": 0.05, "angle_control": 0.1}. '
+                "Values are validated before the job is queued; the receipt repeats "
+                "the requested values and the native values passed to Creo."
+            )
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Export STEP/STL/IGES/JPEG, drawing PDF/JPEG, or an explicit native assembly bundle.
 
@@ -2636,10 +2681,16 @@ async def creo_export_model(
     rendered ``path``) for the view to display; a model without geometry reports
     ``status="skipped_no_geometry"`` and a render failure reports ``status="failed"``
     with ``failed_step``/``failed_code`` instead of a picture.
+
+    ``stl_options`` is accepted only with ``format="stl"``. Unknown keys,
+    booleans, NaN/Inf, a non-positive chord height, or an angle control outside
+    ``0.0..1.0`` are rejected before submission. Omitting it keeps the previous
+    behavior (0.05 mm chord height, 0.1 angle control).
     """
-    return await invoke(
-        general.submit, [{"op": "export", "format": format}], model_id, None, None, None, True
-    )
+    operation: dict[str, Any] = {"op": "export", "format": format}
+    if stl_options is not None:
+        operation["stl_options"] = stl_options
+    return await invoke(general.submit, [operation], model_id, None, None, None, True)
 
 
 @mcp.tool(annotations=READ)

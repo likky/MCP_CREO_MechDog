@@ -9,6 +9,16 @@
 - 环境：Windows x64；Python 3.12 虚拟环境（`.venv`）；`gh` 已登录；源码目录 `C:\i0182`（`origin/main` 的独立工作树，0.18.2 开发分支），核对对象是已发布远端 Release，不受工作区改动影响。
 - 命令输出原文见本轮 `build/postcheck/postcheck.log`；下表 digest 由 GitHub Release API 的 `assets[].digest` 读出，与本地重算结果一致。
 
+## v0.27.0（2026-11-17）
+
+- 版本与范围：`0.27.0` MINOR 部分交付，公开工具 108→109；交付 [BUG-130](../work-items/BUG-130.md)、[BUG-131](../work-items/BUG-131.md)、[BUG-132](../work-items/BUG-132.md)、[FEAT-069](../work-items/FEAT-069.md)、[BUG-122](../work-items/BUG-122.md)、[DEV-090](../work-items/DEV-090.md)、[BUG-129](../work-items/BUG-129.md) 与 [BUG-106](../work-items/BUG-106.md) 的已完成子项；BUG-020 已归档，发布记录见 [RELEASE-0.27.0](../validation/RELEASE-0.27.0.md)。
+- 打包顺序：`tools\package_seeds.py` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools\package.py` → 标签/发布 → `tools\check_release_assets.py` 远端复核。
+- 种子包 SHA256 `72cdd8053298981b7fc9ac6665bb66033b9f91daacd4194d3360d2bc0389b36f`（24 个文件、9 个种子，两次构建摘要一致；包内 `seed_manifest.json` 声明 `compatible_server_version=0.27.0`）。
+- 源码包由发布提交源码构建，字节数与 SHA256 见同名 sidecar，不写入包内文件。
+- Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.27.0`；四附件为 `MCP_CREO_MechDog-0.27.0-source.zip`、`MCP_CREO_MechDog-0.27.0-source.zip.sha256`、`MCP_CREO_MechDog-0.27.0-seed-library.zip` 与 `MCP_CREO_MechDog-0.27.0-seed-library.zip.sha256`。
+- 发布后核对：发布后执行，当前未验证。本段在冻结包内是打包时点快照；实际 Release id、发布时间、标签对象、远端 digest 与本地重算只追加到 `main` 的同一段，不改写包内副本。
+- 本版修改 `native/generic.cpp`、`native/stl_export.h`、`native/geometry_selectors.cpp`、`native/advanced.cpp`，升级后必须重编译 worker。
+
 ## v0.26.0（2026-11-16）
 
 - 版本与范围：`0.26.0` MINOR 部分交付，公开工具仍 108；交付 [DEV-083](../work-items/DEV-083.md)、[DEV-090](../work-items/DEV-090.md)、[DEV-091](../work-items/DEV-091.md)、[BUG-129](../work-items/BUG-129.md)、[FEAT-068](../work-items/FEAT-068.md) 与 [FEAT-069](../work-items/FEAT-069.md) 的已完成子项，发布记录见 [RELEASE-0.26.0](../validation/RELEASE-0.26.0.md)。

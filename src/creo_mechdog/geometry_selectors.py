@@ -27,6 +27,13 @@ The frozen batch-1 vocabulary is deliberately narrow:
   ``center_mm`` is compared as the perpendicular distance to the axis line, not
   as an absolute cylinder parameter origin: the SDK origin along an axis is not
   unique, so comparing it would reject copies of the same physical cylinder.
+* ``coaxial: "any"`` is an explicit opt-in for a ``concentric``/``insert``
+  reference: a full cylinder is often reported as two coaxial half faces, and
+  insert only needs their common axis. It requires ``radius_mm`` and ``axis``,
+  accepts several matching cylinder pieces, and picks the lowest id
+  deterministically. It is refused on round/chamfer/flange anchors and on
+  ``mate``/``coincident`` references; the default still requires exactly one
+  face.
 * A planar surface is compared as the unbounded plane (normal plus distance), not
   the trimmed face boundary, so a point elsewhere on the same plane still
   matches. Separate two coplanar faces with another filter or an explicit id.
@@ -74,6 +81,7 @@ _ALLOWED_KEYS = frozenset(
         "tolerance_mm",
         "axis_tolerance_deg",
         "coordinate_space",
+        "coaxial",
     }
 )
 
@@ -87,7 +95,9 @@ DESCRIPTION = (
     "It must match exactly one current model item; zero or multiple matches are refused. "
     "coordinate_space is 'model' (default) or 'assembly'; an assembly-space selector is only "
     "valid on the assembly side of a component constraint that names the placed "
-    "assembly_component and is mapped into that component's frame by the executor."
+    "assembly_component and is mapped into that component's frame by the executor. "
+    "A surface selector may set coaxial:'any' only on an insert/concentric reference; it requires "
+    "radius_mm+axis and accepts several coaxial cylinder pieces instead of exactly one face."
 )
 
 
@@ -142,6 +152,11 @@ def validate_geometry_selector(value: Any, path: str = "selector") -> dict[str, 
     target = value.get("target")
     if target not in SELECTOR_TARGETS:
         raise ValueError(f"{path}.target must be 'edge' or 'surface'; " + DESCRIPTION)
+    if "coaxial" in value and target != "surface":
+        raise ValueError(
+            f"{path}.coaxial is only valid on a surface selector: it relaxes a coaxial "
+            "cylinder choice, not an edge choice"
+        )
 
     if "tolerance_mm" not in value:
         raise ValueError(
@@ -260,7 +275,28 @@ def validate_geometry_selector(value: Any, path: str = "selector") -> dict[str, 
                 f"{path}.radius_mm must be greater than 0 and at most {MAX_TOLERANCE_MM} mm"
             )
         normalized["radius_mm"] = radius
+    if "coaxial" in value:
+        if value["coaxial"] != "any":
+            raise ValueError(
+                f"{path}.coaxial must be 'any' (the only admitted relaxation); got "
+                f"{value['coaxial']!r}"
+            )
+        if "radius_mm" not in normalized or "axis" not in normalized:
+            raise ValueError(
+                f"{path}.coaxial='any' requires radius_mm and axis: only coaxial cylinder "
+                "pieces are interchangeable for insert/concentric"
+            )
+        normalized["coaxial"] = "any"
     return normalized
+
+
+def _reject_coaxial_anchor(selector: Any, where: str) -> None:
+    """coaxial='any' is an assembly-constraint relaxation, never a feature anchor."""
+    if isinstance(selector, dict) and selector.get("coaxial") is not None:
+        raise ValueError(
+            f"{where}: coaxial is only valid on a component_constraints insert/concentric "
+            "reference; round/chamfer/flange anchors must name one face"
+        )
 
 
 def validate_reference_list(references: list[dict[str, Any]], path: str) -> None:
@@ -275,13 +311,16 @@ def validate_reference_list(references: list[dict[str, Any]], path: str) -> None
         if not isinstance(reference, dict):
             continue
         if is_geometry_selector(reference):
+            _reject_coaxial_anchor(reference, where)
             validate_geometry_selector(reference, where)
             continue
         edge = reference.get("edge")
         if is_geometry_selector(edge):
+            _reject_coaxial_anchor(edge, f"{where}.edge")
             validate_geometry_selector(edge, f"{where}.edge")
         surfaces = reference.get("surfaces")
         if isinstance(surfaces, list):
             for slot, surface in enumerate(surfaces):
                 if is_geometry_selector(surface):
+                    _reject_coaxial_anchor(surface, f"{where}.surfaces[{slot}]")
                     validate_geometry_selector(surface, f"{where}.surfaces[{slot}]")

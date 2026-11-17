@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -22,6 +24,7 @@ from creo_mechdog.capabilities import (
 )
 from creo_mechdog.model_queries import inspect_page, list_page, model_summary
 from creo_mechdog.schema import Assertions, LoftOp, validate_operations
+from creo_mechdog.sketch_regions import adapt_region_extrudes
 
 MODELS = bridge.ROOT / "models"
 
@@ -462,6 +465,271 @@ def job_timeout_seconds(request: dict) -> int:
     return int(bridge.config().get("generic_timeout_seconds", 600))
 
 
+#: BUG-131: cancellation is its own terminal status; every other terminal value
+#: is reported as-is, so a second cancel never invents a new outcome.
+CANCEL_TERMINAL_STATUSES = ("succeeded", "failed", "unknown_outcome", "cancelled")
+CANCEL_ACTIVE_STATUSES = ("queued", "running")
+#: BUG-131: a native worker whose log stops growing for this long counts as
+#: stalled. The regular job budget still applies; 0 disables the watchdog.
+STALL_WATCHDOG_SECONDS = 600
+WORKER_POLL_SECONDS = 2.0
+TERMINATION_SECONDS = 30
+
+
+class WorkerStalled(RuntimeError):
+    """The native worker wrote nothing for the whole stall budget."""
+
+
+def stall_watchdog_seconds() -> int:
+    value = bridge.config().get("generic_stall_seconds", STALL_WATCHDOG_SECONDS)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return STALL_WATCHDOG_SECONDS
+    return value
+
+
+def _terminate_process_tree(pid: object) -> dict:
+    """Kill a runner and its worker child; report what was actually attempted.
+
+    ``taskkill /T /F`` is the only reliable way to include the native worker on
+    Windows. A missing pid is not an error: the job may already be gone.
+    """
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+        return {"attempted": False, "reason": "no_runner_pid"}
+    command = (
+        ["taskkill", "/PID", str(pid), "/T", "/F"]
+        if os.name == "nt"
+        else ["kill", "-TERM", str(pid)]
+    )
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=TERMINATION_SECONDS,
+            creationflags=bridge.HIDDEN,
+        )
+    except Exception as exc:  # noqa: BLE001 - reported as termination evidence
+        return {"attempted": True, "pid": pid, "error": str(exc)}
+    output = (completed.stdout or completed.stderr or "").strip()
+    return {
+        "attempted": True,
+        "pid": pid,
+        "returncode": completed.returncode,
+        "output": output[-400:],
+    }
+
+
+def cancel_job(job_id: str) -> dict:
+    """Cancel a queued/running job. Cancellation is not a rollback.
+
+    The job record is the authority: a terminal job is reported unchanged. A
+    job killed after its worker started becomes ``unknown_outcome`` and keeps
+    the model reservation, because geometry may already have been applied. Only
+    a job killed before any worker start returns the model to its prior state.
+    """
+    if not isinstance(job_id, str) or not bridge.JOB_ID.fullmatch(job_id):
+        raise ValueError("job_id must be the 32-character id returned by a modeling tool")
+    directory = bridge.job_path(job_id)
+    manifest_file = directory / "job.json"
+    if not manifest_file.is_file():
+        raise ValueError(f"Unknown job_id {job_id}; it has no job record")
+    manifest = bridge.read_json(manifest_file)
+    status = manifest.get("status")
+    if status in CANCEL_TERMINAL_STATUSES:
+        return {
+            "job_id": job_id,
+            "status": status,
+            "cancelled": False,
+            "message": "Job already reached a terminal status; nothing was cancelled",
+        }
+    if status not in CANCEL_ACTIVE_STATUSES:
+        raise ValueError(f"Job status {status!r} is not cancellable")
+    requested_at = bridge.now()
+    manifest["cancel_requested_at"] = requested_at
+    bridge.write_json(manifest_file, manifest, durable=True)
+    claim = bridge.channel_claim()
+    runner_pid = manifest.get("runner_pid")
+    if not isinstance(runner_pid, int) and claim.get("job_id") == job_id:
+        runner_pid = claim.get("runner_pid")
+    started = bool(manifest.get("worker_started"))
+    termination = _terminate_process_tree(runner_pid)
+    confirmed = termination.get("returncode") == 0 or runner_pid is None
+    # The runner is the only writer of a terminal job record; re-read it so a job
+    # that finished between the check and the kill keeps its real outcome.
+    latest = bridge.read_json(manifest_file)
+    if latest.get("status") in CANCEL_TERMINAL_STATUSES:
+        return {
+            "job_id": job_id,
+            "status": latest["status"],
+            "cancelled": False,
+            "termination": termination,
+            "message": "Job finished before the cancellation took effect; inspect its result",
+        }
+    if not confirmed:
+        manifest["stage"] = "cancel_requested"
+        bridge.write_json(manifest_file, manifest, durable=True)
+        return {
+            "job_id": job_id,
+            "status": status,
+            "cancelled": False,
+            "cancel_requested_at": requested_at,
+            "termination": termination,
+            "message": (
+                "Cancellation was recorded but the runner could not be terminated; "
+                "poll the job or stop the process before retrying"
+            ),
+        }
+    outcome = "unknown_outcome" if started else "cancelled"
+    finished = bridge.now()
+    manifest.update(
+        status=outcome,
+        stage="cancel_unconfirmed" if started else "cancelled_before_worker",
+        finished_at=finished,
+        cancelled_at=finished,
+        message=(
+            "Cancelled after the native worker started; geometry may already have been applied. "
+            "Inspect the model, then finish with creo_session_status and creo_reconcile_model."
+            if started
+            else "Cancelled before any native worker started; no geometry was submitted."
+        ),
+        cancellation={
+            "requested_at": requested_at,
+            "runner_pid": runner_pid,
+            "worker_started": started,
+            "geometry_may_have_changed": started,
+            "termination": termination,
+        },
+    )
+    bridge.write_json(manifest_file, manifest, durable=True)
+    if termination.get("returncode") == 0:
+        bridge.clear_channel_claim(job_id)
+    try:
+        request = bridge.read_json(directory / "request.json")
+    except (OSError, ValueError):
+        request = {}
+    model_id = manifest.get("model_id") or request.get("model", {}).get("model_id")
+    model_status = None
+    if isinstance(model_id, str) and bridge.JOB_ID.fullmatch(model_id):
+        try:
+            record = model_info(model_id)
+        except (OSError, ValueError):
+            record = None
+        if record is not None and record.get("pending_job") == job_id:
+            if started:
+                record["status"] = "unknown_outcome"
+            else:
+                record["pending_job"] = None
+                record["status"] = "failed" if request.get("new") else "ready"
+            record["updated_at"] = finished
+            model_registry.write_model(model_path(model_id), record)
+            model_status = record["status"]
+    return {
+        "job_id": job_id,
+        "status": outcome,
+        "cancelled": True,
+        "model_id": model_id,
+        "model_status": model_status,
+        "worker_started": started,
+        "geometry_may_have_changed": started,
+        "termination": termination,
+        "next_steps": (
+            [
+                "creo_session_status: confirm the live model state",
+                "creo_reconcile_model: inspect and resolve the unknown outcome",
+            ]
+            if started
+            else ["The model is reusable; submit a new plan when ready"]
+        ),
+    }
+
+
+def _run_worker_with_watchdog(
+    exe: Path, directory: Path, request: dict, manifest: dict, log
+) -> int:
+    """Run the native worker under the job budget and the stall watchdog."""
+    budget = job_timeout_seconds(request)
+    stall = stall_watchdog_seconds()
+    stop = threading.Event()
+    stall_state: dict = {}
+    watcher = None
+    if stall:
+        watcher = threading.Thread(
+            target=_watch_worker_log,
+            args=(directory, stop, stall_state),
+            name="creo-worker-watchdog",
+            daemon=True,
+        )
+        watcher.start()
+    try:
+        proc = subprocess.run(
+            [str(exe), "generic", str(directory)],
+            cwd=directory,
+            env=bridge.native_environment(),
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            timeout=budget,
+            creationflags=bridge.HIDDEN,
+        )
+    finally:
+        stop.set()
+        if watcher is not None:
+            watcher.join(timeout=TERMINATION_SECONDS)
+    if stall_state.get("stalled"):
+        manifest["stall_watchdog"] = stall_state
+        raise WorkerStalled(str(stall_state.get("message")))
+    return proc.returncode
+
+
+def _worker_owner_pid(directory: Path) -> int | None:
+    """The native worker's own recorded pid, written before it touches Creo."""
+    try:
+        owner = bridge.read_json(directory / "native_owner.json")
+    except (OSError, ValueError):
+        return None
+    pid = owner.get("pid")
+    return pid if isinstance(pid, int) and not isinstance(pid, bool) and pid > 0 else None
+
+
+def _watch_worker_log(directory: Path, stop: threading.Event, state: dict) -> None:
+    """Kill a native worker whose log stopped growing for the stall budget.
+
+    The worker records its pid in ``native_owner.json`` before it opens Creo, so
+    a log that goes silent can be attributed to a live process instead of
+    waiting for the much larger job budget. Without a recorded pid nothing is
+    killed; the job budget remains the backstop.
+    """
+    budget = stall_watchdog_seconds()
+    last_size = 0
+    last_growth = time.monotonic()
+    while not stop.wait(WORKER_POLL_SECONDS):
+        now = time.monotonic()
+        try:
+            size = (directory / "worker.log").stat().st_size
+        except OSError:
+            size = last_size
+        if size > last_size:
+            last_size = size
+            last_growth = now
+        if now - last_growth < budget:
+            continue
+        silent = round(now - last_growth)
+        termination = _terminate_process_tree(_worker_owner_pid(directory))
+        state.update(
+            stalled=True,
+            budget_seconds=budget,
+            silent_seconds=silent,
+            log_bytes=last_size,
+            source="generic_stall_seconds",
+            termination=termination,
+            message=(
+                f"Native worker log stopped growing for {silent} s (budget {budget} s); "
+                "the worker was terminated and the outcome is unknown. Inspect the model "
+                "and finish with creo_reconcile_model"
+            ),
+        )
+        return
+
+
 def submit(
     operations: list[dict],
     model_id: str | None = None,
@@ -475,6 +743,10 @@ def submit(
     timeout_seconds: int | None = None,
 ) -> dict:
     timeout_seconds = validate_executor_timeout(timeout_seconds)
+    # FEAT-069/P1: an extrude.region is resolved against the plan's own sketch
+    # and replaced by a derived single-loop sketch before admission, so the
+    # worker never receives an operation it cannot interpret.
+    operations, region_adaptation = adapt_region_extrudes(operations)
     operations = validate_operations(operations)
     require_available(operations)
     # BUG-124/C1: the documented importer creates the model itself. A plan that
@@ -496,7 +768,7 @@ def submit(
         if model_type != "part":
             raise ValueError(f"import_geometry imports into a part model, not into a {model_type}")
     if any(op["op"] in WORKER_CONDITIONAL_OPERATIONS for op in operations):
-        identity = bridge.worker_build_identity()
+        identity = bridge.surface_loft_admission_identity()
         require_worker_availability(operations, identity)
         require_kernel_completion(operations, identity)
     assertions = Assertions.model_validate(assertions or {}).model_dump(exclude_none=True)
@@ -830,6 +1102,8 @@ def submit(
         }
         if loft_seed:
             request["loft_seed"] = loft_seed
+        if region_adaptation:
+            request["region_adaptation"] = region_adaptation
         manifest = {
             "job_id": job_id,
             "kind": "generic",
@@ -854,6 +1128,8 @@ def submit(
         }
         if loft_seed:
             manifest["construction"] = "native_multisection_blend_seed_rebinding"
+        if region_adaptation:
+            manifest["region_adaptation"] = region_adaptation
         bridge.write_json(directory / "request.json", request)
         bridge.write_json(directory / "job.json", manifest)
         try:
@@ -949,6 +1225,7 @@ def run_generic_job(job_id: str, manifest: dict):
     result_inspection = None
     result = None
     worker_started = False
+    returncode = None
     try:
         with bridge.toolkit_lock(
             wait_seconds=120, operation="execute_plan", job_id=job_id, model_id=model["model_id"]
@@ -968,20 +1245,12 @@ def run_generic_job(job_id: str, manifest: dict):
                     worker_started = True
                     manifest["worker_started"] = True
                     bridge.write_json(directory / "job.json", manifest)
-                    proc = subprocess.run(
-                        [str(exe), "generic", str(directory)],
-                        cwd=directory,
-                        env=bridge.native_environment(),
-                        stdout=log,
-                        stderr=subprocess.STDOUT,
-                        timeout=job_timeout_seconds(request),
-                        creationflags=bridge.HIDDEN,
-                    )
+                    returncode = _run_worker_with_watchdog(exe, directory, request, manifest, log)
                 result_file = directory / "native_result.json"
                 if not result_file.exists():
                     manifest.update(
                         status="unknown_outcome",
-                        message=f"Native worker exited {proc.returncode} without a result; inspect Creo before retrying",
+                        message=f"Native worker exited {returncode} without a result; inspect Creo before retrying",
                     )
                     model["status"] = "unknown_outcome"
                 else:
@@ -1016,6 +1285,12 @@ def run_generic_job(job_id: str, manifest: dict):
                     from creo_mechdog import preview
 
                     preview.apply_preview_projection(result, directory=directory)
+                    # BUG-020: Creo writes <model>__out.log.N next to STEP/IGES
+                    # output. Move only this job's log excerpts into
+                    # output/diagnostics and report both lists.
+                    from creo_mechdog import export_artifacts
+
+                    export_artifacts.apply(result, directory, request["operations"])
                     if result.get("success") and any(
                         op.get("op") == "export" and op.get("format") == "native_bundle"
                         for op in request["operations"]
@@ -1049,7 +1324,20 @@ def run_generic_job(job_id: str, manifest: dict):
                             # stage and session release behind it.
                             result["native_message"] = result.get("message")
                             result["message"] = seed_compatibility.load_failure_message(result)
-                    if (
+                    if result.get("panel_execution_unconfirmed") is True:
+                        # BUG-120: a panel can exit without confirming the
+                        # requested operation, even if transport and save
+                        # delivery look successful. Keep the reservation until
+                        # a human reconciles the actual Creo model.
+                        manifest.update(
+                            status="unknown_outcome",
+                            message=(
+                                "Native panel exit and requested operation were not confirmed; "
+                                "inspect Creo and the checkpoint before recovery"
+                            ),
+                        )
+                        model["status"] = "unknown_outcome"
+                    elif (
                         result.get("disconnect_code") not in (None, 0)
                         or result.get("delivery_complete") is False
                     ):
@@ -1058,7 +1346,7 @@ def run_generic_job(job_id: str, manifest: dict):
                             message="Native finalization was not confirmed; preserve saved files and inspect the checkpoint",
                         )
                         model["status"] = "unknown_outcome"
-                    elif proc.returncode == 0 and result.get("success"):
+                    elif returncode == 0 and result.get("success"):
                         if not request["readonly"] and not result.get(
                             "saved_file_reloaded_and_verified"
                         ):
@@ -1144,6 +1432,12 @@ def run_generic_job(job_id: str, manifest: dict):
                     if worker_started
                     else ("ready" if model.get("part_file") else "failed")
                 )
+            except WorkerStalled as exc:
+                # BUG-131: a silent worker is killed and reported as unknown; the
+                # watchdog evidence (budget, silent seconds, log bytes) already
+                # rides on the manifest so the stall is visible while polling.
+                manifest.update(status="unknown_outcome", message=str(exc))
+                model["status"] = "unknown_outcome"
             except Exception as exc:
                 manifest.update(
                     status="unknown_outcome" if worker_started else "failed", message=str(exc)

@@ -1,0 +1,124 @@
+{
+  "job_id": "43c6f63623ca409e87aa3f35e9d027fa",
+  "batch_id": "43c6f63623ca409e87aa3f35e9d027fa",
+  "kind": "adoption_file_inspect",
+  "status": "succeeded",
+  "created_at": "2026-11-17T09:19:00.196368+00:00",
+  "items": [
+    {
+      "index": 0,
+      "input_path": "D:\\my\\MCP_CREO_MechDog\\test_runs\\2026-11-17_t1b_id_driven_blend\\work\\a2_save\\t1b_a_03.prt.1",
+      "status": "eligible",
+      "file": {
+        "path": "D:\\my\\MCP_CREO_MechDog\\test_runs\\2026-11-17_t1b_id_driven_blend\\work\\a2_save\\t1b_a_03.prt.1",
+        "size_bytes": 100494,
+        "sha256": "48cfe0c6b2dfccbf6ba551a0b50e969fb2b2d338e4e65ebeb3db9a59b3bcccf3"
+      },
+      "selected_path": "D:\\my\\MCP_CREO_MechDog\\test_runs\\2026-11-17_t1b_id_driven_blend\\work\\a2_save\\t1b_a_03.prt.1",
+      "model_type": "part",
+      "evidence_job_id": "4ca7cebb327c4ce1825211c936490508",
+      "inspection_warnings": [
+        {
+          "stage": "live",
+          "reason_code": "native_sidecar_write_failed",
+          "fallback_status": "verified",
+          "message": "Native sidecar write failed; Python fallback was verified"
+        }
+      ],
+      "model_id": "f65ac145ec544c04939755b55d89fa57",
+      "native_evidence": {
+        "resident_set_changed": true,
+        "path_source_state": {
+          "disk_resident_content_equality": "retrieved_from_selected_file",
+          "modified": false,
+          "origin": "D:\\my\\MCP_CREO_MechDog\\test_runs\\2026-11-17_t1b_id_driven_blend\\work\\a2_save\\t1b_a_03.prt.1",
+          "provenance": "fresh_retrieval",
+          "session_model_id": 3145732,
+          "sha256": "48cfe0c6b2dfccbf6ba551a0b50e969fb2b2d338e4e65ebeb3db9a59b3bcccf3",
+          "version_stamp": "195"
+        },
+        "delivery_complete": true,
+        "disconnect_code": 0
+      },
+      "source": {
+        "dependency_free": true,
+        "display_name": "T1B_A_03",
+        "feature_count": 13,
+        "health_details": {
+          "item_limit": 20,
+          "items": [],
+          "returned": 0,
+          "truncated": false,
+          "unhealthy_total": 0
+        },
+        "healthy": true,
+        "millimeter_units": true,
+        "model_type": "part",
+        "origin": "D:\\my\\MCP_CREO_MechDog\\test_runs\\2026-11-17_t1b_id_driven_blend\\work\\a2_save\\t1b_a_03.prt.1",
+        "resident_set_changed": true,
+        "session_fingerprint": "13719338321783973708",
+        "source_state": {
+          "disk_resident_content_equality": "retrieved_from_selected_file",
+          "modified": false,
+          "origin": "D:\\my\\MCP_CREO_MechDog\\test_runs\\2026-11-17_t1b_id_driven_blend\\work\\a2_save\\t1b_a_03.prt.1",
+          "provenance": "fresh_retrieval",
+          "session_model_id": 3145732,
+          "sha256": "48cfe0c6b2dfccbf6ba551a0b50e969fb2b2d338e4e65ebeb3db9a59b3bcccf3",
+          "version_stamp": "195"
+        },
+        "volume_mm3": null,
+        "inspection_ref": {
+          "file": "D:\\my\\MCP_CREO_MechDog\\jobs\\4ca7cebb327c4ce1825211c936490508\\inspection-live-447d536e0918e230.json",
+          "sha256": "447d536e0918e230925ac17faea26a1b73fdccb5a427778f04e1cf8beb59e316",
+          "bytes": 22754
+        },
+        "inspection_summary": {
+          "healthy": true,
+          "has_solid": false,
+          "units": "mm",
+          "units_query_code": 0,
+          "length_unit": {
+            "name": "mm",
+            "query_code": 0,
+            "scale_query_codes": {
+              "conversion": 0,
+              "mm_unit": 0,
+              "unit": 0
+            },
+            "scale_to_mm": 1.0,
+            "scale_to_mm_known": true
+          },
+          "center_of_gravity": null,
+          "model_type": "part",
+          "volume_mm3": null,
+          "volume_query_code": null,
+          "counts": {
+            "features": 13,
+            "surfaces": 0,
+            "edges": 0,
+            "quilts": 1,
+            "bodies": 1,
+            "components": null
+          },
+          "body_counts": {
+            "objects": 1,
+            "records": 1,
+            "active": 0,
+            "with_material": 0,
+            "without_material": 1,
+            "counts_meaning": {
+              "bodies": "body_objects",
+              "with_material": "active_bodies_with_surfaces"
+            }
+          },
+          "inspection_available": true
+        }
+      }
+    }
+  ],
+  "item_count": 1,
+  "evidence_token": "3b9bef5dac3948a4851746497732bc34",
+  "expires_in_seconds": 600,
+  "finished_at": "2026-11-17T09:19:05.802041+00:00",
+  "available": true
+}

@@ -1,12 +1,15 @@
 """DEV-089 T1: frozen geometric anchor selector contract."""
 
 import unittest
+from pathlib import Path
 
 from creo_mechdog.geometry_selectors import (
     GEOMETRY_SELECTOR_KIND,
     validate_geometry_selector,
 )
-from creo_mechdog.schema import RoundOp, SheetmetalFlangeOp, validate_operations
+from creo_mechdog.schema import ChamferOp, RoundOp, SheetmetalFlangeOp, validate_operations
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def edge_selector(**overrides):
@@ -214,6 +217,82 @@ class GeometrySelectorContractTests(unittest.TestCase):
             {"op": "sheetmetal_flange", "label": "fl1", "edge": selector, "height": 10}
         )
         self.assertEqual(flange.edge["point_mm"], [0.0, 0.0, 20.0])
+
+
+def coaxial_selector(**overrides):
+    selector = surface_selector(axis=[0, 0, 1], radius_mm=27.5, center_mm=[0, 0, 0], coaxial="any")
+    selector.update(overrides)
+    return selector
+
+
+class CoaxialSelectorContractTests(unittest.TestCase):
+    """BUG-132: coaxial='any' is an explicit insert/concentric relaxation."""
+
+    def test_coaxial_any_is_kept_and_needs_a_cylinder_filter(self):
+        normalized = validate_geometry_selector(coaxial_selector())
+        self.assertEqual(normalized["coaxial"], "any")
+        self.assertEqual(normalized["radius_mm"], 27.5)
+        for bad in (
+            surface_selector(coaxial="any"),
+            coaxial_selector(coaxial="nearest"),
+            edge_selector(coaxial="any"),
+        ):
+            with self.subTest(selector=bad), self.assertRaises(ValueError):
+                validate_geometry_selector(bad)
+
+    def test_feature_anchors_refuse_coaxial_any(self):
+        with self.assertRaises(ValueError):
+            RoundOp.model_validate(
+                {
+                    "op": "round",
+                    "label": "r1",
+                    "size": 1,
+                    "references": [{"surfaces": [coaxial_selector()]}],
+                }
+            )
+        with self.assertRaises(ValueError):
+            ChamferOp.model_validate(
+                {
+                    "op": "chamfer",
+                    "label": "c1",
+                    "size": 1,
+                    "references": [{"edge": edge_selector()}],
+                    "chamfer_type": "distance_angle",
+                    "angle_deg": 45,
+                    "angle_reference": coaxial_selector(),
+                }
+            )
+
+    def test_plan_walk_refuses_coaxial_outside_constraints(self):
+        with self.assertRaises(ValueError):
+            validate_operations(
+                [
+                    {
+                        "op": "round",
+                        "label": "r1",
+                        "size": 1,
+                        "references": [{"surfaces": [coaxial_selector()]}],
+                    }
+                ]
+            )
+
+
+class BUG132NativeDiagnosisSourceTests(unittest.TestCase):
+    """The native refusal text is the user-facing diagnosis; keep it typed."""
+
+    def test_surface_error_lists_ids_with_types_and_type_mismatch(self):
+        source = (ROOT / "native" / "geometry_selectors.cpp").read_text(encoding="utf-8")
+        self.assertIn("selector_surface_list", source)
+        self.assertIn("type_rejected_ids", source)
+        self.assertIn("type_rejected_types", source)
+        self.assertIn("it is not a surface-type", source)
+        self.assertIn("coaxial_any", source)
+
+    def test_constraint_type_message_separates_radius_from_type(self):
+        source = (ROOT / "native" / "advanced.cpp").read_text(encoding="utf-8")
+        self.assertIn("radius_mm was supplied", source)
+        self.assertIn("not a surface-type filter", source)
+        self.assertIn("coaxial:'any'", source)
 
 
 if __name__ == "__main__":

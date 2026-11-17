@@ -29,6 +29,8 @@ ACTIONS = (
 )
 # BUG-110: actions that touch a saved model or its component ownership stay
 # limited to parts and sheetmetal; the two acknowledgements are metadata-only.
+# BUG-131 adds one exception: abandon_new is also valid for a new assembly with
+# no saved file and revision 0, because it owns nothing yet.
 COMPONENT_ACTIONS = ("restore_baseline", "accept_saved", "accept_live", "abandon_new")
 TERMINAL_FAILURE_STATUSES = ("failed", "unknown_outcome")
 TOKEN_SECONDS = 600
@@ -549,13 +551,34 @@ def _snapshot(model_id: str) -> dict:
     }
 
 
+def _pending_job_status(model: dict) -> str | None:
+    """Status of the model's pending job, or None when it cannot be read."""
+    job_id = model.get("pending_job")
+    if not isinstance(job_id, str) or not bridge.JOB_ID.fullmatch(job_id):
+        return None
+    try:
+        return bridge.get_job(job_id, "compact").get("status")
+    except (OSError, ValueError):
+        return None
+
+
 def _actions(snapshot: dict, live: dict | None) -> dict:
     model = snapshot["model"]
-    stopped = bool(snapshot["owners"]) and all(o["stopped"] for o in snapshot["owners"])
+    # BUG-131 live cancel: a job cancelled before the worker started releases
+    # pending_job and may leave no job evidence at all, so owners is empty.
+    # There is then no runner/worker to stop; requiring a non-empty owner list
+    # turned a successful cancel into "cannot be proven stopped" and blocked
+    # every recovery action. Empty owners is vacuously stopped.
+    stopped = all(owner["stopped"] for owner in snapshot["owners"])
     baseline = snapshot["baseline"] or {}
     candidate = snapshot["candidate"] or {}
     health = inspection_refs.summary_of(live).get("healthy") is True
     supported = model.get("model_type", "part") in ("part", "sheetmetal")
+    uncommitted = not model.get("part_file") and model.get("revision") == 0
+    # BUG-131: a brand-new assembly has no committed geometry and no component
+    # ownership to preserve, so erasing it is exactly abandon_new's contract.
+    # An assembly with a saved revision keeps the part/sheetmetal limit.
+    abandon_supported = supported or (model.get("model_type") == "assembly" and uncommitted)
     conditions = {
         "restore_baseline": baseline.get("verified")
         and bool(model.get("inspection") or model.get("inspection_ref")),
@@ -567,7 +590,7 @@ def _actions(snapshot: dict, live: dict | None) -> dict:
         and health
         and live.get("millimeter_units")
         and live.get("dependency_free"),
-        "abandon_new": not model.get("part_file") and model.get("revision") == 0,
+        "abandon_new": uncommitted,
     }
     if model.get("status") == "adopt_pending":
         # Adoption requires explicit confirmation, not recovery acceptance of
@@ -576,7 +599,12 @@ def _actions(snapshot: dict, live: dict | None) -> dict:
             conditions[action] = False
     states = {
         action: {
-            "available": bool(stopped and supported and ok and model.get("status") != "abandoned"),
+            "available": bool(
+                stopped
+                and (supported or (action == "abandon_new" and abandon_supported))
+                and ok
+                and model.get("status") != "abandoned"
+            ),
             "reason": (
                 "Previous runner/worker is active or cannot be proven stopped"
                 if not stopped
@@ -595,10 +623,21 @@ def _actions(snapshot: dict, live: dict | None) -> dict:
     # back to ready without native work. This is a metadata transaction only,
     # so assembly/drawing models are eligible too: component ownership is never
     # touched. Any contrary evidence keeps the model unrecoverable here.
+    # BUG-131: a new assembly whose only job already ended in failure still owns
+    # that job as pending_job, so requiring no pending job left it with no exit.
+    # The reservation blocks only while it can still finish; a terminal failure
+    # on an uncommitted assembly is exactly what these acknowledgements accept.
+    recoverable_new_assembly = (
+        model.get("model_type") == "assembly"
+        and uncommitted
+        and not model.get("recovery_pending")
+        and _pending_job_status(model) in TERMINAL_FAILURE_STATUSES
+    )
     pending = bool(model.get("pending_job") or model.get("recovery_pending"))
+    pending_blocks = pending and not recoverable_new_assembly
     ack_ready = (
         model.get("status") == "failed"
-        and not pending
+        and not pending_blocks
         and model.get("rollback_status") != "failed"
         and baseline.get("verified") is True
     )
@@ -610,7 +649,7 @@ def _actions(snapshot: dict, live: dict | None) -> dict:
             else "Only a failed model can acknowledge zero mutation"
             if model.get("status") != "failed"
             else "Model still owns a pending or recovery job"
-            if pending
+            if pending_blocks
             else "Rollback of the failed job did not succeed; zero mutation cannot be proven"
             if model.get("rollback_status") == "failed"
             else "Checkpoint identity is unavailable or has changed; zero mutation cannot be proven"
@@ -626,7 +665,7 @@ def _actions(snapshot: dict, live: dict | None) -> dict:
     # state was verified.
     ack_failure_ready = (
         model.get("status") in TERMINAL_FAILURE_STATUSES
-        and not pending
+        and not pending_blocks
         and model.get("rollback_status") != "failed"
     )
     states["ack_failure"] = {
@@ -637,7 +676,7 @@ def _actions(snapshot: dict, live: dict | None) -> dict:
             else "Only a model whose last job ended in failure can acknowledge a failure"
             if model.get("status") not in TERMINAL_FAILURE_STATUSES
             else "Model still owns a pending or recovery job"
-            if pending
+            if pending_blocks
             else "Rollback of the failed job did not succeed; inspect before acknowledging"
             if model.get("rollback_status") == "failed"
             else "Explicit apply with confirm_failure_ack=true, matching evidence and an "

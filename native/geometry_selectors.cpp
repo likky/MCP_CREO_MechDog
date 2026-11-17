@@ -52,6 +52,23 @@ static std::string selector_id_list(const std::vector<int> &ids) {
     return text;
 }
 
+static std::string selector_surface_type_name(int type) {
+    if (type == PRO_SRF_PLANE)
+        return "plane";
+    if (type == PRO_SRF_CYL)
+        return "cylinder";
+    return "type " + std::to_string(type);
+}
+
+static std::string selector_surface_list(const std::vector<int> &ids,
+                                         const std::vector<int> &types) {
+    std::string text;
+    for (size_t index = 0; index < ids.size(); index++)
+        text += (text.empty() ? "" : ", ") + std::to_string(ids[index]) + " (" +
+                selector_surface_type_name(types[index]) + ")";
+    return text;
+}
+
 static double selector_vector_norm(const V &value) {
     return sqrt(dot(value, value));
 }
@@ -229,14 +246,19 @@ static GeometrySelectorOutcome match_geometry_surface_selector(const J &selector
     const double axis_tolerance = selector.value("axis_tolerance_deg", 0.5);
     const double cosine_limit = std::cos(axis_tolerance * 3.14159265358979323846 / 180.0);
     std::vector<int> matches;
+    std::vector<int> match_types;
+    // BUG-132: candidates that matched the measured direction (or a points_mm
+    // anchor) but cannot be the requested type. They are reported separately so
+    // "wrong type" is not confused with "nothing matched".
+    std::vector<int> rejected;
+    std::vector<int> rejected_types;
     int eligible = 0;
     for (const auto &surface : state.value("surfaces", J::array())) {
         int type = surface.value("type", -1);
         const bool plane = type == PRO_SRF_PLANE;
         const bool cylinder = type == PRO_SRF_CYL;
-        if (!plane && !cylinder)
-            continue;
-        eligible++;
+        if (plane || cylinder)
+            eligible++;
         V axis = {0, 0, 0};
         bool has_axis = false;
         if (plane && surface.contains("normal")) {
@@ -256,8 +278,47 @@ static GeometrySelectorOutcome match_geometry_surface_selector(const J &selector
             if (fabs(dot(axis, requested)) < cosine_limit)
                 continue;
         }
+        if (!plane && !cylinder) {
+            // Only planar and cylindrical faces can be named. A points_mm anchor
+            // inside this face's box is still evidence that the selector aimed at
+            // it, so report the real type instead of "nothing matched".
+            if (!selector.contains("points_mm"))
+                continue;
+            bool near_anchor = false;
+            if (surface.contains("bbox") && surface["bbox"].is_array() &&
+                surface["bbox"].size() == 2) {
+                V low = scale(vec(surface["bbox"][0]), mm_scale);
+                V high = scale(vec(surface["bbox"][1]), mm_scale);
+                for (const auto &item : selector["points_mm"]) {
+                    V point = vec(item);
+                    bool inside_box = true;
+                    for (int axis_index = 0; axis_index < 3; axis_index++)
+                        if (point[axis_index] < low[axis_index] - tolerance ||
+                            point[axis_index] > high[axis_index] + tolerance) {
+                            inside_box = false;
+                            break;
+                        }
+                    if (inside_box) {
+                        near_anchor = true;
+                        break;
+                    }
+                }
+            }
+            if (near_anchor) {
+                rejected.push_back(surface["id"].get<int>());
+                rejected_types.push_back(type);
+            }
+            continue;
+        }
+        if ((selector.contains("radius_mm") || selector.contains("center_mm")) && !cylinder) {
+            // radius_mm/center_mm are cylinder filters. A plane that already
+            // passed the direction filter is the classic wrong-type candidate.
+            rejected.push_back(surface["id"].get<int>());
+            rejected_types.push_back(type);
+            continue;
+        }
         if (selector.contains("radius_mm")) {
-            if (!cylinder || !surface.contains("radius"))
+            if (!surface.contains("radius"))
                 continue;
             if (fabs(surface["radius"].get<double>() * mm_scale -
                      selector["radius_mm"].get<double>()) > tolerance)
@@ -268,7 +329,7 @@ static GeometrySelectorOutcome match_geometry_surface_selector(const J &selector
         if (selector.contains("center_mm")) {
             // The cylinder's parameter origin is not unique along its axis, so
             // only the perpendicular distance to the axis line is meaningful.
-            if (!cylinder || !has_axis)
+            if (!has_axis)
                 continue;
             if (selector_axis_distance(vec(selector["center_mm"]), origin, axis) > tolerance)
                 continue;
@@ -314,6 +375,33 @@ static GeometrySelectorOutcome match_geometry_surface_selector(const J &selector
                 continue;
         }
         matches.push_back(surface["id"].get<int>());
+        match_types.push_back(type);
+    }
+    const bool coaxial_any = selector.value("coaxial", std::string()) == "any";
+    if (matches.size() > 1 && coaxial_any) {
+        // BUG-132: a full cylinder is often reported as two coaxial half faces.
+        // insert/concentric only needs the axis, so every matched cylinder piece
+        // is geometrically equivalent. This stays opt-in (the default still needs
+        // one exact face) and the smallest id keeps the choice deterministic and
+        // visible in the diagnostic.
+        bool all_cylinders = true;
+        for (int type : match_types)
+            all_cylinders = all_cylinders && type == PRO_SRF_CYL;
+        if (all_cylinders) {
+            int chosen = matches[0];
+            for (int id : matches)
+                chosen = std::min(chosen, id);
+            outcome.matched = true;
+            outcome.id = chosen;
+            outcome.diagnostic = {{"target", "surface"},
+                                  {"matched_geometry_id", chosen},
+                                  {"candidate_count", eligible},
+                                  {"tolerance_mm", tolerance},
+                                  {"coaxial_any", true},
+                                  {"matched_ids", J(matches)},
+                                  {"matched_types", J(match_types)}};
+            return outcome;
+        }
     }
     if (matches.size() == 1) {
         outcome.matched = true;
@@ -328,21 +416,40 @@ static GeometrySelectorOutcome match_geometry_surface_selector(const J &selector
                           {"coordinate_space", "model"},
                           {"tolerance_mm", tolerance},
                           {"candidate_count", eligible},
-                          {"matched_ids", J(matches)}};
-    if (matches.empty()) {
+                          {"matched_ids", J(matches)},
+                          {"matched_types", J(match_types)},
+                          {"type_rejected_ids", J(rejected)},
+                          {"type_rejected_types", J(rejected_types)}};
+    if (!matches.empty()) {
         outcome.error =
-            "geometry_selector surface filters matched none of the " + std::to_string(eligible) +
-            " planar/cylindrical model faces (tolerance_mm=" + std::to_string(tolerance) +
-            ", axis_tolerance_deg=" + std::to_string(axis_tolerance) +
-            "); re-read creo_inspect_model surfaces[] and pass current normal/origin/radius, or "
-            "use {kind:'surface',id:N}";
-    } else {
-        outcome.error = "geometry_selector surface filters matched " +
-                        std::to_string(matches.size()) + " faces (ids " +
-                        selector_id_list(matches) +
-                        "); add points_mm/radius_mm/start-or-endpoints that belong to exactly "
-                        "one face, or use an explicit id";
+            "geometry_selector surface filters matched " + std::to_string(matches.size()) +
+            " faces (ids " + selector_surface_list(matches, match_types) +
+            "); a full cylinder is often reported as several coaxial pieces, so "
+            "center_mm/radius_mm/axis alone cannot name one. Add points_mm that lies inside "
+            "exactly one piece's bbox, use {kind:'surface',id:N}, or (insert/concentric only) "
+            "set coaxial:'any'. radius_mm filters a cylinder's radius; it is not a surface-type "
+            "filter.";
+        return outcome;
     }
+    if (!rejected.empty()) {
+        outcome.error =
+            "geometry_selector surface filters matched no usable face, but " +
+            std::to_string(rejected.size()) +
+            " candidate(s) had the requested direction or anchor and the wrong type (ids " +
+            selector_surface_list(rejected, rejected_types) +
+            "); radius_mm/center_mm require a cylinder and radius_mm is not a type filter. A "
+            "points_mm anchor that lies on a cylinder's planar end face resolves to that plane; "
+            "move it onto the cylindrical wall, pass {kind:'surface',id:N}, or (insert/concentric "
+            "only) set coaxial:'any'.";
+        return outcome;
+    }
+    outcome.error =
+        "geometry_selector surface filters matched none of the " + std::to_string(eligible) +
+        " planar/cylindrical model faces (tolerance_mm=" + std::to_string(tolerance) +
+        ", axis_tolerance_deg=" + std::to_string(axis_tolerance) +
+        "); re-read creo_inspect_model surfaces[] and pass current normal/origin/radius, or use "
+        "{kind:'surface',id:N}. radius_mm filters a cylinder's radius; it is not a surface-type "
+        "filter.";
     return outcome;
 }
 

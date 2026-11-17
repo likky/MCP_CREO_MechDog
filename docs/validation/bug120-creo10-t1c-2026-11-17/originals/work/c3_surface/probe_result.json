@@ -1,0 +1,79 @@
+{
+  "connect_code": 0,
+  "current_model": "T1C_C3_COPY",
+  "data_range_union": {
+    "max": [
+      20.120004800192007,
+      40.12000480019201,
+      0.12000480019200767
+    ],
+    "min": [
+      -0.12000480019200767,
+      -0.12000480019200833,
+      -0.12000480019200767
+    ],
+    "source": "ProSurfaceDataGet xyz_min/xyz_max (SDK: approximate extents)"
+  },
+  "model": "T1C_C3_COPY",
+  "model_matches": true,
+  "probe": "t1c-surface",
+  "quilt_id": 77,
+  "quilt_init_code": 0,
+  "request_id": "T1C-C3-SURFACE",
+  "samples": {
+    "count": 625,
+    "failures": 0,
+    "max": [
+      20.000000000000007,
+      40.00000000000001,
+      0.0
+    ],
+    "min": [
+      0.0,
+      -6.661338147750939e-16,
+      0.0
+    ]
+  },
+  "sampling_note": "UV grid samples; not exact extremes",
+  "success": true,
+  "surface_count": 1,
+  "surface_visit_code": 0,
+  "surfaces": [
+    {
+      "data_code": 0,
+      "data_xyz_max": [
+        20.120004800192007,
+        40.12000480019201,
+        0.12000480019200767
+      ],
+      "data_xyz_min": [
+        -0.12000480019200767,
+        -0.12000480019200833,
+        -0.12000480019200767
+      ],
+      "surface_id": 72,
+      "surface_type": 45,
+      "uv_max": [
+        1.0,
+        1.0
+      ],
+      "uv_min": [
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "target": {
+    "nearest_distance_mm": 7.944109290391274e-15,
+    "nearest_sample": [
+      9.999999999999993,
+      19.999999999999996,
+      0.0
+    ],
+    "point": [
+      10.0,
+      20.0,
+      0.0
+    ]
+  }
+}

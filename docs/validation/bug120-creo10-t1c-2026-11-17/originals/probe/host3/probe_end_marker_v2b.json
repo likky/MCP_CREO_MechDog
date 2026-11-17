@@ -1,0 +1,13 @@
+{
+  "committed": true,
+  "done_macro": "~ Activate `main_dlg_cur` `dashInst0.Done`;",
+  "done_macro_code": 0,
+  "lock_reason": "",
+  "locked": false,
+  "prepared": true,
+  "request_id": "T1C-CANCEL-MACRO-02",
+  "selections_ok": 1,
+  "selections_total": 1,
+  "state": "committed",
+  "tick_ms": 32212000
+}

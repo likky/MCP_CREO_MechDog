@@ -1,5 +1,37 @@
 # 统一开发台账
 
+2026-11-17（BUG-120 T1-C复核）：[247项清单全匹配](validation/bug120-creo10-t1c-2026-11-17/manifest.json)，376帧未列清单；12份检查/测量原件和收养回执补齐关联，近似bbox来源、Quit+yes取消、中间截面抬高3mm已取得证据。可进入第一方向正式协议开发，尚未开放入口：需把Done入队与实际结束分开、加强真实曲线/源特征校验和请求幂等，新非平面件还未保存重载。详见[T1-C复核](development/CREO10-T1C-REVIEW-2026-11-17.md)。本轮仅离线复核/归档，无新产品实现或本机Creo操作。
+
+2026-11-17（BUG-130 转入下个版本的余项）：本轮拆分曲面/参数域细化已把 `bulb_bulged` 最大抽样偏差降到 0.0899mm（达成 0.1mm）。以下未完成项明确转入下个版本，不在本版声称完成：① 旧 14m 默认预算 0.1559mm、放宽到 50 万顶点 0.1115mm，仍未达 0.1mm；按片数-偏差曲线需约 45 万+新顶点，或先优化 ASCII 写出（当前约 166µs/片，600 秒作业预算是硬约束）；② 装配件与 Creo 9/10 的逐面/细化路径未测；③ 官方文件路径在同质量下仍不可完成，未纳入默认路径；④ 默认细化预算 25 万是否提高（影响文件大小与作业时限）待定；⑤ 安装器测试 90 秒超时（与 BUG-130 无关，低优先级，未排期）。见[BUG-130](work-items/BUG-130.md)。
+
+2026-11-17（BUG-130 拆分曲面：参数域细化，bulb 偏差达标）：单面约 20.4 万片上限使大面无法按弦高继续细化。`native/stl_export.h` 改为只读参数域拆分：`PRO_SRFTESS_NO_PROJECTION` + `ProTessellationParamsGet` 取剖分顶点 UV（32 点往返自检），对超差三角形做自适应 red-green 细化，只拆内部边、裁剪边界保持 SDK 顶点，新顶点经 `ProSurfaceXyzdataEval` 落回原生面并返回法向；判据用顶点法向转角估计弦高，避免逐片求值（实测约 2ms/次，首版整轮扫描 job `85d2c5fe…` 超 600 秒 `unknown_outcome`，已 `--apply-restore` 恢复基线）；预算默认 25 万新顶点，按“剩余预算/剩余面数”逐面分配。偏差抽样改为逐面步长（上限 8000），修掉后访问面零样本的偏差。实机：`bulb_bulged` job `cde4566f…` 737,984 片、偏差最大 **0.0899mm**（原 0.1581mm，**达成 0.1mm**）、p99 0.0584、平均 0.0125，194 秒，边界边/非流形/零面积均 0，体积差 0.00004%，trimesh `is_watertight/is_winding_consistent=true`、`euler_number=2`；旧 14m 默认预算 job `dd659d80…` 0.1559mm（原 0.3086mm）、放宽 50 万预算 job `0ec3f531…` 0.1115mm，仍未达 0.1mm（受 600 秒预算与 ASCII 写出速度约束）。源件 SHA/revision 未变；`tests/native/test_stl_export.cpp` 24 项、`tools/test_stl_export.py`、`dev_check --work-item BUG-130` 全部通过。详见[BUG-130](work-items/BUG-130.md)。
+
+2026-11-17（BUG-120 T1-B完整包）：六份PRT大小/SHA与六组按ID选择日志匹配；文本[原件归档](validation/bug120-creo10-t1b-2026-11-17/manifest.json)。新增离线审计/补证工具，仍缺6份inspection和6份测量作业原件，三/五截面bbox未过；Task 1可靠结束/取消、顺序与复杂曲面未闭环，panel入口未开放。先补BUG-122真实观测准入和面板未知结果保护，详见[BUG-120](work-items/BUG-120.md)、[BUG-122](work-items/BUG-122.md)及[T1-C交接](development/CREO10-T1C-HANDOFF-2026-11-17.md)。本机未构建或连接Creo，未提交/发布。
+
+2026-11-17（BUG-120原始mapkey）：接收用户294B录制文件并[逐字节归档](validation/bug120-creo10-t1a-2026-11-17/originals/t1_blend_mapkey.pro)，SHA256 `04098e18…818326`；确认实际命令ProCmdFtBndBlend、第一方向表格FocusOut、3个拾取暂停和Done。没有ID/Ctrl/选集记录，不能直接逐暂停替换回调。T1-B先按owner/ID验证两线普通选择＋Ctrl追加、真实collector接受及几何收尾，再验证换模型/数量；完整原生回执仍待接收。仅离线解析归档/方案更新，无Creo连接或产品实现，整卡状态不变。
+
+2026-11-17（BUG-120外部T1-A摘要）：用户报告Creo10 GUI及半自动mapkey回放产物均经MCP收养取得800mm²、120mm边界、20×40×0包围盒、单面开放quilt和保存重载通过；最小GUI成面已有外部结果，原始录制/回执待接收。实际命令报告为ProCmdFtBndBlend，3次拾取暂停尚需人工/脚本，不能等同通用回调成功。下一步T1-B按ID验证普通选择与Ctrl追加；官方OVERRIDE/TOGGLE语义已查证，现回调只用OVERRIDE。见[BUG-120](work-items/BUG-120.md)与[计划](superpowers/plans/2026-11-16-creo10-bulb-native-creation.md)。本轮仅离线评审，无新的本机实机/产品实现；整卡状态不变。
+
+2026-11-17（BUG-130 官方文件式导出，离线完成 + 实机：小件通过、旧 14m 超时）：新增 `native/stl_file_check.h`（流式 ASCII STL 语法/有限坐标/片数与字节预算）与 11 项 native 用例、`tools/test_stl_file_check.py`；新增 `native/stl_export.h`（3 元素 `ProArrayAlloc`、`PRO_SLA_ASCII_FILE`、仅 `PRO_FACET_STEP_SIZE_OFF`、短 ASCII 暂存名、工作目录保存/恢复、校验后同盘原子发布）与 12 项 native 用例、`tools/test_stl_export.py`，两组均实跑 `success=true`。旧剖分路径保留为仅 `MECHDOG_STL_LEGACY_TESSELLATE=1` 的诊断探针，不是自动回退。旧路径只读实机 job `da08c43e…` 定位到 `n=3`、surface 0 `n_facets=201551` 配 `facets=null`，防护在解引用前安全失败，STL 仅 19 字节，源件 SHA/revision 不变。官方路径实机：小件 `bug007_three_straight` job `5ec450a8…` 成功，STL 73,561 字节/284 片、包络匹配、源件与 revision 不变；旧 14m `bulb_verified_03989988` job `8eb45948…` 在相同 0.05mm/0.1 下 600 秒内未完成，`unknown_outcome`、暂存 0 字节，worker 终止后 Creo `xtop.exe` 仍持续计算（约 10GB 工作集）。官方路径同质量在当前预算下不可完成，`bulb_bulged` 未再提交；需在 Creo 空闲后决定提高有界超时、显式质量对照或转 Task 4。
+
+2026-11-17（BUG-130 诊断插桩，离线）：新增只读 `tools/diagnose_stl_export.py`，汇总既有作业的终态/退出码/最后 PHASE/输出字节与 SHA/源件记录哈希/worker 身份及 `STL_*` 阶段；对两次失败与旧成功件生成 `build/bug130_evidence/summary.json`（SHA256 `63c936cb…`）：两次 `0xC0000005`、最后 `PHASE=export`、STL 0 字节、整份日志 SHA 不同，旧成功件 48,847,489 字节。`native/generic.cpp` 的 `write_stl` 增加立即 flush 的 `STL_TESS_*`/`STL_SURFACE_*`/`STL_FACET_BATCH`/`STL_FILE_*`/`STL_TESS_FREE_*`，并在解引用/写盘前检查空数组、坏计数、越界索引、非有限顶点与 IO 失败；异常路径 RAII 释放。新增 8 项证据单测。未构建、未连接 Creo，故障栈/dump 与根因仍未取得。
+
+2026-11-17（实机批：BUG-020 STEP 导出 + BUG-131 取消/收尾/看门狗）：① BUG-020 在本机 Creo 12.4 真实导出 STEP：`.stp` 8622 字节、`ISO-10303-21`；`__out.log.1` 已归档到 `output/diagnostics/`，结果含 `export_artifacts`/`export_diagnostics`，保存重载 true，其它文件未动。BUG-020 已移入完成档案，台账 193→**192**（BUG 86）。② BUG-131 临时件实机：worker 启动前取消返回 `cancelled`、模型 `failed`、`geometry_may_have_changed=false`；worker 启动后取消返回 `unknown_outcome`、`geometry_may_have_changed=true` 并记录终止 pid；两种都能经 `abandon_new` 收尾（`Explicit recovery committed`）。③ 看门狗（当次授权受控注入）：临时件 1 秒预算 + 500 圆孔重计划，日志 2 秒零增长后终止 worker，作业 `unknown_outcome`，`stall_watchdog` 记录 budget/silent/log_bytes/termination，`abandon_new` 收尾成功，config 已恢复。④ 实机暴露并修复：空 owner 列表误判为“无法证明停止”（恢复动作全不可用），以及 `stall_watchdog` 未投影到 `creo_get_job` 摘要；新增 2 项单测（`test_job_control` 19 项、投影 1 项）。证据 `build/live_bug020/20261117T100224_defe4eb0/`、`build/live_bug131/20261117T020648_b6092f/`、`build/live_bug131_post/20261117T020755_b040a7/`、`build/live_bug131_watchdog/20261117T022502_912c1d/`。`revision==0` 新装配出口未复现；23 组件挂死根因仍需 Creo 10。
+
+2026-11-17（离线收口批：BUG-020 / BUG-106 / BUG-129 / DEV-078）：① BUG-020 新增 `creo_mechdog.export_artifacts`，本作业 `output` 内含 `_out.log` 的 Creo 摘录移动到 `output/diagnostics/`，结果新增 `export_artifacts`/`export_diagnostics`/说明；只动本作业诊断文件，`.stp/.igs` 与调用方文件不动，4 项单测通过，真实 STEP/IGES 导出待实机。② BUG-106 离线裁定不纳入 `adopt_session_copy`（一致性判定/身份改写/审计边界未冻结，现有两步文案已覆盖），反向断言保持 0 命中，只剩同名两步链路实机。③ BUG-129 在 REFERENCE_SYNTAX 明确 `width` 映射 XY→+Y、XZ→+Z、YZ→+Z，docstring 同步“只断言不旋转”；`width_axis` 控制另立 FEAT，未静默实现，剩余 Arm2 原模型与实机。④ DEV-078 复核无离线剩余，余项全部依赖真实样件/实机。表行仍 **193**。
+
+2026-11-17（BUG-132 coaxial insert 与保存重载实机）：本机 Creo 12.4 新建 100×80×20 带 R27.5 通孔板（孔壁 102/103 两个半圆柱）与 R27.4×60 对称销。默认 insert 作业 `failed`、`rolled_back`，报错列出 `ids 102 (cylinder), 103 (cylinder)`；两侧带 `coaxial:"any"` 的 insert+mate `succeeded`、`committed`、`underconstrained=false`，销轴与孔轴重合、轴平行 Z（对称销被 mate 翻转并置于孔上方，z=50，只断言轴共线）；显式 `creo_save_model` revision 5→6，`saved_file_reloaded_and_verified=true`。证据 `build/live_bug132_insert/20261117T012115_a6bb73/report.json`（SHA256 `548066c4…`），`success=true`。Arm7 原半圆柱与 Creo 10 仍未验。表行仍 **193**。
+
+2026-11-17（BUG-132 本机实机报错分型）：本机 Creo 12.4 用 100×80×20 方块 + R27.5 通孔复现圆柱拆半：孔壁为 id 102/103 两个半圆柱（type 36）。三种选择器报错全部按新措辞输出：多命中 `matched 2 faces (ids 102 (cylinder), 103 (cylinder))`；类型不符列出 `ids 53 (plane), 58 (plane)` 并说明 `radius_mm` 非类型过滤器；零命中报 `matched none of the 8 planar/cylindrical model faces`。三个作业均 `rolled_back`、未建特征。证据 `build/live_bug132/20261117T090714_af80ee73/report.json`（SHA256 `7136b549…`）。`coaxial:"any"` 的真实 insert、保存重载与 Creo 10 对照仍未验。表行仍 **193**。
+
+2026-11-17（DEV-090 G2 本机实机复测）：用户当次授权启动/连接本机 Creo 12.4.0.0（`release_numeric=44`）。Arm7 TXT/模型不在本工作区，改用 100×80×20 mm 方块竖直实体边做 R5/R30 圆弧与 `curvature_continuous` 对照：四条用例全部 `succeeded`、`effect_status=committed`、`saved_file_reloaded_and_verified=true`；R5 去除 `107.3015→80.0793 mm³`，R30 `3862.8331→2883.2442 mm³`，G2 相对圆弧均少 25.37%，且 G2 表面不是圆柱面、半径回读为请求值（落在 `d12`），排除静默退化。曲率连续性未测量；Arm7 实体边与 Creo 10 目标机仍未验。证据 `build/live_g2/20261117T084440_82e59496/report.json`（SHA256 `30a005341eefda2e9bf3cbe4394ef45278b1a641e02d25a69a59b91202edf68a`）。原生首次构建修掉 `near` 宏冲突（BUG-132 改动）。表行仍 **193**。
+
+2026-11-16（0.26.0 反馈 P6 / BUG-132 离线）：圆柱面选择器完成三点离线改进。零命中/多个同类面/类型不符分开报错，多面与类型不符逐项列出 `id (plane|cylinder)`，并说明 `radius_mm` 只过滤半径、不是类型过滤器；`require_constraint_surface_type` 在已给 `radius_mm` 时不再重复建议补半径，改为指出消歧点可能落在端面平面。`AssemblyConstraint` 对组装侧 `assembly_reference` 是 `geometry_selector` 而缺 `assembly_component` 的情况在准入前直接点名缺失字段。新增显式 `coaxial:"any"`：仅 surface 选择器、必须带 `radius_mm`+`axis`、仅 `insert/concentric` 可用，原生只在多个圆柱命中时确定性取最小 id；默认唯一性、`mate/coincident` 与 round/chamfer/flange 均不放宽。两个测试文件共 39 项通过。离线阶段未编译原生；2026-11-17 实机复测已构建通过并修掉 `near` 宏冲突。半圆柱实机与保存重载未验，表行仍 **193**。
+
+2026-11-16（0.26.0 六项反馈计划）：按用户指示以 [P1—P6 计划](superpowers/plans/2026-11-16-feedback-0260-followup.md) 推进；新增 [BUG-131](work-items/BUG-131.md)（23 组件带配合装配挂死、无取消、装配 unknown 无法收尾）与 [BUG-132](work-items/BUG-132.md)（圆柱面拆半导致选择器无法唯一命中且报错误导）。本轮离线交付：独立 `creo_sheetmetal_base_flange` 补齐方向断言参数（BUG-129/P4-2）；`stall_report` 扩窗标记搜索、`log_age_seconds` 与重复行证据（BUG-131/P5-3）；`ExtrudeOp.region` + `sketch_regions.py` 单区域派生草图适配，在 `generic_bridge.submit` 准入前展开并回执 `region_adaptation`（FEAT-069/P1，24 项单测）；P3 作业控制——新增 `creo_cancel_job`（公开工具 108→109）、worker 日志停滞看门狗（`generic_stall_seconds`，默认 600 s，经 `native_owner.json` 定位并终止）与 `revision=0` 无保存文件新装配的 `abandon_new`/`ack_failure` 出口。[FEAT-069](work-items/FEAT-069.md) 补 0.26.0 契约复核；P2 沿用 DEV-090 已提交的 `curvature_continuous`，待目标机复测。未编译原生、未连接 Creo、未改版本/发布；表行 191→**193**（BUG 85→87）。
+
+2026-11-16（Creo10原生球鼻艏计划）：形成[BUG-120实施计划](superpowers/plans/2026-11-16-creo10-bulb-native-creation.md)，主方案为限定目标版本的原生面板＋驻留回调；先验800mm²最小曲面，再做显式路线、协议4、事务/真实几何回执与七截面球鼻艏闭环。BUG-122只作按路线准入配套；备用内存NURBS/STEP不等同原生放样完成。当前仅规划和离线输入交点计算（最大分量差0.004305模型mm），无产品实现/构建/Creo连接，分类/行数不变。
+
 2026-11-16（Creo 10 球鼻艏优先）：按用户本次指示，优先推进 [BUG-120](work-items/BUG-120.md) 的实质成型修复，BUG-130 STL 后排。0.26.0 外部回执确认 `INCOMPLETE` 创建后在 `Extract=-18` 中断，PTC 官方说明边界混合元素树在 Creo 11 加入；现有 Creo 10 路径无法完成特征。修正“GUI 手工创建也失败”的过强摘要，原件只证明 GUI 特征也不能取树。首选验证驻留回调驱动原生边界混合面板，先800mm²最小面，再7截面/尖点/完整导线和封闭实体；BUG-122 仅作保护配套。当前是离线定位与验证设计，未实现、未编译或连接 Creo，整卡分类/台账行数不变。
 
 2026-11-16（G2 实机）：[DEV-090](work-items/DEV-090.md) 的曲率连续圆角已在 Creo 12.4.0.0 实机验证：`PRO_ROUND_CURV_CONTINUOUS` 成功、`effect_status=committed`、保存重载通过，R5 去除 `80.0792756 mm³` vs 圆弧基线 `107.3015365 mm³`；`RoundOp` 增可选 `curvature_continuous`（默认关闭）。证据 `build/live_g2/20261116T194830_ca3b1511/report.json`，未测曲率连续性、Creo 10/9 与凹边/变半径/多边。该改动未提交、未发版。
@@ -87,11 +119,11 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 
 诊断交付不等于根因修复；部分交付不关整卡；缺其他版本证据不自动判未修。观察项等自然新现场，不制造故障。已完成且无保留范围的行移入 [完成档案](BACKLOG_COMPLETED.md#2026-11-07dev-073-归档与历史进展)。原进展/证据保留日期，不再回填第二份待办。小修复沿用卡与证据，复杂跨模块任务才另建完整计划。
 
-当前唯一 ID **191**（BUG **85**、FEAT **66**、DEV **40**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
+当前唯一 ID **192**（BUG **86**、FEAT **66**、DEV **40**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
-| 仍需修复 | 5 |
+| 仍需修复 | 6 |
 | 待复现/待核实 | 33 |
 | 已有修复但待验收 | 30 |
 | 观察中 | 3 |
@@ -108,10 +140,11 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
 | [BUG-017](work-items/BUG-017.md) | P1 | 仍需修复 | 未排期 | 取得外部最小输入及 Creo 9 原生失败码，定位并修复或明确支持边界；现有修复仅覆盖子项，原案/规则未闭环。 |
-| [BUG-020](BACKLOG_COMPLETED.md#legacy-bug-020) | P2 | 仍需修复 | 未排期 | 列明产物/诊断附件，仅清理本作业 *_out.log.N，验证用户文件不受影响；依赖：离线可先取导出路径与作业文件归属；最终需真实 STEP 导出。 |
 | [BUG-034](work-items/BUG-034.md) | P1 | 仍需修复 | 未排期 | 定位种子生产版本及原生加载失败，决定可追溯重生方案；依赖：需 Creo 9 SDK/许可与种子来源。 |
 | [BUG-036](work-items/BUG-036.md) | P1 | 仍需修复 | 未排期 | 核对实际约束、求解调用与 transform，修正写侧或给出明确拒绝；现有修复仅覆盖子项，原案/规则未闭环。 |
-| [BUG-130](work-items/BUG-130.md) | P1 | 仍需修复（触发件已确认，根因待定位） | 未排期 | 约14m复杂球鼻艏 `export(stl)` 两次worker `0xC0000005`，整件剖分及外层计数返回成功后退出、STL均0字节；旧同尺度球鼻艏197118片/48.85MB成功，不能仅归因尺度。先补数组/面片/IO诊断和文件验收，优先验证官方文件式STL导出，必要时逐实体面剖分，再接显式质量参数；[计划](superpowers/plans/2026-11-16-bug130-stl-export.md)。普通异常与AV分开、只读/revision/unknown保护不放宽，实机仍需当次授权；STEP成功/小件成功不证明几何或内存路径无缺陷。 |
+| [BUG-130](work-items/BUG-130.md) | P1 | 已修复（bulb 偏差 0.0899mm 达标；旧 14m 0.1115mm 未达标） | 0.27.0（偏差子项）；旧 14m 余项下个版本 | 约14m复杂球鼻艏 `export(stl)` 两次worker `0xC0000005`，整件剖分及外层计数返回成功后退出、STL均0字节；旧同尺度球鼻艏197118片/48.85MB成功，不能仅归因尺度。2026-11-17 离线：`tools/diagnose_stl_export.py`、`STL_*` 阶段日志与防护、`native/stl_file_check.h`/`native/stl_export.h`/`native/stl_mesh_check.h`、23+19 项 native 用例。旧路径只读实机定位 `n_facets=201551` 配 `facets=null`，安全失败且源件不变；官方路径小件成功，旧 14m 同质量 600 秒未完成。重启后恢复基线，逐面导出并做 SDK 法向对齐、0.001mm 焊点与边界环质心补洞、1e-9mm 精确邻接绕序修复：`bulb_bulged` 404,652 片/82,166,002 字节、旧 14m 197,722 片/40,068,497 字节，均 succeeded、源件 SHA/revision 不变；焊接后边界边 0、非流形边 0、零面积片 0，有符号体积与原生差 0.0030%/0.0172%，包络一致；trimesh 独立复核两件 `is_watertight=true`、`is_winding_consistent=true`、`euler_number=2`。默认路径已切换为逐面，官方路径保留 `MECHDOG_STL_OFFICIAL_FILE=1` 诊断。抽样偏差实测（`MECHDOG_STL_DEVIATION=1`，每 500 片取质心/边中点投影回原生面，顶点自检 ≤0.004mm）：bulb 平均 0.0367mm、p99 0.1378mm、最大 0.1581mm；旧 14m 平均 0.0814mm、p99 0.3002mm、最大 0.3086mm，**0.1mm 目标未达成**。逐面片数回执定位根因：bulb 在 0.05 与 0.005mm 弦高下大面均为 ~204,000 片（0.005 时 203,988/204,043/1,761），单面片数上限约 20.4 万；同几何小件（未到上限）0.05→0.001mm 片数 328→1,488，证明弦高参数本身有效、不是会话缓存。Task 6 已完成：`creo_export_model(format="stl", stl_options={"chord_height_mm":…,"angle_control":…})`，仅 STL 允许，未知键/布尔/NaN/Inf/越界提交前拒绝，缺省保持 0.05/0.1，回执保留 `requested`/`passed` 并新增逐面 `surface_facets`；9 项单测通过。剩余：装配、Creo 9/10 与其他质量入口未测；受单面上限约束，逐面路径无法把大面细化到 0.1mm 以内。计划见 [bug130-stl-export](superpowers/plans/2026-11-16-bug130-stl-export.md)。 |
+| [BUG-131](work-items/BUG-131.md) | P1 | 仍需修复（取消/收尾/看门狗已实机；挂死根因未验） | 0.27.0（作业控制子项）；挂死根因未排期 | 23组件带配合总装作业 `1ce57484…` 在 `hom_1` 选择器解析挂死 60 分钟，同输入 2 组件探针 9.4 秒结构化失败；装配 `unknown_outcome` 后 reconcile 曾全不可用。已离线交付进度观测、`creo_cancel_job`（公开工具 108→109）、worker 日志停滞看门狗与 `revision==0` 新装配出口。2026-11-17 本机 Creo 12.4 临时件实机：worker 启动前取消 `cancelled`/`geometry_may_have_changed=false`，启动后取消 `unknown_outcome`/`true` 并终止 pid，两种均经 `abandon_new` 收尾；当次授权下 1 秒预算 + 500 圆孔重计划触发看门狗，`stall_watchdog` 记录 budget/silent/log_bytes/termination 并收尾。修复空 owner 误判与 stall_watchdog 未投影；`test_job_control` 19 项、投影 1 项。`revision==0` 新装配实机未复现；挂死根因仍需 Creo 10 栈/轨迹。 |
+| [BUG-132](work-items/BUG-132.md) | P1 | 仍需修复（本机 Creo 12.4 已验报错分型与 coaxial insert；Creo 10/Arm7 未验） | 0.27.0（选择器子项）；Creo 10/Arm7 未排期 | native 圆柱面拆成两半（base 198/200、hom 57/59、96/98、224/226），TXT 整圆柱锚点无法唯一命中；报错把「消歧点落在端面平面」写成「add radius_mm」。已离线交付：零/多/类型不符三种报错分型（逐项列 `id (plane|cylinder)`，说明 `radius_mm` 非类型过滤器）、组装侧选择器缺 `assembly_component` 的准入预检、仅 `insert/concentric` 可用的显式 `coaxial:"any"`（多个圆柱命中取最小 id，默认唯一性不放宽），两个测试文件 39 项通过。2026-11-17 本机 Creo 12.4：R27.5 通孔拆半 102/103，三种报错分型实机通过并 `rolled_back`；默认 insert 拒绝并列出 102/103，`coaxial:"any"` insert+mate `committed`、`underconstrained=false`、轴共线，显式保存重载 5→6。Arm7 原半圆柱与 Creo 10 未验。 |
 
 <a id="输入或规则待核实"></a>
 
@@ -119,8 +152,8 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
-| [BUG-129](work-items/BUG-129.md) | P1 | 部分交付，剩余待验收 | 未排期 | 已加宽度方向断言、回执方向/原生质心与冲突拒绝；实机 YZ 140×290×1.5 宽向 `[0,0,1]`、bbox/质心符合、期望 `[1,0,0]` 被拒，见实机验收。Arm2 完整装配逐条对照与 placement 契约未做。 |
-| [FEAT-069](work-items/FEAT-069.md) | P2 | 部分交付，剩余待验收 | 未排期 | 已交付 `region_selection` 契约：三套原始签名、frame `(1.5,v,-u)` 校验、无序/反向等价、重复/歧义/零命中拒绝，`region_index_hint` 不参与；原生选区创建与反向3mm去料未证，未接 `ExtrudeOp`。 |
+| [BUG-129](work-items/BUG-129.md) | P1 | 部分交付，剩余待验收 | 0.27.0（宽度映射文档子项）；Arm2 未排期 | 已加宽度方向断言、回执方向/原生质心与冲突拒绝；实机 YZ 140×290×1.5 宽向 `[0,0,1]`、bbox/质心符合、期望 `[1,0,0]` 被拒，见实机验收。0.26.0 补：独立工具 `creo_sheetmetal_base_flange` 已补方向断言参数（离线）。2026-11-17 离线收口：REFERENCE_SYNTAX 明确 XY→+Y、XZ→+Z、YZ→+Z 的 width 映射，docstring 同步“只断言不旋转”；`width_axis` 控制另立 FEAT，未在本卡静默实现。剩余：Arm2 原模型/placement 契约、Creo 12.4/10 实机复测。 |
+| [FEAT-069](work-items/FEAT-069.md) | P2 | 部分交付，剩余待验收 | 0.27.0（区域适配层子项）；原生选区未排期 | 已交付 `region_selection` 契约：三套原始签名、frame `(1.5,v,-u)` 校验、无序/反向等价、重复/歧义/零命中拒绝，`region_index_hint` 不参与。0.26.0 复核真实 TXT 三签名解析与唯一匹配通过；新增 `ExtrudeOp.region` + 派生草图适配（准入前展开、实体原样复制、`region_adaptation` 回执，离线 24 项），源草图须为坐标草图且只支持简单闭环。原生选区、实机去料与 Creo 10 未验。 |
 | [BUG-004](BACKLOG_COMPLETED.md#legacy-bug-004) | P1 | 待复现/待核实 | 未排期 | 核对对象句柄、种子身份、直线/平滑/三截面编辑和重载；依赖：需可用 Creo 12 会话与原始失败输入。 |
 | [BUG-011](BACKLOG_COMPLETED.md#legacy-bug-011) | P1 | 待复现/待核实 | 未排期 | 取得状态查询与提交时间线，标明快照时间及实时性；依赖：需真实异常通道现场；禁止主动制造。 |
 | [BUG-012](BACKLOG_COMPLETED.md#legacy-bug-012) | P1 | 待复现/待核实 | 未排期 | 区分未尝试/成功/失败/未知；核对新件无检查点和旧字段兼容；依赖：需失败样例与当前回执对照。 |
@@ -149,7 +182,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [BUG-085](work-items/BUG-085.md) | P1 | 待复现/待核实 | 未排期 | 自然事故时采集 nmsd 身份、worker 与源码指纹；依赖：缺原始时序和受控现场。 |
 | [BUG-091](work-items/BUG-091.md) | P1 | 待复现/待核实 | 未排期 | 自然现场核对分层事实与外部时间线；依赖：缺真实断连/挂起现场。 |
 | [BUG-102](work-items/BUG-102.md) | P1 | 待复现/待核实 | 未排期 | 取得报告方原 surface 69/中性面引用并做单变量对照；依赖：缺外部 Creo 10 原夹具/错误树。 |
-| [BUG-106](work-items/BUG-106.md) | P2 | 待复现/待核实 | 未排期 | 文案已修；adopt_session_copy 只是候选，先裁定是否纳入本卡，再补同名模型实际链路。 |
+| [BUG-106](work-items/BUG-106.md) | P2 | 部分交付（文案+裁定）；实机链路待验 | 0.27.0（离线裁定）；实机复测未排期 | 文案已修；2026-11-17 离线裁定不纳入 `adopt_session_copy`（一致性判定/身份改写/审计边界未冻结，现有两步文案已覆盖可恢复路径），反向断言保持 0 命中。只剩真实同名外部模型的 save/erase 两步链路实机复测。 |
 | [BUG-108](work-items/BUG-108.md) | P1 | 待复现/待核实 | 未排期 | 在原 Creo 10 现场取得可复现平移及 accepted_rigid 实例，判断原点固定是否消除位移；现有修复仅覆盖子项，原案/规则未闭环。 |
 | [BUG-109](work-items/BUG-109.md) | P1 | 待复现/待核实 | 未排期 | 自然现场取得子阶段时间线以定位阻塞；依赖：缺 Creo 9 真实停滞的 native.log/request.json。 |
 
@@ -157,7 +190,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
-| [DEV-078](work-items/DEV-078.md) | P2 | 离线实现/检查完成；实机待验 | 未排期 | 四边双方向填充、独立角释放/quilt成形、多段flange全部门禁；Offset/PunchDie待真实样件，格栅待实测。3031单测与SDK12.4编译通过，见交接清单。 |
+| [DEV-078](work-items/DEV-078.md) | P2 | 离线完成；实机待样件 | 未排期 | 四边双方向填充、独立角释放/quilt成形、多段flange全部门禁已在 2026-11-08 离线交付并冻结，3031单测与SDK12.4编译通过；2026-11-17 复核无离线剩余。剩余全是真实样件/实机：Offset/PunchDie、格栅实测、保存重载/回滚、Creo9/10、非mm、WorkBuddy。 |
 | [DEV-076](work-items/DEV-076.md) | P1 | 已有修复但待验收 | 未排期 | H13 worker构建身份/动态准入、H15 overlap预算/覆盖诊断、H16 trim结果句柄与连续trim已在Creo12.4实机通过；H14交线诊断、H17 Creo10直创原件、H18 Creo10同载荷、H19旧原件仍缺；Creo9/10与远端余项见接手H10—H19。 |
 | [BUG-010](BACKLOG_COMPLETED.md#legacy-bug-010) | P1 | 已有修复但待验收 | 未排期 | 视图 scale=2 已有成功证据；位置更新、图纸保存重载/revision 仍未验。 |
 | [BUG-013](work-items/BUG-013.md) | P1 | 已有修复但待验收 | 未排期 | 摘要/分页已有；模型查询精确32KiB及单项超限未验，不能复用 capabilities 结论。 |
@@ -238,7 +271,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
 | [BUG-121](work-items/BUG-121.md) | P2 | 部分交付，剩余待验收 | 0.24.0（子项）；剩余未排期 | 只读型计划（`export`/`dump_tree`/`mass_properties`/`surface_group_measure`/`surface_curvature`/`udf_inspect`）在 Python 侧自动按只读准入并记 `readonly_source`，不再被 GUI 保存造成的基线漂移挡住；写计划的 `model_reconciliation_required` 失败消息追加 `creo_reconcile_model` 动作指引，原生原文保留在 `native_message`。离线 11 项单测通过；Creo 12.4 实机多轮导出均成功（最新 `...T160310` 作业 `7b7ec1450490427598a2dbe72b99941c`，`...T150422`/`...T145133` 同结论），`job.json` 记 `readonly=true`/`readonly_source=inspection_only_plan`；GUI 保存造成的漂移与 Creo 10 未验。 |
-| [BUG-122](work-items/BUG-122.md) | P1 | 部分交付，剩余待验收 | 0.24.0（子项）；剩余未排期 | 同一 worker 实测到 `create_code=0` + `extract_code=-18` 的内核签名时，`surface_loft` 在提交前被拒（不建空壳、不建作业）；能力表新增 `runtime_admission=refused_before_job`。离线 10 项单测通过；Creo 12.4 实机多轮均为同一模型连续两次 `surface_loft` 成功（最新 `...T160310` 作业 `141ca505dfdd423692c6fd2e7d4df32d`、`63301a89b6c64a92a4a8d615fca241d7`，另两轮同结论，revision 2），无误拒；Creo 10 复跑与"先失败后成功"序列未验。 |
+| [BUG-122](work-items/BUG-122.md) | P1 | 部分交付，剩余待验收 | 0.27.0（准入接线修复）；Creo 10 未验 | 2026-11-17离线修复：提交使用同worker实测观测的身份副本，与能力披露一致；真实parser/观测落盘/读取/submit回归通过，同worker已知-18在lock/job前拒绝，跨worker及supported/unknown不误拒。模板XML仍需Extract，不再作为免抽取建议。Creo10第二次拒绝无空壳、WorkBuddy黑盒待验；未来panel按路线准入仍随BUG-120推进。保护修复不等于成型。 |
 | [FEAT-067](work-items/FEAT-067.md) | P2 | 部分交付，剩余待验收 | 0.24.0（子项）；剩余未排期 | `assertions.bbox_mm{min,max,tolerance_mm}` 与 `assertions.surface_area_mm2{surface_area_tolerance_mm2}` 两条计划级断言已实现（bbox 按 inspection 的每实体 bbox 求并集；面积按 `ProSolidSurfaceVisit` 逐面求和后平方换算 mm²；两者都在未知单位时失败而非猜测），离线 23 项单测与 `bridge.py build` 通过；Creo 12.4 实机通过与失败两种回执两轮均已验证（`build/live_acceptance_20261113T150422` 作业 `841d50bb8ea54135bb2106cb80a61c4c` 通过；`99e8a458cab3424ebb5d920a026f7841` 报 `Bounding box assertion failed on Z: measured [0.000000, 15.000000] expected [0.000000, 10.000000]`，模型 revision 未变）；`surface_area_mm2` 于 12.4 实机两态通过（`...T160310` 作业 `c7c20fd3544b453fb8731900b8fb68c3` 以 4800 mm² 通过、`a759523eac444d4eb9914c0d8aa186fc` 报 `measured 5600.000000 mm2 expected 4800.000000 mm2`，revision 未变）；未知单位模型、空面与单面失败路径未验。 |
 | [BUG-124](work-items/BUG-124.md) | P2 | 部分交付，剩余待验收 | 0.24.0（子项）；剩余未排期 | `import_geometry`（STEP/IGES → 独立新 part）离线实现完成：`ImportGeometryOp` schema（绝对路径、扩展名与 format 一致、双摘要校验）、计划级准入（唯一操作 + 无 model_id + 非只读 + part）、`native/import_geometry.cpp`（`ProIntfimportModelWithOptionsMdlnameCreate` + `PRO_IMPORTREP_MASTER`、执行前重算摘要、失败码原样透出、`quilt_count/area_mm2/closure` 未测即 null）、新建模型分支改为导入建 part；Creo 12.4 实机两次导入全 PASS（STEP 作业 `c725cca785d44cd6b382c2b0f14ef13f` 440.0 mm² 闭合单面组、IGES 作业 `11823392b60747d093659464030e7122` 1540.0 mm² 六面组，均保存重载验证），门禁已删除并登记 `geometry_import` 能力家族。剩余：Creo 10、纯曲面（非实体）样本、英寸模型（会被毫米校验回滚）未验。 |
 | [DEV-027](work-items/DEV-027.md) | P2 | 部分交付，剩余待验收 | 未排期 | 真实世代回收、二进制可复现性及副本外部改动/登记不一致分支待验。 |
@@ -290,7 +323,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [DEV-066](work-items/DEV-066.md) | P2 | 部分交付，剩余待规划 | 未排期 | 0.18.2已交付来源降级子项；当前分支8def1e4已补齐其余Git读取、报告字段、负例捕获和runtime日志取消跟踪，未发布增量及H08—H09见DEV-075-HANDOFF。 |
 | [FEAT-033](work-items/FEAT-033.md) | P1 | 部分交付，剩余待规划 | 未排期（0.19.3 B 批 opt-in 已交付） | small/large 基准已有；`execute_plan(timeout_seconds)` 受控覆盖（60—7200，默认=服务配置）与 job 回执 `timeout_seconds`/`timeout_source`、看门狗按作业预算判定已交付；自动预算公式、阶段耗时公开契约与到期动作仍待规划，不以取消保存重载缩时。 |
 | [FEAT-066](work-items/FEAT-066.md) | P1 | 部分交付，剩余待规划 | 0.23.0（已交付子项） | `b_spline` 精确 NURBS 实体随 0.23.0 发布，Creo 12.4 实机控制点回读偏差 2.6e-31 mm、两截面面积 1058.017278 mm² 对齐独立 de Boor oracle、保存重载一致，`surface_loft` 回归 PASS。剩余 `closed`、`dimensioning="coordinates"`、页面编辑未排期；Creo 10 运行期未验。 |
-| [BUG-120](work-items/BUG-120.md) | P1 | 部分交付，剩余待规划 | 0.23.2（诊断子项）；成型修复未定版 | 用户本次优先解决Creo10球鼻艏创建。0.26.0两作业均 `create=0/incomplete=true/extract=-18` 后回滚；现实现依赖Creo11才公开支持的边界混合元素树补全。GUI旧特征也不能取树，不等于GUI不能创建。首选验证驻留回调的原生边界混合面板，依次验800mm²最小面、7截面/尖点/完整导线、封闭实体与保存重载；现有实体Blend回调不可直接代用。BUG-122只是保护，STEP导入只是几何参照；尚无Creo10成型修复通过证据。 |
+| [BUG-120](work-items/BUG-120.md) | P1 | 部分交付，剩余待规划 | 0.23.2（诊断子项）；成型修复未定版 | T1-C已补齐12份原件及收养关联，近似bbox来源、Quit+yes取消和非平面中截面作用取得证据；247清单项全匹配。进入第一方向正式协议开发准备，仍须修Done排队误报完成、引用来源/类型校验及跨请求状态；新非平面曲面未保存重载，点/第二方向及球鼻艏未验。此前旧树-18准入和unknown保护已离线补齐，原生panel后端未开放；不以保护或STEP导入代替成型验收。 |
 
 <a id="未来能力候选"></a>
 <a id="当前优先功能"></a>
@@ -299,7 +332,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
-| [DEV-090](work-items/DEV-090.md) | P1 | 部分交付，剩余待验收 | 未排期 | 0.25.0 已交付T1/T2/T3组合首壁/T4/T5/T6a/T6b/T8与T7诊断措辞；新反馈的方向偏差、锚点与选区分别归BUG-129、FEAT-068/069（签名已补，完整草图/API未核）。本卡续多约束求解/保存重载、parallel/distance、T7实测及黑盒，见DEV-091计划；G2 已实机验证（R5 去除 `80.0792756 mm³`，圆弧基线 `107.3015365 mm³`，`committed` 且保存重载通过），`RoundOp` 增可选 `curvature_continuous`，未测曲率连续性与 Creo10/9；Creo10不外推。 |
+| [DEV-090](work-items/DEV-090.md) | P1 | 部分交付，剩余待验收 | 0.27.0（G2 实机子项）；其余未排期 | 0.25.0 已交付T1/T2/T3组合首壁/T4/T5/T6a/T6b/T8与T7诊断措辞；新反馈的方向偏差、锚点与选区分别归BUG-129、FEAT-068/069（签名已补，完整草图/API未核）。本卡续多约束求解/保存重载、parallel/distance、T7实测及黑盒，见DEV-091计划；G2 已实机验证（2026-11-17 本机 Creo 12.4：R5 圆弧 `107.3015`→G2 `80.0793 mm³`，R30 `3862.8331`→`2883.2442 mm³`，四条均 `committed` 且保存重载通过，G2 表面非圆柱、相对圆弧少 25.37%，排除静默退化），`RoundOp` 增可选 `curvature_continuous`；曲率连续性未测，Arm7 实体边与 Creo10/9 未验，Creo10不外推。 |
 | [FEAT-068](work-items/FEAT-068.md) | P1 | 部分交付，剩余待验收 | 未排期 | 已接通单点直边、圆边（含角度过滤）、装配选择器与解析后平面/圆柱校验；实机直边/圆边圆角、coincident+concentric 与保存重载通过。倒角邻面、61条可解性与多约束组合仍待验收。 |
 | [FEAT-065](work-items/FEAT-065.md) | P1 | 已交付 0.21.0（M1/M2）、0.22.0（M3/M4）与 0.23.1（补充）子项；剩余未排期 | 未排期 | 已发布：2—32 截面、2—8 条第二方向导线、截面/导线接受已有曲线与边、首末收敛点、边来源首/末截面的 `tangent`，quilt 边 ID 由 `creo_measure_surface_group` 的 `open_edge_records` 给出；0.23.1 起已有实体模型不再误拒 `surface_loft`（BUG-119），YZ@X 与 XZ@Y 正交平面截面实机通过。2026-11-16 原始球鼻艏在 Creo 12.4 完成独立实体：精确导线+末端收敛点放样、镜像、后端盖、缝合与实体化均保存重载 true；1活动材料体、体积54405151075.317024 mm³，未接船体，单独quilt体积查询-62及重叠扫描未完如实保留，见卡。剩余：`curvature`/`normal`/导线边界无实测依据仍拒绝；非平面相邻面与两端朝向不同的相切未测；`ADV_VIA_CRV`；`boundary_conditions` 不在 compact 保护集合内；Creo 9/10 与 WorkBuddy 黑盒。见 [0.22.0 发布记录](validation/RELEASE-0.22.0.md) 与 [0.23.1 发布记录](validation/RELEASE-0.23.1.md)。 |
 | [DEV-003](BACKLOG_COMPLETED.md#legacy-dev-003) | P2 | 待规划 | 未排期 | 整理 C++ 的执行上下文、模块接口和资源由谁创建、释放，再用受影响的 SDK 构建并运行原生测试。 |

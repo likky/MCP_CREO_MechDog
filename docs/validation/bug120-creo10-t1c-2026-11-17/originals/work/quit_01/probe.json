@@ -1,0 +1,15 @@
+{
+  "request_id": "T1C-QUIT-01",
+  "model": "T1C_C3_COPY",
+  "curves": [
+    {
+      "owner": "T1C_C3_COPY",
+      "geom_id": 54,
+      "role": "first_dir"
+    }
+  ],
+  "wait_seconds": 8,
+  "select_command": "MechDogT1CSelectB",
+  "tail": "quit",
+  "marker_path": "probe\\host3\\probe_end_marker_v2b.json"
+}

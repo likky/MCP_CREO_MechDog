@@ -2147,7 +2147,7 @@ static ProSelection component_reference(ProAsmcomp *component, const J &referenc
 // layer can only filter by shape, so the measured type is re-checked here after
 // resolution instead of trusting the selector.
 static void require_constraint_surface_type(ProSelection selection, const char *role,
-                                            bool plane_required) {
+                                            bool plane_required, const J &reference) {
     ProModelitem mi;
     CK(ProSelectionModelitemGet(selection, &mi));
     if (mi.type != PRO_SURFACE)
@@ -2164,13 +2164,30 @@ static void require_constraint_surface_type(ProSelection selection, const char *
     if (plane_required && actual != PRO_SRF_PLANE)
         throw std::runtime_error(
             std::string(role) + " selector resolved to surface type " + std::to_string(actual) +
-            ", but coincident/mate needs a real plane (PRO_SRF_PLANE); a cylindrical or free-form "
-            "surface is not silently accepted as a plane");
-    if (!plane_required && actual != PRO_SRF_CYL)
-        throw std::runtime_error(
-            std::string(role) + " selector resolved to surface type " + std::to_string(actual) +
-            ", but concentric/insert needs a real cylinder (PRO_SRF_CYL); add radius_mm so the "
-            "selector cannot match a plane, or pass an explicit cylindrical surface id");
+            " (" + selector_surface_type_name(actual) +
+            "), but coincident/mate needs a real plane (PRO_SRF_PLANE); a cylindrical or "
+            "free-form surface is not silently accepted as a plane");
+    if (!plane_required && actual != PRO_SRF_CYL) {
+        // BUG-132: the old text always said "add radius_mm", even when the
+        // caller had already supplied it. The real cause there was a points_mm
+        // anchor landing on a cylinder's planar end face. Name the measured type
+        // and separate "radius filter" from "surface-type filter".
+        const bool has_radius = reference.is_object() && reference.contains("radius_mm");
+        std::string text = std::string(role) + " selector resolved to surface type " +
+                           std::to_string(actual) + " (" + selector_surface_type_name(actual) +
+                           "), but concentric/insert needs a real cylinder (PRO_SRF_CYL). ";
+        if (has_radius)
+            text +=
+                "radius_mm was supplied, so the radius was not the problem: radius_mm filters a "
+                "cylinder's radius and is not a surface-type filter. A points_mm anchor that "
+                "lies on a cylinder's planar end face resolves to that plane. Move points_mm "
+                "onto the cylindrical wall of one piece, pass {kind:'surface',id:N}, or "
+                "(insert/concentric only) set coaxial:'any'.";
+        else
+            text += "add radius_mm+axis so the selector cannot match a plane, or pass an explicit "
+                    "cylindrical surface id.";
+        throw std::runtime_error(text);
+    }
 }
 // T09: the assembly side of a constraint is either the assembly's own geometry
 // (no assembly_component) or a same-level sibling component named explicitly by
@@ -2285,9 +2302,11 @@ static void component_constraints(ProAsmcomp *c, const J &constraints) {
         // allowed.
         const bool plane_required = spec.value("type", std::string()) == "mate";
         if (spec["assembly_reference"].value("kind", std::string()) == "geometry_selector")
-            require_constraint_surface_type(a, "assembly_reference", plane_required);
+            require_constraint_surface_type(a, "assembly_reference", plane_required,
+                                            spec["assembly_reference"]);
         if (spec["component_reference"].value("kind", std::string()) == "geometry_selector")
-            require_constraint_surface_type(b, "component_reference", plane_required);
+            require_constraint_surface_type(b, "component_reference", plane_required,
+                                            spec["component_reference"]);
         CK(ProAsmcompconstraintAsmreferenceSet(list[i], a, constraint_side(spec, "assembly_side")));
         CK(ProAsmcompconstraintCompreferenceSet(list[i], b,
                                                 constraint_side(spec, "component_side")));

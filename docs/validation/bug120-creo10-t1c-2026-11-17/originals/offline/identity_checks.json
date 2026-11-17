@@ -1,0 +1,1309 @@
+{
+  "scope": "receipt identity correlation; no geometry recomputation from Creo",
+  "note": "parent feature ids are a dependency set only; array order is not treated as collector order anywhere in this audit",
+  "cases": [
+    {
+      "case": "C3 两曲线（基线）",
+      "model": "T1B_RUN_01",
+      "adopted_model_id": "bbe390758d90455a8fb86e0eec39398a",
+      "snapshot": {
+        "file": "receipts/models/bbe390758d90455a8fb86e0eec39398a/output/inspection-verified-d9da5aac978d0cdd.json",
+        "present": true,
+        "quilt_count": 1,
+        "matrix_quilt_id": 61,
+        "quilt_id_found": true,
+        "area_mm2": 800.0,
+        "bbox_mm": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            20.0,
+            40.0,
+            0.0
+          ]
+        ],
+        "quilt_feature_ids": [
+          54
+        ],
+        "matrix_created_feature_id": 54,
+        "quilt_belongs_to_new_feature": true,
+        "picked_by_first_quilt": true
+      },
+      "measure": {
+        "job": "7e7b3e91ae154d73939c7c1c47968cae",
+        "present": true,
+        "job_model_id": "bbe390758d90455a8fb86e0eec39398a",
+        "job_matches_model": true,
+        "quilt_targets": [
+          {
+            "kind": "quilt",
+            "id": 61
+          },
+          {
+            "kind": "quilt",
+            "id": 61,
+            "from": "group_echo"
+          }
+        ],
+        "targets_matrix_quilt": true,
+        "open_edges": 4,
+        "edge_lengths_mm": [
+          20.0,
+          40.0,
+          20.0,
+          40.0
+        ],
+        "edge_endpoints_mm": [
+          [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              20.0,
+              0.0,
+              0.0
+            ]
+          ],
+          [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              40.0,
+              0.0
+            ]
+          ],
+          [
+            [
+              0.0,
+              40.0,
+              0.0
+            ],
+            [
+              20.0,
+              40.0,
+              0.0
+            ]
+          ],
+          [
+            [
+              20.0,
+              0.0,
+              0.0
+            ],
+            [
+              20.0,
+              40.0,
+              0.0
+            ]
+          ]
+        ],
+        "trimmed_min_mm": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "trimmed_max_mm": [
+          20.0,
+          40.0,
+          0.0
+        ],
+        "trimmed_matches_expected_box": true,
+        "perimeter_mm": 120.0
+      },
+      "bbox_question": {
+        "quilt_bbox_mm": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            20.0,
+            40.0,
+            0.0
+          ]
+        ],
+        "trimmed_min_mm": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "trimmed_max_mm": [
+          20.0,
+          40.0,
+          0.0
+        ],
+        "margin_mm": {
+          "min": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "max": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "bbox_source": "union of ProSurfaceDataGet xyz_min/xyz_max per surface (native/quilt_query.h:57-67)",
+        "flat_area_if_margin_were_geometry_mm2": 800.0,
+        "measured_area_mm2": 800.0
+      },
+      "adoption": {
+        "adoption_file_item": {
+          "job_dir": "c7c630df8076489ea8388acc31fb3f6a",
+          "files": [
+            {
+              "file": "receipts/adoption/bbe390758d90455a8fb86e0eec39398a/c7c630df8076489ea8388acc31fb3f6a/job.json",
+              "bytes": 5992,
+              "sha256": "434ae09efb5dcdd3be1ad8e560bf49bebea74e4daade8bc9ceebd0ad61b95468",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\c7c630df8076489ea8388acc31fb3f6a\\job.json"
+            }
+          ]
+        },
+        "adoption_file_inspect": {
+          "job_dir": "ed313b9e954a4208a5240af1b240e8c5",
+          "files": [
+            {
+              "file": "receipts/adoption/bbe390758d90455a8fb86e0eec39398a/ed313b9e954a4208a5240af1b240e8c5/job.json",
+              "bytes": 4683,
+              "sha256": "c99ed326b8de39e8b224ac0192f0091ea95c1df3c49c7d4d5e0511352dd6f648",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\ed313b9e954a4208a5240af1b240e8c5\\job.json"
+            }
+          ]
+        },
+        "adoption_file": {
+          "job_dir": "ef5099a9dcec44a5b8fe710e1a7b806a",
+          "files": [
+            {
+              "file": "receipts/adoption/bbe390758d90455a8fb86e0eec39398a/ef5099a9dcec44a5b8fe710e1a7b806a/job.json",
+              "bytes": 11322,
+              "sha256": "0304a7b8d36a78315b06d135ff0ae5861513fb749fa06eb222835a6cfb6e268b",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\ef5099a9dcec44a5b8fe710e1a7b806a\\job.json"
+            },
+            {
+              "file": "receipts/adoption/bbe390758d90455a8fb86e0eec39398a/ef5099a9dcec44a5b8fe710e1a7b806a/batch.json",
+              "bytes": 5575,
+              "sha256": "dcc66dd1d40a35a0be58acb47156325122bfe6b4222a9fb3263979b72ec8f80a",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\ef5099a9dcec44a5b8fe710e1a7b806a\\batch.json"
+            }
+          ]
+        }
+      },
+      "apply": {
+        "job_dir": "ef5099a9dcec44a5b8fe710e1a7b806a",
+        "display_name": "T1B_RUN_01",
+        "display_name_matches_matrix": true,
+        "saved_file_reloaded_and_verified": true,
+        "source_unchanged": true,
+        "window_unchanged": true,
+        "inspection_warnings": [
+          {
+            "stage": "live",
+            "reason_code": "native_sidecar_write_failed",
+            "fallback_status": "verified",
+            "message": "Native sidecar write failed; Python fallback was verified"
+          }
+        ],
+        "input_sha256": "b9267c728efb142ab0440fbf55d3508cf13149df5096863c1c0ad72f844f334d",
+        "input_sha_in_report": true
+      },
+      "identity_ok": true
+    },
+    {
+      "case": "A 新模型 + 新 ID",
+      "model": "T1B_A_03",
+      "adopted_model_id": "f65ac145ec544c04939755b55d89fa57",
+      "snapshot": {
+        "file": "receipts/models/f65ac145ec544c04939755b55d89fa57/output/inspection-verified-237c918b0d206507.json",
+        "present": true,
+        "quilt_count": 1,
+        "matrix_quilt_id": 70,
+        "quilt_id_found": true,
+        "area_mm2": 800.0,
+        "bbox_mm": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            20.0,
+            40.0,
+            0.0
+          ]
+        ],
+        "quilt_feature_ids": [
+          63
+        ],
+        "matrix_created_feature_id": 63,
+        "quilt_belongs_to_new_feature": true,
+        "picked_by_first_quilt": true
+      },
+      "measure": {
+        "job": "9fa7d425e17147af9e1cfc4dd8b824e6",
+        "present": true,
+        "job_model_id": "f65ac145ec544c04939755b55d89fa57",
+        "job_matches_model": true,
+        "quilt_targets": [
+          {
+            "id": 70,
+            "kind": "quilt"
+          },
+          {
+            "kind": "quilt",
+            "id": 70,
+            "from": "group_echo"
+          }
+        ],
+        "targets_matrix_quilt": true,
+        "open_edges": 4,
+        "edge_lengths_mm": [
+          20.0,
+          40.0,
+          20.0,
+          40.0
+        ],
+        "edge_endpoints_mm": [
+          [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              20.0,
+              0.0,
+              0.0
+            ]
+          ],
+          [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              40.0,
+              0.0
+            ]
+          ],
+          [
+            [
+              0.0,
+              40.0,
+              0.0
+            ],
+            [
+              20.0,
+              40.0,
+              0.0
+            ]
+          ],
+          [
+            [
+              20.0,
+              0.0,
+              0.0
+            ],
+            [
+              20.0,
+              40.0,
+              0.0
+            ]
+          ]
+        ],
+        "trimmed_min_mm": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "trimmed_max_mm": [
+          20.0,
+          40.0,
+          0.0
+        ],
+        "trimmed_matches_expected_box": true,
+        "perimeter_mm": 120.0
+      },
+      "bbox_question": {
+        "quilt_bbox_mm": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            20.0,
+            40.0,
+            0.0
+          ]
+        ],
+        "trimmed_min_mm": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "trimmed_max_mm": [
+          20.0,
+          40.0,
+          0.0
+        ],
+        "margin_mm": {
+          "min": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "max": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "bbox_source": "union of ProSurfaceDataGet xyz_min/xyz_max per surface (native/quilt_query.h:57-67)",
+        "flat_area_if_margin_were_geometry_mm2": 800.0,
+        "measured_area_mm2": 800.0
+      },
+      "adoption": {
+        "adoption_file": {
+          "job_dir": "2758a859ee0e4c38908896e548e08298",
+          "files": [
+            {
+              "file": "receipts/adoption/f65ac145ec544c04939755b55d89fa57/2758a859ee0e4c38908896e548e08298/job.json",
+              "bytes": 11258,
+              "sha256": "04388ff585f812c4b3d83c773a68957d5a7d1629ad457259c1134299a509c514",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\2758a859ee0e4c38908896e548e08298\\job.json"
+            },
+            {
+              "file": "receipts/adoption/f65ac145ec544c04939755b55d89fa57/2758a859ee0e4c38908896e548e08298/batch.json",
+              "bytes": 5521,
+              "sha256": "45b5e332788502188f8e8be022ee0f94796587efe3256034f87f8969b2b6b309",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\2758a859ee0e4c38908896e548e08298\\batch.json"
+            }
+          ]
+        },
+        "adoption_file_inspect": {
+          "job_dir": "43c6f63623ca409e87aa3f35e9d027fa",
+          "files": [
+            {
+              "file": "receipts/adoption/f65ac145ec544c04939755b55d89fa57/43c6f63623ca409e87aa3f35e9d027fa/job.json",
+              "bytes": 4642,
+              "sha256": "a3e3f159eb86cf92b786113625f7b990ba4de497f4f5a4f87b8e92aed59debd3",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\43c6f63623ca409e87aa3f35e9d027fa\\job.json"
+            }
+          ]
+        },
+        "adoption_file_item": {
+          "job_dir": "8d98ea7419c2402aa2e0249487d2f201",
+          "files": [
+            {
+              "file": "receipts/adoption/f65ac145ec544c04939755b55d89fa57/8d98ea7419c2402aa2e0249487d2f201/job.json",
+              "bytes": 5970,
+              "sha256": "2d3f6a8d18b5861c083f6e2f4b0da00efdb78f66a72393c08157d33823b5908e",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\8d98ea7419c2402aa2e0249487d2f201\\job.json"
+            }
+          ]
+        }
+      },
+      "apply": {
+        "job_dir": "2758a859ee0e4c38908896e548e08298",
+        "display_name": "T1B_A_03",
+        "display_name_matches_matrix": true,
+        "saved_file_reloaded_and_verified": true,
+        "source_unchanged": true,
+        "window_unchanged": true,
+        "inspection_warnings": [
+          {
+            "stage": "live",
+            "reason_code": "native_sidecar_write_failed",
+            "fallback_status": "verified",
+            "message": "Native sidecar write failed; Python fallback was verified"
+          }
+        ],
+        "input_sha256": "48cfe0c6b2dfccbf6ba551a0b50e969fb2b2d338e4e65ebeb3db9a59b3bcccf3",
+        "input_sha_in_report": true
+      },
+      "identity_ok": true
+    },
+    {
+      "case": "B 改视角（旋转 40°）",
+      "model": "T1B_B_02",
+      "adopted_model_id": "03ac1d7d835343778e2e484b872665b0",
+      "snapshot": {
+        "file": "receipts/models/03ac1d7d835343778e2e484b872665b0/output/inspection-verified-5678aa5bc54115c0.json",
+        "present": true,
+        "quilt_count": 1,
+        "matrix_quilt_id": 70,
+        "quilt_id_found": true,
+        "area_mm2": 800.0,
+        "bbox_mm": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            20.0,
+            40.0,
+            0.0
+          ]
+        ],
+        "quilt_feature_ids": [
+          63
+        ],
+        "matrix_created_feature_id": 63,
+        "quilt_belongs_to_new_feature": true,
+        "picked_by_first_quilt": true
+      },
+      "measure": {
+        "job": "39d6c5cf4dc2431fad3b8ac29a903c5c",
+        "present": true,
+        "job_model_id": "03ac1d7d835343778e2e484b872665b0",
+        "job_matches_model": true,
+        "quilt_targets": [
+          {
+            "id": 70,
+            "kind": "quilt"
+          },
+          {
+            "kind": "quilt",
+            "id": 70,
+            "from": "group_echo"
+          }
+        ],
+        "targets_matrix_quilt": true,
+        "open_edges": 4,
+        "edge_lengths_mm": [
+          20.0,
+          40.0,
+          20.0,
+          40.0
+        ],
+        "edge_endpoints_mm": [
+          [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              20.0,
+              0.0,
+              0.0
+            ]
+          ],
+          [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              40.0,
+              0.0
+            ]
+          ],
+          [
+            [
+              0.0,
+              40.0,
+              0.0
+            ],
+            [
+              20.0,
+              40.0,
+              0.0
+            ]
+          ],
+          [
+            [
+              20.0,
+              0.0,
+              0.0
+            ],
+            [
+              20.0,
+              40.0,
+              0.0
+            ]
+          ]
+        ],
+        "trimmed_min_mm": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "trimmed_max_mm": [
+          20.0,
+          40.0,
+          0.0
+        ],
+        "trimmed_matches_expected_box": true,
+        "perimeter_mm": 120.0
+      },
+      "bbox_question": {
+        "quilt_bbox_mm": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            20.0,
+            40.0,
+            0.0
+          ]
+        ],
+        "trimmed_min_mm": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "trimmed_max_mm": [
+          20.0,
+          40.0,
+          0.0
+        ],
+        "margin_mm": {
+          "min": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "max": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "bbox_source": "union of ProSurfaceDataGet xyz_min/xyz_max per surface (native/quilt_query.h:57-67)",
+        "flat_area_if_margin_were_geometry_mm2": 800.0,
+        "measured_area_mm2": 800.0
+      },
+      "adoption": {
+        "adoption_file_inspect": {
+          "job_dir": "27942bcd92844f358fc4e98c233e9cbb",
+          "files": [
+            {
+              "file": "receipts/adoption/03ac1d7d835343778e2e484b872665b0/27942bcd92844f358fc4e98c233e9cbb/job.json",
+              "bytes": 4636,
+              "sha256": "f71f4be4dc5e9859f2e97ded2bce9ab93fccfdf97dfcb84c0e07c348e45aef65",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\27942bcd92844f358fc4e98c233e9cbb\\job.json"
+            }
+          ]
+        },
+        "adoption_file_item": {
+          "job_dir": "654079c545d14212a324207bc4b9932e",
+          "files": [
+            {
+              "file": "receipts/adoption/03ac1d7d835343778e2e484b872665b0/654079c545d14212a324207bc4b9932e/job.json",
+              "bytes": 5964,
+              "sha256": "9685c57e895d959cadc78a76e80cc7d0a385881330c3417c03d3ba6319e92b15",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\654079c545d14212a324207bc4b9932e\\job.json"
+            }
+          ]
+        },
+        "adoption_file": {
+          "job_dir": "e3f1ae5e33e942e198736dbcdc0a40f1",
+          "files": [
+            {
+              "file": "receipts/adoption/03ac1d7d835343778e2e484b872665b0/e3f1ae5e33e942e198736dbcdc0a40f1/job.json",
+              "bytes": 11247,
+              "sha256": "b3dd734ad5369d1bbc3792e32563015db5bd3fb80f96c37f36ad044256334066",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\e3f1ae5e33e942e198736dbcdc0a40f1\\job.json"
+            },
+            {
+              "file": "receipts/adoption/03ac1d7d835343778e2e484b872665b0/e3f1ae5e33e942e198736dbcdc0a40f1/batch.json",
+              "bytes": 5513,
+              "sha256": "80f04e6c87f99c941876720966ea8e4bb94a6c06f2e8feb1c704bdcfae644a52",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\e3f1ae5e33e942e198736dbcdc0a40f1\\batch.json"
+            }
+          ]
+        }
+      },
+      "apply": {
+        "job_dir": "e3f1ae5e33e942e198736dbcdc0a40f1",
+        "display_name": "T1B_B_02",
+        "display_name_matches_matrix": true,
+        "saved_file_reloaded_and_verified": true,
+        "source_unchanged": true,
+        "window_unchanged": true,
+        "inspection_warnings": [
+          {
+            "stage": "live",
+            "reason_code": "native_sidecar_write_failed",
+            "fallback_status": "verified",
+            "message": "Native sidecar write failed; Python fallback was verified"
+          }
+        ],
+        "input_sha256": "62478c40a9e85b0791608df201d7dbb5f89125f0f438ab48f4d01050a4d959a7",
+        "input_sha_in_report": true
+      },
+      "identity_ok": true
+    },
+    {
+      "case": "C 三截面",
+      "model": "T1B_C_03",
+      "adopted_model_id": "675adfafc2ff475c9714e6f7cde0550b",
+      "snapshot": {
+        "file": "receipts/models/675adfafc2ff475c9714e6f7cde0550b/output/inspection-verified-5ac0ca63d9d045f4.json",
+        "present": true,
+        "quilt_count": 1,
+        "matrix_quilt_id": 77,
+        "quilt_id_found": true,
+        "area_mm2": 799.9999999999997,
+        "bbox_mm": [
+          [
+            -0.12000480019200767,
+            -0.12000480019200833,
+            -0.12000480019200767
+          ],
+          [
+            20.120004800192007,
+            40.12000480019201,
+            0.12000480019200767
+          ]
+        ],
+        "quilt_feature_ids": [
+          71
+        ],
+        "matrix_created_feature_id": 71,
+        "quilt_belongs_to_new_feature": true,
+        "picked_by_first_quilt": true
+      },
+      "measure": {
+        "job": "0528917ac5b941068827e768f6a85f11",
+        "present": true,
+        "job_model_id": "675adfafc2ff475c9714e6f7cde0550b",
+        "job_matches_model": true,
+        "quilt_targets": [
+          {
+            "id": 77,
+            "kind": "quilt"
+          },
+          {
+            "kind": "quilt",
+            "id": 77,
+            "from": "group_echo"
+          }
+        ],
+        "targets_matrix_quilt": true,
+        "open_edges": 4,
+        "edge_lengths_mm": [
+          19.999999999999996,
+          40.0,
+          19.999999999999996,
+          40.0
+        ],
+        "edge_endpoints_mm": [
+          [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              20.0,
+              0.0,
+              0.0
+            ]
+          ],
+          [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              40.0,
+              0.0
+            ]
+          ],
+          [
+            [
+              0.0,
+              40.0,
+              0.0
+            ],
+            [
+              20.0,
+              40.0,
+              0.0
+            ]
+          ],
+          [
+            [
+              20.0,
+              0.0,
+              0.0
+            ],
+            [
+              20.0,
+              40.0,
+              0.0
+            ]
+          ]
+        ],
+        "trimmed_min_mm": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "trimmed_max_mm": [
+          20.0,
+          40.0,
+          0.0
+        ],
+        "trimmed_matches_expected_box": true,
+        "perimeter_mm": 120.0
+      },
+      "bbox_question": {
+        "quilt_bbox_mm": [
+          [
+            -0.12000480019200767,
+            -0.12000480019200833,
+            -0.12000480019200767
+          ],
+          [
+            20.120004800192007,
+            40.12000480019201,
+            0.12000480019200767
+          ]
+        ],
+        "trimmed_min_mm": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "trimmed_max_mm": [
+          20.0,
+          40.0,
+          0.0
+        ],
+        "margin_mm": {
+          "min": [
+            -0.120005,
+            -0.120005,
+            -0.120005
+          ],
+          "max": [
+            0.120005,
+            0.120005,
+            0.120005
+          ]
+        },
+        "bbox_source": "union of ProSurfaceDataGet xyz_min/xyz_max per surface (native/quilt_query.h:57-67)",
+        "flat_area_if_margin_were_geometry_mm2": 800.0,
+        "measured_area_mm2": 799.9999999999997
+      },
+      "adoption": {
+        "adoption_file_inspect": {
+          "job_dir": "0d2b45a52f684bc79cf05885f8d9fb87",
+          "files": [
+            {
+              "file": "receipts/adoption/675adfafc2ff475c9714e6f7cde0550b/0d2b45a52f684bc79cf05885f8d9fb87/job.json",
+              "bytes": 4648,
+              "sha256": "e18de1557c1f9d0076f25d47d06b987585ec1cff1799d12c6d7bb8c0aa815bae",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\0d2b45a52f684bc79cf05885f8d9fb87\\job.json"
+            }
+          ]
+        },
+        "adoption_file": {
+          "job_dir": "4770db4b592443e6b0d674103b73ec69",
+          "files": [
+            {
+              "file": "receipts/adoption/675adfafc2ff475c9714e6f7cde0550b/4770db4b592443e6b0d674103b73ec69/job.json",
+              "bytes": 11266,
+              "sha256": "070df672df2347aad3c2205ff21b015bc68f5d5a98761ca0db93cc12f1204b86",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\4770db4b592443e6b0d674103b73ec69\\job.json"
+            },
+            {
+              "file": "receipts/adoption/675adfafc2ff475c9714e6f7cde0550b/4770db4b592443e6b0d674103b73ec69/batch.json",
+              "bytes": 5529,
+              "sha256": "07d4a49f190ddd468a8668cf063052705a8379ea4f9075cb63f75adea2733be3",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\4770db4b592443e6b0d674103b73ec69\\batch.json"
+            }
+          ]
+        },
+        "adoption_file_item": {
+          "job_dir": "c8db5e04a4bb4f30a27f1d243355ddd1",
+          "files": [
+            {
+              "file": "receipts/adoption/675adfafc2ff475c9714e6f7cde0550b/c8db5e04a4bb4f30a27f1d243355ddd1/job.json",
+              "bytes": 5971,
+              "sha256": "07bda9543f11951842f80ec30588fd0f511c12935b0cd70f0ed86286bc98d211",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\c8db5e04a4bb4f30a27f1d243355ddd1\\job.json"
+            }
+          ]
+        }
+      },
+      "apply": {
+        "job_dir": "4770db4b592443e6b0d674103b73ec69",
+        "display_name": "T1B_C_03",
+        "display_name_matches_matrix": true,
+        "saved_file_reloaded_and_verified": true,
+        "source_unchanged": true,
+        "window_unchanged": true,
+        "inspection_warnings": [
+          {
+            "stage": "live",
+            "reason_code": "native_sidecar_write_failed",
+            "fallback_status": "verified",
+            "message": "Native sidecar write failed; Python fallback was verified"
+          }
+        ],
+        "input_sha256": "9635677e59baa6b16457e19c716c58d32a6b742f84b2a59650e306af8de22525",
+        "input_sha_in_report": true
+      },
+      "identity_ok": true
+    },
+    {
+      "case": "C 五截面",
+      "model": "T1B_C_05",
+      "adopted_model_id": "4e85022c475849a2b0191b90019e8ee9",
+      "snapshot": {
+        "file": "receipts/models/4e85022c475849a2b0191b90019e8ee9/output/inspection-verified-97f10efd900099b6.json",
+        "present": true,
+        "quilt_count": 1,
+        "matrix_quilt_id": 93,
+        "quilt_id_found": true,
+        "area_mm2": 799.9999999999968,
+        "bbox_mm": [
+          [
+            -0.12000480019200767,
+            -0.12000480019200767,
+            -0.12000480019200767
+          ],
+          [
+            20.120004800192007,
+            40.12000480019201,
+            0.12000480019200767
+          ]
+        ],
+        "quilt_feature_ids": [
+          87
+        ],
+        "matrix_created_feature_id": 87,
+        "quilt_belongs_to_new_feature": true,
+        "picked_by_first_quilt": true
+      },
+      "measure": {
+        "job": "23c4b7d95f9e48068b6f3d10e81a2bf1",
+        "present": true,
+        "job_model_id": "4e85022c475849a2b0191b90019e8ee9",
+        "job_matches_model": true,
+        "quilt_targets": [
+          {
+            "id": 93,
+            "kind": "quilt"
+          },
+          {
+            "kind": "quilt",
+            "id": 93,
+            "from": "group_echo"
+          }
+        ],
+        "targets_matrix_quilt": true,
+        "open_edges": 4,
+        "edge_lengths_mm": [
+          20.000000000000043,
+          40.0,
+          20.000000000000046,
+          40.0
+        ],
+        "edge_endpoints_mm": [
+          [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              20.0,
+              0.0,
+              0.0
+            ]
+          ],
+          [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              40.0,
+              0.0
+            ]
+          ],
+          [
+            [
+              0.0,
+              40.0,
+              0.0
+            ],
+            [
+              20.0,
+              40.0,
+              0.0
+            ]
+          ],
+          [
+            [
+              20.0,
+              0.0,
+              0.0
+            ],
+            [
+              20.0,
+              40.0,
+              0.0
+            ]
+          ]
+        ],
+        "trimmed_min_mm": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "trimmed_max_mm": [
+          20.0,
+          40.0,
+          0.0
+        ],
+        "trimmed_matches_expected_box": true,
+        "perimeter_mm": 120.0
+      },
+      "bbox_question": {
+        "quilt_bbox_mm": [
+          [
+            -0.12000480019200767,
+            -0.12000480019200767,
+            -0.12000480019200767
+          ],
+          [
+            20.120004800192007,
+            40.12000480019201,
+            0.12000480019200767
+          ]
+        ],
+        "trimmed_min_mm": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "trimmed_max_mm": [
+          20.0,
+          40.0,
+          0.0
+        ],
+        "margin_mm": {
+          "min": [
+            -0.120005,
+            -0.120005,
+            -0.120005
+          ],
+          "max": [
+            0.120005,
+            0.120005,
+            0.120005
+          ]
+        },
+        "bbox_source": "union of ProSurfaceDataGet xyz_min/xyz_max per surface (native/quilt_query.h:57-67)",
+        "flat_area_if_margin_were_geometry_mm2": 800.0,
+        "measured_area_mm2": 799.9999999999968
+      },
+      "adoption": {
+        "adoption_file_inspect": {
+          "job_dir": "867238a05a644bf6a900f39153d74bc2",
+          "files": [
+            {
+              "file": "receipts/adoption/4e85022c475849a2b0191b90019e8ee9/867238a05a644bf6a900f39153d74bc2/job.json",
+              "bytes": 4648,
+              "sha256": "e635c805cdc6e55d9f55d2ee5aab5fe55b3932ae26cfd4f7e09f7564434cbe2a",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\867238a05a644bf6a900f39153d74bc2\\job.json"
+            }
+          ]
+        },
+        "adoption_file": {
+          "job_dir": "aa88777fd74649ffab71d78a7f0f95b3",
+          "files": [
+            {
+              "file": "receipts/adoption/4e85022c475849a2b0191b90019e8ee9/aa88777fd74649ffab71d78a7f0f95b3/job.json",
+              "bytes": 11267,
+              "sha256": "9e12b3a23bbdd3d47c09b6aeeba5b36caf0580e062ba59504d9d247f5d1e0ea1",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\aa88777fd74649ffab71d78a7f0f95b3\\job.json"
+            },
+            {
+              "file": "receipts/adoption/4e85022c475849a2b0191b90019e8ee9/aa88777fd74649ffab71d78a7f0f95b3/batch.json",
+              "bytes": 5529,
+              "sha256": "8f5ee20c7fab047863668d2ac57956277b291f710693be28a489e193343c341b",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\aa88777fd74649ffab71d78a7f0f95b3\\batch.json"
+            }
+          ]
+        },
+        "adoption_file_item": {
+          "job_dir": "c9c8303307ae4afa8862bee539e1952d",
+          "files": [
+            {
+              "file": "receipts/adoption/4e85022c475849a2b0191b90019e8ee9/c9c8303307ae4afa8862bee539e1952d/job.json",
+              "bytes": 5972,
+              "sha256": "0b4de9a503edb4a7ea38240e78646401206f984a84ae33de1735106a145806b1",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\c9c8303307ae4afa8862bee539e1952d\\job.json"
+            }
+          ]
+        }
+      },
+      "apply": {
+        "job_dir": "aa88777fd74649ffab71d78a7f0f95b3",
+        "display_name": "T1B_C_05",
+        "display_name_matches_matrix": true,
+        "saved_file_reloaded_and_verified": true,
+        "source_unchanged": true,
+        "window_unchanged": true,
+        "inspection_warnings": [
+          {
+            "stage": "live",
+            "reason_code": "native_sidecar_write_failed",
+            "fallback_status": "verified",
+            "message": "Native sidecar write failed; Python fallback was verified"
+          }
+        ],
+        "input_sha256": "bfc2d4e9ab692151a13bc237f43f9abd3757a539f77005fa490a62f317bda3fe",
+        "input_sha_in_report": true
+      },
+      "identity_ok": true
+    },
+    {
+      "case": "D 平移 + 加长",
+      "model": "T1B_D_02",
+      "adopted_model_id": "5368401f83914d27ba1abe6bc772ffbb",
+      "snapshot": {
+        "file": "receipts/models/5368401f83914d27ba1abe6bc772ffbb/output/inspection-verified-e91f4333b0bcd7a1.json",
+        "present": true,
+        "quilt_count": 1,
+        "matrix_quilt_id": 72,
+        "quilt_id_found": true,
+        "area_mm2": 1000.0,
+        "bbox_mm": [
+          [
+            100.0,
+            30.0,
+            10.0
+          ],
+          [
+            120.0,
+            80.0,
+            10.0
+          ]
+        ],
+        "quilt_feature_ids": [
+          65
+        ],
+        "matrix_created_feature_id": 65,
+        "quilt_belongs_to_new_feature": true,
+        "picked_by_first_quilt": true
+      },
+      "measure": {
+        "job": "9cc885608c924eebb7c42d7c6396b8f0",
+        "present": true,
+        "job_model_id": "5368401f83914d27ba1abe6bc772ffbb",
+        "job_matches_model": true,
+        "quilt_targets": [
+          {
+            "id": 72,
+            "kind": "quilt"
+          },
+          {
+            "kind": "quilt",
+            "id": 72,
+            "from": "group_echo"
+          }
+        ],
+        "targets_matrix_quilt": true,
+        "open_edges": 4,
+        "edge_lengths_mm": [
+          20.0,
+          50.0,
+          20.0,
+          50.0
+        ],
+        "edge_endpoints_mm": [
+          [
+            [
+              100.0,
+              30.0,
+              10.0
+            ],
+            [
+              120.0,
+              30.0,
+              10.0
+            ]
+          ],
+          [
+            [
+              100.0,
+              30.0,
+              10.0
+            ],
+            [
+              100.0,
+              80.0,
+              10.0
+            ]
+          ],
+          [
+            [
+              100.0,
+              80.0,
+              10.0
+            ],
+            [
+              120.0,
+              80.0,
+              10.0
+            ]
+          ],
+          [
+            [
+              120.0,
+              30.0,
+              10.0
+            ],
+            [
+              120.0,
+              80.0,
+              10.0
+            ]
+          ]
+        ],
+        "trimmed_min_mm": [
+          100.0,
+          30.0,
+          10.0
+        ],
+        "trimmed_max_mm": [
+          120.0,
+          80.0,
+          10.0
+        ],
+        "trimmed_matches_expected_box": true,
+        "perimeter_mm": 140.0
+      },
+      "bbox_question": {
+        "quilt_bbox_mm": [
+          [
+            100.0,
+            30.0,
+            10.0
+          ],
+          [
+            120.0,
+            80.0,
+            10.0
+          ]
+        ],
+        "trimmed_min_mm": [
+          100.0,
+          30.0,
+          10.0
+        ],
+        "trimmed_max_mm": [
+          120.0,
+          80.0,
+          10.0
+        ],
+        "margin_mm": {
+          "min": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "max": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "bbox_source": "union of ProSurfaceDataGet xyz_min/xyz_max per surface (native/quilt_query.h:57-67)",
+        "flat_area_if_margin_were_geometry_mm2": 1000.0,
+        "measured_area_mm2": 1000.0
+      },
+      "adoption": {
+        "adoption_file_inspect": {
+          "job_dir": "292ab22feac44f16a435aa042e0aa3fa",
+          "files": [
+            {
+              "file": "receipts/adoption/5368401f83914d27ba1abe6bc772ffbb/292ab22feac44f16a435aa042e0aa3fa/job.json",
+              "bytes": 4636,
+              "sha256": "bed9a9a81b3468c7badb1fac2573ad5c779be07187ecd6b13496cbda526cd510",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\292ab22feac44f16a435aa042e0aa3fa\\job.json"
+            }
+          ]
+        },
+        "adoption_file": {
+          "job_dir": "33a9b4175da549bb9933e9bd05825793",
+          "files": [
+            {
+              "file": "receipts/adoption/5368401f83914d27ba1abe6bc772ffbb/33a9b4175da549bb9933e9bd05825793/job.json",
+              "bytes": 11249,
+              "sha256": "bf67866f83729180f9d5dea76557cd73ecceb5efc211c03a46c34a073cd6a5ff",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\33a9b4175da549bb9933e9bd05825793\\job.json"
+            },
+            {
+              "file": "receipts/adoption/5368401f83914d27ba1abe6bc772ffbb/33a9b4175da549bb9933e9bd05825793/batch.json",
+              "bytes": 5513,
+              "sha256": "3f0788f95f12430d32f33c7c851f418f21e408fc30e3d81b8fa4daae99df7875",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\33a9b4175da549bb9933e9bd05825793\\batch.json"
+            }
+          ]
+        },
+        "adoption_file_item": {
+          "job_dir": "e10a8f532a764c3399a7faf88c82410e",
+          "files": [
+            {
+              "file": "receipts/adoption/5368401f83914d27ba1abe6bc772ffbb/e10a8f532a764c3399a7faf88c82410e/job.json",
+              "bytes": 5966,
+              "sha256": "0fc9e6087dd45ee449468e2ce7d21a2863bc5b27951ed3e0dfbf057bd8b93e0b",
+              "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\e10a8f532a764c3399a7faf88c82410e\\job.json"
+            }
+          ]
+        }
+      },
+      "apply": {
+        "job_dir": "33a9b4175da549bb9933e9bd05825793",
+        "display_name": "T1B_D_02",
+        "display_name_matches_matrix": true,
+        "saved_file_reloaded_and_verified": true,
+        "source_unchanged": true,
+        "window_unchanged": true,
+        "inspection_warnings": [
+          {
+            "stage": "live",
+            "reason_code": "native_sidecar_write_failed",
+            "fallback_status": "verified",
+            "message": "Native sidecar write failed; Python fallback was verified"
+          }
+        ],
+        "input_sha256": "d50336daf897032caa2acc8d51c525d24325a5072acc81c1fd4827705a021314",
+        "input_sha_in_report": true
+      },
+      "identity_ok": true
+    }
+  ],
+  "all_identity_ok": true
+}

@@ -90,9 +90,10 @@ class CallbackAdmission(unittest.TestCase):
         # (DEV-074/H08, live 2026-11-08), the read-only
         # creo_measure_surface_curvature (DEV-074/H08, live 2026-11-08) and
         # creo_quilt_merge (FEAT-039/H03, live 2026-11-08) and
-        # creo_sheetmetal_base_flange (DEV-089 T3, live 2026-11-15);
+        # creo_sheetmetal_base_flange (DEV-089 T3, live 2026-11-15) and
+        # creo_cancel_job (BUG-131, job control);
         # creo_surface_boundary_fill is gated (DEV-074/H09 live refutation).
-        self.assertEqual(len(tools), 108)
+        self.assertEqual(len(tools), 109)
         self.assertIn("creo_reconcile_model", tools)
         self.assertTrue(tools["creo_callback_status"].annotations.read_only_hint)
         with (

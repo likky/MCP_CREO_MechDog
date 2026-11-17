@@ -748,6 +748,14 @@ def annotate_native_result(
         annotate_arc_geometry(result, inputs)
         annotate_feature_state(result, inputs)
         annotate_standard_hole(result, inputs)
+    if result.get("panel_execution_unconfirmed") is True:
+        # The panel exit did not confirm the requested operation. Native
+        # success and rollback claims cannot establish its final effect, even
+        # when they were supplied explicitly on an operation record. Apply
+        # this before any job detail is split or persisted.
+        for operation in result["operations"]:
+            if operation.get("effect_status") in ("committed", "rolled_back"):
+                operation["effect_status"] = "unknown"
     return result
 
 

@@ -1,5 +1,6 @@
 """Contract tests for bounded native.log stage attribution (BUG-109)."""
 
+import os
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -199,6 +200,44 @@ class NativeStageReport(unittest.TestCase):
         report = stall_report(self.directory, now=at(0))
         self.assertTrue(report["readable"])
         self.assertEqual(report["stage"], "verify_model")
+
+    def test_spinning_tail_cannot_hide_the_last_phase(self):
+        # BUG-131/P5-3: the 0.26.0 hang wrote enough diagnostic lines after
+        # PHASE=assemble_component:hom_1 to push it out of the 8 KiB tail, so
+        # the poll said "no_phase_lines" for over 30 minutes.
+        self.write("PHASE=assemble_component:hom_1\n" + "ProSurfaceContourVisit id=198\n" * 400)
+        report = stall_report(self.directory, now=at(0))
+        self.assertEqual(report["stage"], "assemble_component:hom_1")
+        self.assertEqual(report["marker_source"], "extended")
+        self.assertGreater(report["marker_scan_bytes"], 8192)
+        self.assertEqual(report["reason"], "no_stage_timing")
+
+    def test_repeated_tail_line_is_reported_as_spin_evidence(self):
+        self.write("PHASE=assemble_component:hom_1\n" + "ProEdgeIdGet edge=57\n" * 400)
+        report = stall_report(self.directory, now=at(0))
+        self.assertEqual(report["dominant_tail_line"], "ProEdgeIdGet edge=57")
+        self.assertEqual(report["dominant_tail_line_count"], 200)
+        self.assertLessEqual(len(report["dominant_tail_line"]), 120)
+
+    def test_one_off_lines_are_not_reported_as_a_spin(self):
+        self.write("PHASE=verify_model\n" + "one diagnostic line\n")
+        report = stall_report(self.directory, now=at(0))
+        self.assertIsNone(report["dominant_tail_line"])
+        self.assertEqual(report["dominant_tail_line_count"], 1)
+
+    def test_log_age_measures_the_silent_period(self):
+        self.write("PHASE=assemble_component:hom_1\n")
+        stamp = BASE_MS / 1000 + 100
+        os.utime(self.directory / "native.log", (stamp, stamp))
+        report = stall_report(self.directory, now=at(1120))
+        self.assertAlmostEqual(report["log_age_seconds"], 1020.0, places=3)
+
+    def test_a_log_without_any_marker_says_none(self):
+        self.write("plain diagnostic line\n" * 50)
+        report = stall_report(self.directory, now=at(0))
+        self.assertEqual(report["marker_source"], "none")
+        self.assertIsNone(report["stage"])
+        self.assertEqual(report["reason"], "no_phase_lines")
 
 
 class NativeSubStageSource(unittest.TestCase):

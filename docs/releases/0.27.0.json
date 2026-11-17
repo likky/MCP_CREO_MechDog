@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "version": "0.27.0",
+  "previous_version": "0.26.0",
+  "previous_release_tag": "v0.26.0",
+  "previous_release_commit": "13609bc5a2889d02ab04e0b62364ca99c29dca02",
+  "remote_verification": "pending",
+  "delivery_ids": [
+    "BUG-106",
+    "BUG-122",
+    "BUG-129",
+    "BUG-130",
+    "BUG-131",
+    "BUG-132",
+    "FEAT-069",
+    "DEV-090"
+  ],
+  "frozen_on": "2026-11-17",
+  "note": "Frozen from this batch's actual changes, the main ledger and the work cards. Not derived from the per-ID table it checks. Update only before packaging a new candidate, never to make a failing table pass."
+}

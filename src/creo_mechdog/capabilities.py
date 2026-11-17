@@ -278,11 +278,12 @@ def require_kernel_completion(operations: list[dict], identity: object) -> None:
         "boundary blend (create_code=0) but the host kernel refused to hand back its element "
         f"tree (extract_code=-18, release_numeric={evidence.get('release_numeric')}, "
         f"worker_sha256={identity.get('worker_sha256')}, job_id={feature.get('job_id')}). "
-        "No native job was queued and no feature would be created. Upgrade the host release, "
-        "rebuild the worker, or use a route that does not need the element tree (template XML "
-        "or an imported exact surface once those operations are published). The observation is "
-        "keyed by worker SHA256, so a new worker build clears it; read creo_capabilities for "
-        "the recorded evidence."
+        "No native job was queued and no feature would be created. This creation path still "
+        "needs element-tree extraction when a template XML is supplied. Use a host that can "
+        "complete that path, or a separately verified route that does not need extraction. "
+        "The observation is keyed by worker SHA256: a new worker build invalidates the "
+        "record, but does not prove that this host can complete the feature. Read "
+        "creo_capabilities for the recorded evidence."
     )
 
 

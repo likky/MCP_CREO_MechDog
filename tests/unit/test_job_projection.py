@@ -252,6 +252,22 @@ class LogRemovalTests(unittest.TestCase):
         )
         self.assertEqual(projected, {"stage": "sweep", "idle_seconds": 1.5})
 
+    def test_compact_keeps_the_stall_watchdog_evidence(self):
+        data = manifest([operation("sketch")], status="unknown_outcome")
+        data["stall_watchdog"] = {
+            "stalled": True,
+            "budget_seconds": 1,
+            "silent_seconds": 2,
+            "log_bytes": 0,
+            "source": "generic_stall_seconds",
+            "termination": {"attempted": True, "pid": 123, "returncode": 0},
+            "message": "Native worker log stopped growing",
+        }
+        compact = bridge.compact_job(data)
+        self.assertEqual(compact["stall_watchdog"]["budget_seconds"], 1)
+        self.assertEqual(compact["stall_watchdog"]["silent_seconds"], 2)
+        self.assertTrue(compact["stall_watchdog"]["termination"]["attempted"])
+
     def test_full_detail_hint_names_the_pagination_parameters(self):
         compact = bridge.compact_job(manifest([operation("sketch")]))
         hint = compact["full_detail_hint"]

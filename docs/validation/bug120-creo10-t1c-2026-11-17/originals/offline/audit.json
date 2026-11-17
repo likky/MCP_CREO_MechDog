@@ -1,0 +1,584 @@
+{
+  "scope": "offline package integrity and claim correlation only",
+  "prt_table": [
+    {
+      "path": "work/c3_save/out/t1b_run_01.prt.1",
+      "claimed": {
+        "bytes": 93164,
+        "sha256": "b9267c728efb142ab0440fbf55d3508cf13149df5096863c1c0ad72f844f334d",
+        "model_id": "bbe390758d90455a8fb86e0eec39398a"
+      },
+      "actual": {
+        "bytes": 93164,
+        "sha256": "b9267c728efb142ab0440fbf55d3508cf13149df5096863c1c0ad72f844f334d"
+      },
+      "matches": true,
+      "adopted_model_id_matches_matrix": true
+    },
+    {
+      "path": "work/a2_save/t1b_a_03.prt.1",
+      "claimed": {
+        "bytes": 100494,
+        "sha256": "48cfe0c6b2dfccbf6ba551a0b50e969fb2b2d338e4e65ebeb3db9a59b3bcccf3",
+        "model_id": "f65ac145ec544c04939755b55d89fa57"
+      },
+      "actual": {
+        "bytes": 100494,
+        "sha256": "48cfe0c6b2dfccbf6ba551a0b50e969fb2b2d338e4e65ebeb3db9a59b3bcccf3"
+      },
+      "matches": true,
+      "adopted_model_id_matches_matrix": true
+    },
+    {
+      "path": "work/b_save/t1b_b_02.prt.1",
+      "claimed": {
+        "bytes": 100962,
+        "sha256": "62478c40a9e85b0791608df201d7dbb5f89125f0f438ab48f4d01050a4d959a7",
+        "model_id": "03ac1d7d835343778e2e484b872665b0"
+      },
+      "actual": {
+        "bytes": 100962,
+        "sha256": "62478c40a9e85b0791608df201d7dbb5f89125f0f438ab48f4d01050a4d959a7"
+      },
+      "matches": true,
+      "adopted_model_id_matches_matrix": true
+    },
+    {
+      "path": "work/c3_3save/t1b_c_03.prt.1",
+      "claimed": {
+        "bytes": 108377,
+        "sha256": "9635677e59baa6b16457e19c716c58d32a6b742f84b2a59650e306af8de22525",
+        "model_id": "675adfafc2ff475c9714e6f7cde0550b"
+      },
+      "actual": {
+        "bytes": 108377,
+        "sha256": "9635677e59baa6b16457e19c716c58d32a6b742f84b2a59650e306af8de22525"
+      },
+      "matches": true,
+      "adopted_model_id_matches_matrix": true
+    },
+    {
+      "path": "work/c5_5save/t1b_c_05.prt.1",
+      "claimed": {
+        "bytes": 124114,
+        "sha256": "bfc2d4e9ab692151a13bc237f43f9abd3757a539f77005fa490a62f317bda3fe",
+        "model_id": "4e85022c475849a2b0191b90019e8ee9"
+      },
+      "actual": {
+        "bytes": 124114,
+        "sha256": "bfc2d4e9ab692151a13bc237f43f9abd3757a539f77005fa490a62f317bda3fe"
+      },
+      "matches": true,
+      "adopted_model_id_matches_matrix": true
+    },
+    {
+      "path": "work/d_save/t1b_d_02.prt.1",
+      "claimed": {
+        "bytes": 100650,
+        "sha256": "d50336daf897032caa2acc8d51c525d24325a5072acc81c1fd4827705a021314",
+        "model_id": "5368401f83914d27ba1abe6bc772ffbb"
+      },
+      "actual": {
+        "bytes": 100650,
+        "sha256": "d50336daf897032caa2acc8d51c525d24325a5072acc81c1fd4827705a021314"
+      },
+      "matches": true,
+      "adopted_model_id_matches_matrix": true
+    }
+  ],
+  "cases": [
+    {
+      "case": "C3 两曲线（基线）",
+      "model": "T1B_RUN_01",
+      "request_id": "T1B-C3-2CURVE",
+      "expected": [
+        [
+          0,
+          "t1b_run_01",
+          45,
+          "PRO_SELECT_OVERRIDE",
+          0
+        ],
+        [
+          1,
+          "t1b_run_01",
+          53,
+          "PRO_SELECT_TOGGLE",
+          0
+        ]
+      ],
+      "observed": [
+        [
+          0,
+          "t1b_run_01",
+          45,
+          "PRO_SELECT_OVERRIDE",
+          0
+        ],
+        [
+          1,
+          "t1b_run_01",
+          53,
+          "PRO_SELECT_TOGGLE",
+          0
+        ]
+      ],
+      "requested_indexes_sequential": true,
+      "requested_sections_match": true,
+      "requested_owners_match_model": true,
+      "host_sequence_matches": true,
+      "matrix_selection_matches_host": true,
+      "claimed_geometry_checks": {
+        "parents_are_the_requested_sketches": true,
+        "every_selection_accepted": true,
+        "first_override_then_toggle": true,
+        "area_ok": true,
+        "perimeter_ok": true,
+        "bbox_ok": true,
+        "single_open_quilt": true,
+        "feature_complete": true
+      },
+      "bbox_ok": true,
+      "receipts": [
+        {
+          "relative_path": "models/bbe390758d90455a8fb86e0eec39398a/output/inspection-verified-d9da5aac978d0cdd.json",
+          "present": true,
+          "source": "D:\\my\\MCP_CREO_MechDog\\models\\bbe390758d90455a8fb86e0eec39398a\\output\\inspection-verified-d9da5aac978d0cdd.json",
+          "bytes": 13812,
+          "sha256": "d9da5aac978d0cdd8ed4d0709d9636933cf7282557c859cc11aad8933a66c120",
+          "identity_verification": "not_checked"
+        },
+        {
+          "relative_path": "jobs/7e7b3e91ae154d73939c7c1c47968cae/job.json",
+          "present": true,
+          "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\7e7b3e91ae154d73939c7c1c47968cae\\job.json",
+          "bytes": 10935,
+          "sha256": "e907e25524471447f761040ede2ab95307aa7dc0577f890a6b450c554c82fb9d",
+          "identity_verification": "not_checked"
+        }
+      ],
+      "independent_geometry_verified": false
+    },
+    {
+      "case": "A 新模型 + 新 ID",
+      "model": "T1B_A_03",
+      "request_id": "T1B-A-2CURVE",
+      "expected": [
+        [
+          0,
+          "t1b_a_03",
+          54,
+          "PRO_SELECT_OVERRIDE",
+          0
+        ],
+        [
+          1,
+          "t1b_a_03",
+          62,
+          "PRO_SELECT_TOGGLE",
+          0
+        ]
+      ],
+      "observed": [
+        [
+          0,
+          "t1b_a_03",
+          54,
+          "PRO_SELECT_OVERRIDE",
+          0
+        ],
+        [
+          1,
+          "t1b_a_03",
+          62,
+          "PRO_SELECT_TOGGLE",
+          0
+        ]
+      ],
+      "requested_indexes_sequential": true,
+      "requested_sections_match": true,
+      "requested_owners_match_model": true,
+      "host_sequence_matches": true,
+      "matrix_selection_matches_host": true,
+      "claimed_geometry_checks": {
+        "parents_are_the_requested_sketches": true,
+        "every_selection_accepted": true,
+        "first_override_then_toggle": true,
+        "area_ok": true,
+        "perimeter_ok": true,
+        "bbox_ok": true,
+        "single_open_quilt": true,
+        "feature_complete": true
+      },
+      "bbox_ok": true,
+      "receipts": [
+        {
+          "relative_path": "models/f65ac145ec544c04939755b55d89fa57/output/inspection-verified-237c918b0d206507.json",
+          "present": true,
+          "source": "D:\\my\\MCP_CREO_MechDog\\models\\f65ac145ec544c04939755b55d89fa57\\output\\inspection-verified-237c918b0d206507.json",
+          "bytes": 22830,
+          "sha256": "237c918b0d206507e4b2b9492d3a876787741336ab322712b64d24a02b92b459",
+          "identity_verification": "not_checked"
+        },
+        {
+          "relative_path": "jobs/9fa7d425e17147af9e1cfc4dd8b824e6/job.json",
+          "present": true,
+          "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\9fa7d425e17147af9e1cfc4dd8b824e6\\job.json",
+          "bytes": 10937,
+          "sha256": "001945a76f2a3b8c89ef01961803ad007821ae1324c7c4175e91127d3409e957",
+          "identity_verification": "not_checked"
+        }
+      ],
+      "independent_geometry_verified": false
+    },
+    {
+      "case": "B 改视角（旋转 40°）",
+      "model": "T1B_B_02",
+      "request_id": "T1B-B-VIEW",
+      "expected": [
+        [
+          0,
+          "t1b_b_02",
+          54,
+          "PRO_SELECT_OVERRIDE",
+          0
+        ],
+        [
+          1,
+          "t1b_b_02",
+          62,
+          "PRO_SELECT_TOGGLE",
+          0
+        ]
+      ],
+      "observed": [
+        [
+          0,
+          "t1b_b_02",
+          54,
+          "PRO_SELECT_OVERRIDE",
+          0
+        ],
+        [
+          1,
+          "t1b_b_02",
+          62,
+          "PRO_SELECT_TOGGLE",
+          0
+        ]
+      ],
+      "requested_indexes_sequential": true,
+      "requested_sections_match": true,
+      "requested_owners_match_model": true,
+      "host_sequence_matches": true,
+      "matrix_selection_matches_host": true,
+      "claimed_geometry_checks": {
+        "parents_are_the_requested_sketches": true,
+        "every_selection_accepted": true,
+        "first_override_then_toggle": true,
+        "area_ok": true,
+        "perimeter_ok": true,
+        "bbox_ok": true,
+        "single_open_quilt": true,
+        "feature_complete": true
+      },
+      "bbox_ok": true,
+      "receipts": [
+        {
+          "relative_path": "models/03ac1d7d835343778e2e484b872665b0/output/inspection-verified-5678aa5bc54115c0.json",
+          "present": true,
+          "source": "D:\\my\\MCP_CREO_MechDog\\models\\03ac1d7d835343778e2e484b872665b0\\output\\inspection-verified-5678aa5bc54115c0.json",
+          "bytes": 22830,
+          "sha256": "5678aa5bc54115c03dfda4f4d795011a3c942e4f60136984075aa6f6abd3bea8",
+          "identity_verification": "not_checked"
+        },
+        {
+          "relative_path": "jobs/39d6c5cf4dc2431fad3b8ac29a903c5c/job.json",
+          "present": true,
+          "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\39d6c5cf4dc2431fad3b8ac29a903c5c\\job.json",
+          "bytes": 10936,
+          "sha256": "f252cb625d389191de94fb8b26141cbcde8a004f03af1d64441a00d40e15da58",
+          "identity_verification": "not_checked"
+        }
+      ],
+      "independent_geometry_verified": false
+    },
+    {
+      "case": "C 三截面",
+      "model": "T1B_C_03",
+      "request_id": "T1B-C3-3SEC",
+      "expected": [
+        [
+          0,
+          "t1b_c_03",
+          54,
+          "PRO_SELECT_OVERRIDE",
+          0
+        ],
+        [
+          1,
+          "t1b_c_03",
+          62,
+          "PRO_SELECT_TOGGLE",
+          0
+        ],
+        [
+          2,
+          "t1b_c_03",
+          70,
+          "PRO_SELECT_TOGGLE",
+          0
+        ]
+      ],
+      "observed": [
+        [
+          0,
+          "t1b_c_03",
+          54,
+          "PRO_SELECT_OVERRIDE",
+          0
+        ],
+        [
+          1,
+          "t1b_c_03",
+          62,
+          "PRO_SELECT_TOGGLE",
+          0
+        ],
+        [
+          2,
+          "t1b_c_03",
+          70,
+          "PRO_SELECT_TOGGLE",
+          0
+        ]
+      ],
+      "requested_indexes_sequential": true,
+      "requested_sections_match": true,
+      "requested_owners_match_model": true,
+      "host_sequence_matches": true,
+      "matrix_selection_matches_host": true,
+      "claimed_geometry_checks": {
+        "parents_are_the_requested_sketches": true,
+        "every_selection_accepted": true,
+        "first_override_then_toggle": true,
+        "area_ok": true,
+        "perimeter_ok": true,
+        "bbox_ok": false,
+        "single_open_quilt": true,
+        "feature_complete": true
+      },
+      "bbox_ok": false,
+      "receipts": [
+        {
+          "relative_path": "models/675adfafc2ff475c9714e6f7cde0550b/output/inspection-verified-5ac0ca63d9d045f4.json",
+          "present": true,
+          "source": "D:\\my\\MCP_CREO_MechDog\\models\\675adfafc2ff475c9714e6f7cde0550b\\output\\inspection-verified-5ac0ca63d9d045f4.json",
+          "bytes": 28502,
+          "sha256": "5ac0ca63d9d045f4fde451b3a86e8f3c0bcc8538675e00a468bd1f0c55ad4bee",
+          "identity_verification": "not_checked"
+        },
+        {
+          "relative_path": "jobs/0528917ac5b941068827e768f6a85f11/job.json",
+          "present": true,
+          "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\0528917ac5b941068827e768f6a85f11\\job.json",
+          "bytes": 10966,
+          "sha256": "b6cd57201f45ebf63602794f1dc7f6d5730de6a2963e72e2f0f4bb75ba0f3902",
+          "identity_verification": "not_checked"
+        }
+      ],
+      "independent_geometry_verified": false
+    },
+    {
+      "case": "C 五截面",
+      "model": "T1B_C_05",
+      "request_id": "T1B-C5-5SEC",
+      "expected": [
+        [
+          0,
+          "t1b_c_05",
+          54,
+          "PRO_SELECT_OVERRIDE",
+          0
+        ],
+        [
+          1,
+          "t1b_c_05",
+          62,
+          "PRO_SELECT_TOGGLE",
+          0
+        ],
+        [
+          2,
+          "t1b_c_05",
+          70,
+          "PRO_SELECT_TOGGLE",
+          0
+        ],
+        [
+          3,
+          "t1b_c_05",
+          78,
+          "PRO_SELECT_TOGGLE",
+          0
+        ],
+        [
+          4,
+          "t1b_c_05",
+          86,
+          "PRO_SELECT_TOGGLE",
+          0
+        ]
+      ],
+      "observed": [
+        [
+          0,
+          "t1b_c_05",
+          54,
+          "PRO_SELECT_OVERRIDE",
+          0
+        ],
+        [
+          1,
+          "t1b_c_05",
+          62,
+          "PRO_SELECT_TOGGLE",
+          0
+        ],
+        [
+          2,
+          "t1b_c_05",
+          70,
+          "PRO_SELECT_TOGGLE",
+          0
+        ],
+        [
+          3,
+          "t1b_c_05",
+          78,
+          "PRO_SELECT_TOGGLE",
+          0
+        ],
+        [
+          4,
+          "t1b_c_05",
+          86,
+          "PRO_SELECT_TOGGLE",
+          0
+        ]
+      ],
+      "requested_indexes_sequential": true,
+      "requested_sections_match": true,
+      "requested_owners_match_model": true,
+      "host_sequence_matches": true,
+      "matrix_selection_matches_host": true,
+      "claimed_geometry_checks": {
+        "parents_are_the_requested_sketches": true,
+        "every_selection_accepted": true,
+        "first_override_then_toggle": true,
+        "area_ok": true,
+        "perimeter_ok": true,
+        "bbox_ok": false,
+        "single_open_quilt": true,
+        "feature_complete": true
+      },
+      "bbox_ok": false,
+      "receipts": [
+        {
+          "relative_path": "models/4e85022c475849a2b0191b90019e8ee9/output/inspection-verified-97f10efd900099b6.json",
+          "present": true,
+          "source": "D:\\my\\MCP_CREO_MechDog\\models\\4e85022c475849a2b0191b90019e8ee9\\output\\inspection-verified-97f10efd900099b6.json",
+          "bytes": 39919,
+          "sha256": "97f10efd900099b6ffe6b4a448292df98336cca5688fdd1fa1cc8830ce0b8408",
+          "identity_verification": "not_checked"
+        },
+        {
+          "relative_path": "jobs/23c4b7d95f9e48068b6f3d10e81a2bf1/job.json",
+          "present": true,
+          "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\23c4b7d95f9e48068b6f3d10e81a2bf1\\job.json",
+          "bytes": 10964,
+          "sha256": "c654434310e6439166dea7c02e984bd8cb7f5b467d9fc3964986860058de19bc",
+          "identity_verification": "not_checked"
+        }
+      ],
+      "independent_geometry_verified": false
+    },
+    {
+      "case": "D 平移 + 加长",
+      "model": "T1B_D_02",
+      "request_id": "T1B-D-2CURVE",
+      "expected": [
+        [
+          0,
+          "t1b_d_02",
+          56,
+          "PRO_SELECT_OVERRIDE",
+          0
+        ],
+        [
+          1,
+          "t1b_d_02",
+          64,
+          "PRO_SELECT_TOGGLE",
+          0
+        ]
+      ],
+      "observed": [
+        [
+          0,
+          "t1b_d_02",
+          56,
+          "PRO_SELECT_OVERRIDE",
+          0
+        ],
+        [
+          1,
+          "t1b_d_02",
+          64,
+          "PRO_SELECT_TOGGLE",
+          0
+        ]
+      ],
+      "requested_indexes_sequential": true,
+      "requested_sections_match": true,
+      "requested_owners_match_model": true,
+      "host_sequence_matches": true,
+      "matrix_selection_matches_host": true,
+      "claimed_geometry_checks": {
+        "parents_are_the_requested_sketches": true,
+        "every_selection_accepted": true,
+        "first_override_then_toggle": true,
+        "area_ok": true,
+        "perimeter_ok": true,
+        "bbox_ok": true,
+        "single_open_quilt": true,
+        "feature_complete": true
+      },
+      "bbox_ok": true,
+      "receipts": [
+        {
+          "relative_path": "models/5368401f83914d27ba1abe6bc772ffbb/output/inspection-verified-e91f4333b0bcd7a1.json",
+          "present": true,
+          "source": "D:\\my\\MCP_CREO_MechDog\\models\\5368401f83914d27ba1abe6bc772ffbb\\output\\inspection-verified-e91f4333b0bcd7a1.json",
+          "bytes": 24043,
+          "sha256": "e91f4333b0bcd7a1367ecd5527f8ac15fd340a78bff8315e7111d8b4d2e82f28",
+          "identity_verification": "not_checked"
+        },
+        {
+          "relative_path": "jobs/9cc885608c924eebb7c42d7c6396b8f0/job.json",
+          "present": true,
+          "source": "D:\\my\\MCP_CREO_MechDog\\jobs\\9cc885608c924eebb7c42d7c6396b8f0\\job.json",
+          "bytes": 10958,
+          "sha256": "a438ba1fa84048f406767e0c1a71cfe8176fb7bb4e87fd18a418430363c37b29",
+          "identity_verification": "not_checked"
+        }
+      ],
+      "independent_geometry_verified": false
+    }
+  ],
+  "unique_request_ids": true,
+  "unique_case_models": true,
+  "missing_original_receipts": [],
+  "geometry_claims_independently_verified": false,
+  "integrity_ok": true
+}

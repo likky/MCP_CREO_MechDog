@@ -1,0 +1,181 @@
+{
+  "job_id": "e10a8f532a764c3399a7faf88c82410e",
+  "parent_job_id": "33a9b4175da549bb9933e9bd05825793",
+  "kind": "adoption_file_item",
+  "model_id": "5368401f83914d27ba1abe6bc772ffbb",
+  "status": "succeeded",
+  "created_at": "2026-11-17T09:27:16.436031+00:00",
+  "idempotency_key": "t1b-d-shift-2026-11-17-e",
+  "revision": 1,
+  "worker_started": true,
+  "stage": "adoption_committed",
+  "result": {
+    "adopted": true,
+    "aliases": {},
+    "completion_stage": "result_delivery",
+    "connected": true,
+    "creo_release_numeric": 42,
+    "creo_release_query_code": 0,
+    "delivery_complete": true,
+    "disconnect_budget_seconds": 20.0,
+    "disconnect_code": 0,
+    "inspection_ref": {
+      "bytes": 24043,
+      "file": "D:\\my\\MCP_CREO_MechDog\\models\\5368401f83914d27ba1abe6bc772ffbb\\output\\inspection-verified-e91f4333b0bcd7a1.json",
+      "sha256": "e91f4333b0bcd7a1367ecd5527f8ac15fd340a78bff8315e7111d8b4d2e82f28"
+    },
+    "live": {
+      "dependency_free": true,
+      "display_name": "T1B_D_02",
+      "feature_count": 14,
+      "health_details": {
+        "item_limit": 20,
+        "items": [],
+        "returned": 0,
+        "truncated": false,
+        "unhealthy_total": 0
+      },
+      "healthy": true,
+      "inspection_ref": {
+        "bytes": 23967,
+        "file": "D:\\my\\MCP_CREO_MechDog\\models\\5368401f83914d27ba1abe6bc772ffbb\\output\\inspection-live-3ef19aca8ccaf9c1.json",
+        "sha256": "3ef19aca8ccaf9c1598b0ef0eb0fa2fe3037e6b5f6cbb94efb631db069691646"
+      },
+      "millimeter_units": true,
+      "model_type": "part",
+      "origin": "D:\\my\\MCP_CREO_MechDog\\test_runs\\2026-11-17_t1b_id_driven_blend\\work\\d_save\\t1b_d_02.prt.1",
+      "resident_set_changed": false,
+      "session_fingerprint": "13719338321783973708",
+      "source_state": {
+        "disk_resident_content_equality": "unknown",
+        "inspection_provenance": "fresh_retrieval",
+        "modified": false,
+        "origin": "D:\\my\\MCP_CREO_MechDog\\test_runs\\2026-11-17_t1b_id_driven_blend\\work\\d_save\\t1b_d_02.prt.1",
+        "provenance": "existing_resident",
+        "session_model_id": 2097164,
+        "sha256": "d50336daf897032caa2acc8d51c525d24325a5072acc81c1fd4827705a021314",
+        "version_stamp": "200"
+      },
+      "volume_mm3": null,
+      "inspection_summary": {
+        "healthy": true,
+        "has_solid": false,
+        "units": "mm",
+        "units_query_code": 0,
+        "length_unit": {
+          "name": "mm",
+          "query_code": 0,
+          "scale_query_codes": {
+            "conversion": 0,
+            "mm_unit": 0,
+            "unit": 0
+          },
+          "scale_to_mm": 1.0,
+          "scale_to_mm_known": true
+        },
+        "center_of_gravity": null,
+        "model_type": "part",
+        "volume_mm3": null,
+        "volume_query_code": null,
+        "counts": {
+          "features": 14,
+          "surfaces": 0,
+          "edges": 0,
+          "quilts": 1,
+          "bodies": 1,
+          "components": null
+        },
+        "body_counts": {
+          "objects": 1,
+          "records": 1,
+          "active": 0,
+          "with_material": 0,
+          "without_material": 1,
+          "counts_meaning": {
+            "bodies": "body_objects",
+            "with_material": "active_bodies_with_surfaces"
+          }
+        },
+        "inspection_available": true
+      }
+    },
+    "native_pid": 19404,
+    "part_file": "D:\\my\\MCP_CREO_MechDog\\models\\5368401f83914d27ba1abe6bc772ffbb\\output\\adopt_5368401f.prt.1",
+    "path_copy_started": true,
+    "path_source_checked": true,
+    "path_source_state": {
+      "disk_resident_content_equality": "unknown",
+      "inspection_provenance": "fresh_retrieval",
+      "modified": false,
+      "origin": "D:\\my\\MCP_CREO_MechDog\\test_runs\\2026-11-17_t1b_id_driven_blend\\work\\d_save\\t1b_d_02.prt.1",
+      "provenance": "existing_resident",
+      "session_model_id": 2097164,
+      "sha256": "d50336daf897032caa2acc8d51c525d24325a5072acc81c1fd4827705a021314",
+      "version_stamp": "200"
+    },
+    "resident_set_changed": false,
+    "rollback_succeeded": false,
+    "saved_file_reloaded_and_verified": true,
+    "session_fingerprint": "13719338321783973708",
+    "source_unchanged": true,
+    "success": true,
+    "verify_stages": [
+      {
+        "elapsed_ms": 29,
+        "name": "connect",
+        "since_start_ms": 29
+      },
+      {
+        "elapsed_ms": 4648,
+        "name": "connected",
+        "since_start_ms": 4677
+      }
+    ],
+    "window_unchanged": true,
+    "inspection_summary": {
+      "healthy": true,
+      "has_solid": false,
+      "units": "mm",
+      "units_query_code": 0,
+      "length_unit": {
+        "name": "mm",
+        "query_code": 0,
+        "scale_query_codes": {
+          "conversion": 0,
+          "mm_unit": 0,
+          "unit": 0
+        },
+        "scale_to_mm": 1.0,
+        "scale_to_mm_known": true
+      },
+      "center_of_gravity": null,
+      "model_type": "part",
+      "volume_mm3": null,
+      "volume_query_code": null,
+      "inspection_source": "adoption_verified",
+      "inspection_available": true,
+      "counts": {
+        "features": 14,
+        "surfaces": 0,
+        "edges": 0,
+        "quilts": 1,
+        "bodies": 1,
+        "components": null
+      },
+      "body_counts": {
+        "objects": 1,
+        "records": 1,
+        "active": 0,
+        "with_material": 0,
+        "without_material": 1,
+        "counts_meaning": {
+          "bodies": "body_objects",
+          "with_material": "active_bodies_with_surfaces"
+        }
+      }
+    },
+    "sha256": "c588afa76051a5fc17e4fc5e208817c7b75859adbb58da3f770a0eb930e68e20"
+  },
+  "finished_at": "2026-11-17T09:27:22.224444+00:00",
+  "message": "Adoption committed as a managed copy; the source model was never modified"
+}

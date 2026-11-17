@@ -354,8 +354,9 @@ class UpdateCacheTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(direct, (await server.creo_startup_status())["update"])
             tools = {tool.name: tool for tool in await server.mcp.list_tools()}
             tool = tools["creo_check_update"]
-            # 108 includes offline creo_plan_product_variant (FEAT-063),
-            # read-only creo_get_mass_properties (FEAT-057), creo_surface_loft
+            # 109 includes creo_cancel_job (BUG-131), offline
+            # creo_plan_product_variant (FEAT-063), read-only
+            # creo_get_mass_properties (FEAT-057), creo_surface_loft
             # (FEAT-009/H02, live 2026-11-07), the read-only
             # creo_measure_surface_group (FEAT-039/H04), creo_surface_round
             # (DEV-074/H08, live 2026-11-08), the read-only
@@ -365,7 +366,7 @@ class UpdateCacheTests(unittest.IsolatedAsyncioTestCase):
             # creo_surface_boundary_fill is gated (DEV-074/H09).
             # 105 = 104 that carry creo_surface_trim (live P3),
             # creo_project_curve (live S04) and creo_surface_offset (live S07, 2026-11-05).
-            self.assertEqual(len(tools), 108)
+            self.assertEqual(len(tools), 109)
             self.assertTrue(tool.annotations.read_only_hint)
             self.assertTrue(tool.annotations.open_world_hint)
             self.assertFalse(tool.annotations.destructive_hint)

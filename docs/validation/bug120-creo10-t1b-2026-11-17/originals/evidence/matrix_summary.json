@@ -1,0 +1,665 @@
+{
+  "tolerance_mm": 0.01,
+  "cases": [
+    {
+      "case": "C3 两曲线（基线）",
+      "request_id": "T1B-C3-2CURVE",
+      "model": "T1B_RUN_01",
+      "adopted_model_id": "bbe390758d90455a8fb86e0eec39398a",
+      "requested_sections": 2,
+      "requested_geometry_ids": [
+        {
+          "index": 0,
+          "owner": "t1b_run_01",
+          "geom_id": 45
+        },
+        {
+          "index": 1,
+          "owner": "t1b_run_01",
+          "geom_id": 53
+        }
+      ],
+      "selection_log": [
+        {
+          "index": 0,
+          "geom_id": 45,
+          "action": "PRO_SELECT_OVERRIDE",
+          "error": 0
+        },
+        {
+          "index": 1,
+          "geom_id": 53,
+          "action": "PRO_SELECT_TOGGLE",
+          "error": 0
+        }
+      ],
+      "created_feature": {
+        "feature_id": 54,
+        "subtype": "混合",
+        "incomplete": false,
+        "status": 0,
+        "parent_feature_ids": [
+          40,
+          48
+        ],
+        "parent_source": "inspection_verified:D:\\my\\MCP_CREO_MechDog\\models\\bbe390758d90455a8fb86e0eec39398a\\output\\inspection-verified-d9da5aac978d0cdd.json"
+      },
+      "quilt": {
+        "quilt_id": 61,
+        "area_mm2": 800.0,
+        "bbox_mm": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            20.0,
+            40.0,
+            0.0
+          ]
+        ],
+        "bbox_deviation_mm": 0.0,
+        "closed": false,
+        "face_count": 1,
+        "source": "D:\\my\\MCP_CREO_MechDog\\models\\bbe390758d90455a8fb86e0eec39398a\\output\\inspection-verified-d9da5aac978d0cdd.json"
+      },
+      "boundary": {
+        "open_edges": 4,
+        "perimeter_mm": 120.0,
+        "edge_lengths_mm": [
+          20.0,
+          40.0,
+          20.0,
+          40.0
+        ],
+        "state": "open",
+        "measure_job": "7e7b3e91ae154d73939c7c1c47968cae"
+      },
+      "checks": {
+        "parents_are_the_requested_sketches": true,
+        "every_selection_accepted": true,
+        "first_override_then_toggle": true,
+        "area_ok": true,
+        "perimeter_ok": true,
+        "bbox_ok": true,
+        "single_open_quilt": true,
+        "feature_complete": true
+      },
+      "expected": {
+        "area_mm2": 800.0,
+        "perimeter_mm": 120.0,
+        "bbox_mm": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            20.0,
+            40.0,
+            0.0
+          ]
+        ]
+      }
+    },
+    {
+      "case": "A 新模型 + 新 ID",
+      "request_id": "T1B-A-2CURVE",
+      "model": "T1B_A_03",
+      "adopted_model_id": "f65ac145ec544c04939755b55d89fa57",
+      "requested_sections": 2,
+      "requested_geometry_ids": [
+        {
+          "index": 0,
+          "owner": "t1b_a_03",
+          "geom_id": 54
+        },
+        {
+          "index": 1,
+          "owner": "t1b_a_03",
+          "geom_id": 62
+        }
+      ],
+      "selection_log": [
+        {
+          "index": 0,
+          "geom_id": 54,
+          "action": "PRO_SELECT_OVERRIDE",
+          "error": 0
+        },
+        {
+          "index": 1,
+          "geom_id": 62,
+          "action": "PRO_SELECT_TOGGLE",
+          "error": 0
+        }
+      ],
+      "created_feature": {
+        "feature_id": 63,
+        "subtype": "混合",
+        "incomplete": false,
+        "status": 0,
+        "parent_feature_ids": [
+          49,
+          57
+        ],
+        "parent_source": "probe_live_feature_parents"
+      },
+      "quilt": {
+        "quilt_id": 70,
+        "area_mm2": 800.0,
+        "bbox_mm": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            20.0,
+            40.0,
+            0.0
+          ]
+        ],
+        "bbox_deviation_mm": 0.0,
+        "closed": false,
+        "face_count": 1,
+        "source": "D:\\my\\MCP_CREO_MechDog\\models\\f65ac145ec544c04939755b55d89fa57\\output\\inspection-verified-237c918b0d206507.json"
+      },
+      "boundary": {
+        "open_edges": 4,
+        "perimeter_mm": 120.0,
+        "edge_lengths_mm": [
+          20.0,
+          40.0,
+          20.0,
+          40.0
+        ],
+        "state": "open",
+        "measure_job": "9fa7d425e17147af9e1cfc4dd8b824e6"
+      },
+      "checks": {
+        "parents_are_the_requested_sketches": true,
+        "every_selection_accepted": true,
+        "first_override_then_toggle": true,
+        "area_ok": true,
+        "perimeter_ok": true,
+        "bbox_ok": true,
+        "single_open_quilt": true,
+        "feature_complete": true
+      },
+      "expected": {
+        "area_mm2": 800.0,
+        "perimeter_mm": 120.0,
+        "bbox_mm": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            20.0,
+            40.0,
+            0.0
+          ]
+        ]
+      }
+    },
+    {
+      "case": "B 改视角（旋转 40°）",
+      "request_id": "T1B-B-VIEW",
+      "model": "T1B_B_02",
+      "adopted_model_id": "03ac1d7d835343778e2e484b872665b0",
+      "requested_sections": 2,
+      "requested_geometry_ids": [
+        {
+          "index": 0,
+          "owner": "t1b_b_02",
+          "geom_id": 54
+        },
+        {
+          "index": 1,
+          "owner": "t1b_b_02",
+          "geom_id": 62
+        }
+      ],
+      "selection_log": [
+        {
+          "index": 0,
+          "geom_id": 54,
+          "action": "PRO_SELECT_OVERRIDE",
+          "error": 0
+        },
+        {
+          "index": 1,
+          "geom_id": 62,
+          "action": "PRO_SELECT_TOGGLE",
+          "error": 0
+        }
+      ],
+      "created_feature": {
+        "feature_id": 63,
+        "subtype": "混合",
+        "incomplete": false,
+        "status": 0,
+        "parent_feature_ids": [
+          49,
+          57
+        ],
+        "parent_source": "probe_live_feature_parents"
+      },
+      "quilt": {
+        "quilt_id": 70,
+        "area_mm2": 800.0,
+        "bbox_mm": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            20.0,
+            40.0,
+            0.0
+          ]
+        ],
+        "bbox_deviation_mm": 0.0,
+        "closed": false,
+        "face_count": 1,
+        "source": "D:\\my\\MCP_CREO_MechDog\\models\\03ac1d7d835343778e2e484b872665b0\\output\\inspection-verified-5678aa5bc54115c0.json"
+      },
+      "boundary": {
+        "open_edges": 4,
+        "perimeter_mm": 120.0,
+        "edge_lengths_mm": [
+          20.0,
+          40.0,
+          20.0,
+          40.0
+        ],
+        "state": "open",
+        "measure_job": "39d6c5cf4dc2431fad3b8ac29a903c5c"
+      },
+      "checks": {
+        "parents_are_the_requested_sketches": true,
+        "every_selection_accepted": true,
+        "first_override_then_toggle": true,
+        "area_ok": true,
+        "perimeter_ok": true,
+        "bbox_ok": true,
+        "single_open_quilt": true,
+        "feature_complete": true
+      },
+      "expected": {
+        "area_mm2": 800.0,
+        "perimeter_mm": 120.0,
+        "bbox_mm": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            20.0,
+            40.0,
+            0.0
+          ]
+        ]
+      }
+    },
+    {
+      "case": "C 三截面",
+      "request_id": "T1B-C3-3SEC",
+      "model": "T1B_C_03",
+      "adopted_model_id": "675adfafc2ff475c9714e6f7cde0550b",
+      "requested_sections": 3,
+      "requested_geometry_ids": [
+        {
+          "index": 0,
+          "owner": "t1b_c_03",
+          "geom_id": 54
+        },
+        {
+          "index": 1,
+          "owner": "t1b_c_03",
+          "geom_id": 62
+        },
+        {
+          "index": 2,
+          "owner": "t1b_c_03",
+          "geom_id": 70
+        }
+      ],
+      "selection_log": [
+        {
+          "index": 0,
+          "geom_id": 54,
+          "action": "PRO_SELECT_OVERRIDE",
+          "error": 0
+        },
+        {
+          "index": 1,
+          "geom_id": 62,
+          "action": "PRO_SELECT_TOGGLE",
+          "error": 0
+        },
+        {
+          "index": 2,
+          "geom_id": 70,
+          "action": "PRO_SELECT_TOGGLE",
+          "error": 0
+        }
+      ],
+      "created_feature": {
+        "feature_id": 71,
+        "subtype": "混合",
+        "incomplete": false,
+        "status": 0,
+        "parent_feature_ids": [
+          49,
+          57,
+          65
+        ],
+        "parent_source": "probe_live_feature_parents"
+      },
+      "quilt": {
+        "quilt_id": 77,
+        "area_mm2": 799.9999999999997,
+        "bbox_mm": [
+          [
+            -0.12000480019200767,
+            -0.12000480019200833,
+            -0.12000480019200767
+          ],
+          [
+            20.120004800192007,
+            40.12000480019201,
+            0.12000480019200767
+          ]
+        ],
+        "bbox_deviation_mm": 0.12000480019200833,
+        "closed": false,
+        "face_count": 1,
+        "source": "D:\\my\\MCP_CREO_MechDog\\models\\675adfafc2ff475c9714e6f7cde0550b\\output\\inspection-verified-5ac0ca63d9d045f4.json"
+      },
+      "boundary": {
+        "open_edges": 4,
+        "perimeter_mm": 120.0,
+        "edge_lengths_mm": [
+          19.999999999999996,
+          40.0,
+          19.999999999999996,
+          40.0
+        ],
+        "state": "open",
+        "measure_job": "0528917ac5b941068827e768f6a85f11"
+      },
+      "checks": {
+        "parents_are_the_requested_sketches": true,
+        "every_selection_accepted": true,
+        "first_override_then_toggle": true,
+        "area_ok": true,
+        "perimeter_ok": true,
+        "bbox_ok": false,
+        "single_open_quilt": true,
+        "feature_complete": true
+      },
+      "expected": {
+        "area_mm2": 800.0,
+        "perimeter_mm": 120.0,
+        "bbox_mm": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            20.0,
+            40.0,
+            0.0
+          ]
+        ]
+      }
+    },
+    {
+      "case": "C 五截面",
+      "request_id": "T1B-C5-5SEC",
+      "model": "T1B_C_05",
+      "adopted_model_id": "4e85022c475849a2b0191b90019e8ee9",
+      "requested_sections": 5,
+      "requested_geometry_ids": [
+        {
+          "index": 0,
+          "owner": "t1b_c_05",
+          "geom_id": 54
+        },
+        {
+          "index": 1,
+          "owner": "t1b_c_05",
+          "geom_id": 62
+        },
+        {
+          "index": 2,
+          "owner": "t1b_c_05",
+          "geom_id": 70
+        },
+        {
+          "index": 3,
+          "owner": "t1b_c_05",
+          "geom_id": 78
+        },
+        {
+          "index": 4,
+          "owner": "t1b_c_05",
+          "geom_id": 86
+        }
+      ],
+      "selection_log": [
+        {
+          "index": 0,
+          "geom_id": 54,
+          "action": "PRO_SELECT_OVERRIDE",
+          "error": 0
+        },
+        {
+          "index": 1,
+          "geom_id": 62,
+          "action": "PRO_SELECT_TOGGLE",
+          "error": 0
+        },
+        {
+          "index": 2,
+          "geom_id": 70,
+          "action": "PRO_SELECT_TOGGLE",
+          "error": 0
+        },
+        {
+          "index": 3,
+          "geom_id": 78,
+          "action": "PRO_SELECT_TOGGLE",
+          "error": 0
+        },
+        {
+          "index": 4,
+          "geom_id": 86,
+          "action": "PRO_SELECT_TOGGLE",
+          "error": 0
+        }
+      ],
+      "created_feature": {
+        "feature_id": 87,
+        "subtype": "混合",
+        "incomplete": false,
+        "status": 0,
+        "parent_feature_ids": [
+          49,
+          57,
+          65,
+          73,
+          81
+        ],
+        "parent_source": "probe_live_feature_parents"
+      },
+      "quilt": {
+        "quilt_id": 93,
+        "area_mm2": 799.9999999999968,
+        "bbox_mm": [
+          [
+            -0.12000480019200767,
+            -0.12000480019200767,
+            -0.12000480019200767
+          ],
+          [
+            20.120004800192007,
+            40.12000480019201,
+            0.12000480019200767
+          ]
+        ],
+        "bbox_deviation_mm": 0.12000480019200767,
+        "closed": false,
+        "face_count": 1,
+        "source": "D:\\my\\MCP_CREO_MechDog\\models\\4e85022c475849a2b0191b90019e8ee9\\output\\inspection-verified-97f10efd900099b6.json"
+      },
+      "boundary": {
+        "open_edges": 4,
+        "perimeter_mm": 120.0,
+        "edge_lengths_mm": [
+          20.000000000000043,
+          40.0,
+          20.000000000000046,
+          40.0
+        ],
+        "state": "open",
+        "measure_job": "23c4b7d95f9e48068b6f3d10e81a2bf1"
+      },
+      "checks": {
+        "parents_are_the_requested_sketches": true,
+        "every_selection_accepted": true,
+        "first_override_then_toggle": true,
+        "area_ok": true,
+        "perimeter_ok": true,
+        "bbox_ok": false,
+        "single_open_quilt": true,
+        "feature_complete": true
+      },
+      "expected": {
+        "area_mm2": 800.0,
+        "perimeter_mm": 120.0,
+        "bbox_mm": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            20.0,
+            40.0,
+            0.0
+          ]
+        ]
+      }
+    },
+    {
+      "case": "D 平移 + 加长",
+      "request_id": "T1B-D-2CURVE",
+      "model": "T1B_D_02",
+      "adopted_model_id": "5368401f83914d27ba1abe6bc772ffbb",
+      "requested_sections": 2,
+      "requested_geometry_ids": [
+        {
+          "index": 0,
+          "owner": "t1b_d_02",
+          "geom_id": 56
+        },
+        {
+          "index": 1,
+          "owner": "t1b_d_02",
+          "geom_id": 64
+        }
+      ],
+      "selection_log": [
+        {
+          "index": 0,
+          "geom_id": 56,
+          "action": "PRO_SELECT_OVERRIDE",
+          "error": 0
+        },
+        {
+          "index": 1,
+          "geom_id": 64,
+          "action": "PRO_SELECT_TOGGLE",
+          "error": 0
+        }
+      ],
+      "created_feature": {
+        "feature_id": 65,
+        "subtype": "混合",
+        "incomplete": false,
+        "status": 0,
+        "parent_feature_ids": [
+          51,
+          59
+        ],
+        "parent_source": "probe_live_feature_parents"
+      },
+      "quilt": {
+        "quilt_id": 72,
+        "area_mm2": 1000.0,
+        "bbox_mm": [
+          [
+            100.0,
+            30.0,
+            10.0
+          ],
+          [
+            120.0,
+            80.0,
+            10.0
+          ]
+        ],
+        "bbox_deviation_mm": 0.0,
+        "closed": false,
+        "face_count": 1,
+        "source": "D:\\my\\MCP_CREO_MechDog\\models\\5368401f83914d27ba1abe6bc772ffbb\\output\\inspection-verified-e91f4333b0bcd7a1.json"
+      },
+      "boundary": {
+        "open_edges": 4,
+        "perimeter_mm": 140.0,
+        "edge_lengths_mm": [
+          20.0,
+          50.0,
+          20.0,
+          50.0
+        ],
+        "state": "open",
+        "measure_job": "9cc885608c924eebb7c42d7c6396b8f0"
+      },
+      "checks": {
+        "parents_are_the_requested_sketches": true,
+        "every_selection_accepted": true,
+        "first_override_then_toggle": true,
+        "area_ok": true,
+        "perimeter_ok": true,
+        "bbox_ok": true,
+        "single_open_quilt": true,
+        "feature_complete": true
+      },
+      "expected": {
+        "area_mm2": 1000.0,
+        "perimeter_mm": 140.0,
+        "bbox_mm": [
+          [
+            100.0,
+            30.0,
+            10.0
+          ],
+          [
+            120.0,
+            80.0,
+            10.0
+          ]
+        ]
+      }
+    }
+  ]
+}

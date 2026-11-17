@@ -61,7 +61,8 @@ class ModelingCandidateGateTests(unittest.TestCase):
         import server
 
         names = {tool.name for tool in asyncio.run(server.mcp.list_tools())}
-        self.assertEqual(len(names), 108)
+        # 109 adds creo_cancel_job (BUG-131) on top of the 108 published tools.
+        self.assertEqual(len(names), 109)
         for op in candidate_operations():
             self.assertNotIn("creo_" + op["op"], names)
 

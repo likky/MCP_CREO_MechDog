@@ -1,0 +1,39 @@
+{
+  "connect_code": 0,
+  "current_model": "T1C_MID",
+  "end_marker": null,
+  "end_marker_seen": false,
+  "features_after": null,
+  "features_before": {
+    "count": 14,
+    "ids": [
+      1,
+      3,
+      5,
+      7,
+      40,
+      43,
+      42,
+      49,
+      48,
+      55,
+      54,
+      60,
+      72,
+      84
+    ],
+    "max_id": 84
+  },
+  "features_created": [],
+  "macro": "~ Command `ProCmdFtBndBlend`; ~ Command `MechDogT1CSelectB`; ~ Command `MechDogT1CSelectB`; ~ Command `MechDogT1CSelectB`; ~ Command `MechDogT1CSelectB`;",
+  "macro_api_code": 0,
+  "marker_path": "probe\\host3\\probe_end_marker_v2b.json",
+  "model": "T1C_MID",
+  "probe": "t1c-drive",
+  "request_id": "T1C-MID-05",
+  "requested_references": 4,
+  "scan_skipped": "post_scan disabled; use t1c_features.exe",
+  "select_command": "MechDogT1CSelectB",
+  "success": true,
+  "tail": "none"
+}

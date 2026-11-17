@@ -1,0 +1,7 @@
+{
+  "request_id": "T1C-QUIT-01",
+  "model": "T1C_C3_COPY",
+  "curves": [
+    {"owner": "T1C_C3_COPY", "geom_id": 54, "role": "first_dir"}
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "request_id": "T1C-MID-03",
+  "model": "T1C_MID",
+  "curves": [
+    {"owner": "T1C_MID", "geom_id": 51, "role": "first_dir", "spatial": "end_a y=0 z=0"},
+    {"owner": "T1C_MID", "geom_id": 45, "role": "first_dir", "spatial": "mid y=20 z=3"},
+    {"owner": "T1C_MID", "geom_id": 57, "role": "first_dir", "spatial": "end_b y=40 z=0"},
+    {"owner": "T1C_MID", "geom_id": 999999, "role": "first_dir", "spatial": "deliberately absent"}
+  ],
+  "note": "the 4th reference is deliberately invalid: the probe locks and leaves the dashboard open, which keeps the three real collector rows visible for inspection"
+}

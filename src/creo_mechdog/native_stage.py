@@ -20,6 +20,7 @@ have only ``PHASE=`` lines: they keep working and report
 from __future__ import annotations
 
 import re
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -35,6 +36,21 @@ MAX_SCAN_LINES = 200
 #: line is the bounded "per-feature log summary" that report asked for as an
 #: alternative to limiting the log itself.
 LOG_SOFT_LIMIT_BYTES = 1 << 20
+#: BUG-131/P5-3: a looping operation keeps writing diagnostic lines after its
+#: last ``PHASE=`` marker. A 0.26.0 report showed the marker pushed out of the
+#: 8 KiB tail, so the poll said ``no_phase_lines`` for over 30 minutes even
+#: though the worker had never left ``assemble_component:hom_1``. When the
+#: bounded tail holds no marker at all, widen the backward search to this cap
+#: instead of reporting the log as empty of stages.
+MARKER_SCAN_MAX_BYTES = 1 << 20
+#: Hard bound on lines read by the widened scan; the cap keeps one poll cheap
+#: even for a 1 MiB window of short diagnostic lines.
+MAX_EXTENDED_LINES = 20000
+#: Repeated-line evidence is only reported when the same line recurs at least
+#: this often; a single diagnostic line is not a spin signature.
+DOMINANT_LINE_MIN_COUNT = 3
+#: The dominant line is echoed as evidence, not as a log dump.
+DOMINANT_LINE_MAX_CHARS = 120
 
 _PHASE = re.compile(r"^PHASE=(.+)$")
 _STAGE = re.compile(r"^STAGE\s+(.+)$")
@@ -55,7 +71,12 @@ def _empty() -> dict[str, Any]:
         "elapsed_ms": None,
         "since_start_ms": None,
         "idle_seconds": None,
+        "log_age_seconds": None,
         "stages_seen": 0,
+        "marker_scan_bytes": 0,
+        "marker_source": None,
+        "dominant_tail_line": None,
+        "dominant_tail_line_count": 0,
         "connect_timing": {},
         "timing_source": "native_log",
         "reason": None,
@@ -187,13 +208,90 @@ def _verify_timing(stages: Any) -> dict[str, dict[str, int | None]]:
     return result
 
 
-def _lines(raw: bytes) -> list[str]:
+def _decoded_lines(raw: bytes) -> list[str]:
     text = raw.decode("utf-8", errors="replace")
     lines = text.splitlines()
     # A partially flushed last line must not be read as a completed sub-stage.
     if text and not text.endswith(("\n", "\r")):
         lines = lines[:-1]
-    return lines[-MAX_SCAN_LINES:]
+    return lines
+
+
+def _lines(raw: bytes) -> list[str]:
+    return _decoded_lines(raw)[-MAX_SCAN_LINES:]
+
+
+def _window_lines(raw: bytes) -> list[str]:
+    """The widened window, still bounded, keeping the newest complete lines."""
+    return _decoded_lines(raw)[-MAX_EXTENDED_LINES:]
+
+
+def _marker_scan(lines: list[str], *, include_progress: bool = True) -> dict[str, Any]:
+    """The latest PHASE/PROGRESS/STAGE marker in one ordered line window.
+
+    ``include_progress`` stays False for the widened window: a PROGRESS line
+    older than the bounded tail must not be backfilled as current progress, even
+    though a PHASE/STAGE marker from the same window is still valid stage
+    attribution.
+    """
+    stage = None
+    sub_stage = None
+    timing: dict[str, str] = {}
+    seen = 0
+    progress: dict[str, Any] | None = None
+    for line in lines:
+        phase = _PHASE.match(line)
+        if phase:
+            next_stage = phase.group(1).strip()
+            if next_stage and next_stage != stage:
+                stage = next_stage
+                sub_stage = None
+                timing = {}
+            continue
+        progress_match = _PROGRESS.match(line)
+        if progress_match:
+            parsed = _progress_fields(progress_match.group(1))
+            if parsed and include_progress:
+                progress = parsed
+            continue
+        staged = _STAGE.match(line)
+        if not staged:
+            continue
+        seen += 1
+        fields = dict(_FIELD.findall(staged.group(1)))
+        name = fields.get("name")
+        if name:
+            sub_stage = name
+            timing = fields
+    return {
+        "stage": stage,
+        "sub_stage": sub_stage,
+        "timing": timing,
+        "stages_seen": seen,
+        "progress": progress,
+    }
+
+
+def _has_marker(scan: dict[str, Any]) -> bool:
+    return (
+        scan["stage"] is not None or scan["sub_stage"] is not None or scan["progress"] is not None
+    )
+
+
+def _dominant_line(lines: list[str]) -> tuple[str | None, int]:
+    """The most repeated non-empty line, only when repetition is a real signal.
+
+    A looping operation writes one diagnostic over and over, so the count is
+    evidence of a spin rather than a slow rebuild. One-off lines stay unreported
+    and the echoed text stays bounded.
+    """
+    counts = Counter(line.strip() for line in lines if line.strip())
+    if not counts:
+        return None, 0
+    line, count = counts.most_common(1)[0]
+    if count < DOMINANT_LINE_MIN_COUNT:
+        return None, count
+    return line[:DOMINANT_LINE_MAX_CHARS], count
 
 
 def stall_report(
@@ -210,6 +308,13 @@ def stall_report(
     truncated and its tail has no sub-stage, ``verify_stages`` from the job's
     own result supplies connect/connected timing instead of reporting
     ``no_stage_timing``; ``timing_source`` names which evidence was used.
+
+    BUG-131/P5-3: when the tail holds no marker at all, the scan widens to
+    ``MARKER_SCAN_MAX_BYTES`` before concluding there is no stage, because a
+    spinning operation can push its last ``PHASE=`` line out of the tail window.
+    ``marker_source`` says which window supplied the answer, ``log_age_seconds``
+    says how long the log has been silent, and ``dominant_tail_line`` names a
+    line repeated often enough to look like a loop.
     """
     report = _empty()
     report["tail_bytes"] = tail_bytes
@@ -224,37 +329,36 @@ def stall_report(
     if size is not None:
         report["truncated"] = size > tail_bytes
         report["log_over_soft_limit"] = size > LOG_SOFT_LIMIT_BYTES
+    try:
+        report["log_age_seconds"] = round(
+            max(0.0, _now_ms(now) / 1000.0 - log_path.stat().st_mtime), 3
+        )
+    except OSError:  # pragma: no cover - race with log rotation
+        report["log_age_seconds"] = None
     fallback = _verify_timing(verify_stages) if report["truncated"] else {}
 
-    stage = None
-    sub_stage = None
-    timing: dict[str, str] = {}
-    seen = 0
-    progress: dict[str, Any] | None = None
-    for line in _lines(raw or b""):
-        phase = _PHASE.match(line)
-        if phase:
-            next_stage = phase.group(1).strip()
-            if next_stage and next_stage != stage:
-                stage = next_stage
-                sub_stage = None
-                timing = {}
-            continue
-        progress_match = _PROGRESS.match(line)
-        if progress_match:
-            parsed = _progress_fields(progress_match.group(1))
-            if parsed:
-                progress = parsed
-            continue
-        staged = _STAGE.match(line)
-        if not staged:
-            continue
-        seen += 1
-        fields = dict(_FIELD.findall(staged.group(1)))
-        name = fields.get("name")
-        if name:
-            sub_stage = name
-            timing = fields
+    tail_lines = _lines(raw or b"")
+    report["dominant_tail_line"], report["dominant_tail_line_count"] = _dominant_line(tail_lines)
+    report["marker_scan_bytes"] = len(raw or b"")
+    scan = _marker_scan(tail_lines)
+    if _has_marker(scan):
+        report["marker_source"] = "tail"
+    else:
+        report["marker_source"] = "none"
+        if size is not None and size > len(raw or b""):
+            widened, _, widened_error = _read_tail(log_path, min(size, MARKER_SCAN_MAX_BYTES))
+            if widened and not widened_error:
+                report["marker_scan_bytes"] = len(widened)
+                widened_scan = _marker_scan(_window_lines(widened), include_progress=False)
+                if _has_marker(widened_scan):
+                    scan = widened_scan
+                    report["marker_source"] = "extended"
+
+    stage = scan["stage"]
+    sub_stage = scan["sub_stage"]
+    timing = scan["timing"]
+    seen = scan["stages_seen"]
+    progress = scan["progress"]
 
     if progress:
         report.update(progress)

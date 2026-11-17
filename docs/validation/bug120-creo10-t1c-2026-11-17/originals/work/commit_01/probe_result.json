@@ -1,0 +1,83 @@
+{
+  "connect_code": 0,
+  "current_model": "T1C_C3_COPY",
+  "end_marker": {
+    "committed": true,
+    "done_macro": "~ Activate `main_dlg_cur` `dashInst0.Done`;",
+    "done_macro_code": 0,
+    "lock_reason": "",
+    "locked": false,
+    "prepared": true,
+    "request_id": "T1C-COMMIT-01",
+    "selections_ok": 2,
+    "selections_total": 2,
+    "state": "committed",
+    "tick_ms": 29693046
+  },
+  "end_marker_seen": true,
+  "features_after": {
+    "count": 17,
+    "ids": [
+      1,
+      3,
+      5,
+      7,
+      40,
+      43,
+      42,
+      50,
+      49,
+      55,
+      58,
+      57,
+      63,
+      66,
+      65,
+      71,
+      83
+    ],
+    "max_id": 83
+  },
+  "features_before": {
+    "count": 16,
+    "ids": [
+      1,
+      3,
+      5,
+      7,
+      40,
+      43,
+      42,
+      50,
+      49,
+      55,
+      58,
+      57,
+      63,
+      66,
+      65,
+      71
+    ],
+    "max_id": 71
+  },
+  "features_created": [
+    {
+      "feature_id": 83,
+      "incomplete": false,
+      "parent_ids": [
+        49,
+        57
+      ],
+      "status": 0,
+      "type": 942
+    }
+  ],
+  "macro": "~ Command `ProCmdFtBndBlend`; ~ Command `MechDogT1CSelect`; ~ Command `MechDogT1CSelect`;",
+  "macro_api_code": 0,
+  "marker_path": "D:\\my\\MCP_CREO_MechDog\\test_runs\\2026-11-17_t1c_closure\\probe\\host2\\probe_end_marker.json",
+  "model": "T1C_C3_COPY",
+  "probe": "t1c-drive",
+  "request_id": "T1C-COMMIT-01",
+  "requested_references": 2,
+  "success": true
+}

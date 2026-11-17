@@ -108,7 +108,10 @@ class WiringTests(unittest.TestCase):
 
     def test_runner_and_watchdog_read_the_frozen_request_value(self):
         runner = (ROOT / "generic_bridge.py").read_text(encoding="utf-8")
-        self.assertIn("timeout=job_timeout_seconds(request)", runner)
+        # BUG-131 moved the worker launch into the watchdog wrapper; the budget
+        # still comes from the frozen request value, not from a fresh read.
+        self.assertIn("budget = job_timeout_seconds(request)", runner)
+        self.assertIn("timeout=budget", runner)
         self.assertIn('"timeout_seconds": effective_timeout', runner)
         self.assertIn('"timeout_source": timeout_source', runner)
         watchdog = (ROOT / "bridge.py").read_text(encoding="utf-8")

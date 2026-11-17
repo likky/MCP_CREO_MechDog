@@ -1,0 +1,217 @@
+{
+  "connect_code": 0,
+  "count": 22,
+  "current_model": "T1C_C3_COPY",
+  "features": [
+    {
+      "feature_id": 1,
+      "incomplete": false,
+      "status": 0,
+      "type": 923
+    },
+    {
+      "feature_id": 3,
+      "incomplete": false,
+      "status": 0,
+      "type": 923
+    },
+    {
+      "feature_id": 5,
+      "incomplete": false,
+      "status": 0,
+      "type": 923
+    },
+    {
+      "feature_id": 7,
+      "incomplete": false,
+      "status": 0,
+      "type": 979
+    },
+    {
+      "feature_id": 40,
+      "incomplete": false,
+      "parent_ids": [
+        5
+      ],
+      "status": 0,
+      "type": 923
+    },
+    {
+      "feature_id": 43,
+      "incomplete": false,
+      "parent_ids": [
+        1,
+        40
+      ],
+      "status": 0,
+      "type": 923
+    },
+    {
+      "feature_id": 42,
+      "incomplete": false,
+      "parent_ids": [
+        1,
+        3,
+        40
+      ],
+      "status": 0,
+      "type": 949
+    },
+    {
+      "feature_id": 50,
+      "incomplete": false,
+      "parent_ids": [
+        1,
+        3
+      ],
+      "status": 0,
+      "type": 923
+    },
+    {
+      "feature_id": 49,
+      "incomplete": false,
+      "parent_ids": [
+        3,
+        5,
+        1
+      ],
+      "status": 0,
+      "type": 949
+    },
+    {
+      "feature_id": 55,
+      "incomplete": false,
+      "parent_ids": [
+        1
+      ],
+      "status": 0,
+      "type": 923
+    },
+    {
+      "feature_id": 58,
+      "incomplete": false,
+      "parent_ids": [
+        3,
+        55
+      ],
+      "status": 0,
+      "type": 923
+    },
+    {
+      "feature_id": 57,
+      "incomplete": false,
+      "parent_ids": [
+        3,
+        5,
+        55
+      ],
+      "status": 0,
+      "type": 949
+    },
+    {
+      "feature_id": 63,
+      "incomplete": false,
+      "parent_ids": [
+        1
+      ],
+      "status": 0,
+      "type": 923
+    },
+    {
+      "feature_id": 66,
+      "incomplete": false,
+      "parent_ids": [
+        3,
+        63
+      ],
+      "status": 0,
+      "type": 923
+    },
+    {
+      "feature_id": 65,
+      "incomplete": false,
+      "parent_ids": [
+        3,
+        5,
+        63
+      ],
+      "status": 0,
+      "type": 949
+    },
+    {
+      "feature_id": 71,
+      "incomplete": false,
+      "parent_ids": [
+        49,
+        57,
+        65
+      ],
+      "status": 0,
+      "type": 942
+    },
+    {
+      "feature_id": 83,
+      "incomplete": false,
+      "parent_ids": [
+        49,
+        57
+      ],
+      "status": 0,
+      "type": 942
+    },
+    {
+      "feature_id": 96,
+      "incomplete": false,
+      "parent_ids": [
+        49,
+        57
+      ],
+      "status": 0,
+      "type": 942
+    },
+    {
+      "feature_id": 109,
+      "incomplete": false,
+      "parent_ids": [
+        49,
+        57
+      ],
+      "status": 0,
+      "type": 942
+    },
+    {
+      "feature_id": 122,
+      "incomplete": false,
+      "parent_ids": [
+        49,
+        57
+      ],
+      "status": 0,
+      "type": 942
+    },
+    {
+      "feature_id": 135,
+      "incomplete": false,
+      "parent_ids": [
+        49,
+        57
+      ],
+      "status": 0,
+      "type": 942
+    },
+    {
+      "feature_id": 148,
+      "incomplete": false,
+      "parent_ids": [
+        49,
+        57
+      ],
+      "status": 0,
+      "type": 942
+    }
+  ],
+  "max_id": 148,
+  "probe": "t1c-features",
+  "request_id": "T1C-FEATURES-AFTER-CANCEL-06",
+  "success": true
+}

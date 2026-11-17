@@ -1163,6 +1163,25 @@ def surface_loft_runtime_observation(identity: dict) -> dict:
     return observed
 
 
+def surface_loft_admission_identity() -> dict:
+    """Copy worker build facts and attach only this worker's recorded loft result.
+
+    Admission uses the same read-only observation as status disclosure. Keep the
+    cached build identity untouched so a later worker or probe cannot inherit a
+    previous worker's kernel result.
+    """
+    identity = worker_build_identity()
+    projected = dict(identity)
+    features = identity.get("features")
+    feature = features.get("surface_loft") if isinstance(features, dict) else None
+    if isinstance(feature, dict):
+        projected["features"] = {
+            **features,
+            "surface_loft": {**feature, **surface_loft_runtime_observation(identity)},
+        }
+    return projected
+
+
 def note_native_outcome(manifest: dict) -> None:
     result = manifest.get("result", {})
     if (
@@ -1926,6 +1945,7 @@ def compact_job(manifest: dict, sections: list[str] | None = None) -> dict:
         "component_changes",
         "inspection_warnings",
         "native_progress",
+        "stall_watchdog",
     )
     summary = {key: manifest[key] for key in keys if key in manifest}
     summary["detail"] = "compact"

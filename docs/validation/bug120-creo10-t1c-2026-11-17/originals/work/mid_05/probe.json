@@ -1,0 +1,35 @@
+{
+  "request_id": "T1C-MID-05",
+  "model": "T1C_MID",
+  "curves": [
+    {
+      "owner": "T1C_MID",
+      "geom_id": 51,
+      "role": "first_dir",
+      "spatial": "end_a y=0 z=0"
+    },
+    {
+      "owner": "T1C_MID",
+      "geom_id": 45,
+      "role": "first_dir",
+      "spatial": "mid y=20 z=3"
+    },
+    {
+      "owner": "T1C_MID",
+      "geom_id": 57,
+      "role": "first_dir",
+      "spatial": "end_b y=40 z=0"
+    },
+    {
+      "owner": "T1C_MID",
+      "geom_id": 40,
+      "role": "first_dir",
+      "spatial": "MID_SEC_PLANE, not a curve"
+    }
+  ],
+  "wait_seconds": 25,
+  "select_command": "MechDogT1CSelectB",
+  "tail": "none",
+  "marker_path": "probe\\host3\\probe_end_marker_v2b.json",
+  "post_scan": false
+}

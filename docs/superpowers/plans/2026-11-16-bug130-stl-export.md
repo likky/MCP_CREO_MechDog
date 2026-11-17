@@ -10,6 +10,12 @@
 
 **Spec:** [BUG-130](../../work-items/BUG-130.md)「离线复核」及 [球鼻艏重建记录](../../development/FRIGATE-BULB-BULGED-2026-11-16.md)。本文件是修复提案，未实施、未构建或连接 Creo；不是实机通过记录。
 
+**Task 1 状态（2026-11-17）:** `tools/diagnose_stl_export.py`、`STL_*` 阶段插桩/解引用防护与 8 项证据单测已离线完成；已构建并在 `bulb_bulged` 实机只读复现，定位到 `n_facets=201551` 配 `facets=null` 时旧路径崩溃，防护改为安全失败。
+
+**Task 2/3 状态（2026-11-17）:** `native/stl_file_check.h`、`native/stl_export.h`、两份 native 测试与驱动已离线完成并通过；官方文件路径已接入 worker 并构建。实机小件 `bug007_three_straight` 成功（73,561 字节/284 片/源件不变）；旧 14m `bulb_verified_03989988` 在相同 0.05mm/0.1 下 600 秒内未完成，终态 `unknown_outcome`、暂存 0 字节，Creo 仍在计算。因此 Task 3 不能按“同质量通过”验收，Task 5 未完成。
+
+**Task 4 状态（2026-11-17）:** `native/stl_mesh_check.h`、`write_stl_per_surface`、SDK 顶点法向对齐、边界环补洞与全件绕序修复已离线完成，native 构建成功。逐面实机：小件、旧 14m、`bulb_bulged` 均成功导出；最终 bulb 404,652 片/82,166,002 字节、14m 197,722 片/40,068,497 字节，焊点后 **边界边 0、非流形边 0、零面积面片 0**，有符号体积与原生差 0.0030%/0.0172%，源件与 revision 不变。trimesh 5.2.1 独立复核两件 `is_watertight=true`、`is_winding_consistent=true`、`euler_number=2`。默认路径已切换为逐面，官方文件路径保留 `MECHDOG_STL_OFFICIAL_FILE=1` 诊断。抽样偏差已实测（`MECHDOG_STL_DEVIATION=1`）：bulb 最大 0.158mm、14m 最大 0.309mm，**0.1mm 目标未达成**；弦高 0.05→0.025 网格仅变 0.0104mm，细端请求被会话网格封顶，详见 [BUG-130](../../work-items/BUG-130.md)。
+
 ## Global Constraints
 
 - 本轮仅离线查证与计划。后续原生构建/连接/导出测试须满足 AGENTS 的用户当次确认；不得擅自结束/重启 Creo/nmsd、清锁、清 unknown 保护或覆盖用户模型。
@@ -53,11 +59,11 @@
 
 **Interfaces:** `summarize_stl_job(job_dir: Path) -> dict` 只读已有作业；诊断输出包含 job/model/revision、原始终态、退出码、日志最后阶段、输出字节、源件SHA256及可获得的源码/worker身份。不连接 Creo。
 
-- [ ] 为已存两份失败日志、0字节文件及旧成功 STL 写回归，断言仅日志尾部相同，整份日志因时间不同并非逐字相同；不从成功API码虚构面数。
-- [ ] 在旧路径所有潜在解引用/IO阶段前后增加立即flush的诊断：`tess_begin/end`、`outer_array_count`、`output_open`、`surface_begin/end`、`facet_batch`、`file_flush_close`、`tess_free_begin/end`。每面至少记录 surface id、n_vertices、n_facets、指针是否为空；面片每4096片记录进度，异常立即记录三索引，避免每片刷日志。
-- [ ] 记录 worker 与 Creo 主进程的PID/创建时间、两者的内存观测和作业前后存活证据；不能仅以worker退出码说Creo崩溃。
+- [x] 为已存两份失败日志、0字节文件及旧成功 STL 写回归，断言仅日志尾部相同，整份日志因时间不同并非逐字相同；不从成功API码虚构面数。证据汇总 `build/bug130_evidence/summary.json`（SHA256 `63c936cb…`）。
+- [x] 在旧路径所有潜在解引用/IO阶段前后增加立即flush的诊断：`tess_begin/end`、`outer_array_count`、`output_open`、`surface_begin/end`、`facet_batch`、`file_flush_close`、`tess_free_begin/end`。每面记录 index/surface id、n_vertices、n_facets、指针是否为空；面片每4096片记录进度，异常立即记录三索引。
+- [ ] 记录 worker 与 Creo 主进程的PID/创建时间、两者的内存观测和作业前后存活证据；不能仅以worker退出码说Creo崩溃。**部分**：离线摘要记录 worker pid/created/alive 与 `memory_observation=null`；Creo 主进程内存/存活必须在下一次受控实机采样。
 - [ ] 若仍AV，下一次有授权的受控验证取得故障指令/读写地址/调用栈和必要的worker dump；保留原始 `unknown_outcome`，不把SEH拦截后的状态报告为已安全恢复。
-- [ ] 运行证据专项 unittest。探针本身的实机重现留待Task5授权范围，不先在用户源件重复触发旧崩溃。
+- [x] 运行证据专项 unittest。探针本身的实机重现留待Task5授权范围，不先在用户源件重复触发旧崩溃。
 
 ## Task 2：建立与 SDK 无关的 STL 文件验收
 
@@ -65,11 +71,11 @@
 
 **Interfaces:** `StlFileStats validate_ascii_stl(const std::filesystem::path&, const StlOutputLimits&)`。`StlFileStats` 含 `uint64_t facet_count`、`uint64_t bytes`、`std::array<double,3> min/max`；`StlOutputLimits` 含 `uint64_t max_facets/max_bytes`。异常包含可区分的空/截断/非有限坐标/超预算/IO失败原因。无Toolkit、无Creo连接。
 
-- [ ] 使用正确四面体 fixture（4片，包络[0,0,0]～[1,1,1]、有符号体积1/6）验证三角片读取、有限值和边界；坏输入覆盖缺vertex/缺endfacet、NaN/Inf、0片、只写header、截断文件。
-- [ ] 使用小预算注入测试证明文件大小/片数门限会正常失败，不在测试里真的分配大网格。建议初始交付预算为512MiB文件/200万片，作为设计取值记录；超过后报告资源限制，不静默重采样。若本故障件合法输出超过预算，先根据Task5实测重新审定，不能仅将“受控拒绝”记为完整导出修复。
-- [ ] 校验采用逐行/逐三角形扫描，不把整个ASCII STL装入内存；检查文件读取错误及完整结束。
-- [ ] 接缝/闭合/绕序与体积比较由Task5独立检查，不能只因语法可解析就标几何通过。
-- [ ] 用MSVC独立编译运行此C++测试；驱动复用 `tools/test_inspection_units.py` 的compiler环境方式。它不加载Toolkit，不替代原生导出验收。
+- [x] 使用正确四面体 fixture（4片，包络[0,0,0]～[1,1,1]、有符号体积1/6）验证三角片读取、有限值和边界；坏输入覆盖缺vertex/缺endfacet、NaN/Inf、0片、只写header、截断文件。
+- [x] 使用小预算注入测试证明文件大小/片数门限会正常失败，不在测试里真的分配大网格。建议初始交付预算为512MiB文件/200万片，作为设计取值记录；超过后报告资源限制，不静默重采样。若本故障件合法输出超过预算，先根据Task5实测重新审定，不能仅将“受控拒绝”记为完整导出修复。
+- [x] 校验采用逐行/逐三角形扫描，不把整个ASCII STL装入内存；检查文件读取错误及完整结束。
+- [x] 接缝/闭合/绕序与体积比较由Task5独立检查，不能只因语法可解析就标几何通过。**已做**：`build/bug130_check_stl.py`（边界边/非流形边/零面积/体积）与 `build/bug130_trimesh_check.py`（watertight/winding/volume/euler）两件均通过。
+- [x] 用MSVC独立编译运行此C++测试；驱动复用 `tools/test_inspection_units.py` 的compiler环境方式。它不加载Toolkit，不替代原生导出验收。
 
 ## Task 3：官方文件导出路径及原子交付
 
@@ -77,12 +83,12 @@
 
 **Interfaces:** `static J write_stl(ProMdl model, const std::wstring& destination, const StlExportOptions& options)`；`StlExportOptions` 初始字段 `chord_height_mm=0.05`、`angle_control=0.1`。结果为 `stl_export` 有界对象：method、requested参数、passed参数/原生长度单位、API码、facet_count、bytes、bounds、file_validation。
 
-- [ ] 使用 `ProArrayAlloc` 创建**3个double的ProArray**，内容为原生长度单位的弦高、角控制、0；不能把普通C数组当成SDK所需ProArray。用匹配的 `ProArrayFree` 恰好释放一次。
-- [ ] 调用 `ProIntfSliceFileWithOptionsMdlnameExport`，类型 `PRO_SLA_ASCII_FILE`，flags仅 `PRO_FACET_STEP_SIZE_OFF`，transf/comp_path为NULL。不要设置USE_CONFIG、FORCE_INTO_RANGE、DEFAULT或ADJUST来悄悄改变质量。单位沿用现有已知比例；本故障模型为mm，未知单位不猜值。
-- [ ] 使用本作业专有暂存位置/短ASCII文件名，完成后由Task2校验并在同文件系统原子发布到最终 `.stl`；不覆盖其它作业/用户已有文件。核查SDK的31字符文件名限制、绝对路径与中文目录；如需改变Creo工作目录，必须在通道锁内保存/恢复，并在异常路径有明确证据，不更改用户配置文件。
-- [ ] 任何SDK/IO/校验失败不报告成功文件，不自动重试另一容差或旧剖分路径；保留可定位的本作业暂存文件与阶段。SDK成功但验收失败要报告独立文件验收失败，不能伪装为PTC原始错误码。
-- [ ] 参数分配成功后任何C++异常均能清理；SDK控制权内的崩溃不承诺RAII能恢复。出口既不保存源件也不推进revision。
-- [ ] 先跑无Creo的参数、单位、flags、API错误与文件失败测试。官方路径如在Task5中通过同质量的全部本BUG模型，作为正式路径；否则执行Task4，不宣称根因已明。
+- [x] 使用 `ProArrayAlloc` 创建**3个double的ProArray**，内容为原生长度单位的弦高、角控制、0；不能把普通C数组当成SDK所需ProArray。用匹配的 `ProArrayFree` 恰好释放一次。
+- [x] 调用 `ProIntfSliceFileWithOptionsMdlnameExport`，类型 `PRO_SLA_ASCII_FILE`，flags仅 `PRO_FACET_STEP_SIZE_OFF`，transf/comp_path为NULL。不要设置USE_CONFIG、FORCE_INTO_RANGE、DEFAULT或ADJUST来悄悄改变质量。单位沿用现有已知比例；本故障模型为mm，未知单位不猜值。
+- [x] 使用本作业专有暂存位置/短ASCII文件名，完成后由Task2校验并在同文件系统原子发布到最终 `.stl`；不覆盖其它作业/用户已有文件。核查SDK的31字符文件名限制、绝对路径与中文目录；如需改变Creo工作目录，必须在通道锁内保存/恢复，并在异常路径有明确证据，不更改用户配置文件。
+- [x] 任何SDK/IO/校验失败不报告成功文件，不自动重试另一容差或旧剖分路径；保留可定位的本作业暂存文件与阶段。SDK成功但验收失败要报告独立文件验收失败，不能伪装为PTC原始错误码。
+- [x] 参数分配成功后任何C++异常均能清理；SDK控制权内的崩溃不承诺RAII能恢复。出口既不保存源件也不推进revision。
+- [x] 先跑无Creo的参数、单位、flags、API错误与文件失败测试。官方路径如在Task5中通过同质量的全部本BUG模型，作为正式路径；否则执行Task4，不宣称根因已明。
 
 ## Task 4：仅在 Task3 不满足验收时验证逐面备选
 
@@ -90,34 +96,47 @@
 
 **Interfaces:** `MeshCheck validate_mesh_view(const Point3* vertices, int vertex_count, const Triangle3* facets, int facet_count, int surface_id)`；`Point3=std::array<double,3>`、`Triangle3=std::array<int,3>`，`MeshCheck` 含 `bool valid`、`std::string reason`、`int surface_id/facet_index` 和三索引。只借用数据，不拥有或释放SDK数组；有符号计数验证后才转换为size_t。面级资源分别归对应SDK guard管理。
 
-- [ ] 写会失败的内存边界测试：负计数、非空计数配NULL、索引−1/等于vertex_count、NaN/Inf、三索引重复、预算累计溢出。非法索引必须在坐标解引用前识别，不用崩溃注入来测试普通边界。
-- [ ] 仅遍历活动材料实体的实际面，沿用 `ProSolidBodiesCollect` / `ProSolidBodySurfaceVisit`，不能把历史quilt或空模板体当作导出实体。
-- [ ] 单面分配input、设置已核对质量、获取tessellation；通过VerticesGet/FacetsGet取得各自拥有的ProArray，检查每个API返回码和数组大小。单面写完即释放两个数组、tessellation和input；错误路径每个资源恰好释放一次。不能对旧 `ProSurfaceTessellationData` 的嵌套借用字段逐个ProArrayFree。
-- [ ] 片数用uint64累计并作乘法溢出检测；异常时拒绝整个导出，不通过跳过越界/缺失三角片制造成功文件。零面积面片的策略须显式统计并在闭合验收中检查。
-- [ ] 文件流写入失败/flush/close失败均传播；调用前后诊断可区分哪一个面/阶段出错。每面预算仅约束已取得的数据，不能声称阻止SDK内部单面OOM。
-- [ ] 同一闭合体的相邻面剖分必须额外验证无裂缝、漏面和翻面；若独立剖分不能保证共享边一致，不默认“焊点修复”后声称原精度不变。此分支未通过则保持BUG未修复并准备PTC最小复现资料。
+- [x] 写会失败的内存边界测试：负计数、非空计数配NULL、索引−1/等于vertex_count、NaN/Inf、三索引重复、预算累计溢出。非法索引必须在坐标解引用前识别，不用崩溃注入来测试普通边界。
+- [x] 仅遍历活动材料实体的实际面，沿用 `ProSolidBodiesCollect` / `ProSolidBodySurfaceVisit`，不能把历史quilt或空模板体当作导出实体。
+- [x] 单面分配input、设置已核对质量、获取tessellation；通过VerticesGet/FacetsGet取得各自拥有的ProArray，检查每个API返回码和数组大小。单面写完即释放两个数组、tessellation和input；错误路径每个资源恰好释放一次。不能对旧 `ProSurfaceTessellationData` 的嵌套借用字段逐个ProArrayFree。
+- [x] 片数用uint64累计并作乘法溢出检测；异常时拒绝整个导出，不通过跳过越界/缺失三角片制造成功文件。零面积面片的策略须显式统计并在闭合验收中检查。
+- [x] 文件流写入失败/flush/close失败均传播；调用前后诊断可区分哪一个面/阶段出错。每面预算仅约束已取得的数据，不能声称阻止SDK内部单面OOM。
+- [x] 同一闭合体的相邻面剖分必须额外验证无裂缝、漏面和翻面；若独立剖分不能保证共享边一致，不默认“焊点修复”后声称原精度不变。**已做**：0.001mm 焊点统计边界边并用质心扇补洞（bulb 971、14m 604），再按 1e-9mm 精确邻接做绕序 BFS；两件边界边 0、非流形边 0、零面积 0，trimesh `is_winding_consistent=true`。补洞会填充极小端面孔洞，属已知近似，不与原曲面精度等同。
 
 ## Task 5：受控实机矩阵与只读契约验收
 
 **Files:** Create `tools/test_stl_export.py`（默认离线，仅显式live参数才连Creo）；Modify `docs/work-items/BUG-130.md`、能力/参考说明的STL边界。
 
 - [ ] 获得当次明确授权后，记录HEAD/dirty、源码指纹、worker hash、Creo版本及两个进程身份。测试使用独立副本，不清既有保护、不重放旧失败任务。
-- [ ] 先验证小件6270mm³，再验证旧14m球鼻艏，最后验证本故障 `bulb_bulged`；每模型使用相同mm单位、0.05mm/0.1质量、单次提交。任何新的AV立即停止该路线，保留证据，不继续无新假设重试。
-- [ ] 将新旧14m模型放到同一受控会话比较；必要时对相同复杂曲面作1:100缩比并同比例缩放弦高，再单独改变弦高为0.2/1.0mm，区分尺度、相对精度和面复杂度。对照结果是检验假设，不是保证面片数量随参数单调。
-- [ ] 默认质量原调用成功、STL非空且完整、坐标量级/包络与对应实体一致；独立检查闭合、法向、面片体积与原生体积及抽样到原生面的偏差。本提案对0.05mm弦高的初始网格验收目标是抽样偏差≤0.1mm、相对原生体积差≤0.1%，不是与SolidWorks的建模差；模型实际绝对精度或API能力不能支撑该检查时先记验证条件未满足，不事后放宽。其它显式质量用例在执行前另固定相应目标；文件语法通过、正体积或文件很大均不足够。
-- [ ] 导出前后revision、源PRT SHA256、实际几何与查询状态保持；只读任务的 `saved_file_reloaded_and_verified=false` 不当作失败，也不为凑true保存源件。若创建了副本，其建模创建/保存任务须另有重载核验。
+- [x] 先验证小件6270mm³，再验证旧14m球鼻艏，最后验证本故障 `bulb_bulged`；每模型使用相同mm单位、0.05mm/0.1质量、单次提交。任何新的AV立即停止该路线，保留证据，不继续无新假设重试。**导出/闭合/绕序已通过**：小件、旧14m逐面（197,722 片/40,068,497 字节）、`bulb_bulged` 逐面（404,652 片/82,166,002 字节）均 succeeded；边界边 0、非流形边 0、零面积 0，trimesh watertight/winding true，体积差 0.0172%/0.0030%，源件与 revision 不变。**抽样偏差未测**。
+- [ ] 将新旧14m模型放到同一受控会话比较；必要时对相同复杂曲面作1:100缩比并同比例缩放弦高，再单独改变弦高为0.2/1.0mm，区分尺度、相对精度和面复杂度。对照结果是检验假设，不是保证面片数量随参数单调。**部分**：在同一会话对旧 14m 做了弦高/角度对照（0.05/0.1、0.05/0.2、5.0/0.9 → 197,118/197,338/88,538 原片），并对比 bulb 弦高 0.05/0.025；缩放对照未做。
+- [ ] 默认质量原调用成功、STL非空且完整、坐标量级/包络与对应实体一致；独立检查闭合、法向、面片体积与原生体积及抽样到原生面的偏差。本提案对0.05mm弦高的初始网格验收目标是抽样偏差≤0.1mm、相对原生体积差≤0.1%，不是与SolidWorks的建模差；模型实际绝对精度或API能力不能支撑该检查时先记验证条件未满足，不事后放宽。其它显式质量用例在执行前另固定相应目标；文件语法通过、正体积或文件很大均不足够。**实测结论**：体积差 0.0030%/0.0172% 达标；抽样偏差 bulb 最大 0.158mm、p99 0.138mm，旧 14m 最大 0.309mm、p99 0.300mm，**≤0.1mm 未达成**（顶点自检 ≤0.004mm，测量可信）。
+- [x] 导出前后revision、源PRT SHA256、实际几何与查询状态保持；只读任务的 `saved_file_reloaded_and_verified=false` 不当作失败，也不为凑true保存源件。若创建了副本，其建模创建/保存任务须另有重载核验。**已核对**：两件源件 SHA256 与 revision 在导出前后未变。
 - [ ] 正常拒绝不进unknown；真实worker失联仍保留现有unknown/显式探测规则。恢复动作只输出指导，不自动调用restore_baseline/ack/重启或清锁。
 - [ ] 保留STEP成功回归；记录失败/不支持/未测范围。Creo9/10及装配能力不由本机12.4零件通过外推。
 
 ## Task 6：显式质量选项（稳定路径通过后再接入）
 
-**Files:** Modify `src/creo_mechdog/schema.py` 的 `ExportOp`、`server.py:creo_export_model` 薄包装、能力/参考文档和必要结果投影；Test `tests/unit/test_stl_export_options.py`。
+**Files:** Modify `src/creo_mechdog/schema.py` 的 `ExportOp`/新增 `StlOptions`、`server.py:creo_export_model` 薄包装与工具说明、`native/generic.cpp` 读取 `stl_options`、`native/stl_export.h` 逐面片数回执；Test `tests/unit/test_stl_export_options.py`。
 
 **Interfaces:** 可选 `stl_options={"chord_height_mm":0.05,"angle_control":0.1}`；缺省保持原调用兼容。该对象仅STL允许；未知键、布尔值、NaN/Inf、弦高≤0、角控制不在[0,1]时提交前拒绝。
 
-- [ ] 回归覆盖独立工具与execute_plan同一参数、旧输入缺省不被悄悄改写、非STL拒绝stl_options、单位换算、质量数值的compact/full可读性。
-- [ ] 不加入未经验证的BBox自动容差公式。回执说清请求值/传入SDK值，不把API返回0当作已测量网格最大误差；资源策略与质量策略分开。
-- [ ] 专项测试通过后运行 `tools/dev_check.py --work-item BUG-130`；后续匹配SDK构建和Task5实机矩阵通过后才更新能力/状态。只改变资源/质量设置而原故障路径仍崩溃，不算完整修复。
+- [x] 回归覆盖独立工具与execute_plan同一参数、旧输入缺省不被悄悄改写、非STL拒绝stl_options、单位换算、质量数值的compact/full可读性。**已做**：9 项 schema/工具转发单测；既有导出 wiring 用例继续断言 `0.05/25.4` 原生值；回执 `requested`/`passed` 保留。compact/full 的专项断言未单列。
+- [x] 不加入未经验证的BBox自动容差公式。回执说清请求值/传入SDK值，不把API返回0当作已测量网格最大误差；资源策略与质量策略分开。**已做**：回执保留 `requested`（毫米）与 `passed`（原生值）；实测偏差只在显式 `MECHDOG_STL_DEVIATION=1` 时计算并单列，不作为默认回执的精度声明。
+- [x] 专项测试通过后运行 `tools/dev_check.py --work-item BUG-130`；后续匹配SDK构建和Task5实机矩阵通过后才更新能力/状态。只改变资源/质量设置而原故障路径仍崩溃，不算完整修复。**已做**：`dev_check --work-item BUG-130` 返回 `success=true`、`unit_tests=passed`、`unformatted_files=0`；native 构建与逐面 wiring 20 项通过。
+
+## Task 7：拆分曲面（参数域细化）突破单面剖分上限
+
+**Files:** Modify `native/stl_export.h`（UV 取参、red-green 细化、预算分配、逐面偏差抽样）、`native/generic.cpp`（`refine` 回执与诊断开关）、`tests/native/test_stl_export.cpp`（曲面网格夹具与细化用例）。
+
+**Interfaces:** 默认开启，无需新参数；目标即请求弦高。诊断开关 `MECHDOG_STL_REFINE`/`_MIN`/`_MAX`/`_ROUNDS`/`_VERTICES`/`MECHDOG_STL_TRACE`。
+
+- [x] 用 `PRO_SRFTESS_NO_PROJECTION` + `ProTessellationParamsGet` 取剖分顶点 UV，并做 32 点往返自检；失败面不细化并记 `skipped_uv_*`。**已做**：bulb/14m 全部面通过；小件 b132base 两个 104 片面因往返误差 0.0504mm（≈弦高）被拒，符合“放置误差不得接近弦高”的判据。
+- [x] 自适应 red-green 细化，只拆内部边，裁剪边界保持 SDK 顶点，邻面缝合/焊接/绕序流程不变；新顶点经 `ProSurfaceXyzdataEval` 落在原生面并返回法向。**已做**：两件 trimesh 仍 `is_watertight=true`、`is_winding_consistent=true`、`euler_number=2`。
+- [x] 判据避免逐面片求值（实测 ~2ms/次，20 万片/轮会超出 600 秒预算），改用顶点法向转角估计 `sag≈L×turn/8`；预算按“剩余预算/剩余面数”逐面分配。**已做**：首版整轮求值 job `85d2c5fe…` `unknown_outcome`，已恢复基线；改判据后 bulb 整轮 194 秒。
+- [x] 偏差抽样改为逐面步长与更高上限，避免后访问的面零样本。**已做**：逐面 `facet_count/200`、上限 8000；修正前 `bulb_bulged` 的 0.0648mm 仅覆盖面 119。
+- [x] 实机验收（只读，源件 SHA/revision 不变）。**已做**：`bulb_bulged` job `cde4566f…` 737,984 片、最大偏差 **0.0899mm**（达标），体积差 0.00004%，194 秒；旧 14m 默认预算 job `dd659d80…` 最大 0.1559mm、p99 0.0887mm，放宽到 500k 预算 job `0ec3f531…` 最大 0.1115mm、p99 0.0768mm（仍未达 0.1mm，受 600 秒预算与 ASCII 写出速度约束）。
+- [x] 离线回归：`tests/native/test_stl_export.cpp` 24 项、`tools/test_stl_export.py`、`tools/dev_check.py --work-item BUG-130` 全部通过。
 
 ## 交付与完成条件
 

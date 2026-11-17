@@ -1,0 +1,13 @@
+{
+  "request_id": "T1C-CANCEL-MACRO-02",
+  "model": "T1C_MID",
+  "curves": [
+    {
+      "owner": "T1C_MID",
+      "geom_id": 45,
+      "role": "first_dir",
+      "spatial": "mid y=20 z=3"
+    }
+  ],
+  "note": "one section cannot form a blend, so the module's Done is refused and the cancel tail is the only thing left to run"
+}

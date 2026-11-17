@@ -1,0 +1,29 @@
+{
+  "date": "2026-11-17",
+  "source": "user-attached original recording; reported remote Creo10 T1-A",
+  "original": "originals/t1_blend_mapkey.pro",
+  "bytes": 294,
+  "sha256": "04098e189e924c4fa8d5e83907ffb2e4229db7d5575f4cbe089b65d86b818326",
+  "encoding": "UTF-8 with BOM",
+  "trigger": "~",
+  "commands": [
+    "~ Command `ProCmdFtBndBlend`",
+    "~ FocusOut `bbl_12curves.1.0` `PH.Curves1DirTbl`",
+    "@PAUSE_FOR_SCREEN_PICK",
+    "@PAUSE_FOR_SCREEN_PICK",
+    "@PAUSE_FOR_SCREEN_PICK",
+    "~ Activate `main_dlg_cur` `dashInst0.Done`"
+  ],
+  "scope": "Offline inspection only; no Creo connection, build, macro execution or product change",
+  "not_received": [
+    "GUI-produced PRT",
+    "playback-produced PRT",
+    "full original adoption and geometry receipts"
+  ],
+  "interpretation": [
+    "FocusOut is not positive activation of a collector",
+    "3 pick pauses do not specify curve count, object ids or CTRL actions",
+    "Datum display and selection-filter preparation are absent",
+    "Configuration-file prefixes and continuation backslashes are not direct ProMacroLoad command text"
+  ]
+}

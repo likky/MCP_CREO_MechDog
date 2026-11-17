@@ -13,6 +13,7 @@
 #include "constraint_compare.h"
 #include "preview.h"
 #include "inspection_sidecar.h"
+#include "stl_export.h"
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -4215,38 +4216,354 @@ static void parameters(const J &op) {
         }
     }
 }
-static void write_stl(const std::wstring &file) {
+// BUG-130 Task 1: the old STL path dereferenced the whole-part tessellation
+// array without checking the returned pointer/counts and left no stage boundary
+// after ProArraySizeGet. Every stage below is flushed by log(); the last line
+// before an access violation now identifies the surface/facet/IO/free step.
+static ProError free_stl_tessellation(ProSurfaceTessellationData **surfaces) {
+    if (!surfaces || !*surfaces) {
+        log("STL_TESS_FREE_SKIP ptr=null\n");
+        return PRO_TK_NO_ERROR;
+    }
+    log("STL_TESS_FREE_BEGIN ptr=%p\n", static_cast<void *>(*surfaces));
+    ProError code = ProPartTessellationFree(surfaces);
+    log("STL_TESS_FREE_END code=%d ptr=%p\n", static_cast<int>(code),
+        static_cast<void *>(*surfaces));
+    return code;
+}
+struct StlTessellationGuard {
+    ProSurfaceTessellationData **surfaces;
+    ~StlTessellationGuard() {
+        if (surfaces && *surfaces)
+            free_stl_tessellation(surfaces);
+    }
+};
+// BUG-130 diagnostic-only legacy path. It is never used as a fallback: the
+// access violation it reproduces must stay observable, so it runs only when
+// MECHDOG_STL_LEGACY_TESSELLATE=1 is set explicitly for a controlled probe.
+static void write_stl_tessellated(const std::wstring &file) {
+    log("STL_LEGACY_TESSELLATE_BEGIN file=%s\n", utf8(file).c_str());
     ProSurfaceTessellationData *surfaces = nullptr;
-    CK(ProPartTessellate((ProPart)board, 0.05, 0.1, PRO_B_FALSE, &surfaces));
-    int n;
-    CK(ProArraySizeGet((ProArray)surfaces, &n));
+    log("STL_TESS_BEGIN\n");
+    ProError tess_code = ProPartTessellate((ProPart)board, 0.05, 0.1, PRO_B_FALSE, &surfaces);
+    log("STL_TESS_END code=%d ptr=%p\n", static_cast<int>(tess_code),
+        static_cast<void *>(surfaces));
+    if (tess_code != PRO_TK_NO_ERROR)
+        throw std::runtime_error("ProPartTessellate failed with code " +
+                                 std::to_string(static_cast<int>(tess_code)));
+    StlTessellationGuard guard{&surfaces};
+    if (!surfaces)
+        throw std::runtime_error("ProPartTessellate returned a null surface array");
+    int n = 0;
+    ProError size_code = ProArraySizeGet((ProArray)surfaces, &n);
+    log("STL_OUTER_ARRAY_COUNT code=%d n=%d\n", static_cast<int>(size_code), n);
+    if (size_code != PRO_TK_NO_ERROR)
+        throw std::runtime_error("ProArraySizeGet failed with code " +
+                                 std::to_string(static_cast<int>(size_code)));
+    if (n <= 0)
+        throw std::runtime_error("ProPartTessellate returned no surfaces");
     std::ofstream out(file);
+    log("STL_OUTPUT_OPEN file=%s ok=%d\n", utf8(file).c_str(), out ? 1 : 0);
     if (!out)
         throw std::runtime_error("Cannot open STL output");
     out.precision(12);
     out << "solid creo_native\n";
+    log("STL_OUTPUT_HEADER\n");
     int count = 0;
     for (int i = 0; i < n; i++) {
         auto s = surfaces[i];
+        log("STL_SURFACE_BEGIN index=%d n_vertices=%d vertices_null=%d n_facets=%d "
+            "facets_null=%d\n",
+            i, s.n_vertices, s.vertices ? 0 : 1, s.n_facets, s.facets ? 0 : 1);
+        int surface_id = -1;
+        ProError id_code = ProSurfaceIdGet(s.surface, &surface_id);
+        log("STL_SURFACE_ID index=%d surface_id=%d code=%d\n", i, surface_id,
+            static_cast<int>(id_code));
+        if (s.n_vertices < 0 || s.n_facets < 0 || (s.n_vertices > 0 && !s.vertices) ||
+            (s.n_facets > 0 && !s.facets))
+            throw std::runtime_error("Invalid tessellation surface array at index " +
+                                     std::to_string(i));
         for (int j = 0; j < s.n_facets; j++) {
             auto indices = s.facets[j];
+            if (indices[0] < 0 || indices[1] < 0 || indices[2] < 0 || indices[0] >= s.n_vertices ||
+                indices[1] >= s.n_vertices || indices[2] >= s.n_vertices) {
+                log("STL_BAD_INDEX index=%d surface_id=%d facet=%d indices=%d,%d,%d "
+                    "n_vertices=%d\n",
+                    i, surface_id, j, indices[0], indices[1], indices[2], s.n_vertices);
+                throw std::runtime_error("Tessellation facet index out of range");
+            }
             V a = {s.vertices[indices[0]][0], s.vertices[indices[0]][1], s.vertices[indices[0]][2]},
               b = {s.vertices[indices[1]][0], s.vertices[indices[1]][1], s.vertices[indices[1]][2]},
               c = {s.vertices[indices[2]][0], s.vertices[indices[2]][1], s.vertices[indices[2]][2]};
+            if (!std::isfinite(a[0]) || !std::isfinite(a[1]) || !std::isfinite(a[2]) ||
+                !std::isfinite(b[0]) || !std::isfinite(b[1]) || !std::isfinite(b[2]) ||
+                !std::isfinite(c[0]) || !std::isfinite(c[1]) || !std::isfinite(c[2])) {
+                log("STL_NONFINITE_VERTEX index=%d surface_id=%d facet=%d\n", i, surface_id, j);
+                throw std::runtime_error("Tessellation vertex is not finite");
+            }
             V normal = normalized(cross(add(b, scale(a, -1)), add(c, scale(a, -1))));
+            if (!std::isfinite(normal[0]) || !std::isfinite(normal[1]) || !std::isfinite(normal[2]))
+                log("STL_NONFINITE_NORMAL index=%d surface_id=%d facet=%d\n", i, surface_id, j);
             out << "facet normal " << normal[0] << ' ' << normal[1] << ' ' << normal[2]
                 << "\n outer loop\n";
             for (auto v : {a, b, c})
                 out << " vertex " << v[0] << ' ' << v[1] << ' ' << v[2] << '\n';
             out << " endloop\nendfacet\n";
             count++;
+            if (count % 4096 == 0)
+                log("STL_FACET_BATCH facets=%d index=%d surface_id=%d\n", count, i, surface_id);
         }
+        log("STL_SURFACE_END index=%d surface_id=%d facets=%d\n", i, surface_id, s.n_facets);
     }
     out << "endsolid creo_native\n";
+    out.flush();
+    log("STL_FILE_FLUSH ok=%d facets=%d\n", out ? 1 : 0, count);
+    if (!out)
+        throw std::runtime_error("STL write/flush failed");
     out.close();
-    CK(ProPartTessellationFree(&surfaces));
+    log("STL_FILE_CLOSE ok=%d\n", out ? 1 : 0);
+    if (!out)
+        throw std::runtime_error("STL close failed");
     if (!count)
         throw std::runtime_error("No solid facets to export");
+    log("STL_EXPORT_END facets=%d\n", count);
+    // Preserve the historical free-failure behavior while still logging both
+    // sides of the call; the guard must not free a second time.
+    guard.surfaces = nullptr;
+    CK(free_stl_tessellation(&surfaces));
+}
+
+static J stl_export_report_json(const StlExportReport &report) {
+    J result = J::object();
+    result["method"] = report.method;
+    result["requested"] = {{"chord_height_mm", report.requested_chord_height_mm},
+                           {"angle_control", report.requested_angle_control}};
+    result["length_scale_to_mm"] = report.length_scale_to_mm;
+    result["passed"] = {{"chord_height_native", report.passed_chord_height_native},
+                        {"angle_control", report.passed_angle_control},
+                        {"step_size_native", report.passed_step_size_native},
+                        {"config_flags", report.config_flags}};
+    result["codes"] = {{"parameter_alloc", static_cast<int>(report.parameter_alloc_code)},
+                       {"api", static_cast<int>(report.api_code)},
+                       {"parameter_free", static_cast<int>(report.parameter_free_code)},
+                       {"directory_save", static_cast<int>(report.directory_save_code)},
+                       {"directory_change", static_cast<int>(report.directory_change_code)},
+                       {"directory_restore", static_cast<int>(report.directory_restore_code)}};
+    result["staging_file_written"] = report.staging_file_written;
+    result["published"] = report.published;
+    result["success"] = report.success;
+    if (!report.error.empty())
+        result["error"] = report.error;
+    if (!report.file_error.empty())
+        result["file_error"] = report.file_error;
+    result["file"] = {{"facet_count", report.file.facet_count},
+                      {"bytes", report.file.bytes},
+                      {"min", report.file.min},
+                      {"max", report.file.max}};
+    return result;
+}
+
+static J stl_per_surface_report_json(const StlPerSurfaceReport &report) {
+    J result = J::object();
+    result["method"] = report.method;
+    result["requested"] = {{"chord_height_mm", report.requested_chord_height_mm},
+                           {"angle_control", report.requested_angle_control}};
+    result["length_scale_to_mm"] = report.length_scale_to_mm;
+    result["passed"] = {{"chord_height_native", report.passed_chord_height_native},
+                        {"angle_control", report.passed_angle_control}};
+    result["surface_count"] = report.surface_count;
+    result["facet_count"] = report.facet_count;
+    result["zero_area_facets"] = report.zero_area_facets;
+    result["normal_surfaces"] = report.normal_surfaces;
+    result["normal_flipped_facets"] = report.normal_flipped_facets;
+    result["stitched_triangles"] = report.stitched_triangles;
+    result["inverted_stitch_facets"] = report.inverted_stitch_facets;
+    result["winding_flipped_facets"] = report.winding_flipped_facets;
+    result["winding_conflicts"] = report.winding_conflicts;
+    result["signed_volume_mm3"] = report.signed_volume_mm3;
+    result["global_flipped"] = report.global_flipped;
+    result["deviation_requested"] = report.deviation_requested;
+    result["deviation_samples"] = report.deviation_samples;
+    result["deviation_failed"] = report.deviation_failed;
+    result["deviation_max_mm"] = report.deviation_max_mm;
+    result["deviation_mean_mm"] = report.deviation_mean_mm;
+    result["deviation_p99_mm"] = report.deviation_p99_mm;
+    result["deviation_vertex_samples"] = report.deviation_vertex_samples;
+    result["deviation_vertex_max_mm"] = report.deviation_vertex_max_mm;
+    result["deviation_worst_surface_id"] = report.deviation_worst_surface_id;
+    result["deviation_worst_point"] = {report.deviation_worst_point[0],
+                                       report.deviation_worst_point[1],
+                                       report.deviation_worst_point[2]};
+    // Parameter-space refinement of surfaces the SDK tessellated coarser than
+    // the requested chord height (see native/stl_export.h).
+    result["refine"] = {{"enabled", report.refine_enabled},
+                        {"target_native", report.refine_target_native},
+                        {"surfaces", report.refined_surfaces},
+                        {"input_facets", report.refine_input_facets},
+                        {"output_facets", report.refine_output_facets},
+                        {"created_vertices", report.refine_created_vertices},
+                        {"pinned_triangles", report.refine_pinned_triangles},
+                        {"rejected_edges", report.refine_rejected_edges},
+                        {"skipped_uv_surfaces", report.refine_skipped_uv},
+                        {"skipped_uv_query", report.refine_skipped_uv_query},
+                        {"skipped_uv_mismatch", report.refine_skipped_uv_mismatch},
+                        {"skipped_normals", report.refine_skipped_normals},
+                        {"uv_max_mismatch", report.refine_uv_max_mismatch},
+                        {"max_estimated_sag", report.refine_max_estimated_sag},
+                        {"limited_surfaces", report.refine_limited_surfaces},
+                        {"zero_area_facets", report.refine_zero_area_facets},
+                        {"max_level", report.refine_max_level}};
+    J surface_facets = J::array();
+    for (const auto &entry : report.surface_facets)
+        surface_facets.push_back({{"surface_id", entry.first}, {"facets", entry.second}});
+    result["surface_facets"] = surface_facets;
+    result["failed_surface_id"] = report.failed_surface_id;
+    result["failed_facet_index"] = report.failed_facet_index;
+    if (!report.failed_indices.empty())
+        result["failed_indices"] = report.failed_indices;
+    if (!report.failed_stage.empty())
+        result["failed_stage"] = report.failed_stage;
+    result["failed_code"] = static_cast<int>(report.failed_code);
+    result["staging_file_written"] = report.staging_file_written;
+    result["published"] = report.published;
+    result["success"] = report.success;
+    if (!report.error.empty())
+        result["error"] = report.error;
+    if (!report.file_error.empty())
+        result["file_error"] = report.file_error;
+    result["file"] = {{"facet_count", report.file.facet_count},
+                      {"bytes", report.file.bytes},
+                      {"min", report.file.min},
+                      {"max", report.file.max}};
+    return result;
+}
+
+// BUG-130: official file export or the bounded per-surface candidate. Creo
+// writes the official file itself; the per-surface path only borrows one
+// surface at a time and streams its facets, so the worker never walks the
+// nested ProSurfaceTessellationData array that crashed the old path.
+static J write_stl(ProMdl model, const std::wstring &destination, const StlExportOptions &options) {
+    const char *legacy_probe = std::getenv("MECHDOG_STL_LEGACY_TESSELLATE");
+    if (legacy_probe && *legacy_probe == '1') {
+        log("STL_LEGACY_PROBE=1\n");
+        write_stl_tessellated(destination);
+        return {{"method", "ProPartTessellate legacy diagnostic"}, {"success", true}};
+    }
+    const InspectionLengthUnits units = inspect_length_units(model);
+    const MillimeterScale scale = length_scale_to_mm(model, units);
+    log("STL_EXPORT_PARAMS requested_chord_mm=%g requested_angle=%g scale_known=%d scale=%g\n",
+        options.chord_height_mm, options.angle_control, scale.known ? 1 : 0, scale.scale);
+    const std::wstring staging_name =
+        L"stl_" + std::to_wstring(generated_identity_index()) + L".stl";
+    StlExportOptions effective = options;
+    // Diagnostic quality override for deviation studies; the public export
+    // operation still requests the fixed default.
+    const char *chord_probe = std::getenv("MECHDOG_STL_CHORD_MM");
+    if (chord_probe && *chord_probe) {
+        const double value = std::strtod(chord_probe, nullptr);
+        if (std::isfinite(value) && value > 0.0) {
+            effective.chord_height_mm = value;
+            log("STL_EXPORT_CHORD_OVERRIDE=%g\n", value);
+        }
+    }
+    const char *angle_probe = std::getenv("MECHDOG_STL_ANGLE");
+    if (angle_probe && *angle_probe) {
+        const double value = std::strtod(angle_probe, nullptr);
+        if (std::isfinite(value) && value >= 0.0 && value <= 1.0) {
+            effective.angle_control = value;
+            log("STL_EXPORT_ANGLE_OVERRIDE=%g\n", value);
+        }
+    }
+    // Diagnostic gate for the parameter-space refinement; the public export
+    // still uses the built-in defaults.
+    const char *refine_min_probe = std::getenv("MECHDOG_STL_REFINE_MIN");
+    if (refine_min_probe && *refine_min_probe) {
+        const double value = std::strtod(refine_min_probe, nullptr);
+        if (std::isfinite(value) && value >= 0.0) {
+            effective.refine_min_facets = static_cast<std::uint64_t>(value);
+            log("STL_EXPORT_REFINE_MIN_OVERRIDE=%g\n", value);
+        }
+    }
+    const char *refine_max_probe = std::getenv("MECHDOG_STL_REFINE_MAX");
+    if (refine_max_probe && *refine_max_probe) {
+        const double value = std::strtod(refine_max_probe, nullptr);
+        if (std::isfinite(value) && value >= 1.0) {
+            effective.refine_max_output_facets = static_cast<std::uint64_t>(value);
+            log("STL_EXPORT_REFINE_MAX_OVERRIDE=%g\n", value);
+        }
+    }
+    const char *refine_rounds_probe = std::getenv("MECHDOG_STL_REFINE_ROUNDS");
+    if (refine_rounds_probe && *refine_rounds_probe) {
+        const double value = std::strtod(refine_rounds_probe, nullptr);
+        if (std::isfinite(value) && value >= 0.0 && value <= 16.0) {
+            effective.refine_max_rounds = static_cast<int>(value);
+            log("STL_EXPORT_REFINE_ROUNDS_OVERRIDE=%g\n", value);
+        }
+    }
+    const char *refine_vertices_probe = std::getenv("MECHDOG_STL_REFINE_VERTICES");
+    if (refine_vertices_probe && *refine_vertices_probe) {
+        const double value = std::strtod(refine_vertices_probe, nullptr);
+        if (std::isfinite(value) && value >= 0.0) {
+            effective.refine_max_new_vertices = static_cast<std::uint64_t>(value);
+            log("STL_EXPORT_REFINE_VERTICES_OVERRIDE=%g\n", value);
+        }
+    }
+    const char *trace_probe = std::getenv("MECHDOG_STL_TRACE");
+    if (trace_probe && *trace_probe == '1')
+        stl_surface_detail::trace_hook = [](const char *text) { log("STL_TRACE %s\n", text); };
+    const char *official_probe = std::getenv("MECHDOG_STL_OFFICIAL_FILE");
+    if (official_probe && *official_probe == '1')
+        effective.method = StlExportMethod::official_file;
+    J result;
+    std::string failure;
+    if (effective.method == StlExportMethod::per_surface) {
+        log("STL_EXPORT_METHOD=per_surface\n");
+        const StlPerSurfaceReport report =
+            write_stl_per_surface(model, std::filesystem::path(destination),
+                                  std::filesystem::path(generic_job + L"\\staging"), staging_name,
+                                  effective, scale.known ? scale.scale : 0.0);
+        result = stl_per_surface_report_json(report);
+        if (!report.success) {
+            failure = "STL export failed";
+            if (!report.error.empty())
+                failure += ": " + report.error;
+            else if (!report.file_error.empty())
+                failure += " during file validation: " + report.file_error;
+            else
+                failure += " at " + report.failed_stage + " (code " +
+                           std::to_string(static_cast<int>(report.failed_code)) + ")";
+        } else {
+            log("STL_EXPORT_END facets=%llu bytes=%llu surfaces=%llu\n",
+                static_cast<unsigned long long>(report.file.facet_count),
+                static_cast<unsigned long long>(report.file.bytes),
+                static_cast<unsigned long long>(report.surface_count));
+        }
+    } else {
+        log("STL_EXPORT_METHOD=official_file\n");
+        const StlExportReport report =
+            write_stl_file(model, std::filesystem::path(destination),
+                           std::filesystem::path(generic_job + L"\\staging"), staging_name,
+                           effective, scale.known ? scale.scale : 0.0);
+        result = stl_export_report_json(report);
+        if (!report.success) {
+            failure = "STL export failed";
+            if (!report.error.empty())
+                failure += ": " + report.error;
+            else if (!report.file_error.empty())
+                failure += " during file validation: " + report.file_error;
+            else
+                failure += " with code " + std::to_string(static_cast<int>(report.api_code));
+        } else {
+            log("STL_EXPORT_END facets=%llu bytes=%llu\n",
+                static_cast<unsigned long long>(report.file.facet_count),
+                static_cast<unsigned long long>(report.file.bytes));
+        }
+    }
+    result["length_unit"] = length_unit_json(units, scale);
+    log("STL_EXPORT_REPORT=%s\n", result.dump().c_str());
+    if (!failure.empty())
+        throw std::runtime_error(failure);
+    return result;
 }
 static void generic_pattern(const J &op) {
     ProFeature leader = feature(op["feature"]);
@@ -4988,6 +5305,7 @@ static void execute_operation_body(const J &op) {
                                                                               : ".jpg";
             ProPath output;
             path(output, generic_job + L"\\output\\" + model_name + wide(extension));
+            J stl_export;
             if (format == "jpeg") {
                 // Same shared capture as the automatic job preview (T07). Unlike
                 // that preview, this image is the requested operation result, so a
@@ -5008,14 +5326,29 @@ static void execute_operation_body(const J &op) {
                         "Preview capture failed at " + preview.failed_step + " (code " +
                         std::to_string(preview.failed_code) + ", raster code " +
                         std::to_string(preview.raster_code) + "): " + utf8(preview.path));
-            } else if (format == "stl")
-                write_stl(output);
-            else {
+            } else if (format == "stl") {
+                // BUG-130 Task 6: the validated plan may carry an explicit
+                // quality request; otherwise the historical defaults apply.
+                StlExportOptions stl_options;
+                if (op.contains("stl_options") && op["stl_options"].is_object()) {
+                    const J &requested = op["stl_options"];
+                    if (requested.contains("chord_height_mm") &&
+                        requested["chord_height_mm"].is_number())
+                        stl_options.chord_height_mm = requested["chord_height_mm"].get<double>();
+                    if (requested.contains("angle_control") &&
+                        requested["angle_control"].is_number())
+                        stl_options.angle_control = requested["angle_control"].get<double>();
+                }
+                stl_export = write_stl(board, output, stl_options);
+            } else {
                 ProIntf3DExportType t =
                     format == "step" ? PRO_INTF_EXPORT_STEP : PRO_INTF_EXPORT_IGES;
                 CK(ProIntf3DFileWriteWithDefaultProfile((ProSolid)board, t, output));
             }
-            stage_operation_result({{"op", kind}, {"file", utf8(output)}});
+            J export_result = {{"op", kind}, {"file", utf8(output)}};
+            if (!stl_export.is_null())
+                export_result["stl_export"] = stl_export;
+            stage_operation_result(export_result);
         }
     } else if (kind == "dump_tree") {
         ProFeature f = feature(op["feature"]);

@@ -1,0 +1,46 @@
+! T1-C: recorded cancel sequence for the Creo 10 Boundary Blend dashboard
+!
+! Where this comes from
+!   All three macro lines are copied from Creo's own trail, not guessed.
+!   build/creo_session/trail.txt.1 (copied here as trail/trail_creo_session.txt.1)
+!   around lines 773-778 records the complete sequence:
+!
+!       ~ Enter `main_dlg_cur` `dashInst0.Quit`
+!       ~ Activate `main_dlg_cur` `dashInst0.Quit`
+!       ! Message Dialog: Warning
+!       !               : 确实要取消吗?
+!       < 2 0.980148 1651 0 0 827 1920 0 0 1080 13
+!       ~ Activate `UI Message Dialog` `yes`
+!       !ODUI session finished.
+!
+!   The third line is the answer to the confirmation dialog. Its control name is
+!   `UI Message Dialog` / `yes` - not a `dashInst0.*` control and not a guess.
+!
+!   `dashInst0.Cancel` never worked and is not used anywhere.
+!
+! What was verified on 2026-11-17 in this session
+!   * The dashboard is not a separate top-level window. It is embedded in the
+!     main window, so enumerating windows cannot prove it closed.
+!   * With references already picked, Quit raises a modal titled 确认取消 with the
+!     text 确实要取消吗?. 否(N) is its DEFAULT button, so pressing Enter answers
+!     "no" and keeps the dashboard. Always answer through `UI Message Dialog` `yes`.
+!   * Differential test in this session:
+!       - tail = quit only      -> the 确认取消 dialog was left standing
+!                                  (top-level windows went 1 -> 3) and had to be
+!                                  clicked by a human.
+!       - tail = quit + yes     -> no dialog left, dashboard closed, feature
+!                                  count unchanged (18 features, max id 132).
+!     So the whole cancel really is macroable; no GUI click is required.
+!   * One ordering caveat, measured: a module-queued Done runs BEFORE these tail
+!     lines. If the feature is valid, Done closes the dashboard first and the
+!     cancel never happens (observed: feature 132 was created). The cancel lines
+!     only take effect when Done is refused, e.g. a single section. Do not rely
+!     on "append Quit to a valid run" to cancel it.
+!
+! Not installed into config.pro on purpose: the task says keep the old
+! configuration untouched. Paste it only if you decide to adopt it.
+
+mapkey t1c_cancel_blend @MAPKEY_LABELcancel boundary blend dashboard;\
+mapkey(continued) ~ Enter `main_dlg_cur` `dashInst0.Quit`;\
+mapkey(continued) ~ Activate `main_dlg_cur` `dashInst0.Quit`;\
+mapkey(continued) ~ Activate `UI Message Dialog` `yes`;

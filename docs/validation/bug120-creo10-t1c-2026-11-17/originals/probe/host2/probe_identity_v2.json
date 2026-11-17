@@ -1,0 +1,9 @@
+{
+  "accepts_macro_text_from_input": false,
+  "command": "MechDogT1CSelect",
+  "done_macro": "~ Activate `main_dlg_cur` `dashInst0.Done`;",
+  "initialized_tick_ms": 29673109,
+  "module_file": "D:\\my\\MCP_CREO_MechDog\\test_runs\\2026-11-17_t1c_closure\\probe\\host2\\probe_host_v2.dll",
+  "process_id": 21724,
+  "terminated": false
+}

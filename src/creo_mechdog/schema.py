@@ -19,6 +19,7 @@ from pydantic import (
 )
 
 from creo_mechdog import assembly_constraints, f08_contract, geometry_selectors
+from creo_mechdog import region_selection as _region_selection
 from creo_mechdog import schema_base as _schema_base
 from creo_mechdog import sheetmetal as _sheetmetal
 from creo_mechdog.flange_profile import FlangeProfile
@@ -796,10 +797,39 @@ class ExtrudeScope(StrictModel):
     body_ids: Annotated[list[int], Field(min_length=1, max_length=100)]
 
 
+class SketchRegionSelector(StrictModel):
+    """P1/FEAT-069: one closed region of an earlier sketch, by boundary signature.
+
+    The plan adapter resolves the signature to exactly one loop of the named
+    sketch, copies that loop's entities unchanged into a derived sketch, and
+    points the extrude at it. ``frame`` is the sketch's local-to-world basis
+    (``origin + u*xdir + v*ydir``); it may be omitted for a named YZ plane.
+    """
+
+    signature_yz_mm: str
+    frame: dict[str, Any] | None = None
+    tolerance_mm: Annotated[float, Field(gt=0, le=10)] | None = None
+
+    @field_validator("signature_yz_mm")
+    @classmethod
+    def signature_parses(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            raise ValueError("region.signature_yz_mm must be a string")
+        try:
+            _region_selection.parse_region_signature(value)
+        except ValueError as error:
+            raise ValueError(f"region.signature_yz_mm is not usable: {error}") from None
+        return value
+
+
 class ExtrudeOp(StrictModel):
     op: Literal["extrude"]
     label: Label
     sketch: SketchRef
+    #: FEAT-069/P1: select one closed region of an earlier sketch instead of
+    #: consuming the whole sketch. Expanded into a derived sketch before the
+    #: plan reaches the worker; ``sketch`` must then be the source label string.
+    region: SketchRegionSelector | None = None
     depth: Positive = 1
     mode: Literal["add", "cut", "surface"] = "add"
     direction: Literal["positive", "negative", "symmetric"] = "positive"
@@ -812,6 +842,17 @@ class ExtrudeOp(StrictModel):
     def through_cut(self):
         if self.depth_type == "through_all" and self.mode != "cut":
             raise ValueError("through_all is supported for cuts")
+        if self.region is not None:
+            if not isinstance(self.sketch, str):
+                raise ValueError(
+                    "region requires the source sketch to be named by its label string; "
+                    "a numeric sketch id cannot be matched against an earlier plan sketch"
+                )
+            if self.mode == "surface":
+                raise ValueError(
+                    "region applies to a solid add/cut extrusion; a surface extrude has "
+                    "no material to remove"
+                )
         return self
 
 
@@ -1159,6 +1200,10 @@ class ChamferOp(StrictModel):
                 if normalized["target"] != "surface":
                     raise ValueError(
                         "chamfer angle_reference geometry_selector must target a surface"
+                    )
+                if "coaxial" in normalized:
+                    raise ValueError(
+                        "chamfer angle_reference cannot use coaxial='any'; it must name one face"
                     )
                 self.angle_reference = normalized
         return self
@@ -1590,6 +1635,10 @@ class SheetmetalBaseFlangeOp(StrictModel):
       the native flange height is `second_leg + thickness`;
     - the envelope is `first_leg x width x (second_leg + thickness)`, and the
       volume bound is `creo_mechdog.sheetmetal.base_flange_expected_volume`;
+    - `width` runs along the sketch v axis: XY -> +Y, XZ -> +Z, YZ -> +Z. The
+      job receipt's `width_direction_world` is the measured axis and
+      `expected_width_direction_world` only asserts it; neither rotates the
+      rectangle (BUG-129, docs/REFERENCE_SYNTAX.md);
     - this batch composes exactly two perpendicular lines. The drawn
       coordinates contribute their lengths only; `origin` shifts the whole
       rectangle in the sketch frame like `sheetmetal_planar_wall`.
@@ -1974,6 +2023,21 @@ class AssemblyConstraint(StrictModel):
             # tolerance, unit axis) so the dispatched job is the one checked.
             self.assembly_reference = normalized["assembly_reference"]
             self.component_reference = normalized["component_reference"]
+        # BUG-132: coaxial='any' relaxes "exactly one cylinder" to "any coaxial
+        # cylinder piece", which is only meaningful for insert/concentric. A
+        # mate/coincident reference must still name one planar face.
+        for key in ("assembly_reference", "component_reference"):
+            reference = getattr(self, key)
+            if (
+                isinstance(reference, dict)
+                and reference.get("kind") == geometry_selectors.GEOMETRY_SELECTOR_KIND
+                and reference.get("coaxial") is not None
+                and self.type != "insert"
+            ):
+                raise ValueError(
+                    f"constraint.{key}.coaxial='any' is only valid on an insert/concentric "
+                    f"constraint; type '{self.type}' must name one face"
+                )
         # DEV-089 T2 / BUG-041: PRO_ASM_MATE and PRO_ASM_ALIGN have no offset in
         # Creo. The executor used to store the value anyway, so a request that
         # read as "mate with offset 25" was solved as a zero-offset mate. Refuse
@@ -1989,6 +2053,28 @@ class AssemblyConstraint(StrictModel):
                 f"Assembly constraint type '{self.type}' has no offset; offset={self.offset} "
                 "would be stored but not applied. Remove the offset or use mate_offset/"
                 "align_offset"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def assembly_selector_needs_component(self):
+        # BUG-132: an assembly model itself has no solid faces or edges, so a
+        # geometry_selector on the assembly side enumerates zero items unless
+        # assembly_component names the placed component that owns the geometry.
+        # Name the missing field here instead of letting the native side report
+        # "matched none of the 0 planar/cylindrical model faces".
+        reference = self.assembly_reference
+        if (
+            isinstance(reference, dict)
+            and reference.get("kind") == geometry_selectors.GEOMETRY_SELECTOR_KIND
+            and self.assembly_component is None
+        ):
+            raise ValueError(
+                "constraint.assembly_reference is a geometry_selector, but "
+                "constraint.assembly_component is missing. The assembly itself has no solid "
+                "faces or edges, so the selector would enumerate 0 items. Set "
+                "assembly_component to the placed component label or feature id that owns this "
+                "geometry"
             )
         return self
 
@@ -2400,9 +2486,46 @@ class Assertions(StrictModel):
         return float(value)
 
 
+def _stl_chord_height(value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("chord_height_mm must be a number of millimeters, not a boolean")
+    number = float(value)
+    if not math.isfinite(number) or number <= 0.0:
+        raise ValueError("chord_height_mm must be a finite positive number of millimeters")
+    return number
+
+
+def _stl_angle_control(value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("angle_control must be a number, not a boolean")
+    number = float(value)
+    if not math.isfinite(number) or not 0.0 <= number <= 1.0:
+        raise ValueError("angle_control must be finite and within 0.0..1.0")
+    return number
+
+
+class StlOptions(StrictModel):
+    """Optional STL quality request (BUG-130 Task 6).
+
+    ``chord_height_mm`` and ``angle_control`` are passed to the tessellation
+    input; the receipt repeats both the requested millimeters and the native
+    value actually given to the SDK, and never claims they were measured.
+    """
+
+    chord_height_mm: Annotated[float, BeforeValidator(_stl_chord_height)] = 0.05
+    angle_control: Annotated[float, BeforeValidator(_stl_angle_control)] = 0.1
+
+
 class ExportOp(StrictModel):
     op: Literal["export"]
     format: Literal["step", "stl", "iges", "jpeg", "pdf", "native_bundle"] = "step"
+    stl_options: StlOptions | None = None
+
+    @model_validator(mode="after")
+    def _stl_options_only_for_stl(self):
+        if self.stl_options is not None and self.format != "stl":
+            raise ValueError("stl_options is only valid when format is 'stl'")
+        return self
 
 
 #: BUG-124/C1: the suffixes the two import formats actually ship with. The
@@ -3111,6 +3234,28 @@ def validate_operations(operations: list[dict]) -> list[dict]:
             for key, v in x.items():
                 references(v, f"{path}.{key}")
 
+    def coaxial_outside_constraints(value: Any, path: str) -> None:
+        # BUG-132: coaxial='any' relaxes a constraint's cylinder choice. Any
+        # other operation must name one face; only component_constraints and an
+        # assemble_component constraint list may carry it.
+        if isinstance(value, dict):
+            if (
+                value.get("kind") == geometry_selectors.GEOMETRY_SELECTOR_KIND
+                and value.get("coaxial") is not None
+            ):
+                raise ValueError(
+                    f"{path}: coaxial is only valid on a component_constraints "
+                    "insert/concentric reference"
+                )
+            for key, item in value.items():
+                coaxial_outside_constraints(item, f"{path}.{key}")
+        elif isinstance(value, list):
+            for position, item in enumerate(value):
+                coaxial_outside_constraints(item, f"{path}[{position}]")
+
+    for index, operation in enumerate(dumped):
+        if operation["op"] not in ("component_constraints", "assemble_component"):
+            coaxial_outside_constraints(operation, f"operations[{index}]")
     references([op for op in dumped if not op["op"].startswith("drawing_")], "operations")
     sketches = {
         op["label"]: op

@@ -1,0 +1,172 @@
+{
+  "connect_code": 0,
+  "current_model": "T1C_MID",
+  "data_range_union": {
+    "max": [
+      20.120004800192007,
+      40.12000480019201,
+      3.120004800192009
+    ],
+    "min": [
+      -0.120004800192008,
+      -0.12000480019200767,
+      -0.12000480019200767
+    ],
+    "source": "ProSurfaceDataGet xyz_min/xyz_max (SDK: approximate extents)"
+  },
+  "model": "T1C_MID",
+  "model_matches": true,
+  "probe": "t1c-surface",
+  "quilt_id": 66,
+  "quilt_init_code": 0,
+  "request_id": "T1C-MID-ORDER",
+  "samples": {
+    "count": 81,
+    "failures": 0,
+    "max": [
+      20.0,
+      40.0,
+      3.0000000000000013
+    ],
+    "min": [
+      -3.3306690738754696e-16,
+      0.0,
+      0.0
+    ]
+  },
+  "sampling_note": "UV grid samples; not exact extremes",
+  "success": true,
+  "surface_count": 1,
+  "surface_visit_code": 0,
+  "surfaces": [
+    {
+      "data_code": 0,
+      "data_xyz_max": [
+        20.120004800192007,
+        40.12000480019201,
+        3.120004800192009
+      ],
+      "data_xyz_min": [
+        -0.120004800192008,
+        -0.12000480019200767,
+        -0.12000480019200767
+      ],
+      "surface_id": 61,
+      "surface_type": 45,
+      "uv_max": [
+        1.0,
+        1.0
+      ],
+      "uv_min": [
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "target": {
+    "nearest_distance_mm": 3.6241597746139513e-14,
+    "nearest_sample": [
+      9.999999999999993,
+      19.999999999999964,
+      3.000000000000001
+    ],
+    "point": [
+      10.0,
+      20.0,
+      3.0
+    ]
+  },
+  "uv_probe_note": "u,v are normalised within each surface's own uv range; the section direction is whichever parameter varies between the section planes",
+  "uv_probes": [
+    {
+      "surface_id": 61,
+      "u": 0.0,
+      "v": 0.0,
+      "xyz": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "surface_id": 61,
+      "u": 0.0,
+      "v": 0.5,
+      "xyz": [
+        10.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "surface_id": 61,
+      "u": 0.0,
+      "v": 1.0,
+      "xyz": [
+        20.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "surface_id": 61,
+      "u": 0.5,
+      "v": 0.0,
+      "xyz": [
+        -3.3306690738754696e-16,
+        19.999999999999964,
+        3.0000000000000013
+      ]
+    },
+    {
+      "surface_id": 61,
+      "u": 0.5,
+      "v": 0.5,
+      "xyz": [
+        9.999999999999993,
+        19.999999999999964,
+        3.000000000000001
+      ]
+    },
+    {
+      "surface_id": 61,
+      "u": 0.5,
+      "v": 1.0,
+      "xyz": [
+        19.999999999999982,
+        19.999999999999968,
+        3.0000000000000013
+      ]
+    },
+    {
+      "surface_id": 61,
+      "u": 1.0,
+      "v": 0.0,
+      "xyz": [
+        0.0,
+        40.0,
+        0.0
+      ]
+    },
+    {
+      "surface_id": 61,
+      "u": 1.0,
+      "v": 0.5,
+      "xyz": [
+        10.0,
+        40.0,
+        0.0
+      ]
+    },
+    {
+      "surface_id": 61,
+      "u": 1.0,
+      "v": 1.0,
+      "xyz": [
+        20.0,
+        40.0,
+        0.0
+      ]
+    }
+  ]
+}

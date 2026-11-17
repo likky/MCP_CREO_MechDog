@@ -1,0 +1,16 @@
+{
+  "request_id": "T1C-FAIL-01",
+  "model": "T1C_C3_COPY",
+  "curves": [
+    {
+      "owner": "T1C_C3_COPY",
+      "geom_id": 999999,
+      "role": "first_dir"
+    },
+    {
+      "owner": "T1C_C3_COPY",
+      "geom_id": 62,
+      "role": "first_dir"
+    }
+  ]
+}

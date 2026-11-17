@@ -166,10 +166,11 @@ class SurfaceRoundRegistrationTests(unittest.TestCase):
         self.assertNotIn("surface_round", UNAVAILABLE_OPERATIONS)
         tools = {tool.name for tool in asyncio.run(server.mcp.list_tools())}
         self.assertIn("creo_surface_round", tools)
-        # 108 = 109 minus the gated creo_surface_boundary_fill (DEV-074/H09);
-        # creo_quilt_merge (FEAT-039/H03) was published on 2026-11-08 and
-        # creo_sheetmetal_base_flange (DEV-089 T3) on 2026-11-15.
-        self.assertEqual(len(tools), 108)
+        # 109 = 110 minus the gated creo_surface_boundary_fill (DEV-074/H09);
+        # creo_quilt_merge (FEAT-039/H03) was published on 2026-11-08,
+        # creo_sheetmetal_base_flange (DEV-089 T3) on 2026-11-15 and
+        # creo_cancel_job (BUG-131) with the job-control work.
+        self.assertEqual(len(tools), 109)
 
     def test_require_available_admits_the_operation(self):
         require_available(validate_operations([surface_round()]))

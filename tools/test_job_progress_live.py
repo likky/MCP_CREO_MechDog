@@ -51,6 +51,11 @@ PROGRESS_KEYS = (
     "log_bytes",
     "truncated",
     "log_over_soft_limit",
+    "log_age_seconds",
+    "marker_source",
+    "marker_scan_bytes",
+    "dominant_tail_line",
+    "dominant_tail_line_count",
     "reason",
 )
 RUN_TAG = time.strftime("%H%M%S")

@@ -178,6 +178,7 @@ class SelectorConstraintTests(unittest.TestCase):
         checked = AssemblyConstraint.model_validate(
             {
                 "type": "coincident",
+                "assembly_component": "base",
                 "assembly_reference": surface_selector(),
                 "component_reference": surface_selector(points_mm=[[0, 5, 1]]),
             }
@@ -190,6 +191,7 @@ class SelectorConstraintTests(unittest.TestCase):
             AssemblyConstraint.model_validate(
                 {
                     "type": "coincident",
+                    "assembly_component": "base",
                     "assembly_reference": {
                         "kind": "geometry_selector",
                         "target": "edge",
@@ -205,6 +207,7 @@ class SelectorConstraintTests(unittest.TestCase):
             AssemblyConstraint.model_validate(
                 {
                     "type": "concentric",
+                    "assembly_component": "base",
                     "assembly_reference": surface_selector(axis=[0, 0, 1]),
                     "component_reference": surface_selector(
                         axis=[0, 0, 1], radius_mm=5, center_mm=[0, 0, 0]
@@ -216,6 +219,7 @@ class SelectorConstraintTests(unittest.TestCase):
         checked = AssemblyConstraint.model_validate(
             {
                 "type": "concentric",
+                "assembly_component": "base",
                 "assembly_reference": surface_selector(
                     axis=[0, 0, 1], radius_mm=5, center_mm=[0, 0, 0]
                 ),
@@ -236,6 +240,7 @@ class SelectorConstraintTests(unittest.TestCase):
                     "constraints": [
                         {
                             "type": "concentric",
+                            "assembly_component": "base",
                             "assembly_reference": surface_selector(
                                 axis=[0, 0, 1], radius_mm=5, center_mm=[0, 0, 0]
                             ),
@@ -251,6 +256,68 @@ class SelectorConstraintTests(unittest.TestCase):
         self.assertEqual(
             checked["constraints"][0]["assembly_reference"]["kind"], "geometry_selector"
         )
+
+
+class BUG132SelectorDiagnosisTests(unittest.TestCase):
+    """BUG-132: name the missing field and confine coaxial='any' to insert."""
+
+    def test_assembly_selector_without_component_names_the_missing_field(self):
+        with self.assertRaises(ValueError) as caught:
+            AssemblyConstraint.model_validate(
+                {
+                    "type": "mate",
+                    "assembly_reference": surface_selector(),
+                    "component_reference": {"kind": "surface", "id": 42},
+                }
+            )
+        message = str(caught.exception)
+        self.assertIn("assembly_component", message)
+        self.assertIn("geometry_selector", message)
+
+    def test_component_selector_may_omit_assembly_component(self):
+        checked = AssemblyConstraint.model_validate(
+            {
+                "type": "mate",
+                "assembly_reference": {"kind": "surface", "id": 41},
+                "component_reference": surface_selector(points_mm=[[0, 5, 1]]),
+            }
+        )
+        self.assertIsNone(checked.assembly_component)
+        self.assertEqual(checked.component_reference["kind"], "geometry_selector")
+
+    def test_coaxial_any_is_kept_on_concentric(self):
+        checked = AssemblyConstraint.model_validate(
+            {
+                "type": "concentric",
+                "assembly_component": "base",
+                "assembly_reference": surface_selector(
+                    axis=[0, 0, 1], radius_mm=27.5, center_mm=[0, 0, 0], coaxial="any"
+                ),
+                "component_reference": surface_selector(
+                    axis=[0, 0, 1], radius_mm=27.5, center_mm=[0, 0, 10], coaxial="any"
+                ),
+            }
+        )
+        self.assertEqual(checked.type, "insert")
+        self.assertEqual(checked.assembly_reference["coaxial"], "any")
+        self.assertEqual(checked.component_reference["coaxial"], "any")
+
+    def test_coaxial_any_is_refused_outside_insert(self):
+        for constraint_type in ("mate", "coincident", "align", "csys"):
+            with self.subTest(type=constraint_type), self.assertRaises(ValueError):
+                AssemblyConstraint.model_validate(
+                    {
+                        "type": constraint_type,
+                        "assembly_component": "base",
+                        "assembly_reference": surface_selector(
+                            axis=[0, 0, 1],
+                            radius_mm=5,
+                            center_mm=[0, 0, 0],
+                            coaxial="any",
+                        ),
+                        "component_reference": {"kind": "surface", "id": 42},
+                    }
+                )
 
 
 if __name__ == "__main__":

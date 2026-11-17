@@ -74,6 +74,11 @@ def _selector_reference(reference: dict[str, Any], path: str, kind: str) -> dict
             "only resolve to a cylindrical surface; a points-only selector could also hit a "
             "plane and insert cannot use it"
         )
+    if kind == "coincident" and "coaxial" in normalized:
+        raise ValueError(
+            f"{path}: coaxial='any' is only valid on a concentric/insert reference; a "
+            "coincident/mate reference must name one planar face"
+        )
     return normalized
 
 

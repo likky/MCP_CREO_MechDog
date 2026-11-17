@@ -1,0 +1,20 @@
+{
+  "request_id": "T1C-AFTER-CANCEL-03",
+  "model": "T1C_C3_COPY",
+  "curves": [
+    {
+      "owner": "T1C_C3_COPY",
+      "geom_id": 54,
+      "role": "first_dir"
+    },
+    {
+      "owner": "T1C_C3_COPY",
+      "geom_id": 62,
+      "role": "first_dir"
+    }
+  ],
+  "wait_seconds": 40,
+  "select_command": "MechDogT1CSelectB",
+  "tail": "none",
+  "marker_path": "probe\\host3\\probe_end_marker_v2b.json"
+}

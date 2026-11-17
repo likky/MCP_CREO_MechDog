@@ -1,0 +1,141 @@
+{
+  "items": [
+    {
+      "index": 0,
+      "input_path": "D:\\my\\MCP_CREO_MechDog\\test_runs\\2026-11-17_t1b_id_driven_blend\\work\\c3_3save\\t1b_c_03.prt.1",
+      "status": "eligible",
+      "file": {
+        "path": "D:\\my\\MCP_CREO_MechDog\\test_runs\\2026-11-17_t1b_id_driven_blend\\work\\c3_3save\\t1b_c_03.prt.1",
+        "size_bytes": 108377,
+        "sha256": "9635677e59baa6b16457e19c716c58d32a6b742f84b2a59650e306af8de22525"
+      },
+      "selected_path": "D:\\my\\MCP_CREO_MechDog\\test_runs\\2026-11-17_t1b_id_driven_blend\\work\\c3_3save\\t1b_c_03.prt.1",
+      "model_type": "part",
+      "evidence_job_id": "d6e1e7ed72144f54b8d674dc405c4b16",
+      "live": {
+        "dependency_free": true,
+        "display_name": "T1B_C_03",
+        "feature_count": 16,
+        "health_details": {
+          "item_limit": 20,
+          "items": [],
+          "returned": 0,
+          "truncated": false,
+          "unhealthy_total": 0
+        },
+        "healthy": true,
+        "millimeter_units": true,
+        "model_type": "part",
+        "origin": "D:\\my\\MCP_CREO_MechDog\\test_runs\\2026-11-17_t1b_id_driven_blend\\work\\c3_3save\\t1b_c_03.prt.1",
+        "resident_set_changed": true,
+        "session_fingerprint": "13719338321783973708",
+        "source_state": {
+          "disk_resident_content_equality": "retrieved_from_selected_file",
+          "modified": false,
+          "origin": "D:\\my\\MCP_CREO_MechDog\\test_runs\\2026-11-17_t1b_id_driven_blend\\work\\c3_3save\\t1b_c_03.prt.1",
+          "provenance": "fresh_retrieval",
+          "session_model_id": 2097160,
+          "sha256": "9635677e59baa6b16457e19c716c58d32a6b742f84b2a59650e306af8de22525",
+          "version_stamp": "217"
+        },
+        "volume_mm3": null,
+        "inspection_ref": {
+          "file": "D:\\my\\MCP_CREO_MechDog\\jobs\\d6e1e7ed72144f54b8d674dc405c4b16\\inspection-live-d0bea4d6b87d511a.json",
+          "sha256": "d0bea4d6b87d511aef25625d43b4becddb03af36a3905880f7803770ef72d57f",
+          "bytes": 28426
+        },
+        "inspection_summary": {
+          "healthy": true,
+          "has_solid": false,
+          "units": "mm",
+          "units_query_code": 0,
+          "length_unit": {
+            "name": "mm",
+            "query_code": 0,
+            "scale_query_codes": {
+              "conversion": 0,
+              "mm_unit": 0,
+              "unit": 0
+            },
+            "scale_to_mm": 1.0,
+            "scale_to_mm_known": true
+          },
+          "center_of_gravity": null,
+          "model_type": "part",
+          "volume_mm3": null,
+          "volume_query_code": null,
+          "counts": {
+            "features": 16,
+            "surfaces": 0,
+            "edges": 0,
+            "quilts": 1,
+            "bodies": 1,
+            "components": null
+          },
+          "body_counts": {
+            "objects": 1,
+            "records": 1,
+            "active": 0,
+            "with_material": 0,
+            "without_material": 1,
+            "counts_meaning": {
+              "bodies": "body_objects",
+              "with_material": "active_bodies_with_surfaces"
+            }
+          },
+          "inspection_available": true
+        }
+      },
+      "inspection_warnings": [
+        {
+          "stage": "live",
+          "reason_code": "native_sidecar_write_failed",
+          "fallback_status": "verified",
+          "message": "Native sidecar write failed; Python fallback was verified"
+        }
+      ],
+      "model_id": "675adfafc2ff475c9714e6f7cde0550b",
+      "model": {
+        "model_id": "675adfafc2ff475c9714e6f7cde0550b",
+        "model_name": "adopt_675adfaf",
+        "revision": 0,
+        "created_at": "2026-11-17T09:23:56.883756+00:00",
+        "status": "adopt_pending",
+        "aliases": {},
+        "model_type": "part",
+        "output_directory": "D:\\my\\MCP_CREO_MechDog\\models\\675adfafc2ff475c9714e6f7cde0550b\\output",
+        "part_file": null,
+        "adopted_from": {
+          "origin": "D:\\my\\MCP_CREO_MechDog\\test_runs\\2026-11-17_t1b_id_driven_blend\\work\\c3_3save\\t1b_c_03.prt.1",
+          "origin_sha256": "9635677e59baa6b16457e19c716c58d32a6b742f84b2a59650e306af8de22525",
+          "source_kind": "path",
+          "state": "pending",
+          "source_state": {
+            "disk_resident_content_equality": "retrieved_from_selected_file",
+            "modified": false,
+            "origin": "D:\\my\\MCP_CREO_MechDog\\test_runs\\2026-11-17_t1b_id_driven_blend\\work\\c3_3save\\t1b_c_03.prt.1",
+            "provenance": "fresh_retrieval",
+            "session_model_id": 2097160,
+            "sha256": "9635677e59baa6b16457e19c716c58d32a6b742f84b2a59650e306af8de22525",
+            "version_stamp": "217"
+          }
+        }
+      },
+      "native_evidence": {
+        "resident_set_changed": true,
+        "path_source_state": {
+          "disk_resident_content_equality": "retrieved_from_selected_file",
+          "modified": false,
+          "origin": "D:\\my\\MCP_CREO_MechDog\\test_runs\\2026-11-17_t1b_id_driven_blend\\work\\c3_3save\\t1b_c_03.prt.1",
+          "provenance": "fresh_retrieval",
+          "session_model_id": 2097160,
+          "sha256": "9635677e59baa6b16457e19c716c58d32a6b742f84b2a59650e306af8de22525",
+          "version_stamp": "217"
+        },
+        "delivery_complete": true,
+        "disconnect_code": 0
+      }
+    }
+  ],
+  "dispatch_started": true
+}

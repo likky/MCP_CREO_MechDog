@@ -1,0 +1,6 @@
+{"model":"T1C_C3_COPY","phase":"prepare","references":2,"request_id":"T1C-COMMIT-01"}
+{"api":"ProSelectExternalselectionRecord","error":0,"geom_id":54,"index":0,"owner":"T1C_C3_COPY","phase":"select","request_id":"T1C-COMMIT-01","role":"first_dir","selection_action":"PRO_SELECT_OVERRIDE"}
+{"api":"ProSelectExternalselectionRecord","error":0,"geom_id":62,"index":1,"owner":"T1C_C3_COPY","phase":"select","request_id":"T1C-COMMIT-01","role":"first_dir","selection_action":"PRO_SELECT_TOGGLE"}
+{"done_macro_code":0,"phase":"commit","request_id":"T1C-COMMIT-01","selections":2}
+{"committed":true,"index":2,"locked":false,"phase":"suppressed","request_id":"T1C-COMMIT-01"}
+{"committed":true,"index":2,"locked":false,"phase":"suppressed","request_id":"T1C-COMMIT-01"}

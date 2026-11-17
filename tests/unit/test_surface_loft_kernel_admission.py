@@ -126,14 +126,97 @@ class ProjectionAdmitsTheRefusal(unittest.TestCase):
 class SubmissionRefusesBeforeTheChannel(unittest.TestCase):
     setUp = channel_tests.ToolkitChannel.setUp
 
+    def parsed_identity(self, worker_sha=WORKER_SHA):
+        parsed = bridge._parse_worker_build_info(
+            {
+                "identity_schema": 1,
+                "source_digest": "a" * 64,
+                "features": {
+                    "surface_loft": {
+                        "available": True,
+                        "state": "compiled",
+                        "sdk_requirements": ["Probbl.h"],
+                        "missing_sdk_requirements": [],
+                    }
+                },
+            },
+            worker_sha,
+        )
+        self.assertIsNotNone(parsed)
+        return parsed
+
+    def record(self, completion="unsupported", evidence=None):
+        bridge.record_surface_loft_runtime(
+            {
+                "job_id": "measured_job",
+                "result": {
+                    "operations": [
+                        {
+                            "op": "surface_loft",
+                            "kernel_completion": completion,
+                            "kernel_evidence": evidence
+                            if evidence is not None
+                            else {"release_numeric": 42, "create_code": 0, "extract_code": -18},
+                        }
+                    ]
+                },
+            }
+        )
+
     def test_surface_loft_is_refused_before_the_lock(self):
+        raw = self.parsed_identity()
         with (
-            patch.object(bridge, "worker_build_identity", return_value=identity()),
+            patch.object(bridge, "worker_build_identity", return_value=raw),
             patch.object(bridge, "toolkit_lock") as lock,
         ):
+            self.record()
+            self.assertEqual(
+                bridge.channel_health()["surface_loft_runtime"]["worker_sha256"], WORKER_SHA
+            )
             with self.assertRaisesRegex(ValueError, "refused before a job"):
                 general.submit([loft()])
             lock.assert_not_called()
+        self.assertNotIn("kernel_completion", raw["features"]["surface_loft"])
+        self.assertFalse((self.root / "jobs").exists())
+
+    def test_foreign_worker_observation_does_not_block(self):
+        recorded = self.parsed_identity()
+        current = self.parsed_identity("b" * 64)
+        with patch.object(bridge, "worker_build_identity", return_value=recorded):
+            self.record()
+        with (
+            patch.object(bridge, "worker_build_identity", return_value=current),
+            patch.object(bridge.subprocess, "Popen"),
+        ):
+            self.assertEqual(general.submit([loft()])["status"], "queued")
+            self.assertEqual(
+                bridge.surface_loft_admission_identity()["features"]["surface_loft"][
+                    "kernel_completion"
+                ],
+                "unknown",
+            )
+
+    def test_supported_and_unknown_observations_pass(self):
+        raw = self.parsed_identity()
+        with (
+            patch.object(bridge, "worker_build_identity", return_value=raw),
+            patch.object(bridge.subprocess, "Popen"),
+        ):
+            self.assertEqual(
+                bridge.surface_loft_admission_identity()["features"]["surface_loft"][
+                    "kernel_completion"
+                ],
+                "unknown",
+            )
+            self.record(completion="supported")
+            self.assertEqual(
+                bridge.surface_loft_admission_identity()["features"]["surface_loft"][
+                    "kernel_completion"
+                ],
+                "supported",
+            )
+            self.assertEqual(general.submit([loft()])["status"], "queued")
+        self.assertNotIn("kernel_completion", raw["features"]["surface_loft"])
 
     def test_other_operations_still_reach_the_channel(self):
         with patch.object(bridge.subprocess, "Popen"):
