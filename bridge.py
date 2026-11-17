@@ -445,6 +445,12 @@ def toolkit_lock(
     model_id: str | None = None,
 ):
     """Serialize all native calls across MCP clients and detached jobs."""
+    # BUG-120/D4.4: a resident panel that may still be open holds the whole Creo
+    # session, not one model. This is the single place every Toolkit entry passes,
+    # so the guard is checked here as well as being advertised in status.
+    from creo_mechdog import panel_session_guard
+
+    panel_session_guard.require_clear(job_id=job_id, operation=operation, root=ROOT)
     lock = ROOT / "toolkit.lock"
     with _open_toolkit_lock(lock) as f:
         # Windows byte-range locking also covers empty files; no pre-lock write.
