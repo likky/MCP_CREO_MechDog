@@ -506,7 +506,10 @@ def panel_phase_seconds() -> int:
     measures the phase from its own clock and the job budget still caps it.
     """
     value = bridge.config().get("generic_panel_phase_seconds", PANEL_PHASE_SECONDS)
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+    # Unlike generic_stall_seconds, 0 is not "disabled" here: a zero-length phase
+    # window would terminate on the first tick, so a non-positive value keeps the
+    # default bounded window instead of quietly changing the contract.
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         return PANEL_PHASE_SECONDS
     return min(value, EXECUTOR_TIMEOUT_MAX_SECONDS)
 
@@ -718,6 +721,9 @@ def _run_worker_with_watchdog(
         if watcher is not None:
             watcher.join(timeout=TERMINATION_SECONDS)
     if stall_state.get("stalled"):
+        # The watcher keeps its own monotonic clock in this state; only measured
+        # facts belong in the job evidence a client reads.
+        stall_state.pop("last_growth", None)
         manifest["stall_watchdog"] = stall_state
         raise WorkerStalled(str(stall_state.get("message")))
     return proc.returncode
@@ -849,7 +855,6 @@ def _watch_worker_log(
         else:
             state.update(
                 stalled=True,
-                budget_seconds=phase_budget,
                 source="generic_panel_phase_seconds"
                 if reason == "panel_phase_deadline"
                 else "job_timeout_seconds",
@@ -859,9 +864,12 @@ def _watch_worker_log(
                     "The resident panel wait did not finish within its "
                     f"{'phase' if reason == 'panel_phase_deadline' else 'job'} budget "
                     f"({evidence}); the worker was terminated and the outcome is unknown. "
-                    "Inspect the model and finish with creo_reconcile_model"
+                    "The panel is not proven closed: confirm it in Creo before resolving the "
+                    "model with creo_reconcile_model"
                 ),
             )
+            if reason == "panel_phase_deadline":
+                state["budget_seconds"] = phase_budget
         return
 
 
@@ -904,8 +912,10 @@ def submit(
             raise ValueError(f"import_geometry imports into a part model, not into a {model_type}")
     panel_requests = [op for op in operations if is_panel_route(op)]
     panel_admission = None
+    panel_identity = None
     if panel_requests or any(op["op"] in WORKER_CONDITIONAL_OPERATIONS for op in operations):
         identity = bridge.surface_loft_admission_identity()
+        panel_identity = identity
         # BUG-120/D1: the tree gates cover the element_tree route only, so a panel
         # request never inherits the boundary-blend element-id refusal.
         require_worker_availability(operations, identity)
@@ -1293,7 +1303,14 @@ def submit(
                     profile_id=str(panel_admission.get("profile_id") or ""),
                     mode=str(panel_admission.get("mode") or ""),
                     model_id=model_id,
-                    callback_identity=panel_admission.get("callback_identity"),
+                    executor_identity=(
+                        {
+                            "worker_sha256": panel_identity.get("worker_sha256"),
+                            "source_digest": panel_identity.get("source_digest"),
+                        }
+                        if isinstance(panel_identity, dict)
+                        else None
+                    ),
                     root=bridge.ROOT,
                 )
             except panel_session_guard.PanelSessionLocked:

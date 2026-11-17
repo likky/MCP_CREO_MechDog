@@ -103,18 +103,25 @@ def tick(
     progress = False
     if record is not None and record.get("phase") in TRUSTED_PHASES:
         if record["phase"] != phase:
-            # A new phase starts its own bounded window; a repeated marker does not
-            # restart it, so a looping writer cannot extend the wait.
+            # A new phase starts its own bounded window, but the whole chain of
+            # waits shares one window: cycling through the phase names cannot turn
+            # a bounded wait into the job budget.
             state["phase"] = record["phase"]
             state["phase_started_at"] = now
+            state.setdefault("phase_chain_started_at", now)
             phase = record["phase"]
         if last_seq is None or record["seq"] > last_seq:
             state["last_seq"] = record["seq"]
             state["last_progress_at"] = now
             progress = True
     elif record is not None and record.get("phase") not in TRUSTED_PHASES:
+        if phase:
+            # Leaving a phase restarts the ordinary silence window: losing contact
+            # is not the same as having been silent since before the panel opened.
+            state["last_growth"] = now
         state["phase"] = None
         state["phase_started_at"] = None
+        state["phase_chain_started_at"] = None
         phase = None
 
     if job_deadline_at is not None and now >= job_deadline_at:
@@ -128,14 +135,17 @@ def tick(
             },
         }
     if phase:
-        started = state.get("phase_started_at")
-        if started is not None and now - started >= phase_budget:
+        started = state.get("phase_started_at") or now
+        # The chain start is what bounds a sequence of phases: cycling the names
+        # must not create a fresh window each time.
+        bounded = state.get("phase_chain_started_at") or started
+        if now - bounded >= phase_budget:
             return {
                 "action": "terminate",
                 "reason": "panel_phase_deadline",
                 "evidence": {
                     "phase": phase,
-                    "phase_seconds": round(now - started),
+                    "phase_seconds": round(now - bounded),
                     "phase_budget_seconds": round(phase_budget),
                     "last_seq": state.get("last_seq"),
                     "last_progress_at": state.get("last_progress_at"),

@@ -261,6 +261,67 @@ class ToolkitEntriesAreGated(unittest.TestCase):
                 general.submit([panel_op()], model_name="panel_model")
             popen.assert_not_called()
 
+    def reserve_via_submit(self):
+        with (
+            patch.object(
+                general,
+                "require_panel_route",
+                return_value={"profile_id": "creo10-bbl-1", "mode": "candidate"},
+            ),
+            patch.object(bridge.subprocess, "Popen"),
+        ):
+            return general.submit([panel_op()], model_name="panel_model")
+
+    def test_a_confirmed_native_exit_retires_the_guard(self):
+        accepted = self.reserve_via_submit()
+        general._retire_panel_guard_after_result(
+            accepted["job_id"],
+            {
+                "operations": [
+                    {
+                        "op": "surface_loft",
+                        "exit_observation": {"closed": True, "method": "bracket"},
+                    }
+                ]
+            },
+        )
+        self.assertIsNone(panel_session_guard.inspect(self.root))
+        panel_session_guard.require_clear(job_id="job_b", operation="submit", root=self.root)
+
+    def test_an_unconfirmed_exit_keeps_the_guard(self):
+        accepted = self.reserve_via_submit()
+        results = (
+            {
+                "panel_execution_unconfirmed": True,
+                "operations": [{"op": "surface_loft", "exit_observation": {"closed": True}}],
+            },
+            {"operations": [{"op": "surface_loft"}]},
+            {"operations": [{"op": "surface_loft", "exit_observation": {"closed": False}}]},
+            {},
+        )
+        for result in results:
+            with self.subTest(result=result):
+                general._retire_panel_guard_after_result(accepted["job_id"], result)
+                self.assertIsNotNone(panel_session_guard.inspect(self.root))
+
+    def test_a_runner_that_never_started_retires_its_reserve(self):
+        with (
+            patch.object(
+                general,
+                "require_panel_route",
+                return_value={"profile_id": "creo10-bbl-1", "mode": "candidate"},
+            ),
+            patch.object(bridge.subprocess, "Popen", side_effect=OSError("no runner")),
+        ):
+            with self.assertRaises(OSError):
+                general.submit([panel_op()], model_name="panel_model")
+        self.assertIsNone(panel_session_guard.inspect(self.root))
+
+    def test_the_guard_records_the_executor_identity(self):
+        self.reserve_via_submit()
+        guard = panel_session_guard.inspect(self.root)
+        self.assertEqual(sorted(guard["executor_identity"]), ["source_digest", "worker_sha256"])
+
     def test_an_ordinary_submission_is_unaffected_without_a_guard(self):
         with patch.object(bridge.subprocess, "Popen") as popen:
             general.submit([], model_name="plain_model")

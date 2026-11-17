@@ -154,13 +154,28 @@ class WaitBudget(unittest.TestCase):
         self.assertEqual(tick(state, None, 1005, stall=10)["action"], "continue")
         self.assertEqual(tick(state, None, 1011, stall=10)["reason"], "stall")
 
-    def test_a_phase_that_ends_returns_to_the_stall_contract(self):
+    def test_a_phase_that_ends_restarts_the_silence_window(self):
         state = {}
         start = 1000.0
         tick(state, marker(), start, phase=300)
-        state["last_growth"] = start
+        # Losing the trusted marker is not "silent since before the panel opened":
+        # the ordinary window starts now, so the very first tick after the phase
+        # cannot kill a worker that had been waiting legitimately.
         verdict = tick(state, marker(phase="heartbeat", seq=2), start + 400, stall=10, phase=300)
+        self.assertEqual(verdict["action"], "continue")
+        self.assertEqual(state["last_growth"], start + 400)
+        verdict = tick(state, None, start + 415, stall=10, phase=300)
         self.assertEqual(verdict["reason"], "stall")
+
+    def test_cycling_through_phases_shares_one_window(self):
+        state = {}
+        start = 1000.0
+        tick(state, marker(phase="panel_open_wait", seq=1), start, phase=100)
+        tick(state, marker(phase="panel_select_wait", seq=2), start + 60, phase=100)
+        verdict = tick(state, marker(phase="panel_done_wait", seq=3), start + 130, phase=100)
+        self.assertEqual(verdict["reason"], "panel_phase_deadline")
+        self.assertEqual(verdict["evidence"]["phase"], "panel_done_wait")
+        self.assertGreaterEqual(verdict["evidence"]["phase_seconds"], 130)
 
 
 class WatchdogIntegration(unittest.TestCase):
