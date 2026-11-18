@@ -21,6 +21,8 @@
 
 #include <ProUICmd.h>
 
+#include <thread>
+
 #include "panel_protocol.h"
 
 inline std::string panel_required_string(const J &panel, const char *key) {
@@ -213,15 +215,13 @@ inline void generic_surface_loft_panel(const J &op) {
                      {"done_command", done_command}}
                        .dump(2);
     }
-    bool prepared = false;
     log("PANEL_CALLBACK_MODE=resident_panel\n");
-    // BUG-120/D3/D5: the exit report comes from the payload's persisted state, never
-    // from "Done was queued". This build registers no Creo UI event source, so the
-    // payload cannot record a closure; that fact is reported as supported=false.
-    // No Toolkit task is sent here on purpose: the UI macro is still executing, and
-    // a synchronous task call at this point blocked a live run until its budget
-    // expired (job f22a70b015df40abac34916d20d5186b, 2026-11-18).
-    auto read_panel_exit = [&]() -> J {
+    // BUG-120/T1-B (Creo 10, 2026-11-17): the whole dialog sequence must be ONE
+    // macro - open, one resident command per position, Done. Any further Toolkit
+    // task sent after the panel opens blocks until the session reports
+    // PRO_TK_COMM_ERROR (-11), and the macro itself runs asynchronously, so the
+    // result is read from the payload's callback_result.json, never from a task.
+    auto read_panel_state = [&]() -> J {
         J outcome = J::object();
         try {
             std::ifstream result_file(callback_dir / L"callback_result.json");
@@ -229,8 +229,21 @@ inline void generic_surface_loft_panel(const J &op) {
         } catch (...) {
             outcome = J::object();
         }
-        J state = outcome.contains("panel") && outcome["panel"].is_object() ? outcome["panel"]
-                                                                          : J();
+        return outcome;
+    };
+    auto panel_selected = [&](const J &outcome) {
+        int selected = outcome.value("selected", 0);
+        if (outcome.contains("panel") && outcome["panel"].is_object())
+            selected = outcome["panel"].value("selected", selected);
+        return selected;
+    };
+    // This build registers no Creo UI event source, so the payload cannot record a
+    // closure; that fact is reported as supported=false instead of calling silence
+    // "closed".
+    auto read_panel_exit = [&]() -> J {
+        const J outcome = read_panel_state();
+        const J state =
+            outcome.contains("panel") && outcome["panel"].is_object() ? outcome["panel"] : J();
         J observation = {
             {"method", "callback_result"},
             {"supported", false},
@@ -258,58 +271,38 @@ inline void generic_surface_loft_panel(const J &op) {
              {"selection_intent", {{"labels", intent_labels}}},
              {"exit_observation", read_panel_exit()}});
     };
-    try {
-        resident_blend_task(module, "MechDogPanelPrepare",
-                            (callback_dir / L"callback_request.json").wstring());
-        prepared = true;
-        // The recorded sequence opens the dialog. The recording's screen-pick pauses are
-        // replaced by one invocation of the resident command per position, so each of
-        // them consumes exactly one ticket and nothing waits for a human click.
-        std::string select_text = select_template;
-        select_text.replace(select_text.find(mechdog_panel::select_placeholder),
-                            std::strlen(mechdog_panel::select_placeholder), resident_command);
-        std::string sequence = open_macro;
-        for (size_t index = 0; index < sections.size(); ++index)
-            sequence += "\n" + select_text;
-        CK(trace_blend_call("panel_macro_submit",
-                            [&] { return ProMacroLoad(wide(sequence).data()); }));
-        J outcome = J::object();
-        try {
-            std::ifstream result_file(callback_dir / L"callback_result.json");
-            result_file >> outcome;
-        } catch (...) {
-            outcome = J::object();
-        }
-        int selected = outcome.value("selected", 0);
-        if (outcome.contains("panel") && outcome["panel"].is_object())
-            selected = outcome["panel"].value("selected", selected);
-        if (selected != static_cast<int>(sections.size())) {
-            // Stage the real counted selection and the exit state before throwing so
-            // the failure record carries what the dialog actually consumed.
-            stage_panel(selected);
-            throw std::runtime_error(
-                "PANEL_SELECTION_INCOMPLETE: the callback consumed " + std::to_string(selected) +
-                " of " + std::to_string(sections.size()) +
-                " positions; inspect callback_result.json. The dialog may still be open, so the "
-                "run is reported as unconfirmed instead of successful.");
-        }
-        // Done is a separate step: the payload verifies the command, loads the macro
-        // and only then lets the state machine decide that the run committed.
-        if (!done_macro.empty() && !done_command.empty())
-            resident_blend_task(module, "MechDogPanelFinalize",
-                                (callback_dir / L"callback_request.json").wstring());
-        stage_panel(selected);
-    } catch (...) {
-        if (prepared) {
-            try {
-                resident_blend_task(module, "MechDogPanelRelease",
-                                    (callback_dir / L"callback_request.json").wstring());
-            } catch (...) {
-                log("RESIDENT_PANEL_RELEASE_FAILED=1\n");
-            }
-        }
-        throw;
+    resident_blend_task(module, "MechDogPanelPrepare",
+                        (callback_dir / L"callback_request.json").wstring());
+    // The recorded sequence opens the dialog. The recording's screen-pick pauses are
+    // replaced by one invocation of the resident command per position, and the
+    // restricted Done is appended to the same macro: T1-B proved this order on
+    // Creo 10, and a separate Finalize call would block behind the open dialog.
+    std::string select_text = select_template;
+    select_text.replace(select_text.find(mechdog_panel::select_placeholder),
+                        std::strlen(mechdog_panel::select_placeholder), resident_command);
+    std::string sequence = open_macro;
+    for (size_t index = 0; index < sections.size(); ++index)
+        sequence += "\n" + select_text;
+    sequence += "\n" + done_macro;
+    CK(trace_blend_call("panel_macro_submit",
+                        [&] { return ProMacroLoad(wide(sequence).data()); }));
+    // Bounded wait for the payload to record one ticket per position. Only the file
+    // is polled: a Toolkit task here is exactly what blocked the 2026-11-18 run.
+    int selected = panel_selected(read_panel_state());
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    while (selected < static_cast<int>(sections.size()) &&
+           std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        selected = panel_selected(read_panel_state());
     }
+    stage_panel(selected);
+    if (selected != static_cast<int>(sections.size()))
+        throw std::runtime_error(
+            "PANEL_SELECTION_INCOMPLETE: the callback consumed " + std::to_string(selected) +
+            " of " + std::to_string(sections.size()) +
+            " positions; inspect callback_result.json and the native log. The dialog may still be "
+            "open, so the run is reported as unconfirmed instead of successful, and no further "
+            "Toolkit task is sent because that would block behind the dialog.");
     log("PANEL_ROUTE=resident_panel selected=%zu\n", sections.size());
 }
 

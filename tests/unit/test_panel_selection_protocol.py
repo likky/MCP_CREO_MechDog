@@ -211,8 +211,12 @@ class PanelJobWiring(unittest.TestCase):
     def test_the_native_route_refuses_to_claim_an_unobserved_success(self):
         text = self.RUN.read_text(encoding="utf-8")
         self.assertIn("PANEL_SELECTION_INCOMPLETE", text)
-        self.assertIn("MechDogPanelFinalize", text)
-        self.assertIn("MechDogPanelRelease", text)
+        # T1-B (Creo 10): open, one resident command per position and Done are one
+        # macro. A separate Finalize/Release task would block behind the open dialog
+        # (PRO_TK_COMM_ERROR -11), so the backend must not send one.
+        self.assertIn('sequence += "\\n" + done_macro', text)
+        self.assertNotIn("MechDogPanelFinalize", text)
+        self.assertNotIn("MechDogPanelRelease", text)
 
 
 class PanelProfileToBackend(unittest.TestCase):
