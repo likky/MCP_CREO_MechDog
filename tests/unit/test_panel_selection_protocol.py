@@ -137,6 +137,16 @@ class PanelPayloadWiring(unittest.TestCase):
         loader = LOADER.read_text(encoding="utf-8")
         self.assertIn('GetProcAddress(payload, "MechDogPanelInitialize")', loader)
         self.assertIn("mechdog_panel::panel_exports", loader)
+        # The worker reaches the payload through the loader's own exports, so the
+        # panel generation needs forwarding exports, not just internal lookups.
+        for name in (
+            "MechDogPanelPrepare",
+            "MechDogPanelFinalize",
+            "MechDogPanelEvent",
+            "MechDogPanelState",
+            "MechDogPanelRelease",
+        ):
+            self.assertIn(f"PRO_TK_DLL_EXPORT ProError {name}(", loader)
 
     def test_the_payload_exports_the_panel_generation(self):
         text = self.PAYLOAD.read_text(encoding="utf-8")

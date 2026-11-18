@@ -74,6 +74,33 @@ extern "C" PRO_TK_DLL_EXPORT ProError MechDogBlendIdentity(ProArgument *in, ProA
     return initialized ? identity_payload(in, out) : PRO_TK_BAD_CONTEXT;
 }
 
+//: BUG-120/D3: the panel generation's entry points, forwarded the same way. A worker
+//: reaches the payload through the loader (ProToolkitTaskExecute names the loader's
+//: exports), so the panel route needs its own forwarding exports; without them a
+//: panel deployment would load and then have nothing callable.
+static ProTkdllFunction panel_prepare_payload = nullptr, panel_finalize_payload = nullptr,
+                        panel_event_payload = nullptr, panel_state_payload = nullptr,
+                        panel_release_payload = nullptr;
+
+extern "C" PRO_TK_DLL_EXPORT ProError MechDogPanelPrepare(ProArgument *in, ProArgument **out) {
+    return initialized && panel_prepare_payload ? panel_prepare_payload(in, out)
+                                                : PRO_TK_BAD_CONTEXT;
+}
+extern "C" PRO_TK_DLL_EXPORT ProError MechDogPanelFinalize(ProArgument *in, ProArgument **out) {
+    return initialized && panel_finalize_payload ? panel_finalize_payload(in, out)
+                                                 : PRO_TK_BAD_CONTEXT;
+}
+extern "C" PRO_TK_DLL_EXPORT ProError MechDogPanelEvent(ProArgument *in, ProArgument **out) {
+    return initialized && panel_event_payload ? panel_event_payload(in, out) : PRO_TK_BAD_CONTEXT;
+}
+extern "C" PRO_TK_DLL_EXPORT ProError MechDogPanelState(ProArgument *in, ProArgument **out) {
+    return initialized && panel_state_payload ? panel_state_payload(in, out) : PRO_TK_BAD_CONTEXT;
+}
+extern "C" PRO_TK_DLL_EXPORT ProError MechDogPanelRelease(ProArgument *in, ProArgument **out) {
+    return initialized && panel_release_payload ? panel_release_payload(in, out)
+                                                : PRO_TK_BAD_CONTEXT;
+}
+
 extern "C" __declspec(dllexport) int user_initialize(int argc, char **argv, char *version,
                                                      char *build, wchar_t errmsg[80]) {
     if (attempted) {
@@ -132,10 +159,22 @@ extern "C" __declspec(dllexport) int user_initialize(int argc, char **argv, char
         release_payload = (ProTkdllFunction)GetProcAddress(payload, "MechDogBlendRelease");
         identity_payload = (ProTkdllFunction)GetProcAddress(payload, "MechDogBlendIdentity");
         bool panel_exports_present = true;
-        if (panel_generation)
+        if (panel_generation) {
             for (const char *name : mechdog_panel::panel_exports)
                 if (!GetProcAddress(payload, name))
                     panel_exports_present = false;
+            panel_prepare_payload =
+                (ProTkdllFunction)GetProcAddress(payload, "MechDogPanelPrepare");
+            panel_finalize_payload =
+                (ProTkdllFunction)GetProcAddress(payload, "MechDogPanelFinalize");
+            panel_event_payload = (ProTkdllFunction)GetProcAddress(payload, "MechDogPanelEvent");
+            panel_state_payload = (ProTkdllFunction)GetProcAddress(payload, "MechDogPanelState");
+            panel_release_payload =
+                (ProTkdllFunction)GetProcAddress(payload, "MechDogPanelRelease");
+            panel_exports_present = panel_exports_present && panel_prepare_payload &&
+                                    panel_finalize_payload && panel_event_payload &&
+                                    panel_state_payload && panel_release_payload;
+        }
         // Compare before combining: the two signatures are deliberately different
         // types, so they are never put in one conditional expression.
         const bool initialized_export =
