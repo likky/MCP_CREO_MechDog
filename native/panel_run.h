@@ -174,6 +174,22 @@ inline void generic_surface_loft_panel(const J &op) {
             "; a step that cannot name the resident command would degrade back into waiting for a "
             "human screen pick. The dialog was not opened.");
     {
+        // T1-B proved that a resident action registered with ProCmdActionAdd is
+        // invocable by a macro "~ Command" line, but only if the action exists under
+        // exactly that name. Resolve it before the dialog opens so a bad name is a
+        // refusal, not a silent macro line with zero selections.
+        std::string select_name = resident_command;
+        uiCmdCmdId select_id = 0;
+        const ProError found = ProCmdCmdIdFind(&select_name[0], &select_id);
+        if (found != PRO_TK_NO_ERROR || select_id == 0)
+            throw std::runtime_error(
+                "PANEL_COMMAND_MISSING: ProCmdCmdIdFind cannot resolve the resident selection "
+                "command '" +
+                resident_command + "' (code " + std::to_string((int)found) +
+                "); the payload registered no action this session can invoke, so every selection "
+                "step would be a no-op. The dialog was not opened.");
+    }
+    {
         // ProCmdCmdIdFind takes a mutable char*, so it is handed a copy rather than
         // casting away constness on the profile text.
         std::string done_name = done_command;
@@ -284,6 +300,14 @@ inline void generic_surface_loft_panel(const J &op) {
     for (size_t index = 0; index < sections.size(); ++index)
         sequence += "\n" + select_text;
     sequence += "\n" + done_macro;
+    {
+        // The exact text is evidence: a macro line that silently does nothing is
+        // otherwise indistinguishable from a dialog that never opened.
+        std::string shown;
+        for (char c : sequence)
+            shown += c == '\n' ? " | " : std::string(1, c);
+        log("PANEL_MACRO=%s\n", shown.c_str());
+    }
     CK(trace_blend_call("panel_macro_submit",
                         [&] { return ProMacroLoad(wide(sequence).data()); }));
     // Bounded wait for the payload to record one ticket per position. Only the file

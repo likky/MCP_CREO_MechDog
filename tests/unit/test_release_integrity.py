@@ -586,7 +586,9 @@ class PanelLibraryAllowlistTests(PanelLibraryFixture):
                 "templates/panel/recordings/creo10_blend_gui_t1a.pro",
             },
         )
-        self.assertEqual([entry.status for entry in panel_profiles.profiles(ROOT)], ["candidate"])
+        self.assertEqual(
+            [entry.status for entry in panel_profiles.profiles(ROOT)], ["candidate", "candidate"]
+        )
 
     def test_the_source_package_ships_the_panel_manifest(self):
         packaged = {path.relative_to(ROOT).as_posix() for path in package.source_files()}

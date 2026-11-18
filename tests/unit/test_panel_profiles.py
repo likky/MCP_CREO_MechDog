@@ -75,11 +75,14 @@ class Library(unittest.TestCase):
 
 
 class ShippedLibraryIsClosed(Library):
-    def test_the_repository_manifest_carries_one_candidate(self):
+    def test_the_repository_manifest_carries_the_candidate_lineup(self):
         entries = panel_profiles.profiles()
-        self.assertEqual([entry.profile_id for entry in entries], ["creo10-bbl-candidate-1"])
-        self.assertEqual([entry.status for entry in entries], ["candidate"])
-        self.assertEqual(entries[0].release_numeric, 42)
+        self.assertEqual(
+            [entry.profile_id for entry in entries],
+            ["creo10-bbl-candidate-1", "creo10-bbl-candidate-2"],
+        )
+        self.assertEqual([entry.status for entry in entries], ["candidate", "candidate"])
+        self.assertEqual({entry.release_numeric for entry in entries}, {42})
 
     def test_find_profile_names_the_known_profiles(self):
         with self.assertRaises(panel_profiles.PanelProfileError) as caught:
