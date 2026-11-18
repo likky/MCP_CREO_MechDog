@@ -710,11 +710,30 @@ def check_environment() -> dict:
     }
 
 
+def _published_callback_generation(build: Path) -> str:
+    """The generation this build tree already publishes, or the blend default.
+
+    ``build_native`` republishes the callback metadata on every startup
+    preparation. Publishing the blend generation over a panel deployment would
+    trip the immutable-bootstrap check and strand the session, so the republish
+    has to keep whichever generation the operator deployed.
+    """
+    setup = build / "blend_callback_setup.json"
+    try:
+        recorded = read_json(setup)
+    except (OSError, ValueError, KeyError):
+        return "blend"
+    generation = recorded.get("generation") if isinstance(recorded, dict) else None
+    return generation if generation in ("blend", "panel") else "blend"
+
+
 def build_native() -> Path:
     """Caller holds toolkit_lock. Source hash invalidates the local build."""
     c = config()
     build = ROOT / "build"
     build.mkdir(exist_ok=True)
+    # BUG-120/D6: keep the generation the operator deployed (blend or panel).
+    published_generation = _published_callback_generation(build)
     exe = build / "creo_worker.exe"
     blend_dll = build / "creo_blend_sync.dll"
     loader_dll = build / "creo_blend_loader.dll"
@@ -856,7 +875,7 @@ def build_native() -> Path:
                 f"publishing under {generation}",
                 file=sys.stderr,
             )
-        prepare_callback(build, callback_sha256, generation)
+        prepare_callback(build, callback_sha256, generation, generation=published_generation)
         write_json(
             callback_stamp,
             {
@@ -895,7 +914,9 @@ def build_native() -> Path:
             and loader_cache.get("generation_key") == loader_generation
         )
         if cache_current:
-            prepare_callback(build, callback_cache["sha256"], loader_generation)
+            prepare_callback(
+                build, callback_cache["sha256"], loader_generation, generation=published_generation
+            )
         else:
             record_callback()
         return exe

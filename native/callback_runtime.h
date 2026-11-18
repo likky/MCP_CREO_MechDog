@@ -63,6 +63,27 @@ static J callback_live_identity(ProToolkitDllHandle handle) {
     return identity;
 }
 
+// BUG-120/D6: the payload DLL serves two wire generations. The probe must compare
+// a deployment with the generation it declares; comparing a panel deployment with
+// the blend constants read every complete panel setup as "version_mismatch".
+static bool callback_matches_generation(const J &value, int protocol, int loader_abi,
+                                        const char *contract) {
+    return value.value("protocol", 0) == protocol &&
+           value.value("loader_abi", 0) == loader_abi &&
+           value.value("contract", "") == contract;
+}
+
+static bool callback_setup_declares_panel(const J &setup) {
+    return callback_matches_generation(setup, mechdog_panel::protocol, mechdog_panel::loader_abi,
+                                       mechdog_panel::contract);
+}
+
+static bool callback_setup_generation_supported(const J &setup) {
+    return callback_setup_declares_panel(setup) ||
+           callback_matches_generation(setup, mechdog_callback::protocol,
+                                       mechdog_callback::loader_abi, mechdog_callback::contract);
+}
+
 static J callback_runtime_status(const std::filesystem::path &build,
                                  ProToolkitDllHandle &verified_module, std::string &command) {
     verified_module = nullptr;
@@ -74,9 +95,7 @@ static J callback_runtime_status(const std::filesystem::path &build,
             {"loader_file", setup.at("loader_file")}, {"module_file", setup.at("module_file")},
             {"protocol", setup.at("protocol")},       {"contract", setup.at("contract")}};
         status["registry_file"] = setup.at("registry_file");
-        if (setup.value("protocol", 0) != mechdog_callback::protocol ||
-            setup.value("contract", "") != mechdog_callback::contract ||
-            setup.value("loader_abi", 0) != mechdog_callback::loader_abi ||
+        if (!callback_setup_generation_supported(setup) ||
             mechdog_callback::sha256(wide(setup.at("module_file"))) != setup.at("dll_sha256") ||
             mechdog_callback::sha256(wide(setup.at("loader_file"))) != setup.at("loader_sha256")) {
             status["readiness"] = "version_mismatch";
@@ -128,9 +147,16 @@ static J callback_runtime_status(const std::filesystem::path &build,
                 identity_failed = true;
                 continue;
             }
-            bool matches = loaded.value("protocol", 0) == mechdog_callback::protocol &&
-                           loaded.value("contract", "") == mechdog_callback::contract &&
-                           loaded.value("loader_abi", 0) == mechdog_callback::loader_abi &&
+            const bool panel_generation = callback_setup_declares_panel(setup);
+            const int want_protocol =
+                panel_generation ? mechdog_panel::protocol : mechdog_callback::protocol;
+            const int want_abi =
+                panel_generation ? mechdog_panel::loader_abi : mechdog_callback::loader_abi;
+            const std::string want_contract =
+                panel_generation ? mechdog_panel::contract : mechdog_callback::contract;
+            bool matches = loaded.value("protocol", 0) == want_protocol &&
+                           loaded.value("contract", "") == want_contract &&
+                           loaded.value("loader_abi", 0) == want_abi &&
                            loaded.value("initialize_code", -1) == 0 &&
                            // A stopped loader/identity handler cannot answer the nonce.
                            // Early v3 payloads omit the optional false termination flag.

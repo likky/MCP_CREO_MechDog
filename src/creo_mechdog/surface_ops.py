@@ -135,6 +135,11 @@ LOFT_CHAIN_KINDS = ("curve", "edge")
 LOFT_POINT_KINDS = ("point", "datum_point_feature")
 LOFT_INPUT_LIVE_STATUS = "Creo 12.4.0.0 live-verified on 2026-11-11 (FEAT-065 M3/T3)"
 
+#: BUG-120/D1: the only object form the resident panel route takes. ``label`` names
+#: an MCP-owned sketch; ``open_confirmed`` is the caller's proof that the curve is
+#: open, because this build has no verified way to read a standalone curve's closure.
+PANEL_SECTION_KEYS = frozenset({"label", "open_confirmed"})
+
 LOFT_INPUT_FORMS = (
     "a sketch label or integer feature id, {kind:'curve',id:N} (a PRO_CURVE geometry id, "
     "e.g. a project_curve curve_id) or {kind:'edge',id:N} (an edge geometry id from "
@@ -209,6 +214,10 @@ def loft_input_key(value: Any) -> tuple[str, Any]:
     """Identity of one section/guide entry for the distinctness checks."""
     if isinstance(value, dict):
         kind = value.get("kind")
+        if kind is None and "label" in value:
+            # BUG-120/D1: a panel section object is still a sketch reference; its
+            # identity is the label, so two positions naming one sketch collide.
+            return ("sketch", value.get("label"))
         return (str(kind), value.get("label") if kind == "datum_point_feature" else value.get("id"))
     return ("sketch", value)
 
@@ -216,6 +225,8 @@ def loft_input_key(value: Any) -> tuple[str, Any]:
 def _loft_input_text(value: Any) -> str:
     if isinstance(value, dict):
         key = loft_input_key(value)
+        if key[0] == "sketch":
+            return repr(key[1])
         field = "label" if key[0] == "datum_point_feature" else "id"
         return f"{{kind:'{key[0]}',{field}:{key[1]!r}}}"
     return repr(value)
@@ -402,6 +413,16 @@ class SurfaceLoftOp(StrictModel):
         for index, value in enumerate(self.sections):
             if isinstance(value, str):
                 continue
+            if isinstance(value, dict) and set(value) <= PANEL_SECTION_KEYS:
+                label = value.get("label")
+                if isinstance(label, str) and label and value.get("open_confirmed") is True:
+                    continue
+                raise ValueError(
+                    f"creation_route='resident_panel' sections[{index}] must carry a non-empty "
+                    "label and open_confirmed=true: this build cannot read whether a standalone "
+                    "curve is closed, so the caller supplies that proof instead of the route "
+                    "assuming it"
+                )
             form = (
                 "a bare feature id"
                 if isinstance(value, int) and not isinstance(value, bool)
@@ -410,7 +431,8 @@ class SurfaceLoftOp(StrictModel):
             raise ValueError(
                 f"creation_route='resident_panel' sections[{index}] is {form}: the panel route "
                 "resolves each section from an MCP-owned sketch label, so pass the sketch label "
-                "(a string). Curve, edge, point and bare-id forms stay on the element_tree route"
+                "(a string) or {label:'...',open_confirmed:true}. Curve, edge, point and bare-id "
+                "forms stay on the element_tree route"
             )
         for field, value in (
             ("guides", self.guides),
@@ -448,6 +470,20 @@ class SurfaceLoftOp(StrictModel):
 
     @model_validator(mode="after")
     def distinct_sections(self):
+        if self.creation_route == "resident_panel":
+            # The panel route takes sketch labels (or the label/open_confirmed
+            # object) only; its native resolver refuses any other form, so this
+            # validator checks repeated sketches and leaves the reference rules to
+            # that refusal.
+            repeat = _first_repeat(self.sections)
+            if repeat:
+                first, second = repeat
+                raise ValueError(
+                    "Surface loft sections must be distinct sketches: "
+                    f"sections[{second}] repeats sections[{first}] "
+                    f"({_loft_input_text(self.sections[second])})"
+                )
+            return self
         last = len(self.sections) - 1
         for index, value in enumerate(self.sections):
             problem = loft_input_problem(

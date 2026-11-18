@@ -202,6 +202,25 @@ class BlendCallbackSetupTests(unittest.TestCase):
         self.assertEqual(value["artifact_status"], "legacy")
         self.assertEqual(value["readiness"], "unknown")
 
+    def test_a_panel_deployment_reads_as_prepared(self):
+        # BUG-120/D6: the panel generation shares the payload DLL with the blend
+        # deployment. Comparing it with the blend constants made a complete panel
+        # deployment read as "not prepared" and hid the live loader state.
+        self.prepare(self.build, self.digest, generation="panel")
+        value = callback_setup_status(self.build)
+        self.assertEqual(value["artifact_status"], "prepared")
+        self.assertEqual(value["generation"], "panel")
+        self.assertEqual(value["protocol"], 4)
+        self.assertEqual(value["loader_abi"], 2)
+        self.assertEqual(value["readiness"], "unknown")
+
+    def test_a_panel_deployment_with_the_blend_abi_is_not_prepared(self):
+        self.prepare(self.build, self.digest, generation="panel")
+        setup = json.loads((self.build / "blend_callback_setup.json").read_text())
+        setup["loader_abi"] = 1
+        (self.build / "blend_callback_setup.json").write_text(json.dumps(setup))
+        self.assertEqual(callback_setup_status(self.build)["artifact_status"], "not_prepared")
+
     def probe(self, result=None, exception=None):
         self.prepare(self.build, self.digest)
         (self.build / "creo_worker.exe").touch()

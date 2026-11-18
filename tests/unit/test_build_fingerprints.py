@@ -270,7 +270,7 @@ class BuildNativeMigrationTests(unittest.TestCase):
         stamp = self.root / "build/source.sha256"
         stamp.unlink()
 
-        def failing(build, dll_sha256, loader_fingerprint):
+        def failing(build, dll_sha256, loader_fingerprint, **kwargs):
             raise ValueError("publish interrupted")
 
         with patch.object(bridge, "prepare_callback", side_effect=failing):
@@ -282,6 +282,16 @@ class BuildNativeMigrationTests(unittest.TestCase):
         bridge.build_native()
         self.assertTrue(stamp.exists())
         self.assertTrue((self.root / "build/blend_callback_setup.json").is_file())
+
+    def test_republish_keeps_the_deployed_generation(self):
+        # BUG-120/D6: the startup preparation republishes metadata on every run.
+        # Publishing the blend generation over a panel deployment stranded the
+        # session in configuration_error ("immutable callback bootstrap changed").
+        build = self.root / "build"
+        build.mkdir(parents=True, exist_ok=True)
+        self.assertEqual(bridge._published_callback_generation(build), "blend")
+        (build / "blend_callback_setup.json").write_text(json.dumps({"generation": "panel"}))
+        self.assertEqual(bridge._published_callback_generation(build), "panel")
 
     def test_rebuilt_image_coexists_with_historical_generation_directory(self):
         # Settings drive the fingerprint away and back while nondeterministic

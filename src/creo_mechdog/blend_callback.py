@@ -462,17 +462,30 @@ def callback_setup_status(build: Path) -> dict:
                 "reason": "legacy_registration",
                 "instruction": "Build this version, then migrate once to its stable loader registration",
             }
+        # BUG-120/D6: validate against the generation the deployment declares.
+        # The blend (protocol 3 / ABI 1) and panel (protocol 4 / ABI 2) generations
+        # share the payload DLL but not the wire contract; comparing every
+        # deployment with the blend constants made a panel deployment read as
+        # "not prepared" even when its files were complete.
+        generation = data.get("generation", "blend")
+        expected = GENERATIONS.get(generation)
+        if expected is None:
+            raise ValueError("Unknown callback generation")
+        protocol, loader_abi, contract, _ = expected
+        deployment_expected = {"loader_abi": loader_abi, "dll_sha256": data["dll_sha256"]}
+        if generation == "panel":
+            deployment_expected["protocol"] = protocol
         if (
-            data["protocol"] != PROTOCOL
-            or data["contract"] != CONTRACT
-            or data["loader_abi"] != LOADER_ABI
+            data["protocol"] != protocol
+            or data["contract"] != contract
+            or data["loader_abi"] != loader_abi
             or _digest(Path(data["module_file"])) != data["dll_sha256"]
             or _digest(Path(data["loader_file"])) != data["loader_sha256"]
             or Path(data["resource_root"]).resolve() != build.parent.resolve()
             or json.loads(
                 (Path(data["loader_file"]).parent / "deployment.json").read_text(encoding="utf-8")
             )
-            != {"loader_abi": LOADER_ABI, "dll_sha256": data["dll_sha256"]}
+            != deployment_expected
             or not Path(data["registry_file"]).is_file()
         ):
             raise ValueError("Invalid callback setup")
@@ -496,6 +509,7 @@ def callback_setup_status(build: Path) -> dict:
                     "resource_root",
                 )
             },
+            "generation": generation,
             "artifact_status": "prepared",
             "manual_setup_when_not_loaded": True,
             "instruction": data["setup"],

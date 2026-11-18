@@ -59,20 +59,42 @@ inline void generic_surface_loft_panel(const J &op) {
             "No feature was created and the request was not retried on the element tree route.");
 
     // D2: resolve every position against the live model before anything is selected.
+    // A section names its sketch by label (public clients may pass the plain string)
+    // or by {label, open_confirmed}; the sketch feature id is resolved here through
+    // the same alias table the element-tree route uses, because this backend would
+    // otherwise hand feature id 0 to ProFeatureInit and refuse a valid request.
     std::vector<mechdog_panel_ref::PanelCurveRequest> wants;
+    J intent_labels = J::array();
     for (const auto &section : op.at("sections")) {
         mechdog_panel_ref::PanelCurveRequest want;
-        want.label = section.at("label").get<std::string>();
-        want.owner_name = section.value("owner", "");
-        want.feature_id = section.value("feature_id", 0);
-        want.curve_id = section.value("curve_id", 0);
-        if (!section.value("open_confirmed", false))
-            // The profile certifies that a position is an open curve. Without that
+        bool open_confirmed = false;
+        if (section.is_string()) {
+            want.label = section.get<std::string>();
+        } else if (section.is_object()) {
+            want.label = section.value("label", "");
+            want.owner_name = section.value("owner", "");
+            want.feature_id = section.value("feature_id", 0);
+            want.curve_id = section.value("curve_id", 0);
+            open_confirmed = section.value("open_confirmed", false);
+        } else {
+            throw std::runtime_error(
+                "PANEL_SECTION_FORM_INVALID: a resident_panel section is a sketch label or "
+                "{label, open_confirmed}; nothing was selected and the dialog was not opened");
+        }
+        if (want.label.empty())
+            throw std::runtime_error(
+                "PANEL_SECTION_FORM_INVALID: a resident_panel section carries no label; nothing "
+                "was selected and the dialog was not opened");
+        if (!open_confirmed)
+            // The caller certifies that a position is an open curve. Without that
             // fact D2 refuses instead of assuming "probably open".
             throw std::runtime_error(
                 "PANEL_CURVE_OPENNESS_UNVERIFIED: section " + want.label +
                 " does not declare open_confirmed=true; this build cannot read a standalone "
                 "curve's openness, so it refuses the position instead of assuming it");
+        if (want.feature_id == 0)
+            want.feature_id = feature_id(want.label);
+        intent_labels.push_back(want.label);
         wants.push_back(want);
     }
     if (wants.size() < 2 || wants.size() > 8)
@@ -193,6 +215,49 @@ inline void generic_surface_loft_panel(const J &op) {
     }
     bool prepared = false;
     log("PANEL_CALLBACK_MODE=resident_panel\n");
+    // BUG-120/D3/D5: the exit report comes from the payload's persisted state, never
+    // from "Done was queued". This build registers no Creo UI event source, so the
+    // payload cannot record a closure; that fact is reported as supported=false.
+    // No Toolkit task is sent here on purpose: the UI macro is still executing, and
+    // a synchronous task call at this point blocked a live run until its budget
+    // expired (job f22a70b015df40abac34916d20d5186b, 2026-11-18).
+    auto read_panel_exit = [&]() -> J {
+        J outcome = J::object();
+        try {
+            std::ifstream result_file(callback_dir / L"callback_result.json");
+            result_file >> outcome;
+        } catch (...) {
+            outcome = J::object();
+        }
+        J state = outcome.contains("panel") && outcome["panel"].is_object() ? outcome["panel"]
+                                                                          : J();
+        J observation = {
+            {"method", "callback_result"},
+            {"supported", false},
+            {"closed", J()},
+            {"reason",
+             "this build registers no Creo UI event handler for Done/AfterTerminal/OuterDrain, so "
+             "the payload cannot record a panel closure; the exit stays unobservable"},
+            {"evidence", state}};
+        if (state.is_object() && state.value("closed", false)) {
+            observation["supported"] = true;
+            observation["closed"] = true;
+            observation["reason"] =
+                "the payload recorded a complete Done->AfterTerminal->OuterDrain sequence";
+        }
+        return observation;
+    };
+    auto stage_panel = [&](int selected) {
+        stage_operation_result(
+            {{"op", "surface_loft"},
+             {"creation_route", "resident_panel"},
+             {"panel",
+              {{"profile_id", profile_id},
+               {"selected", selected},
+               {"slots", static_cast<int>(sections.size())}}},
+             {"selection_intent", {{"labels", intent_labels}}},
+             {"exit_observation", read_panel_exit()}});
+    };
     try {
         resident_blend_task(module, "MechDogPanelPrepare",
                             (callback_dir / L"callback_request.json").wstring());
@@ -218,17 +283,22 @@ inline void generic_surface_loft_panel(const J &op) {
         int selected = outcome.value("selected", 0);
         if (outcome.contains("panel") && outcome["panel"].is_object())
             selected = outcome["panel"].value("selected", selected);
-        if (selected != static_cast<int>(sections.size()))
+        if (selected != static_cast<int>(sections.size())) {
+            // Stage the real counted selection and the exit state before throwing so
+            // the failure record carries what the dialog actually consumed.
+            stage_panel(selected);
             throw std::runtime_error(
                 "PANEL_SELECTION_INCOMPLETE: the callback consumed " + std::to_string(selected) +
                 " of " + std::to_string(sections.size()) +
                 " positions; inspect callback_result.json. The dialog may still be open, so the "
                 "run is reported as unconfirmed instead of successful.");
+        }
         // Done is a separate step: the payload verifies the command, loads the macro
         // and only then lets the state machine decide that the run committed.
         if (!done_macro.empty() && !done_command.empty())
             resident_blend_task(module, "MechDogPanelFinalize",
                                 (callback_dir / L"callback_request.json").wstring());
+        stage_panel(selected);
     } catch (...) {
         if (prepared) {
             try {

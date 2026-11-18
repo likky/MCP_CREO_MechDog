@@ -303,5 +303,108 @@ class MarkerContract(unittest.TestCase):
         self.assertNotIn("remove(target", text)
 
 
+class PanelSectionContract(unittest.TestCase):
+    """BUG-120/D6: the section contract between the public schema and the backend.
+
+    The public plan used to accept only plain labels, while the native backend takes
+    feature/curve ids and an ``open_confirmed`` proof. A label-only request therefore
+    died before the dialog opened. These guards keep the two forms aligned.
+    """
+
+    OPS = ROOT / "src/creo_mechdog/surface_ops.py"
+    RUN = ROOT / "native/panel_run.h"
+
+    def panel_loft(self, sections):
+        return {
+            "op": "surface_loft",
+            "label": "panel_probe",
+            "creation_route": "resident_panel",
+            "sections": sections,
+        }
+
+    def test_a_label_with_its_openness_proof_is_accepted(self):
+        from creo_mechdog.schema import validate_operations
+
+        sections = [
+            {"label": "line_a", "open_confirmed": True},
+            {"label": "line_b", "open_confirmed": True},
+        ]
+        validated = validate_operations([self.panel_loft(sections)])
+        self.assertEqual(validated[0]["sections"], sections)
+
+    def test_a_panel_section_without_the_proof_is_refused(self):
+        from creo_mechdog.schema import validate_operations
+
+        with self.assertRaisesRegex(ValueError, "open_confirmed=true"):
+            validate_operations([self.panel_loft([{"label": "line_a"}, {"label": "line_b"}])])
+
+    def test_a_panel_section_refuses_undeclared_keys(self):
+        from creo_mechdog.schema import validate_operations
+
+        with self.assertRaisesRegex(ValueError, "sections\\[0\\]"):
+            validate_operations(
+                [
+                    self.panel_loft(
+                        [
+                            {"label": "line_a", "open_confirmed": True, "curve_id": 45},
+                            {"label": "line_b", "open_confirmed": True},
+                        ]
+                    )
+                ]
+            )
+
+    def test_two_positions_naming_one_sketch_are_refused(self):
+        from creo_mechdog.schema import validate_operations
+
+        with self.assertRaisesRegex(ValueError, "distinct sketches"):
+            validate_operations(
+                [
+                    self.panel_loft(
+                        [
+                            {"label": "line_a", "open_confirmed": True},
+                            {"label": "line_a", "open_confirmed": True},
+                        ]
+                    )
+                ]
+            )
+
+    def test_the_backend_resolves_the_label_and_reads_the_proof(self):
+        text = self.RUN.read_text(encoding="utf-8")
+        self.assertIn("want.feature_id = feature_id(want.label)", text)
+        self.assertIn('open_confirmed = section.value("open_confirmed", false)', text)
+        # A section that names no label is refused before any selection.
+        self.assertIn("PANEL_SECTION_FORM_INVALID", text)
+
+    def test_the_backend_stages_a_real_panel_receipt(self):
+        text = self.RUN.read_text(encoding="utf-8")
+        for field in ('"creation_route", "resident_panel"', '"selection_intent"', '"panel"'):
+            self.assertIn(field, text)
+        # The exit report comes from the payload's persisted state, and a build
+        # without an event source says so instead of calling silence "closed".
+        self.assertIn('"method", "callback_result"', text)
+        self.assertIn('"supported", false', text)
+        self.assertIn('"closed", J()', text)
+        # The job path must not send a second Toolkit task while the UI macro is
+        # still executing: that blocked a live run until its 600 s budget expired.
+        self.assertNotIn("MechDogPanelState", text)
+
+
+class CallbackProbeGeneration(unittest.TestCase):
+    """D6: the live callback probe must know both generations of the payload DLL."""
+
+    RUNTIME = ROOT / "native/callback_runtime.h"
+
+    def test_the_probe_compares_the_generation_the_setup_declares(self):
+        text = self.RUNTIME.read_text(encoding="utf-8")
+        self.assertIn("callback_setup_generation_supported", text)
+        self.assertIn("callback_setup_declares_panel", text)
+        for constant in (
+            "mechdog_panel::protocol",
+            "mechdog_panel::loader_abi",
+            "mechdog_panel::contract",
+        ):
+            self.assertIn(constant, text)
+
+
 if __name__ == "__main__":
     unittest.main()

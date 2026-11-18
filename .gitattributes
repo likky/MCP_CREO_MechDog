@@ -32,6 +32,10 @@ native/third_party/** -text
 *.asm.* -text
 *.gph -text
 
+# BUG-120: the frozen panel recording is compared byte for byte with its original.
+# A CRLF checkout would change its digest and invalidate the profile frozen from it.
+templates/panel/recordings/** -text
+
 # DEV-030: preserve the original G0 evidence SHA256 across checkouts.
 docs/validation/bug-001-repro-2026-10-16/g0_evidence.json -text
 docs/validation/bug-001-recovery-2026-10-17/*.json -text

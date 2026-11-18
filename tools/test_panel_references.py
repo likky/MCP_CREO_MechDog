@@ -62,7 +62,9 @@ def main() -> int:
         "success": False,
     }
     if built.returncode == 0:
-        result = subprocess.run([str(executable)], capture_output=True, timeout=10, creationflags=flags)
+        result = subprocess.run(
+            [str(executable)], capture_output=True, timeout=10, creationflags=flags
+        )
         report["run"] = {
             "exit_code": result.returncode,
             "stdout": result.stdout.decode("utf-8", errors="replace"),
