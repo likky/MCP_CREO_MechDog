@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-18（BUG-120 D3 协议4/ABI2）：[BUG-120](work-items/BUG-120.md)新增`panel_protocol.h`（协议4/ABI2、3/1混用拒绝、marker只认本job+nonce+已知类型+递增序号、原子写）与`panel_selection_state.h`（一位置一票据、首位OVERRIDE后续TOGGLE各一次、重复/旧票/错nonce/错模型/跳序不推进、Done仅全选后排队且返回非0不算committed、`Done或Quit/yes→AfterTerminal→OuterDrain`严格递增、反序即锁死unknown、release不可复位）。`MechDogCallbackApi2`在ABI1前缀后追加macro_load/命令查询/bracket/曲线查询，loader同时支持ABI1与ABI2并拒绝混用。`bridge.py build`通过（含loader与payload），`tools/test_panel_selection_state.py`与3973单测通过。loader二进制已变：目标机需重新注册loader，ABI1载荷行为不变。collector接线、SDK侧finalize与实机时序仍待D6。
+
 2026-11-18（BUG-120 D2+首次原生编译）：[BUG-120](work-items/BUG-120.md)完成曲线引用解析：`panel_references.h` 承载无SDK规则（API失败、特征/owner归属、基准面反例、复合/闭合/开闭未证实、长度有效、2—8段、换模型/换会话拒绝），`panel_references_sdk.h` 用仓库已在用的 `ProFeatureInit`/`ProFeatureGeomitemVisit(PRO_CURVE)`/`ProCurveInit`/`ProCurveTypeGet`/`ProCurveLengthEval` 实现适配；`tools/test_panel_references.py` 离线编译运行通过。授权下执行首次 `bridge.py build` 成功，并修复 D1 遗留的 `worker.cpp` build-info JSON 多余 `}`（此前原生半部分从未编译）。产物 `creo_worker.exe` 在无 Creo 环境运行缺 ToolKit DLL（0xC0000135），故"编译成功"未当作"已运行"；真实枚举、闭合性证明、面板流程接线仍待 D6，3964 单测通过，工具数不变。
 
 2026-11-17（BUG-120 续批：恢复/D5/D8）：[BUG-120](work-items/BUG-120.md)补齐`creo_reconcile_model`的`confirm_panel_closed`恢复动作（令牌+人工确认+不取Toolkit锁，只解除会话保护不改模型unknown）、worker前取消退役预留、`panel_receipt`回执投影（未确证退出强制失败、quilt/选取/面组/面积/关联/树完成冒充均记问题、bbox保近似标记）、panel库打包门禁（manifest白名单+认证摘要+路径逃逸拒绝，空库为合法关闭态）。3964单测与Ruff通过。仍未编译、未连接Creo：D2/D3原生后端、D6/D7目标机验收、发布待专门批次；工具数不变。
