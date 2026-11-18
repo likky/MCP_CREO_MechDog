@@ -306,6 +306,24 @@ class PanelSelectionState {
         return detail::acceptance(PanelSelectionAction::None);
     }
 
+    //: BUG-120/D6: Creo reported the panel command's after-execution bracket. That is
+    //: a native close observation, so a run still sitting at Prepared may be reset for
+    //: the next request even though this build has no UI event source for the
+    //: Done->AfterTerminal->OuterDrain sequence. A locked run is never released.
+    PanelVerdict release_observed_close(const std::string &nonce) {
+        if (stage_ == PanelStage::Idle)
+            return detail::refusal("PANEL_STATE_NOT_PREPARED", "there is no run to release");
+        if (stage_ == PanelStage::Locked)
+            return detail::refusal("PANEL_STATE_LOCKED",
+                                   "this run failed (" + failure_code_ +
+                                       "); an observed close does not erase the failure");
+        if (nonce != nonce_)
+            return detail::refusal("PANEL_NONCE_MISMATCH",
+                                   "the close observation belongs to another run");
+        reset();
+        return detail::acceptance(PanelSelectionAction::None);
+    }
+
     //: Every prepared position was consumed. The native collector asks before it
     //: injects anything, so an extra callback cannot re-toggle the last position.
     bool exhausted() const { return next_index_ >= tickets_.size(); }

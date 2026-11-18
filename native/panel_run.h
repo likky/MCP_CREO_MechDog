@@ -268,7 +268,9 @@ inline void generic_surface_loft_panel(const J &op) {
     auto read_bracket_exit = [&]() -> J {
         J event = J::object();
         try {
-            std::ifstream file(std::filesystem::path(generic_job) / L"panel_exit.json");
+            // The payload persists callback_result.json and panel_exit.json in the
+            // per-run callback directory, not in the job root.
+            std::ifstream file(callback_dir / L"panel_exit.json");
             file >> event;
         } catch (...) {
             event = J::object();

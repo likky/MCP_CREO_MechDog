@@ -324,6 +324,19 @@ void test_markers() {
 
 }  // namespace
 
+void test_observed_close_release() {
+    auto state = prepared();
+    expect_code(state.release_observed_close("wrong"), "PANEL_NONCE_MISMATCH",
+                "a close observation from another run cannot release this one");
+    expect(state.release_observed_close("nonce-1").ok, "the matching close observation releases");
+    expect_code(state.release_observed_close("nonce-1"), "PANEL_STATE_NOT_PREPARED",
+                "a released run has nothing left to release");
+    auto locked = prepared();
+    locked.abandon("PANEL_SELECTION_FAILED");
+    expect_code(locked.release_observed_close("nonce-1"), "PANEL_STATE_LOCKED",
+                "an observed close never erases a locked failure");
+}
+
 int main() {
     test_prepare_rules();
     test_override_then_toggle();
@@ -332,6 +345,7 @@ int main() {
     test_end_sequence_order();
     test_each_disorder_locks_the_run();
     test_release_rules();
+    test_observed_close_release();
     test_quit_yes_is_a_terminal_event();
     test_exhaustion_and_abandon();
     test_contract_states();

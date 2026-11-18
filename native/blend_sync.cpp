@@ -147,6 +147,9 @@ static const char *panel_phase() {
 
 static void *panel_bracket_data = nullptr;
 static bool panel_bracket_registered = false;
+//: Set when Creo reports the Done command's after-execution bracket. The dialog is
+//: gone at that point, so a following request may start without a release task.
+static bool panel_bracket_closed = false;
 
 //: BUG-120/D6: Creo calls this before (entering=1) and after (entering=0) the Done
 //: command runs. The event is written from Creo's own UI thread, which is the only
@@ -170,6 +173,7 @@ static int panel_exit_bracket(uiCmdCmdId command, uiCmdValue *value, int enterin
                     std::filesystem::path(directory) / L"panel_exit.json", event.dump(), error))
                 panel_block["exit_bracket_error"] = error;
             if (!entering) {
+                panel_bracket_closed = true;
                 panel_block["command_finished"] = true;
                 persist_panel();
             }
@@ -372,6 +376,18 @@ extern "C" PRO_TK_DLL_EXPORT ProError MechDogPanelPrepare(ProArgument *inputs,
                                                           ProArgument **outputs) {
     if (outputs)
         *outputs = nullptr;
+    // BUG-120/D6: Creo reported the previous Done command's after-execution bracket,
+    // so that dialog is gone. The next request may start without a release task
+    // (a task would block if anything were still open).
+    if (active && panel_bracket_closed) {
+        const auto released = panel_state.release_observed_close(panel_nonce);
+        if (released.ok) {
+            active = false;
+            panel_run = false;
+            panel_bracket_closed = false;
+            panel_block = Json::object();
+        }
+    }
     if (!resident || active || !inputs || !host2)
         return PRO_TK_BAD_CONTEXT;
     try {
@@ -396,6 +412,7 @@ extern "C" PRO_TK_DLL_EXPORT ProError MechDogPanelPrepare(ProArgument *inputs,
         directory = std::filesystem::path(path).parent_path().wstring();
         current_request = path;
         panel_run = true;
+        panel_bracket_closed = false;
         // BUG-120/D6: register the exit bracket on the Done command now, before the
         // dialog opens. After that point no Toolkit task can be sent, so this is the
         // only chance to ask Creo to report the command's completion.
