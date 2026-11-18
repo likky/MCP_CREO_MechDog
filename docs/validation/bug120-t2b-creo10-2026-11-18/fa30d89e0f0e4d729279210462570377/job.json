@@ -1,0 +1,247 @@
+{
+  "job_id": "fa30d89e0f0e4d729279210462570377",
+  "kind": "generic",
+  "model_id": "6fe2f54effe04e79acd6632a90c478ef",
+  "status": "succeeded",
+  "readonly": false,
+  "readonly_source": "request",
+  "created_at": "2026-11-18T06:16:29.237784+00:00",
+  "operations": [
+    {
+      "op": "save"
+    }
+  ],
+  "operations_view": "normalized",
+  "job_directory": "D:\\my\\MCP_CREO_MechDog\\jobs\\fa30d89e0f0e4d729279210462570377",
+  "output_directory": "D:\\my\\MCP_CREO_MechDog\\jobs\\fa30d89e0f0e4d729279210462570377\\output",
+  "timeout_seconds": 600,
+  "timeout_source": "server",
+  "message": "General feature plan completed",
+  "runner_identity": {
+    "pid": 16340,
+    "created": 134394561892648743,
+    "alive": true
+  },
+  "stage": "verified",
+  "started_at": "2026-11-18T06:16:30.066186+00:00",
+  "worker_started": true,
+  "result": {
+    "completion_stage": "result_delivery",
+    "connected": true,
+    "creo_release_numeric": 42,
+    "creo_release_query_code": 0,
+    "delivery_complete": true,
+    "disconnect_budget_seconds": 20.0,
+    "disconnect_code": 0,
+    "loft_checks": {
+      "after_reload": {},
+      "before_save": {},
+      "loaded": {}
+    },
+    "native_pid": 4732,
+    "operations": [
+      {
+        "effect_status": "committed",
+        "execution_status": "succeeded",
+        "index": 0,
+        "label": "",
+        "op": "save",
+        "succeeded": true
+      }
+    ],
+    "part_file": "D:\\my\\MCP_CREO_MechDog\\models\\6fe2f54effe04e79acd6632a90c478ef\\output\\t2b_probe_01.prt.5",
+    "preview": {
+      "status": "written",
+      "path": "D:\\my\\MCP_CREO_MechDog\\jobs\\fa30d89e0f0e4d729279210462570377\\output\\preview.jpg",
+      "bytes": 14503,
+      "file_verified": true,
+      "source": "native",
+      "codes": {
+        "display": 0,
+        "window_get": 0,
+        "window_model_get": 0,
+        "current_set": 0,
+        "current_get": 0,
+        "activate": 0,
+        "view_matrix_set": 0,
+        "view_matrix_get": 0,
+        "refit": 0,
+        "refresh": 0,
+        "repaint": 0,
+        "raster": 0
+      },
+      "failed_step": null,
+      "failed_code": 0,
+      "file_check": {
+        "stage": "after_raster",
+        "absolute": true,
+        "parent_exists": true,
+        "exists": true,
+        "is_file": true,
+        "size": 14503,
+        "error_code": 0,
+        "error_category": null,
+        "error_message": null
+      },
+      "datum_display": {
+        "model_type": "part",
+        "type_query_code": 0,
+        "applicable": false,
+        "attempted": false,
+        "hide_status": "not_applicable",
+        "restore_status": "not_applicable",
+        "options": [],
+        "config_file_written": false
+      },
+      "empty_geometry_basis": {
+        "feature_visit_code": 0,
+        "non_datum_feature_count": 2
+      },
+      "verification_error": null,
+      "window": 1001,
+      "window_matches_model": true,
+      "current_window_matches": true,
+      "view_matrix_matches": false
+    },
+    "preview_code": 0,
+    "preview_file": "D:\\my\\MCP_CREO_MechDog\\jobs\\fa30d89e0f0e4d729279210462570377\\output\\preview.jpg",
+    "rollback_succeeded": false,
+    "saved_file_reloaded_and_verified": true,
+    "session_fingerprint": "233113453890800882",
+    "success": true,
+    "toolkit_code": 0,
+    "verify_stages": [
+      {
+        "elapsed_ms": 29,
+        "name": "connect",
+        "since_start_ms": 29
+      },
+      {
+        "elapsed_ms": 4664,
+        "name": "connected",
+        "since_start_ms": 4693
+      },
+      {
+        "elapsed_ms": 113,
+        "name": "verify_model_start",
+        "since_start_ms": 4806
+      },
+      {
+        "elapsed_ms": 0,
+        "name": "verify_model_regenerate",
+        "since_start_ms": 4806
+      },
+      {
+        "elapsed_ms": 2,
+        "name": "verify_model_inspect",
+        "since_start_ms": 4809
+      },
+      {
+        "elapsed_ms": 47,
+        "name": "verify_model_assertions",
+        "since_start_ms": 4857
+      },
+      {
+        "elapsed_ms": 0,
+        "name": "verify_model_before_save",
+        "since_start_ms": 4857
+      },
+      {
+        "elapsed_ms": 0,
+        "name": "verify_model_save",
+        "since_start_ms": 4857
+      },
+      {
+        "elapsed_ms": 17,
+        "name": "verify_model_erase",
+        "since_start_ms": 4874
+      },
+      {
+        "elapsed_ms": 1,
+        "name": "verify_model_reload",
+        "since_start_ms": 4875
+      },
+      {
+        "elapsed_ms": 124,
+        "name": "verify_model_reload_regenerate",
+        "since_start_ms": 5000
+      },
+      {
+        "elapsed_ms": 3,
+        "name": "verify_model_reload_inspect",
+        "since_start_ms": 5003
+      },
+      {
+        "elapsed_ms": 63,
+        "name": "verify_model_compare",
+        "since_start_ms": 5067
+      },
+      {
+        "elapsed_ms": 0,
+        "name": "verify_model_after_reload",
+        "since_start_ms": 5067
+      },
+      {
+        "elapsed_ms": 0,
+        "name": "verify_model_preview",
+        "since_start_ms": 5067
+      }
+    ],
+    "preview_status": "written",
+    "inspection_ref": {
+      "file": "D:\\my\\MCP_CREO_MechDog\\jobs\\fa30d89e0f0e4d729279210462570377\\inspection-verified-efc1a96e55b5a21e.json",
+      "sha256": "efc1a96e55b5a21e51f89d3db29e0810b4a7f472ba91a7e3a29904534452b38a",
+      "bytes": 10369
+    },
+    "inspection_summary": {
+      "healthy": true,
+      "has_solid": false,
+      "units": "mm",
+      "units_query_code": 0,
+      "length_unit": {
+        "name": "mm",
+        "query_code": 0,
+        "scale_query_codes": {
+          "conversion": 0,
+          "mm_unit": 0,
+          "unit": 0
+        },
+        "scale_to_mm": 1.0,
+        "scale_to_mm_known": true
+      },
+      "center_of_gravity": null,
+      "model_type": "part",
+      "volume_mm3": null,
+      "volume_query_code": null,
+      "inspection_source": "saved_reloaded",
+      "inspection_available": true,
+      "counts": {
+        "features": 8,
+        "surfaces": 0,
+        "edges": 0,
+        "quilts": 0,
+        "bodies": 1,
+        "components": null
+      },
+      "body_counts": {
+        "objects": 1,
+        "records": 1,
+        "active": 0,
+        "with_material": 0,
+        "without_material": 1,
+        "counts_meaning": {
+          "bodies": "body_objects",
+          "with_material": "active_bodies_with_surfaces"
+        }
+      }
+    },
+    "aliases_ref": {
+      "file": "D:\\my\\MCP_CREO_MechDog\\jobs\\fa30d89e0f0e4d729279210462570377\\details\\detail-aliases-d9eabc24b3e8cb5f.json",
+      "sha256": "d9eabc24b3e8cb5f61745efcd1f2caefdefc2a8cf520b59bd51b40b202e69880",
+      "bytes": 10029
+    },
+    "sha256": "22ab3457ac814bb36818a4b35829572403360f61c9a4b06253f06f5bfafe2f57"
+  },
+  "revision": 4,
+  "finished_at": "2026-11-18T06:16:35.951995+00:00"
+}

@@ -36,12 +36,14 @@ struct PanelCurveVisit {
     int count = 0;
     int wanted = 0;
     bool found = false;
+    std::vector<int> ids;
 };
 
 inline ProError panel_curve_visit(ProGeomitem *item, ProError status, ProAppData data) {
     if (status == PRO_TK_NO_ERROR && item && data) {
         PanelCurveVisit *visit = static_cast<PanelCurveVisit *>(data);
         ++visit->count;
+        visit->ids.push_back(item->id);
         if (item->id == visit->wanted)
             visit->found = true;
     }
@@ -72,12 +74,41 @@ inline PanelCurveProbe panel_probe_curve(ProSolid model, const PanelCurveRequest
         return probe;
     }
     probe.curves_in_feature = visit.count;
+    // BUG-120/T2-B (live Creo 10, 2026-11-18): one sketch line answers two curve
+    // items - a single-member composite (ProCurveTypeGet type 41) and the line
+    // itself (type 2), with the same length. A caller that names only the feature
+    // gets the unique non-composite curve; several candidates are refused as
+    // ambiguous instead of being picked by id order, and the composite is never
+    // silently selected as "the curve".
+    int curve_id = want.curve_id;
+    if (curve_id == 0) {
+        int candidate = 0, candidates = 0;
+        for (int each_id : visit.ids) {
+            ProCurve each;
+            if (ProCurveInit(model, each_id, &each) != PRO_TK_NO_ERROR)
+                continue;
+            ProEnttype each_type = PRO_ENT_NONE;
+            if (ProCurveTypeGet(each, &each_type) != PRO_TK_NO_ERROR)
+                continue;
+            if (each_type == PRO_ENT_CMP_CRV)
+                continue;
+            candidate = each_id;
+            ++candidates;
+        }
+        if (candidates != 1) {
+            probe.api_error = candidates ? "PANEL_CURVE_AMBIGUOUS" : "PANEL_CURVE_NONE_NON_COMPOSITE";
+            return probe;
+        }
+        curve_id = candidate;
+        visit.found = true;
+    }
+    probe.curve_id = curve_id;
     probe.curve_found = visit.found;
     if (!visit.found)
         return probe;
 
     ProCurve curve;
-    if (ProCurveInit(model, want.curve_id, &curve) != PRO_TK_NO_ERROR) {
+    if (ProCurveInit(model, curve_id, &curve) != PRO_TK_NO_ERROR) {
         probe.api_error = "ProCurveInit:" + std::to_string((int)PRO_TK_E_NOT_FOUND);
         return probe;
     }

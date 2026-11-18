@@ -1,0 +1,220 @@
+{
+  "job_id": "deee91cd1e9e4fdd982793fed7d09932",
+  "kind": "generic",
+  "model_id": "6fe2f54effe04e79acd6632a90c478ef",
+  "status": "succeeded",
+  "readonly": false,
+  "readonly_source": "request",
+  "created_at": "2026-11-18T06:15:35.737694+00:00",
+  "operations": [],
+  "operations_view": "normalized",
+  "job_directory": "D:\\my\\MCP_CREO_MechDog\\jobs\\deee91cd1e9e4fdd982793fed7d09932",
+  "output_directory": "D:\\my\\MCP_CREO_MechDog\\jobs\\deee91cd1e9e4fdd982793fed7d09932\\output",
+  "timeout_seconds": 600,
+  "timeout_source": "server",
+  "message": "General feature plan completed",
+  "runner_identity": {
+    "pid": 7784,
+    "created": 134394561357659779,
+    "alive": true
+  },
+  "stage": "verified",
+  "started_at": "2026-11-18T06:15:36.587163+00:00",
+  "worker_started": true,
+  "result": {
+    "aliases": {},
+    "completion_stage": "result_delivery",
+    "connected": true,
+    "creo_release_numeric": 42,
+    "creo_release_query_code": 0,
+    "delivery_complete": true,
+    "disconnect_budget_seconds": 20.0,
+    "disconnect_code": 0,
+    "loft_checks": {
+      "after_reload": {},
+      "before_save": {},
+      "loaded": {}
+    },
+    "native_pid": 20148,
+    "operations": [],
+    "part_file": "D:\\my\\MCP_CREO_MechDog\\models\\6fe2f54effe04e79acd6632a90c478ef\\output\\t2b_probe_01.prt.2",
+    "preview": {
+      "status": "skipped_no_geometry",
+      "path": null,
+      "bytes": null,
+      "file_verified": false,
+      "source": "native",
+      "codes": {
+        "display": null,
+        "window_get": null,
+        "window_model_get": null,
+        "current_set": null,
+        "current_get": null,
+        "activate": null,
+        "view_matrix_set": null,
+        "view_matrix_get": null,
+        "refit": null,
+        "refresh": null,
+        "repaint": null,
+        "raster": null
+      },
+      "failed_step": null,
+      "failed_code": null,
+      "file_check": null,
+      "datum_display": {
+        "model_type": "unknown",
+        "type_query_code": 0,
+        "applicable": false,
+        "attempted": false,
+        "hide_status": "not_attempted",
+        "restore_status": "not_attempted",
+        "options": [],
+        "config_file_written": false
+      },
+      "empty_geometry_basis": {
+        "feature_visit_code": 0,
+        "non_datum_feature_count": 0
+      },
+      "verification_error": null,
+      "window": -1,
+      "window_matches_model": false,
+      "current_window_matches": false,
+      "view_matrix_matches": false
+    },
+    "preview_code": null,
+    "preview_file": null,
+    "rollback_succeeded": false,
+    "saved_file_reloaded_and_verified": true,
+    "session_fingerprint": "233113453890800882",
+    "success": true,
+    "toolkit_code": 0,
+    "verify_stages": [
+      {
+        "elapsed_ms": 29,
+        "name": "connect",
+        "since_start_ms": 29
+      },
+      {
+        "elapsed_ms": 4669,
+        "name": "connected",
+        "since_start_ms": 4699
+      },
+      {
+        "elapsed_ms": 70,
+        "name": "verify_model_start",
+        "since_start_ms": 4769
+      },
+      {
+        "elapsed_ms": 0,
+        "name": "verify_model_regenerate",
+        "since_start_ms": 4769
+      },
+      {
+        "elapsed_ms": 4,
+        "name": "verify_model_inspect",
+        "since_start_ms": 4774
+      },
+      {
+        "elapsed_ms": 22,
+        "name": "verify_model_assertions",
+        "since_start_ms": 4796
+      },
+      {
+        "elapsed_ms": 0,
+        "name": "verify_model_before_save",
+        "since_start_ms": 4796
+      },
+      {
+        "elapsed_ms": 0,
+        "name": "verify_model_save",
+        "since_start_ms": 4796
+      },
+      {
+        "elapsed_ms": 5924,
+        "name": "verify_model_erase",
+        "since_start_ms": 10721
+      },
+      {
+        "elapsed_ms": 1,
+        "name": "verify_model_reload",
+        "since_start_ms": 10722
+      },
+      {
+        "elapsed_ms": 8,
+        "name": "verify_model_reload_regenerate",
+        "since_start_ms": 10731
+      },
+      {
+        "elapsed_ms": 2,
+        "name": "verify_model_reload_inspect",
+        "since_start_ms": 10733
+      },
+      {
+        "elapsed_ms": 41,
+        "name": "verify_model_compare",
+        "since_start_ms": 10774
+      },
+      {
+        "elapsed_ms": 0,
+        "name": "verify_model_after_reload",
+        "since_start_ms": 10775
+      },
+      {
+        "elapsed_ms": 0,
+        "name": "verify_model_preview",
+        "since_start_ms": 10775
+      }
+    ],
+    "preview_status": "skipped_no_geometry",
+    "inspection_ref": {
+      "file": "D:\\my\\MCP_CREO_MechDog\\jobs\\deee91cd1e9e4fdd982793fed7d09932\\inspection-verified-b21fe91d4f4c0cac.json",
+      "sha256": "b21fe91d4f4c0cacaacd65f82410662f5f5f65af39632c12a0e5481dd80ba89b",
+      "bytes": 4647
+    },
+    "inspection_summary": {
+      "healthy": true,
+      "has_solid": false,
+      "units": "mm",
+      "units_query_code": 0,
+      "length_unit": {
+        "name": "mm",
+        "query_code": 0,
+        "scale_query_codes": {
+          "conversion": 0,
+          "mm_unit": 0,
+          "unit": 0
+        },
+        "scale_to_mm": 1.0,
+        "scale_to_mm_known": true
+      },
+      "center_of_gravity": null,
+      "model_type": "part",
+      "volume_mm3": null,
+      "volume_query_code": null,
+      "inspection_source": "saved_reloaded",
+      "inspection_available": true,
+      "counts": {
+        "features": 4,
+        "surfaces": 0,
+        "edges": 0,
+        "quilts": 0,
+        "bodies": 1,
+        "components": null
+      },
+      "body_counts": {
+        "objects": 1,
+        "records": 1,
+        "active": 0,
+        "with_material": 0,
+        "without_material": 1,
+        "counts_meaning": {
+          "bodies": "body_objects",
+          "with_material": "active_bodies_with_surfaces"
+        }
+      }
+    },
+    "sha256": "6363027d50d25cde774aa7bef15e93983f092498b0b7f44a090b830562a0ff2c"
+  },
+  "revision": 1,
+  "finished_at": "2026-11-18T06:15:47.989511+00:00"
+}

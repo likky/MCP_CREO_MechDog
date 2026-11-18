@@ -1,0 +1,1047 @@
+{
+  "aliases": {
+    "t2b_sketch_xy": {
+      "dimension_ids": {},
+      "entity_ids": {
+        "open_line_a": 5
+      },
+      "feature_id": 40,
+      "geometry": [
+        {
+          "construction": false,
+          "end": [
+            120.0,
+            0.0
+          ],
+          "name": "open_line_a",
+          "start": [
+            0.0,
+            0.0
+          ],
+          "type": "line"
+        }
+      ],
+      "geometry_stale": false,
+      "last_dimensioning": "auto",
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "op": "sketch",
+      "origin": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "section_normal_sign": 1,
+      "solver": {
+        "completed": true,
+        "coordinate_scaling": false,
+        "epsilon_mm": 0.0001,
+        "epsilon_source": "mode_default",
+        "final_units": "mm",
+        "geometry_deviation": {
+          "accepted_by_request": null,
+          "accepted_rigid": false,
+          "available": true,
+          "enforced": false,
+          "exceeds_warning": false,
+          "max_deviation_mm": 4.6105191249090375e-49,
+          "measurement_scope": "named_section_entities",
+          "residual_mm": 2.3052595624545187e-49,
+          "rigid": false,
+          "sample": [
+            {
+              "deviation_mm": 4.6105191249090375e-49,
+              "entity": "open_line_a",
+              "kind": "line",
+              "measurement": "endpoints",
+              "reason": null
+            },
+            {
+              "deviation_mm": 4.6105191249090375e-49,
+              "entity": "open_line_a",
+              "kind": "line",
+              "measurement": "endpoints",
+              "reason": null
+            }
+          ],
+          "shape_deviation_mm": 2.3052595624545187e-49,
+          "shift_detected": null,
+          "stages": {
+            "complete_feature": {
+              "available": true,
+              "max_deviation_mm": 4.6105191249090375e-49,
+              "point_count": 2,
+              "residual_mm": 2.3052595624545187e-49,
+              "rigid": false,
+              "sample": [
+                {
+                  "deviation_mm": 4.6105191249090375e-49,
+                  "entity": "open_line_a",
+                  "kind": "line",
+                  "measurement": "endpoints",
+                  "reason": null
+                }
+              ],
+              "shape_deviation_mm": 2.3052595624545187e-49,
+              "total": 1,
+              "translation_magnitude_mm": null,
+              "translation_mm": null,
+              "truncated": false,
+              "unavailable_reason": null
+            },
+            "section_regenerate": {
+              "available": true,
+              "max_deviation_mm": 4.6105191249090375e-49,
+              "point_count": 2,
+              "residual_mm": 2.3052595624545187e-49,
+              "rigid": false,
+              "sample": [
+                {
+                  "deviation_mm": 4.6105191249090375e-49,
+                  "entity": "open_line_a",
+                  "kind": "line",
+                  "measurement": "endpoints",
+                  "reason": null
+                }
+              ],
+              "shape_deviation_mm": 2.3052595624545187e-49,
+              "total": 1,
+              "translation_magnitude_mm": null,
+              "translation_mm": null,
+              "truncated": false,
+              "unavailable_reason": null
+            }
+          },
+          "tolerance_source": "default_autodim",
+          "total": 2,
+          "translation_mm": null,
+          "truncated": false,
+          "unavailable_reason": null,
+          "warning_threshold_mm": 0.001
+        },
+        "native_section": {
+          "available": true,
+          "branched_points": 0,
+          "closed_contours": 0,
+          "construction_entities": 0,
+          "contours": 1,
+          "curves": 1,
+          "entities": 1,
+          "max_cluster_spread_mm": 0.0,
+          "max_endpoint_gap_mm": 120.0,
+          "open_end_samples": [
+            {
+              "entity": 5,
+              "nearest_entity": 5,
+              "nearest_gap_mm": 120.0,
+              "point": [
+                0.0,
+                -4.6105191249090375e-49
+              ]
+            },
+            {
+              "entity": 5,
+              "nearest_entity": 5,
+              "nearest_gap_mm": 120.0,
+              "point": [
+                0.0,
+                120.0
+              ]
+            }
+          ],
+          "open_end_samples_truncated": false,
+          "open_ends": 2,
+          "reference_entities": 2,
+          "standalone_curves": 0,
+          "tolerance_mm": 1e-06,
+          "tolerance_scope": "diagnostic_endpoint_clustering",
+          "unsupported_entities": 0
+        },
+        "recovered": true,
+        "requested": "auto",
+        "section_location": {
+          "identity_plausible": true,
+          "matrix_identity": false,
+          "uv_mapping": "location_matrix"
+        },
+        "selection_reason": "small_profile",
+        "sketch_shifted": null,
+        "stages": {
+          "autodimension": 0,
+          "initial_solve": -1,
+          "section_regenerate": 0
+        },
+        "used": "autodim",
+        "weld_requested": false
+      },
+      "surface_id": 6,
+      "u_axis": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "v_axis": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    "t2b_sketch_xz": {
+      "dimension_ids": {},
+      "entity_ids": {
+        "open_line_b": 5
+      },
+      "feature_id": 46,
+      "geometry": [
+        {
+          "construction": false,
+          "end": [
+            80.0,
+            0.0
+          ],
+          "name": "open_line_b",
+          "start": [
+            0.0,
+            0.0
+          ],
+          "type": "line"
+        }
+      ],
+      "geometry_stale": false,
+      "last_dimensioning": "auto",
+      "normal": [
+        -0.0,
+        -1.0,
+        -0.0
+      ],
+      "op": "sketch",
+      "origin": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "section_normal_sign": -1,
+      "solver": {
+        "completed": true,
+        "coordinate_scaling": false,
+        "epsilon_mm": 0.0001,
+        "epsilon_source": "mode_default",
+        "final_units": "mm",
+        "geometry_deviation": {
+          "accepted_by_request": null,
+          "accepted_rigid": false,
+          "available": true,
+          "enforced": false,
+          "exceeds_warning": false,
+          "max_deviation_mm": 2.1382117680737565e-48,
+          "measurement_scope": "named_section_entities",
+          "residual_mm": 1.0691058840368783e-48,
+          "rigid": false,
+          "sample": [
+            {
+              "deviation_mm": 2.1382117680737565e-48,
+              "entity": "open_line_b",
+              "kind": "line",
+              "measurement": "endpoints",
+              "reason": null
+            },
+            {
+              "deviation_mm": 2.1382117680737565e-48,
+              "entity": "open_line_b",
+              "kind": "line",
+              "measurement": "endpoints",
+              "reason": null
+            }
+          ],
+          "shape_deviation_mm": 1.0691058840368783e-48,
+          "shift_detected": null,
+          "stages": {
+            "complete_feature": {
+              "available": true,
+              "max_deviation_mm": 2.1382117680737565e-48,
+              "point_count": 2,
+              "residual_mm": 1.0691058840368783e-48,
+              "rigid": false,
+              "sample": [
+                {
+                  "deviation_mm": 2.1382117680737565e-48,
+                  "entity": "open_line_b",
+                  "kind": "line",
+                  "measurement": "endpoints",
+                  "reason": null
+                }
+              ],
+              "shape_deviation_mm": 1.0691058840368783e-48,
+              "total": 1,
+              "translation_magnitude_mm": null,
+              "translation_mm": null,
+              "truncated": false,
+              "unavailable_reason": null
+            },
+            "section_regenerate": {
+              "available": true,
+              "max_deviation_mm": 2.1382117680737565e-48,
+              "point_count": 2,
+              "residual_mm": 1.0691058840368783e-48,
+              "rigid": false,
+              "sample": [
+                {
+                  "deviation_mm": 2.1382117680737565e-48,
+                  "entity": "open_line_b",
+                  "kind": "line",
+                  "measurement": "endpoints",
+                  "reason": null
+                }
+              ],
+              "shape_deviation_mm": 1.0691058840368783e-48,
+              "total": 1,
+              "translation_magnitude_mm": null,
+              "translation_mm": null,
+              "truncated": false,
+              "unavailable_reason": null
+            }
+          },
+          "tolerance_source": "default_autodim",
+          "total": 2,
+          "translation_mm": null,
+          "truncated": false,
+          "unavailable_reason": null,
+          "warning_threshold_mm": 0.001
+        },
+        "native_section": {
+          "available": true,
+          "branched_points": 0,
+          "closed_contours": 0,
+          "construction_entities": 0,
+          "contours": 1,
+          "curves": 1,
+          "entities": 1,
+          "max_cluster_spread_mm": 0.0,
+          "max_endpoint_gap_mm": 80.0,
+          "open_end_samples": [
+            {
+              "entity": 5,
+              "nearest_entity": 5,
+              "nearest_gap_mm": 80.0,
+              "point": [
+                5.986005906926977e-61,
+                -2.1382117680737565e-48
+              ]
+            },
+            {
+              "entity": 5,
+              "nearest_entity": 5,
+              "nearest_gap_mm": 80.0,
+              "point": [
+                6.0163917237134085e-61,
+                80.0
+              ]
+            }
+          ],
+          "open_end_samples_truncated": false,
+          "open_ends": 2,
+          "reference_entities": 2,
+          "standalone_curves": 0,
+          "tolerance_mm": 1e-06,
+          "tolerance_scope": "diagnostic_endpoint_clustering",
+          "unsupported_entities": 0
+        },
+        "recovered": true,
+        "requested": "auto",
+        "section_location": {
+          "identity_plausible": false,
+          "matrix_identity": false,
+          "uv_mapping": "location_matrix"
+        },
+        "selection_reason": "small_profile",
+        "sketch_shifted": null,
+        "stages": {
+          "autodimension": 0,
+          "initial_solve": -1,
+          "section_regenerate": 0
+        },
+        "used": "autodim",
+        "weld_requested": false
+      },
+      "surface_id": 4,
+      "u_axis": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "v_axis": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "completion_stage": "before_disconnect",
+  "connected": true,
+  "creo_release_numeric": 42,
+  "creo_release_query_code": 0,
+  "delivery_complete": false,
+  "disconnect_budget_seconds": 20.0,
+  "disconnect_code": null,
+  "inspection": {
+    "bodies": [
+      {
+        "has_geometry": null,
+        "id": -5778,
+        "material": false,
+        "state": 3,
+        "state_name": "no_geometry"
+      }
+    ],
+    "body_counts": {
+      "active": 0,
+      "counts_meaning": {
+        "bodies": "body_objects",
+        "with_material": "active_bodies_with_surfaces"
+      },
+      "objects": 1,
+      "records": 1,
+      "with_material": 0,
+      "without_material": 1
+    },
+    "center_of_gravity": null,
+    "datum_axes": [],
+    "datum_planes": [
+      {
+        "id": 2,
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "origin": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "id": 4,
+        "normal": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "origin": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "id": 6,
+        "normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "origin": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "id": 42,
+        "normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "origin": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "id": 48,
+        "normal": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "origin": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    ],
+    "edges": [],
+    "features": [
+      {
+        "child_ids": [
+          40,
+          46
+        ],
+        "children_query_code": 0,
+        "dimensions": [],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 2,
+            "type": 5
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 1,
+        "incomplete": false,
+        "name": "RIGHT",
+        "parent_ids": [],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "status": 0,
+        "system_required": true,
+        "type": 923,
+        "type_name": "datum_plane"
+      },
+      {
+        "child_ids": [
+          40,
+          46
+        ],
+        "children_query_code": 0,
+        "dimensions": [],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 4,
+            "type": 5
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 3,
+        "incomplete": false,
+        "name": "TOP",
+        "parent_ids": [],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "status": 0,
+        "system_required": true,
+        "type": 923,
+        "type_name": "datum_plane"
+      },
+      {
+        "child_ids": [
+          40,
+          46
+        ],
+        "children_query_code": 0,
+        "dimensions": [],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 6,
+            "type": 5
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 5,
+        "incomplete": false,
+        "name": "FRONT",
+        "parent_ids": [],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "status": 0,
+        "system_required": true,
+        "type": 923,
+        "type_name": "datum_plane"
+      },
+      {
+        "child_ids": [],
+        "children_query_code": 0,
+        "dimensions": [],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 8,
+            "type": 25
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 7,
+        "incomplete": false,
+        "name": "PRT_CSYS_DEF",
+        "parent_ids": [],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "status": 0,
+        "system_required": true,
+        "type": 979,
+        "type_name": "other"
+      },
+      {
+        "child_ids": [
+          40
+        ],
+        "children_query_code": 0,
+        "dimensions": [],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 42,
+            "type": 5
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 41,
+        "incomplete": false,
+        "name": "no_name",
+        "parent_ids": [
+          1,
+          5
+        ],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "status": 0,
+        "system_required": false,
+        "type": 923,
+        "type_name": "datum_plane"
+      },
+      {
+        "child_ids": [],
+        "children_query_code": 0,
+        "dimensions": [
+          {
+            "editable": true,
+            "id": 0,
+            "owner_feature_id": 40,
+            "owner_feature_name": "T2B_SKETCH_XY",
+            "owner_query_code": 0,
+            "relation_driven": false,
+            "relation_query_code": 0,
+            "symbol": "d0",
+            "type": -1,
+            "value": 0.0
+          },
+          {
+            "editable": true,
+            "id": 1,
+            "owner_feature_id": 40,
+            "owner_feature_name": "T2B_SKETCH_XY",
+            "owner_query_code": 0,
+            "relation_driven": false,
+            "relation_query_code": 0,
+            "symbol": "d1",
+            "type": -1,
+            "value": 0.0
+          },
+          {
+            "editable": true,
+            "id": 2,
+            "owner_feature_id": 40,
+            "owner_feature_name": "T2B_SKETCH_XY",
+            "owner_query_code": 0,
+            "relation_driven": false,
+            "relation_query_code": 0,
+            "symbol": "d2",
+            "type": 9,
+            "value": 120.0
+          }
+        ],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 43,
+            "type": 62
+          },
+          {
+            "id": 44,
+            "type": 25
+          },
+          {
+            "id": 45,
+            "type": 62
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 40,
+        "incomplete": false,
+        "name": "T2B_SKETCH_XY",
+        "parent_ids": [
+          1,
+          3,
+          5
+        ],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "sketch_constraint_count": 4,
+        "sketch_dimensions": [
+          {
+            "id": 2,
+            "type": 1,
+            "value": 120.0
+          }
+        ],
+        "status": 0,
+        "system_required": false,
+        "type": 949,
+        "type_name": "sketch_or_curve"
+      },
+      {
+        "child_ids": [
+          46
+        ],
+        "children_query_code": 0,
+        "dimensions": [],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 48,
+            "type": 5
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 47,
+        "incomplete": false,
+        "name": "no_name",
+        "parent_ids": [
+          1,
+          3
+        ],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "status": 0,
+        "system_required": false,
+        "type": 923,
+        "type_name": "datum_plane"
+      },
+      {
+        "child_ids": [],
+        "children_query_code": 0,
+        "dimensions": [
+          {
+            "editable": true,
+            "id": 3,
+            "owner_feature_id": 46,
+            "owner_feature_name": "T2B_SKETCH_XZ",
+            "owner_query_code": 0,
+            "relation_driven": false,
+            "relation_query_code": 0,
+            "symbol": "d3",
+            "type": -1,
+            "value": 0.0
+          },
+          {
+            "editable": true,
+            "id": 4,
+            "owner_feature_id": 46,
+            "owner_feature_name": "T2B_SKETCH_XZ",
+            "owner_query_code": 0,
+            "relation_driven": false,
+            "relation_query_code": 0,
+            "symbol": "d4",
+            "type": -1,
+            "value": 0.0
+          },
+          {
+            "editable": true,
+            "id": 5,
+            "owner_feature_id": 46,
+            "owner_feature_name": "T2B_SKETCH_XZ",
+            "owner_query_code": 0,
+            "relation_driven": false,
+            "relation_query_code": 0,
+            "symbol": "d5",
+            "type": 9,
+            "value": 80.0
+          }
+        ],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 49,
+            "type": 62
+          },
+          {
+            "id": 50,
+            "type": 25
+          },
+          {
+            "id": 51,
+            "type": 62
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 46,
+        "incomplete": false,
+        "name": "T2B_SKETCH_XZ",
+        "parent_ids": [
+          1,
+          5,
+          3
+        ],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "sketch_constraint_count": 4,
+        "sketch_dimensions": [
+          {
+            "id": 2,
+            "type": 1,
+            "value": 80.0
+          }
+        ],
+        "status": 0,
+        "system_required": false,
+        "type": 949,
+        "type_name": "sketch_or_curve"
+      }
+    ],
+    "has_solid": false,
+    "healthy": true,
+    "inspection_available": true,
+    "inspection_source": "saved_reloaded",
+    "length_unit": {
+      "name": "mm",
+      "query_code": 0,
+      "scale_query_codes": {
+        "conversion": 0,
+        "mm_unit": 0,
+        "unit": 0
+      },
+      "scale_to_mm": 1.0,
+      "scale_to_mm_known": true
+    },
+    "model_type": "part",
+    "parameters": {
+      "DESCRIPTION": {
+        "type": 51,
+        "value": ""
+      },
+      "MODELED_BY": {
+        "type": 51,
+        "value": ""
+      },
+      "PTC_MASTER_MATERIAL": {
+        "type": 51,
+        "value": "PTC_SYSTEM_MTRL_PROPS"
+      },
+      "PTC_MATERIAL_NAME": {
+        "type": 51,
+        "value": ""
+      },
+      "PTC_REPORTED_MATERIAL": {
+        "type": 51,
+        "value": ""
+      }
+    },
+    "quilts": [],
+    "quilts_visit": {
+      "visit_code": -4,
+      "visit_failed": true
+    },
+    "surfaces": [],
+    "units": "mm",
+    "units_query_code": 0,
+    "volume_mm3": null,
+    "volume_query_code": null,
+    "wall_contour_check": {
+      "bounded": false,
+      "budget": 256,
+      "checked_edges": 0,
+      "edges": [],
+      "enabled": false,
+      "query": "ProSmtedgeContourGet"
+    }
+  },
+  "loft_checks": {
+    "after_reload": {},
+    "before_save": {},
+    "loaded": {}
+  },
+  "native_pid": 4732,
+  "operations": [
+    {
+      "effect_status": "committed",
+      "execution_status": "succeeded",
+      "index": 0,
+      "label": "",
+      "op": "save",
+      "succeeded": true
+    }
+  ],
+  "part_file": "D:\\my\\MCP_CREO_MechDog\\models\\6fe2f54effe04e79acd6632a90c478ef\\output\\t2b_probe_01.prt.5",
+  "preview": {
+    "bytes": 14503,
+    "codes": {
+      "activate": 0,
+      "current_get": 0,
+      "current_set": 0,
+      "display": 0,
+      "raster": 0,
+      "refit": 0,
+      "refresh": 0,
+      "repaint": 0,
+      "view_matrix_get": 0,
+      "view_matrix_set": 0,
+      "window_get": 0,
+      "window_model_get": 0
+    },
+    "current_window_matches": true,
+    "datum_display": {
+      "applicable": false,
+      "attempted": false,
+      "config_file_written": false,
+      "hide_status": "not_applicable",
+      "model_type": "part",
+      "options": [],
+      "restore_status": "not_applicable",
+      "type_query_code": 0
+    },
+    "empty_geometry_basis": {
+      "feature_visit_code": 0,
+      "non_datum_feature_count": 2
+    },
+    "failed_code": 0,
+    "failed_step": null,
+    "file_check": {
+      "absolute": true,
+      "error_category": null,
+      "error_code": 0,
+      "error_message": null,
+      "exists": true,
+      "is_file": true,
+      "parent_exists": true,
+      "size": 14503,
+      "stage": "after_raster"
+    },
+    "path": "D:\\my\\MCP_CREO_MechDog\\jobs\\fa30d89e0f0e4d729279210462570377\\output\\preview.jpg",
+    "status": "written",
+    "view_matrix_matches": false,
+    "window": 1001,
+    "window_matches_model": true
+  },
+  "preview_code": 0,
+  "preview_file": "D:\\my\\MCP_CREO_MechDog\\jobs\\fa30d89e0f0e4d729279210462570377\\output\\preview.jpg",
+  "rollback_succeeded": false,
+  "saved_file_reloaded_and_verified": true,
+  "session_fingerprint": "233113453890800882",
+  "success": true,
+  "toolkit_code": 0,
+  "verify_stages": [
+    {
+      "elapsed_ms": 29,
+      "name": "connect",
+      "since_start_ms": 29
+    },
+    {
+      "elapsed_ms": 4664,
+      "name": "connected",
+      "since_start_ms": 4693
+    },
+    {
+      "elapsed_ms": 113,
+      "name": "verify_model_start",
+      "since_start_ms": 4806
+    },
+    {
+      "elapsed_ms": 0,
+      "name": "verify_model_regenerate",
+      "since_start_ms": 4806
+    },
+    {
+      "elapsed_ms": 2,
+      "name": "verify_model_inspect",
+      "since_start_ms": 4809
+    },
+    {
+      "elapsed_ms": 47,
+      "name": "verify_model_assertions",
+      "since_start_ms": 4857
+    },
+    {
+      "elapsed_ms": 0,
+      "name": "verify_model_before_save",
+      "since_start_ms": 4857
+    },
+    {
+      "elapsed_ms": 0,
+      "name": "verify_model_save",
+      "since_start_ms": 4857
+    },
+    {
+      "elapsed_ms": 17,
+      "name": "verify_model_erase",
+      "since_start_ms": 4874
+    },
+    {
+      "elapsed_ms": 1,
+      "name": "verify_model_reload",
+      "since_start_ms": 4875
+    },
+    {
+      "elapsed_ms": 124,
+      "name": "verify_model_reload_regenerate",
+      "since_start_ms": 5000
+    },
+    {
+      "elapsed_ms": 3,
+      "name": "verify_model_reload_inspect",
+      "since_start_ms": 5003
+    },
+    {
+      "elapsed_ms": 63,
+      "name": "verify_model_compare",
+      "since_start_ms": 5067
+    },
+    {
+      "elapsed_ms": 0,
+      "name": "verify_model_after_reload",
+      "since_start_ms": 5067
+    },
+    {
+      "elapsed_ms": 0,
+      "name": "verify_model_preview",
+      "since_start_ms": 5067
+    }
+  ]
+}

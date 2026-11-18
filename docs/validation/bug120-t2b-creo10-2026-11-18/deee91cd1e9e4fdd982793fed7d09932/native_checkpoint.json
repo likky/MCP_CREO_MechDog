@@ -1,0 +1,378 @@
+{
+  "aliases": {},
+  "completion_stage": "before_disconnect",
+  "connected": true,
+  "creo_release_numeric": 42,
+  "creo_release_query_code": 0,
+  "delivery_complete": false,
+  "disconnect_budget_seconds": 20.0,
+  "disconnect_code": null,
+  "inspection": {
+    "bodies": [
+      {
+        "has_geometry": null,
+        "id": -5778,
+        "material": false,
+        "state": 3,
+        "state_name": "no_geometry"
+      }
+    ],
+    "body_counts": {
+      "active": 0,
+      "counts_meaning": {
+        "bodies": "body_objects",
+        "with_material": "active_bodies_with_surfaces"
+      },
+      "objects": 1,
+      "records": 1,
+      "with_material": 0,
+      "without_material": 1
+    },
+    "center_of_gravity": null,
+    "datum_axes": [],
+    "datum_planes": [
+      {
+        "id": 2,
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "origin": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "id": 4,
+        "normal": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "origin": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "id": 6,
+        "normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "origin": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    ],
+    "edges": [],
+    "features": [
+      {
+        "child_ids": [],
+        "children_query_code": 0,
+        "dimensions": [],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 2,
+            "type": 5
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 1,
+        "incomplete": false,
+        "name": "RIGHT",
+        "parent_ids": [],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "status": 0,
+        "system_required": true,
+        "type": 923,
+        "type_name": "datum_plane"
+      },
+      {
+        "child_ids": [],
+        "children_query_code": 0,
+        "dimensions": [],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 4,
+            "type": 5
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 3,
+        "incomplete": false,
+        "name": "TOP",
+        "parent_ids": [],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "status": 0,
+        "system_required": true,
+        "type": 923,
+        "type_name": "datum_plane"
+      },
+      {
+        "child_ids": [],
+        "children_query_code": 0,
+        "dimensions": [],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 6,
+            "type": 5
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 5,
+        "incomplete": false,
+        "name": "FRONT",
+        "parent_ids": [],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "status": 0,
+        "system_required": true,
+        "type": 923,
+        "type_name": "datum_plane"
+      },
+      {
+        "child_ids": [],
+        "children_query_code": 0,
+        "dimensions": [],
+        "embedded": false,
+        "embedded_query_code": 0,
+        "geometry_items": [
+          {
+            "id": 8,
+            "type": 25
+          }
+        ],
+        "group_query_code": 0,
+        "group_status": 0,
+        "grppattern_query_code": 0,
+        "grppattern_status": 0,
+        "id": 7,
+        "incomplete": false,
+        "name": "PRT_CSYS_DEF",
+        "parent_ids": [],
+        "parents_query_code": 0,
+        "pattern_query_code": 0,
+        "pattern_status": 0,
+        "status": 0,
+        "system_required": true,
+        "type": 979,
+        "type_name": "other"
+      }
+    ],
+    "has_solid": false,
+    "healthy": true,
+    "inspection_available": true,
+    "inspection_source": "saved_reloaded",
+    "length_unit": {
+      "name": "mm",
+      "query_code": 0,
+      "scale_query_codes": {
+        "conversion": 0,
+        "mm_unit": 0,
+        "unit": 0
+      },
+      "scale_to_mm": 1.0,
+      "scale_to_mm_known": true
+    },
+    "model_type": "part",
+    "parameters": {
+      "DESCRIPTION": {
+        "type": 51,
+        "value": ""
+      },
+      "MODELED_BY": {
+        "type": 51,
+        "value": ""
+      },
+      "PTC_MASTER_MATERIAL": {
+        "type": 51,
+        "value": "PTC_SYSTEM_MTRL_PROPS"
+      },
+      "PTC_MATERIAL_NAME": {
+        "type": 51,
+        "value": ""
+      },
+      "PTC_REPORTED_MATERIAL": {
+        "type": 51,
+        "value": ""
+      }
+    },
+    "quilts": [],
+    "quilts_visit": {
+      "visit_code": -4,
+      "visit_failed": true
+    },
+    "surfaces": [],
+    "units": "mm",
+    "units_query_code": 0,
+    "volume_mm3": null,
+    "volume_query_code": null,
+    "wall_contour_check": {
+      "bounded": false,
+      "budget": 256,
+      "checked_edges": 0,
+      "edges": [],
+      "enabled": false,
+      "query": "ProSmtedgeContourGet"
+    }
+  },
+  "loft_checks": {
+    "after_reload": {},
+    "before_save": {},
+    "loaded": {}
+  },
+  "native_pid": 20148,
+  "operations": [],
+  "part_file": "D:\\my\\MCP_CREO_MechDog\\models\\6fe2f54effe04e79acd6632a90c478ef\\output\\t2b_probe_01.prt.2",
+  "preview": {
+    "bytes": -1,
+    "codes": {
+      "activate": null,
+      "current_get": null,
+      "current_set": null,
+      "display": null,
+      "raster": null,
+      "refit": null,
+      "refresh": null,
+      "repaint": null,
+      "view_matrix_get": null,
+      "view_matrix_set": null,
+      "window_get": null,
+      "window_model_get": null
+    },
+    "current_window_matches": false,
+    "datum_display": {
+      "applicable": false,
+      "attempted": false,
+      "config_file_written": false,
+      "hide_status": "not_attempted",
+      "model_type": "unknown",
+      "options": [],
+      "restore_status": "not_attempted",
+      "type_query_code": 0
+    },
+    "empty_geometry_basis": {
+      "feature_visit_code": 0,
+      "non_datum_feature_count": 0
+    },
+    "failed_code": null,
+    "failed_step": null,
+    "file_check": null,
+    "path": "D:\\my\\MCP_CREO_MechDog\\jobs\\deee91cd1e9e4fdd982793fed7d09932\\output\\preview.jpg",
+    "status": "skipped_no_geometry",
+    "view_matrix_matches": false,
+    "window": -1,
+    "window_matches_model": false
+  },
+  "preview_code": -1,
+  "preview_file": null,
+  "rollback_succeeded": false,
+  "saved_file_reloaded_and_verified": true,
+  "session_fingerprint": "233113453890800882",
+  "success": true,
+  "toolkit_code": 0,
+  "verify_stages": [
+    {
+      "elapsed_ms": 29,
+      "name": "connect",
+      "since_start_ms": 29
+    },
+    {
+      "elapsed_ms": 4669,
+      "name": "connected",
+      "since_start_ms": 4699
+    },
+    {
+      "elapsed_ms": 70,
+      "name": "verify_model_start",
+      "since_start_ms": 4769
+    },
+    {
+      "elapsed_ms": 0,
+      "name": "verify_model_regenerate",
+      "since_start_ms": 4769
+    },
+    {
+      "elapsed_ms": 4,
+      "name": "verify_model_inspect",
+      "since_start_ms": 4774
+    },
+    {
+      "elapsed_ms": 22,
+      "name": "verify_model_assertions",
+      "since_start_ms": 4796
+    },
+    {
+      "elapsed_ms": 0,
+      "name": "verify_model_before_save",
+      "since_start_ms": 4796
+    },
+    {
+      "elapsed_ms": 0,
+      "name": "verify_model_save",
+      "since_start_ms": 4796
+    },
+    {
+      "elapsed_ms": 5924,
+      "name": "verify_model_erase",
+      "since_start_ms": 10721
+    },
+    {
+      "elapsed_ms": 1,
+      "name": "verify_model_reload",
+      "since_start_ms": 10722
+    },
+    {
+      "elapsed_ms": 8,
+      "name": "verify_model_reload_regenerate",
+      "since_start_ms": 10731
+    },
+    {
+      "elapsed_ms": 2,
+      "name": "verify_model_reload_inspect",
+      "since_start_ms": 10733
+    },
+    {
+      "elapsed_ms": 41,
+      "name": "verify_model_compare",
+      "since_start_ms": 10774
+    },
+    {
+      "elapsed_ms": 0,
+      "name": "verify_model_after_reload",
+      "since_start_ms": 10775
+    },
+    {
+      "elapsed_ms": 0,
+      "name": "verify_model_preview",
+      "since_start_ms": 10775
+    }
+  ]
+}
