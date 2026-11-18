@@ -1339,6 +1339,7 @@ def submit(
                     "nonce": request["panel_nonce"],
                     "profile_id": str(panel_admission.get("profile_id") or ""),
                     "open_macro": str(panel_admission.get("open_macro") or ""),
+                    "select_command": str(panel_admission.get("select_command") or ""),
                     "done_macro": str(panel_admission.get("done_macro") or ""),
                     "done_command": str(panel_admission.get("done_command") or ""),
                 }

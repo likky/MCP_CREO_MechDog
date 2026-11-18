@@ -19,6 +19,8 @@
 #ifndef MECHDOG_PANEL_RUN_H
 #define MECHDOG_PANEL_RUN_H
 
+#include <ProUICmd.h>
+
 #include "panel_protocol.h"
 
 inline std::string panel_required_string(const J &panel, const char *key) {
@@ -130,6 +132,37 @@ inline void generic_surface_loft_panel(const J &op) {
             "; the panel route needs protocol 4 over ABI 2. Prepare that deployment and restart "
             "Creo before retrying; no feature was created.");
 
+    // Pre-flight: every frozen command is checked before the dialog opens. Discovering
+    // a missing Done after the panel is on screen would leave a run nobody can close,
+    // so this refusal happens before Prepare and before any macro is loaded.
+    const std::string select_template = panel.value("select_command", "");
+    if (done_command.empty() || done_macro.empty() || select_template.empty())
+        throw std::runtime_error(
+            "PANEL_COMMAND_MISSING: the profile must freeze done_command (verified with "
+            "ProCmdCmdIdFind), done_macro (the restricted Done) and select_command; the request "
+            "carries " + std::to_string(!done_command.empty()) + "/" +
+            std::to_string(!done_macro.empty()) + "/" + std::to_string(!select_template.empty()) +
+            " of them. The dialog was not opened and no position was selected.");
+    if (select_template.find(mechdog_panel::select_placeholder) == std::string::npos)
+        throw std::runtime_error(
+            std::string("PANEL_COMMAND_MISSING: select_command must contain ") +
+            mechdog_panel::select_placeholder +
+            "; a step that cannot name the resident command would degrade back into waiting for a "
+            "human screen pick. The dialog was not opened.");
+    {
+        // ProCmdCmdIdFind takes a mutable char*, so it is handed a copy rather than
+        // casting away constness on the profile text.
+        std::string done_name = done_command;
+        uiCmdCmdId done_id = 0;
+        const ProError found = ProCmdCmdIdFind(&done_name[0], &done_id);
+        if (found != PRO_TK_NO_ERROR || done_id == 0)
+            throw std::runtime_error(
+                "PANEL_COMMAND_MISSING: ProCmdCmdIdFind cannot resolve done_command '" +
+                done_command + "' (code " + std::to_string((int)found) +
+                "); the profile names a command this session does not know. The dialog was not "
+                "opened.");
+    }
+
     activate_blend_context();
     CK(ProSelbufferClear());
     const std::string token =
@@ -164,10 +197,17 @@ inline void generic_surface_loft_panel(const J &op) {
         resident_blend_task(module, "MechDogPanelPrepare",
                             (callback_dir / L"callback_request.json").wstring());
         prepared = true;
-        // The macro is the recorded dialog sequence: it opens the dialog, and every
-        // selection command it issues consumes exactly one ticket in the payload.
+        // The recorded sequence opens the dialog. The recording's screen-pick pauses are
+        // replaced by one invocation of the resident command per position, so each of
+        // them consumes exactly one ticket and nothing waits for a human click.
+        std::string select_text = select_template;
+        select_text.replace(select_text.find(mechdog_panel::select_placeholder),
+                            std::strlen(mechdog_panel::select_placeholder), resident_command);
+        std::string sequence = open_macro;
+        for (size_t index = 0; index < sections.size(); ++index)
+            sequence += "\n" + select_text;
         CK(trace_blend_call("panel_macro_submit",
-                            [&] { return ProMacroLoad(wide(open_macro).data()); }));
+                            [&] { return ProMacroLoad(wide(sequence).data()); }));
         J outcome = J::object();
         try {
             std::ifstream result_file(callback_dir / L"callback_result.json");

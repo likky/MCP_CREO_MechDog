@@ -15,7 +15,14 @@ from pathlib import Path
 
 from creo_mechdog import panel_profiles
 
-COMMANDS = {"open": "~ Command ProCmdFtBndBlend", "finalize": "~ Activate main_dlg_cur.Done"}
+#: The four slots a profile must freeze. The selection step names the resident command
+#: by placeholder because that command is created at run time.
+COMMANDS = {
+    "open_macro": "~ Command `ProCmdFtBndBlend`;\n~ FocusOut `bbl_12curves.1.0` `PH.Curves1DirTbl`;",
+    "select_command": panel_profiles.SELECT_PLACEHOLDER,
+    "done_macro": "~ Activate `main_dlg_cur` `dashInst0.Done`;",
+    "done_command": "ProCmdFtBndBlend",
+}
 WORKER_SHA = "a" * 64
 
 
@@ -68,13 +75,16 @@ class Library(unittest.TestCase):
 
 
 class ShippedLibraryIsClosed(Library):
-    def test_the_repository_manifest_is_valid_and_empty(self):
-        self.assertEqual(panel_profiles.profiles(), [])
+    def test_the_repository_manifest_carries_one_candidate(self):
+        entries = panel_profiles.profiles()
+        self.assertEqual([entry.profile_id for entry in entries], ["creo10-bbl-candidate-1"])
+        self.assertEqual([entry.status for entry in entries], ["candidate"])
+        self.assertEqual(entries[0].release_numeric, 42)
 
     def test_find_profile_names_the_known_profiles(self):
         with self.assertRaises(panel_profiles.PanelProfileError) as caught:
             panel_profiles.find_profile("creo10-bbl-1")
-        self.assertIn("known: none", str(caught.exception))
+        self.assertIn("known: creo10-bbl-candidate-1", str(caught.exception))
 
     def test_normal_requests_have_no_certified_profile(self):
         with self.assertRaises(panel_profiles.PanelProfileError) as caught:
@@ -97,10 +107,31 @@ class ManifestValidation(Library):
         self.assertIsNone(entries[0].certification)
 
     def test_a_changed_command_text_invalidates_the_digest(self):
-        entry = profile(commands={"open": "different"})
+        changed = dict(COMMANDS, open_macro="~ Command `ProCmdFtBndBlend`;")
+        entry = profile(commands=changed)
         entry["digest"] = panel_profiles.command_digest(COMMANDS)
         self.write_manifest(manifest([entry]))
         with self.assertRaisesRegex(panel_profiles.PanelProfileError, "does not match its frozen"):
+            panel_profiles.profiles(self.root)
+
+    def test_a_profile_missing_a_slot_is_refused(self):
+        incomplete = {k: v for k, v in COMMANDS.items() if k != "done_command"}
+        entry = profile(commands=incomplete)
+        entry["digest"] = panel_profiles.command_digest(incomplete)
+        self.write_manifest(manifest([entry]))
+        with self.assertRaisesRegex(panel_profiles.PanelProfileError, "missing done_command"):
+            panel_profiles.profiles(self.root)
+
+    def test_a_selection_step_without_the_placeholder_is_refused(self):
+        # A selection step that cannot name the resident command would fall back to
+        # waiting for a human screen pick, which is exactly what the route forbids.
+        replaced = dict(COMMANDS, select_command="~ Command `ProCmdFtBndBlend`;")
+        entry = profile(commands=replaced)
+        entry["digest"] = panel_profiles.command_digest(replaced)
+        self.write_manifest(manifest([entry]))
+        with self.assertRaisesRegex(
+            panel_profiles.PanelProfileError, "must contain %MECHDOG_COMMAND%"
+        ):
             panel_profiles.profiles(self.root)
 
     def test_an_unknown_profile_key_is_refused(self):

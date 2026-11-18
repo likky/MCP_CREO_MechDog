@@ -54,6 +54,17 @@ PROFILE_KEYS = frozenset(
     }
 )
 CERTIFICATION_KEYS = frozenset({"file", "digest", "environment"})
+#: The slots a profile must freeze. The panel route cannot open a dialog without the
+#: recorded open sequence, cannot consume a position without the command that issues
+#: one selection, and cannot close without the restricted Done. A profile missing any
+#: of them is refused at admission, which is before a job exists and long before a
+#: dialog opens.
+COMMAND_SLOTS = ("open_macro", "select_command", "done_macro", "done_command")
+#: Substituted with the resident command the payload registered at initialize time.
+#: The recorded mapkey's screen-pick pauses are replaced by one invocation of this
+#: command per position, so the profile never carries "wait for a human click".
+SELECT_PLACEHOLDER = "%MECHDOG_COMMAND%"
+
 CANDIDATE_REQUIRED = ("profile_id", "run_id", "workspace", "profile_digest")
 CANDIDATE_OPTIONAL = ("worker_sha256", "loader_sha256", "payload_sha256")
 CANDIDATE_INT_OPTIONAL = ("release_numeric",)
@@ -135,6 +146,19 @@ def _commands(raw: object, where: str) -> dict[str, str]:
         if not isinstance(text, str) or not text.strip():
             raise PanelProfileError(f"{where}.commands[{slot!r}] must be non-empty command text")
         commands[slot] = text
+    missing = [slot for slot in COMMAND_SLOTS if slot not in commands]
+    if missing:
+        raise PanelProfileError(
+            f"{where}.commands is missing {', '.join(missing)}; a panel profile must freeze all "
+            f"of {', '.join(COMMAND_SLOTS)}, because the route refuses to improvise the part it "
+            "was not recorded with"
+        )
+    if SELECT_PLACEHOLDER not in commands["select_command"]:
+        raise PanelProfileError(
+            f"{where}.commands['select_command'] must contain {SELECT_PLACEHOLDER}; the resident "
+            "command is named at runtime, and a selection step that cannot name it would reopen "
+            "the recorded screen-pick pause"
+        )
     return commands
 
 
@@ -426,6 +450,11 @@ def admit(
             "unverified_bindings": unverified,
             "certification": profile.certification,
             "candidate": None,
+            # The frozen command text is what the job carries to the native route.
+            # Admission is the only place that reads it, so the job cannot name a
+            # command the profile was not measured with.
+            "commands": dict(profile.commands),
+            **{slot: profile.commands[slot] for slot in COMMAND_SLOTS},
         }
     if ticket is None:
         raise PanelProfileError(
@@ -482,6 +511,8 @@ def admit(
         "host_release_numeric": release,
         "unverified_bindings": unverified,
         "certification": None,
+        "commands": dict(profile.commands),
+        **{slot: profile.commands[slot] for slot in COMMAND_SLOTS},
         "candidate": {
             "run_id": ticket["run_id"],
             "workspace": ticket["workspace"],

@@ -29,6 +29,11 @@ constexpr const char *contract = "resident-panel-selection-v4-ticketed-mm";
 //: tickets also cover probes that never become sections.
 constexpr int ticket_capacity = 512;
 
+//: The token a profile's selection step carries instead of a recorded screen-pick
+//: pause. It is substituted with the resident command at run time; the same literal
+//: is frozen in the Python profile library, and a test keeps the two in step.
+constexpr const char *select_placeholder = "%MECHDOG_COMMAND%";
+
 //: Exports an ABI2 payload must provide. The panel generation uses its own prepare /
 //: finalize / event / state / release entry points (the blend ones keep the blend
 //: rules), plus the identity probe and the Toolkit-required terminate.

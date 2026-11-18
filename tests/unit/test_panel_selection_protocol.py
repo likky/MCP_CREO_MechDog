@@ -215,6 +215,63 @@ class PanelJobWiring(unittest.TestCase):
         self.assertIn("MechDogPanelRelease", text)
 
 
+class PanelProfileToBackend(unittest.TestCase):
+    """The frozen profile must reach the native route, and refuse before opening.
+
+    These are offline assertions on purpose: the only way to see the dialog is a target
+    session, so what can be checked here is that the command text travels the whole
+    chain and that a missing command stops the run before any dialog exists.
+    """
+
+    SUBMIT = ROOT / "generic_bridge.py"
+    RUN = ROOT / "native/panel_run.h"
+    PROTOCOL = ROOT / "native/panel_protocol.h"
+    MANIFEST = ROOT / "templates/panel/manifest.json"
+
+    def test_the_shipped_profile_freezes_every_slot(self):
+        from creo_mechdog import panel_profiles
+
+        shipped = panel_profiles.profiles()
+        self.assertTrue(shipped, "the library must carry the Creo 10 candidate profile")
+        for profile in shipped:
+            self.assertEqual(set(profile.commands), set(panel_profiles.COMMAND_SLOTS))
+
+    def test_the_shipped_profile_keeps_the_recording_and_drops_the_pauses(self):
+        import json
+
+        manifest = json.loads(self.MANIFEST.read_text(encoding="utf-8"))
+        recording = manifest["recordings"]["creo10-bbl-candidate-1"]
+        original = ROOT / recording["source"]
+        copy = ROOT / "templates/panel" / recording["file"]
+        self.assertTrue(original.is_file(), "the T1-A recording stays where it was")
+        self.assertEqual(copy.read_bytes(), original.read_bytes())
+        self.assertIn("@PAUSE_FOR_SCREEN_PICK", original.read_text(encoding="utf-8"))
+        frozen = manifest["profiles"][0]["commands"]
+        for slot in ("open_macro", "select_command", "done_macro"):
+            self.assertNotIn("@PAUSE_FOR_SCREEN_PICK", frozen[slot])
+
+    def test_the_placeholder_is_the_same_literal_on_both_sides(self):
+        from creo_mechdog import panel_profiles
+
+        native = self.PROTOCOL.read_text(encoding="utf-8")
+        self.assertIn(f'"{panel_profiles.SELECT_PLACEHOLDER}"', native)
+
+    def test_admission_hands_the_commands_to_the_job(self):
+        text = self.SUBMIT.read_text(encoding="utf-8")
+        for key in ("open_macro", "select_command", "done_macro", "done_command"):
+            self.assertIn(f'"{key}": str(panel_admission.get("{key}") or "")', text)
+
+    def test_a_missing_command_refuses_before_the_dialog_opens(self):
+        text = self.RUN.read_text(encoding="utf-8")
+        refusal = text.index("PANEL_COMMAND_MISSING")
+        macro_load = text.index("ProMacroLoad(wide(sequence)")
+        self.assertLess(refusal, macro_load, "the refusal must precede the first macro")
+        self.assertIn("ProCmdCmdIdFind(&done_name[0], &done_id)", text)
+        # The recorded screen-pick pause is replaced by one invocation per position.
+        self.assertIn('sequence += "\\n" + select_text', text)
+        self.assertIn("mechdog_panel::select_placeholder", text)
+
+
 class SketchContract(unittest.TestCase):
     """T2 on Creo 10 found two gaps in the sketch result a client needs closed."""
 

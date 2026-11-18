@@ -275,6 +275,35 @@ def panel_profile_library_files(root: Path | None = None) -> list[Path]:
                 "outside the library is not part of this release"
             )
         files.append(path)
+    # The recording a profile was frozen from ships with it. An admissible profile
+    # whose evidence stayed behind would reach a client as command text nobody can
+    # re-read, which is exactly the claim this library exists to prevent.
+    try:
+        document = json.loads(manifest.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"Panel profile manifest cannot be read: {manifest} ({error})") from error
+    recordings = document.get("recordings") or {}
+    if not isinstance(recordings, dict):
+        raise ValueError(f"{panel_profiles.MANIFEST}.recordings must be an object")
+    for name, entry in recordings.items():
+        if not isinstance(entry, dict) or not isinstance(entry.get("file"), str):
+            raise ValueError(f"{panel_profiles.MANIFEST}.recordings[{name!r}] must name a file")
+        path = base / panel_profiles.LIBRARY / entry["file"]
+        if not path.is_file() or path.is_symlink():
+            raise ValueError(f"Panel recording is missing or is a symlink: {path}")
+        if not path.resolve().is_relative_to(library):
+            raise ValueError(
+                f"Panel recording escapes {panel_profiles.LIBRARY}: {path}; evidence outside "
+                "the library is not part of this release"
+            )
+        declared = str(entry.get("sha256") or "").lower()
+        if hashlib.sha256(path.read_bytes()).hexdigest() != declared:
+            raise ValueError(
+                f"Panel recording {path.name} does not match the digest "
+                f"{panel_profiles.MANIFEST} declares; a changed recording invalidates the "
+                "profile it was frozen from"
+            )
+        files.append(path)
     return files
 
 
@@ -549,7 +578,11 @@ def validate_release_inputs(root: Path, seed_archive: Path) -> dict[str, object]
         "readme_current_version": readme["current"],
         "manifest_seed_count": summary["seed_count"],
         "template_count": template_count,
-        "panel_certification_count": len(panel_files) - 1,
+        # Certification records only: the manifest and the frozen recordings also ship
+        # with the library, but they are not acceptance evidence.
+        "panel_certification_count": sum(
+            1 for path in panel_files if panel_profiles.CERTIFICATIONS in path.as_posix()
+        ),
     }
 
 

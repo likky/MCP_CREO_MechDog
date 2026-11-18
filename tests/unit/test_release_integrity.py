@@ -182,7 +182,12 @@ class SeedArchiveValidationTests(SeedArchiveFixture):
         (library / "certifications").mkdir()
         record = library / "certifications" / "creo10-panel-smoke.json"
         record.write_text(json.dumps({"profile_digest": "0" * 64}), encoding="utf-8")
-        commands = {"sketch_slot": "Sketch>"}
+        commands = {
+            "open_macro": "~ Command `ProCmdFtBndBlend`;",
+            "select_command": panel_profiles.SELECT_PLACEHOLDER,
+            "done_macro": "~ Activate `main_dlg_cur` `dashInst0.Done`;",
+            "done_command": "ProCmdFtBndBlend",
+        }
         (library / "manifest.json").write_text(
             json.dumps(
                 {
@@ -495,7 +500,14 @@ class DistributionEvidenceTests(unittest.TestCase):
 class PanelLibraryFixture(unittest.TestCase):
     """A source tree carrying one resident-panel profile library (BUG-120/D1)."""
 
-    commands = {"sketch_slot": "Sketch>", "blend_slot": "Insert>Blend"}
+    # The four slots a panel profile must freeze; the selection step names the
+    # resident command by placeholder because it is created at run time.
+    commands = {
+        "open_macro": "~ Command `ProCmdFtBndBlend`;",
+        "select_command": panel_profiles.SELECT_PLACEHOLDER,
+        "done_macro": "~ Activate `main_dlg_cur` `dashInst0.Done`;",
+        "done_command": "ProCmdFtBndBlend",
+    }
 
     def setUp(self):
         self.temp = Path(self.enterContext(tempfile.TemporaryDirectory()))
@@ -560,12 +572,21 @@ class PanelLibraryAllowlistTests(PanelLibraryFixture):
         self.assertIn(shipped, files)
         self.assertNotIn(stray, files)
 
-    def test_the_shipped_repository_library_is_empty_and_closed(self):
-        # No profile has been accepted on a target host yet: the manifest alone
-        # ships and admission refuses the route instead of replaying unknown text.
-        manifest = ROOT / "templates/panel/manifest.json"
-        self.assertEqual(release_integrity.panel_profile_library_files(ROOT), [manifest])
-        self.assertEqual(panel_profiles.profiles(ROOT), [])
+    def test_the_shipped_repository_library_ships_one_candidate_and_its_recording(self):
+        # The library now carries the Creo 10 candidate frozen from the T1-A
+        # recording, so the shipped set is the manifest, the recording and the
+        # profile entry inside the manifest. No certification record exists yet,
+        # which is why normal clients still have no certified profile.
+        shipped = release_integrity.panel_profile_library_files(ROOT)
+        names = {path.relative_to(ROOT).as_posix() for path in shipped}
+        self.assertEqual(
+            names,
+            {
+                "templates/panel/manifest.json",
+                "templates/panel/recordings/creo10_blend_gui_t1a.pro",
+            },
+        )
+        self.assertEqual([entry.status for entry in panel_profiles.profiles(ROOT)], ["candidate"])
 
     def test_the_source_package_ships_the_panel_manifest(self):
         packaged = {path.relative_to(ROOT).as_posix() for path in package.source_files()}
