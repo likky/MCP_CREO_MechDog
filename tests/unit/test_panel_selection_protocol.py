@@ -187,6 +187,34 @@ class PanelPayloadWiring(unittest.TestCase):
             self.assertIn(phase, text)
 
 
+class PanelJobWiring(unittest.TestCase):
+    """The job must carry what the native panel route binds its tickets to."""
+
+    SUBMIT = ROOT / "generic_bridge.py"
+    RUN = ROOT / "native/panel_run.h"
+
+    def test_admission_identity_reaches_the_operation(self):
+        text = self.SUBMIT.read_text(encoding="utf-8")
+        self.assertIn('operation["panel"] = {', text)
+        for key in ("job_id", "request_id", "nonce", "profile_id", "open_macro"):
+            self.assertIn(f'"{key}":', text)
+
+    def test_the_native_route_refuses_instead_of_inventing_a_macro(self):
+        text = self.RUN.read_text(encoding="utf-8")
+        self.assertIn("PANEL_OPEN_MACRO_MISSING", text)
+        self.assertIn("PANEL_ADMISSION_INCOMPLETE", text)
+        self.assertIn("PANEL_DEPLOYMENT_REQUIRED", text)
+        # The macro is data from the profile: no dialog element names are hard-coded.
+        self.assertNotIn("blend_sectionspage", text)
+        self.assertNotIn("dashInst0.Done", text)
+
+    def test_the_native_route_refuses_to_claim_an_unobserved_success(self):
+        text = self.RUN.read_text(encoding="utf-8")
+        self.assertIn("PANEL_SELECTION_INCOMPLETE", text)
+        self.assertIn("MechDogPanelFinalize", text)
+        self.assertIn("MechDogPanelRelease", text)
+
+
 class MarkerContract(unittest.TestCase):
     def test_marker_rules_reject_foreign_and_untyped_progress(self):
         text = PANEL_PROTOCOL.read_text(encoding="utf-8")

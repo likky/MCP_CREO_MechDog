@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-18（BUG-120 D3 面板后端落地）：`native/panel_run.h` 实现 resident_panel 路线：D2 引用解析→写协议4请求→`MechDogPanelPrepare`→装载 profile 的 `open_macro`→校验位置数→按需 `MechDogPanelFinalize`/失败 `MechDogPanelRelease`；`surface_loft_panel.h` 状态改为 `ready`；`generic_bridge` 为准入作业注入 `panel` 块（job/request/nonce/profile + 宏）。刻意不伪造：缺 profile 宏即 `PANEL_OPEN_MACRO_MISSING`（文件内无硬编码对话框元素名），setup 非4/2即 `PANEL_DEPLOYMENT_REQUIRED`，位置不足即 `PANEL_SELECTION_INCOMPLETE`；Done 排队不算关闭，D5 仍要求原生退出观测。`bridge.py build` 通过，Creo 10 SDK 对照 4/4 exit 0，`test_panel*` 113 项与协议守卫 17 项通过。真实会话（12.4/10）均未运行，对话框元素名与 TOGGLE 时序属 D6。
+
 2026-11-18（BUG-120 T1 通过 + 面板部署生成）：Creo 10 SDK 头文件已拷入本机，`tools/check_creo10_compile.py --sdk build\creo10_sdk --full` **通过**：4 个编译单元（api_probe/blend_sync/blend_loader/worker）全部 exit 0，20 个必需函数与 6 个枚举在 Creo 10 中全在；证据归档`docs/validation/bug120-creo10-sdk-2026-11-18/`。另补面板部署生成：`prepare_callback(generation="panel")` 写 `loader_abi=2`/协议4/panel contract，切代需显式`allow_generation_switch`，Blend 部署形状不变；面板后端仍未实现，故该部署只待 D6 装载。3982 单测通过。T1 只证明编译兼容，不证明对话框/枚举/退出时序。
 
 2026-11-18（BUG-120 D3 接线）：[BUG-120](work-items/BUG-120.md)把面板状态机接进`blend_sync.cpp`：`select_section`按`panel_run`分派、首位OVERRIDE后续TOGGLE、票据用尽即`PANEL_SELECTION_EXHAUSTED`、SDK失败`abandon`；新增`MechDogPanelInitialize/Prepare/Finalize/Event/State/Release`导出与`panel_exports`校验（面板代只找`MechDogPanelInitialize`，ABI1仍走原入口，协议4请求到Blend入口被明确拒绝）；Done用`ProCmdCmdIdFind`+`ProMacroLoad`执行请求提供的受限宏（不硬编码命令名，缺宏则保持可选）；`panel_wait.json`有了原生生产者（字段与`read_marker()`一致、phase由状态推导、原子写）。`bridge.py build`通过并重编payload，3978单测通过。真实对话框的TOGGLE语义、回调次数、Done宏能否关闭、面板部署生成仍待D6。

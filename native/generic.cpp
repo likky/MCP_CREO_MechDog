@@ -4840,6 +4840,9 @@ static J choice_inspection(const J &holder, const char *key);
 #include "loft_mode.cpp"
 #include "loft_seed.cpp"
 #include "blend_create.cpp"
+// BUG-120/D3: the panel route's execution sequence. Included after blend_create.cpp
+// because it reuses the resident-callback helpers defined there.
+#include "panel_run.h"
 #include "sketch_edit.cpp"
 #include "planar_wall.h"
 #include "planar_wall.cpp"

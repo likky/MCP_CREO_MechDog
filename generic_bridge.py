@@ -1322,6 +1322,26 @@ def submit(
             # open UI exists. The nonce is generated here, stored in the request and
             # bound to the guard, so a later marker can prove which run wrote it.
             request["panel_nonce"] = uuid.uuid4().hex
+            # BUG-120/D3: the panel route's native half reads one block per operation:
+            # the run identity the payload binds its tickets to, plus the recorded
+            # dialog macro a certified profile supplies. With no profile macro the
+            # worker refuses (PANEL_OPEN_MACRO_MISSING) instead of guessing a command
+            # sequence, so an uncertified release cannot silently drive the dialog.
+            for operation in operations:
+                if (
+                    operation.get("op") != "surface_loft"
+                    or operation.get("creation_route") != "resident_panel"
+                ):
+                    continue
+                operation["panel"] = {
+                    "job_id": job_id,
+                    "request_id": str(request.get("request_id") or job_id),
+                    "nonce": request["panel_nonce"],
+                    "profile_id": str(panel_admission.get("profile_id") or ""),
+                    "open_macro": str(panel_admission.get("open_macro") or ""),
+                    "done_macro": str(panel_admission.get("done_macro") or ""),
+                    "done_command": str(panel_admission.get("done_command") or ""),
+                }
             try:
                 guard = panel_session_guard.reserve(
                     job_id,
