@@ -88,6 +88,54 @@ class BlendCallbackSetupTests(unittest.TestCase):
             self.prepare(self.build, self.digest)
         self.assertEqual(copy.read_bytes(), b"unexpected content")
 
+    def test_panel_generation_declares_protocol_4_and_abi_2(self):
+        panel = self.prepare(self.build, self.digest, generation="panel")
+        self.assertEqual(panel["generation"], "panel")
+        self.assertEqual(panel["protocol"], 4)
+        self.assertEqual(panel["loader_abi"], 2)
+        self.assertEqual(panel["contract"], "resident-panel-selection-v4-ticketed-mm")
+        self.assertIn("MechDogPanel_", panel["command"])
+        boot = json.loads(
+            (Path(panel["module_file"]).parent / "callback_bootstrap.json").read_text()
+        )
+        self.assertEqual(boot["protocol"], 4)
+        self.assertEqual(boot["contract"], "resident-panel-selection-v4-ticketed-mm")
+        deployment = json.loads((Path(panel["loader_file"]).parent / "deployment.json").read_text())
+        self.assertEqual(deployment["loader_abi"], 2)
+        self.assertEqual(deployment["protocol"], 4)
+
+    def test_the_blend_deployment_shape_is_unchanged(self):
+        blend = self.prepare(self.build, self.digest)
+        self.assertEqual(blend["generation"], "blend")
+        deployment = json.loads((Path(blend["loader_file"]).parent / "deployment.json").read_text())
+        self.assertEqual(deployment["loader_abi"], 1)
+        # The missing protocol key is what older deployments look like; the loader
+        # reads it as protocol 3, so writing it here would change a shipped shape.
+        self.assertNotIn("protocol", deployment)
+
+    def test_switching_a_loader_generation_needs_an_explicit_migration(self):
+        blend = self.prepare(self.build, self.digest)
+        boot_file = Path(blend["module_file"]).parent / "callback_bootstrap.json"
+        before = boot_file.read_bytes()
+        with self.assertRaisesRegex(ValueError, "bootstrap changed"):
+            self.prepare(self.build, self.digest, generation="panel")
+        self.assertEqual(boot_file.read_bytes(), before)
+        pointer = Path(blend["loader_file"]).parent / "deployment.json"
+        self.assertEqual(json.loads(pointer.read_text())["loader_abi"], 1)
+        switched = self.prepare(
+            self.build,
+            self.digest,
+            generation="panel",
+            allow_generation_switch=True,
+        )
+        self.assertEqual(switched["protocol"], 4)
+        self.assertEqual(json.loads(pointer.read_text())["loader_abi"], 2)
+        self.assertEqual(json.loads(boot_file.read_text())["protocol"], 4)
+
+    def test_an_unknown_generation_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "Unknown callback generation"):
+            self.prepare(self.build, self.digest, generation="element_tree")
+
     def test_rebuild_publishes_new_version_without_changing_loaded_old_copy(self):
         old = self.prepare(self.build, self.digest)
         self.dll.write_bytes(b"new callback")

@@ -13,6 +13,16 @@ from pathlib import Path
 PROTOCOL = 3
 LOADER_ABI = 1
 CONTRACT = "blend-selection-v3-ordered-curves-mm"
+# BUG-120/D3: the resident panel route is a second, incompatible generation of the
+# same payload DLL. It is declared here so a deployment can name it; preparing one
+# does not make the route usable, because the panel backend is still unimplemented.
+PANEL_PROTOCOL = 4
+PANEL_LOADER_ABI = 2
+PANEL_CONTRACT = "resident-panel-selection-v4-ticketed-mm"
+GENERATIONS = {
+    "blend": (PROTOCOL, LOADER_ABI, CONTRACT, "MechDogBlend_"),
+    "panel": (PANEL_PROTOCOL, PANEL_LOADER_ABI, PANEL_CONTRACT, "MechDogPanel_"),
+}
 REGISTRY_FILENAME = "blend_callback_protk.dat"
 # A loader generation key is the normalized fingerprint, optionally with a
 # -<sha256[:12]> suffix when a rebuilt (nondeterministic) DLL must coexist
@@ -68,8 +78,25 @@ def _immutable(source: Path, target: Path, digest: str) -> None:
             temporary.unlink(missing_ok=True)
 
 
-def prepare_callback(build: Path, dll_sha256: str, loader_fingerprint: str) -> dict:
-    """Prepare a future operator startup; never load, unload or replace loaded DLLs."""
+def prepare_callback(
+    build: Path,
+    dll_sha256: str,
+    loader_fingerprint: str,
+    *,
+    generation: str = "blend",
+    allow_generation_switch: bool = False,
+) -> dict:
+    """Prepare a future operator startup; never load, unload or replace loaded DLLs.
+
+    ``generation`` selects the wire contract this deployment declares. The payload
+    DLL is the same file for both: it exports the ABI1 blend entry and the ABI2
+    panel entry, and the loader picks one from ``deployment.json``. Switching a
+    loader generation rewrites the deployed contract, so it is refused unless
+    ``allow_generation_switch`` says a human chose that migration.
+    """
+    if generation not in GENERATIONS:
+        raise ValueError(f"Unknown callback generation {generation!r}")
+    protocol, loader_abi, contract, command_prefix = GENERATIONS[generation]
     dll = build / "creo_blend_sync.dll"
     loader = build / "creo_blend_loader.dll"
     if not re.fullmatch("[0-9a-f]{64}", dll_sha256) or _digest(dll) != dll_sha256:
@@ -91,17 +118,18 @@ def prepare_callback(build: Path, dll_sha256: str, loader_fingerprint: str) -> d
     _immutable(dll, target, dll_sha256)
     _immutable(loader, loader_target, loader_sha256)
     root_tag = hashlib.sha256(str(root).casefold().encode()).hexdigest()[:8]
-    command = "MechDogBlend_" + dll_sha256[:24] + "_" + root_tag
+    command = command_prefix + dll_sha256[:24] + "_" + root_tag
     bootstrap = {
-        "protocol": PROTOCOL,
-        "contract": CONTRACT,
+        "protocol": protocol,
+        "contract": contract,
         "command": command,
         "resource_root": str(root),
         "dll_sha256": dll_sha256,
     }
     metadata = {
         **bootstrap,
-        "loader_abi": LOADER_ABI,
+        "generation": generation,
+        "loader_abi": loader_abi,
         "loader_fingerprint": loader_fingerprint,
         "loader_sha256": loader_sha256,
         "loader_file": str(loader_target.resolve()),
@@ -132,7 +160,8 @@ def prepare_callback(build: Path, dll_sha256: str, loader_fingerprint: str) -> d
     bootstrap_file = directory / "callback_bootstrap.json"
     bootstrap_text = json.dumps(bootstrap, indent=2) + "\n"
     if bootstrap_file.exists() and bootstrap_file.read_text(encoding="utf-8") != bootstrap_text:
-        raise ValueError("Immutable callback bootstrap changed; inspect it before setup")
+        if not allow_generation_switch:
+            raise ValueError("Immutable callback bootstrap changed; inspect it before setup")
     _publish(bootstrap_file, bootstrap_text)
     registry = (
         f"name MCP_CREO_MechDog Blend {root_tag}\nstartup dll\n"
@@ -144,10 +173,12 @@ def prepare_callback(build: Path, dll_sha256: str, loader_fingerprint: str) -> d
     _publish(build / "blend_callback.config.pro", f"protkdat {metadata['registry_file']}\n")
     # Publish the selection only after every immutable artifact is complete. Old
     # payloads/loader generations remain available for an explicit rollback.
-    _publish(
-        loader_directory / "deployment.json",
-        json.dumps({"loader_abi": LOADER_ABI, "dll_sha256": dll_sha256}, indent=2) + "\n",
-    )
+    deployment = {"loader_abi": loader_abi, "dll_sha256": dll_sha256}
+    if generation == "panel":
+        # Named explicitly for the panel generation; the blend deployment keeps its
+        # historical shape, where the missing key means protocol 3.
+        deployment["protocol"] = protocol
+    _publish(loader_directory / "deployment.json", json.dumps(deployment, indent=2) + "\n")
     _publish(build / "blend_callback_setup.json", json.dumps(metadata, indent=2) + "\n")
     return metadata
 
