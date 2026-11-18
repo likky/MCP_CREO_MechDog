@@ -4827,6 +4827,9 @@ static J choice_inspection(const J &holder, const char *key);
 // BUG-120/D2: the curve-reference rules and their Toolkit adapter. Generic.cpp is
 // the only compile unit with the Toolkit headers, so the adapter rides here.
 #include "panel_references_sdk.h"
+// BUG-120/D3: the selection protocol state machine. Pure C++, so it rides the same
+// translation unit and is compiled against the real build configuration.
+#include "panel_selection_state.h"
 #include "surface_loft.cpp"
 #include "surface_round.cpp"
 #include "surface_boundary_fill.cpp"

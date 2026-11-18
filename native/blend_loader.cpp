@@ -9,12 +9,17 @@
 #include "third_party/json.hpp"
 #include "callback_identity.h"
 #include "callback_api.h"
+#include "panel_protocol.h"
 
 static HMODULE payload = nullptr;
 static bool initialized = false;
 static bool attempted = false;
 using Initialize = int (*)(int, char **, char *, char *, wchar_t *, const wchar_t *,
                            const wchar_t *, const MechDogCallbackApi *);
+//: BUG-120/D3: an ABI2 payload takes the longer table. The two signatures are kept
+//: apart so a payload can never be handed a table it was not built for.
+using Initialize2 = int (*)(int, char **, char *, char *, wchar_t *, const wchar_t *,
+                            const wchar_t *, const MechDogCallbackApi2 *);
 static const MechDogCallbackApi host_api = {
     mechdog_callback::loader_abi,
     sizeof(MechDogCallbackApi),
@@ -29,6 +34,30 @@ static const MechDogCallbackApi host_api = {
     &ProSelectExternalselectionRecord,
     &ProSelectionFree,
     &ProCmdActionAdd,
+};
+//: The ABI2 table. The ABI1 prefix keeps its exact order; the additions are the
+//: calls the panel route and D2 reference resolution actually make.
+static const MechDogCallbackApi2 host_api2 = {
+    mechdog_panel::loader_abi,
+    sizeof(MechDogCallbackApi2),
+    &ProArraySizeGet,
+    &ProArrayAlloc,
+    &ProArgumentProarrayFree,
+    &ProValuedataWstringSet,
+    &ProMdlCurrentGet,
+    &ProMdlMdlnameGet,
+    &ProModelitemInit,
+    &ProSelectionAlloc,
+    &ProSelectExternalselectionRecord,
+    &ProSelectionFree,
+    &ProCmdActionAdd,
+    &ProMacroLoad,
+    &ProCmdCmdIdFind,
+    &ProCmdBracketFuncAdd,
+    &ProFeatureGeomitemVisit,
+    &ProCurveInit,
+    &ProCurveTypeGet,
+    &ProCurveLengthEval,
 };
 using Terminate = void (*)();
 static Terminate terminate_payload = nullptr;
@@ -65,9 +94,22 @@ extern "C" __declspec(dllexport) int user_initialize(int argc, char **argv, char
         nlohmann::json deployment;
         input >> deployment;
         std::string digest = deployment.at("dll_sha256");
-        if (deployment.value("loader_abi", 0) != mechdog_callback::loader_abi ||
-            !mechdog_callback::digest_valid(digest))
+        const int declared_abi = deployment.value("loader_abi", 0);
+        const int declared_protocol = deployment.value("protocol", mechdog_callback::protocol);
+        if (!mechdog_callback::digest_valid(digest))
             throw std::runtime_error("Unsupported loader deployment");
+        // BUG-120/D3: two ABI generations, never mixed. ABI1 stays the blend-only
+        // table; ABI2 is the panel generation and must also declare protocol 4.
+        if (declared_abi != mechdog_callback::loader_abi &&
+            declared_abi != mechdog_panel::loader_abi)
+            throw std::runtime_error("Unsupported loader deployment");
+        const bool panel_generation = declared_abi == mechdog_panel::loader_abi;
+        if (panel_generation &&
+            mechdog_panel::contract_state(declared_protocol, declared_abi, true) !=
+                mechdog_panel::ContractState::Ready)
+            // 3/1 and 4/2 are different contracts; a mixed deployment is not
+            // downgraded, it is not started.
+            throw std::runtime_error("Panel deployment protocol mismatch");
         // Derive the absolute payload path from our own installation. The pointer
         // cannot redirect a registered loader into another installation directory.
         auto module =
@@ -82,15 +124,25 @@ extern "C" __declspec(dllexport) int user_initialize(int argc, char **argv, char
         if (!payload)
             throw std::runtime_error("Cannot load callback payload");
         auto initialize = (Initialize)GetProcAddress(payload, "MechDogBlendInitialize");
+        auto initialize2 = (Initialize2)GetProcAddress(payload, "MechDogBlendInitialize");
         terminate_payload = (Terminate)GetProcAddress(payload, "user_terminate");
         prepare_payload = (ProTkdllFunction)GetProcAddress(payload, "MechDogBlendPrepare");
         release_payload = (ProTkdllFunction)GetProcAddress(payload, "MechDogBlendRelease");
         identity_payload = (ProTkdllFunction)GetProcAddress(payload, "MechDogBlendIdentity");
-        if (!initialize || !terminate_payload || !prepare_payload || !release_payload ||
+        // Compare before combining: the two signatures are deliberately different
+        // types, so they are never put in one conditional expression.
+        const bool initialized_export = panel_generation ? initialize2 != nullptr
+                                                         : initialize != nullptr;
+        if (!initialized_export || !terminate_payload || !prepare_payload || !release_payload ||
             !identity_payload)
             throw std::runtime_error("Callback loader ABI exports missing");
-        int code =
-            initialize(argc, argv, version, build, errmsg, application_id, filename, &host_api);
+        int code = PRO_TK_GENERAL_ERROR;
+        if (panel_generation)
+            code = initialize2(argc, argv, version, build, errmsg, application_id, filename,
+                               &host_api2);
+        else
+            code = initialize(argc, argv, version, build, errmsg, application_id, filename,
+                              &host_api);
         initialized = code == PRO_TK_NO_ERROR;
         // Never unload partially initialized code: a Toolkit command may already
         // reference it. Preserve it until process exit and report failure.
