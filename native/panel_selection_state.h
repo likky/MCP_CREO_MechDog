@@ -306,6 +306,20 @@ class PanelSelectionState {
         return detail::acceptance(PanelSelectionAction::None);
     }
 
+    //: Every prepared position was consumed. The native collector asks before it
+    //: injects anything, so an extra callback cannot re-toggle the last position.
+    bool exhausted() const { return next_index_ >= tickets_.size(); }
+
+    //: Record a native failure that happened *after* a ticket was spent (an SDK
+    //: error, an exception at the callback boundary). The run cannot continue as if
+    //: nothing happened, and a retry cannot reuse the spent ticket.
+    PanelVerdict abandon(const std::string &code) {
+        if (stage_ == PanelStage::Idle)
+            return detail::refusal("PANEL_STATE_NOT_PREPARED", "there is no run to abandon");
+        lock(code);
+        return detail::refusal(code, "the run was abandoned after a native failure");
+    }
+
     PanelStage stage() const { return stage_; }
     const std::string &failure_code() const { return failure_code_; }
     std::vector<PanelTicket> tickets() const { return tickets_; }

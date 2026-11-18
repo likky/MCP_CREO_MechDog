@@ -29,12 +29,17 @@ constexpr const char *contract = "resident-panel-selection-v4-ticketed-mm";
 //: tickets also cover probes that never become sections.
 constexpr int ticket_capacity = 512;
 
-//: Exports an ABI2 payload must provide. A loader that finds fewer is not ready.
+//: Exports an ABI2 payload must provide. The panel generation uses its own prepare /
+//: finalize / event / state / release entry points (the blend ones keep the blend
+//: rules), plus the identity probe and the Toolkit-required terminate.
 constexpr const char *panel_exports[] = {
-    "MechDogBlendInitialize",
+    "MechDogPanelInitialize",
     "user_terminate",
-    "MechDogBlendPrepare",
-    "MechDogBlendRelease",
+    "MechDogPanelPrepare",
+    "MechDogPanelFinalize",
+    "MechDogPanelEvent",
+    "MechDogPanelState",
+    "MechDogPanelRelease",
     "MechDogBlendIdentity",
 };
 

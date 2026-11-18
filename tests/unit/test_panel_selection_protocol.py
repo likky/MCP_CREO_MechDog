@@ -113,6 +113,70 @@ class Abi2Table(unittest.TestCase):
             self.assertIn(symbol, text)
 
 
+class PanelPayloadWiring(unittest.TestCase):
+    """The panel generation must be wired, not merely declared.
+
+    These assertions read the payload source because the collector only runs inside
+    Creo: without them a refactor could delete the dispatch and every offline rule
+    would still pass while the dialog never consumed a ticket.
+    """
+
+    PAYLOAD = ROOT / "native/blend_sync.cpp"
+
+    def test_the_loader_requires_the_panel_entry_points(self):
+        protocol = PANEL_PROTOCOL.read_text(encoding="utf-8")
+        for name in (
+            "MechDogPanelInitialize",
+            "MechDogPanelPrepare",
+            "MechDogPanelFinalize",
+            "MechDogPanelEvent",
+            "MechDogPanelState",
+            "MechDogPanelRelease",
+        ):
+            self.assertIn(name, protocol)
+        loader = LOADER.read_text(encoding="utf-8")
+        self.assertIn('GetProcAddress(payload, "MechDogPanelInitialize")', loader)
+        self.assertIn("mechdog_panel::panel_exports", loader)
+
+    def test_the_payload_exports_the_panel_generation(self):
+        text = self.PAYLOAD.read_text(encoding="utf-8")
+        self.assertIn("__declspec(dllexport) int MechDogPanelInitialize(", text)
+        for symbol in (
+            "MechDogPanelPrepare",
+            "MechDogPanelFinalize",
+            "MechDogPanelEvent",
+            "MechDogPanelState",
+            "MechDogPanelRelease",
+        ):
+            self.assertIn(f"PRO_TK_DLL_EXPORT ProError {symbol}(", text)
+
+    def test_the_selection_callback_dispatches_to_the_panel_collector(self):
+        text = self.PAYLOAD.read_text(encoding="utf-8")
+        self.assertIn("if (panel_run)", text)
+        self.assertIn("return select_panel_section();", text)
+        self.assertIn("PRO_SELECT_OVERRIDE : PRO_SELECT_TOGGLE", text)
+        # A spent ticket must not be reused: the collector checks exhaustion first.
+        self.assertIn("PANEL_SELECTION_EXHAUSTED", text)
+        self.assertIn("panel_state.abandon(", text)
+
+    def test_the_done_call_site_verifies_the_command_before_loading_a_macro(self):
+        text = self.PAYLOAD.read_text(encoding="utf-8")
+        self.assertIn("command_id_find", text)
+        self.assertIn("macro_load", text)
+        self.assertIn("PANEL_DONE_MACRO_MISSING", text)
+        # The macro comes from the request; no command name is hard-coded here.
+        self.assertNotIn("ProCmdBracketBlend", text)
+
+    def test_the_payload_publishes_the_wait_marker_the_watchdog_reads(self):
+        text = self.PAYLOAD.read_text(encoding="utf-8")
+        self.assertIn("panel_wait.json", text)
+        self.assertIn("write_marker_atomic", text)
+        for field in ('"job_id"', '"nonce"', '"profile_id"', '"seq"', '"phase"', '"at_epoch_ms"'):
+            self.assertIn(field, text)
+        for phase in ("panel_select_wait", "panel_done_wait", "panel_close_wait"):
+            self.assertIn(phase, text)
+
+
 class MarkerContract(unittest.TestCase):
     def test_marker_rules_reject_foreign_and_untyped_progress(self):
         text = PANEL_PROTOCOL.read_text(encoding="utf-8")

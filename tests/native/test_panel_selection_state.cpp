@@ -246,6 +246,34 @@ void test_quit_yes_is_a_terminal_event() {
     expect(state.closed(), "a Quit/yes chain also closes the run");
 }
 
+void test_exhaustion_and_abandon() {
+    panel::PanelSelectionState state = prepared();
+    expect(!state.exhausted(), "a fresh run still has positions to select");
+    const std::vector<panel::PanelTicket> tickets = state.tickets();
+    state.record(tickets[0]);
+    state.record(tickets[1]);
+    expect(!state.exhausted(), "the last position is still outstanding");
+    state.record(tickets[2]);
+    expect(state.exhausted(), "every position was consumed once");
+
+    // The collector refuses to inject anything else: there is no ticket left.
+    expect(state.selected() == 3, "the run reports three consumed positions");
+
+    panel::PanelSelectionState failing = prepared();
+    failing.record(failing.tickets()[0]);
+    expect_code(failing.abandon("PANEL_SELECTION_FAILED"), "PANEL_SELECTION_FAILED",
+                "a native failure is recorded as the run's verdict");
+    expect(failing.stage() == panel::PanelStage::Locked,
+           "an abandoned run cannot continue selecting");
+    expect_code(failing.abandon("PANEL_SELECTION_FAILED"), "PANEL_SELECTION_FAILED",
+                "the first abandon code is kept");
+
+    panel::PanelSelectionState idle;
+    expect_code(idle.abandon("PANEL_SELECTION_FAILED"), "PANEL_STATE_NOT_PREPARED",
+                "there is nothing to abandon before a run starts");
+    expect(idle.stage() == panel::PanelStage::Idle, "the idle state is unchanged");
+}
+
 void test_contract_states() {
     expect(panel::protocol == 4, "this build speaks protocol 4");
     expect(panel::loader_abi == 2, "this build loads ABI 2 payloads");
@@ -305,6 +333,7 @@ int main() {
     test_each_disorder_locks_the_run();
     test_release_rules();
     test_quit_yes_is_a_terminal_event();
+    test_exhaustion_and_abandon();
     test_contract_states();
     test_markers();
     if (failures) {

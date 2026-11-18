@@ -124,15 +124,23 @@ extern "C" __declspec(dllexport) int user_initialize(int argc, char **argv, char
         if (!payload)
             throw std::runtime_error("Cannot load callback payload");
         auto initialize = (Initialize)GetProcAddress(payload, "MechDogBlendInitialize");
-        auto initialize2 = (Initialize2)GetProcAddress(payload, "MechDogBlendInitialize");
+        // The panel generation has its own entry point: an ABI2 payload is never
+        // initialized through the blend entry.
+        auto initialize2 = (Initialize2)GetProcAddress(payload, "MechDogPanelInitialize");
         terminate_payload = (Terminate)GetProcAddress(payload, "user_terminate");
         prepare_payload = (ProTkdllFunction)GetProcAddress(payload, "MechDogBlendPrepare");
         release_payload = (ProTkdllFunction)GetProcAddress(payload, "MechDogBlendRelease");
         identity_payload = (ProTkdllFunction)GetProcAddress(payload, "MechDogBlendIdentity");
+        bool panel_exports_present = true;
+        if (panel_generation)
+            for (const char *name : mechdog_panel::panel_exports)
+                if (!GetProcAddress(payload, name))
+                    panel_exports_present = false;
         // Compare before combining: the two signatures are deliberately different
         // types, so they are never put in one conditional expression.
-        const bool initialized_export = panel_generation ? initialize2 != nullptr
-                                                         : initialize != nullptr;
+        const bool initialized_export =
+            panel_generation ? (initialize2 != nullptr && panel_exports_present)
+                             : initialize != nullptr;
         if (!initialized_export || !terminate_payload || !prepare_payload || !release_payload ||
             !identity_payload)
             throw std::runtime_error("Callback loader ABI exports missing");

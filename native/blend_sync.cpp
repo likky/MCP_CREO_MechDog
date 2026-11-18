@@ -12,9 +12,14 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include <chrono>
 #include "third_party/json.hpp"
 #include "callback_identity.h"
 #include "callback_api.h"
+// BUG-120/D3: the panel generation. Both headers are SDK-free rules; this file
+// supplies the SDK side.
+#include "panel_protocol.h"
+#include "panel_selection_state.h"
 static const MechDogCallbackApi *host = nullptr;
 using Json = nlohmann::json;
 static std::wstring directory, expected_model;
@@ -67,6 +72,541 @@ static std::string to_utf8(const std::wstring &value) {
     return result;
 }
 
+// ---------------------------------------------------------------------------
+// BUG-120/D3+D4: the resident panel route.
+//
+// The blend path above selects curve ids and always records OVERRIDE. The panel path
+// needs three things that path never had: a one-shot ticket per position (a replayed
+// macro must not select a position twice), OVERRIDE for the first position and
+// TOGGLE for the rest (the dialog's own semantics), and a Done that is only queued
+// once every position was consumed.
+//
+// The rules live in panel_selection_state.h. This file supplies only what the rules
+// cannot know: the resolved curve ids, the SDK results, and the ABI2 table. A queued
+// Done is *not* a closed panel; the end sequence is reported by the native observer
+// through MechDogPanelEvent, and the wait marker below is derived from this run's
+// own state, never from a caller's claim.
+static const MechDogCallbackApi2 *host2 = nullptr;
+static MechDogCallbackApi panel_host;
+static mechdog_panel::PanelSelectionState panel_state;
+static bool panel_run = false;
+static std::string panel_request_id, panel_job_id, panel_nonce, panel_profile_id, panel_model_id;
+static std::string panel_done_macro, panel_done_command;
+static Json panel_block = Json::object();
+static long long panel_marker_seq = 0;
+
+// Defined below, used by the panel entry point which registers the same command
+// action as the blend entry.
+static uiCmdAccessState access(uiCmdAccessMode);
+static int select_section(uiCmdCmdId, uiCmdValue *, void *);
+
+static void persist_panel() {
+    outcome["panel"] = panel_block;
+    if (!directory.empty())
+        persist();
+}
+
+//: ABI2 repeats the ABI1 members first (callback_api.h keeps that order), so the
+//: shared calls are copied once into a real ABI1 table instead of aliasing two
+//: struct types. The size check is what makes the copy safe.
+static bool panel_host_view(const MechDogCallbackApi2 *api) {
+    if (!api || api->abi != mechdog_panel::loader_abi ||
+        api->size != sizeof(MechDogCallbackApi2))
+        return false;
+    panel_host = {mechdog_callback::loader_abi,
+                  sizeof(MechDogCallbackApi),
+                  api->array_size,
+                  api->array_alloc,
+                  api->arguments_free,
+                  api->wstring_set,
+                  api->current_model,
+                  api->model_name,
+                  api->model_item,
+                  api->selection_alloc,
+                  api->selection_record,
+                  api->selection_free,
+                  api->command_add};
+    return true;
+}
+
+//: The wait phase this run is in, derived from the state machine. ``panel_ended`` is
+//: deliberately not a trusted phase: a finished or failed run must fall back to the
+//: ordinary stall contract instead of holding a phase window open.
+static const char *panel_phase() {
+    switch (panel_state.stage()) {
+    case mechdog_panel::PanelStage::Prepared:
+        return "panel_select_wait";
+    case mechdog_panel::PanelStage::DoneQueued:
+        return "panel_done_wait";
+    case mechdog_panel::PanelStage::AfterTerminal:
+        return "panel_close_wait";
+    default:
+        return "panel_ended";
+    }
+}
+
+//: Publish the wait marker the Python watchdog reads. Without the full identity the
+//: marker is not written at all: a partial marker is ignored by the watcher, and
+//: writing one anyway would only look like progress that never happened.
+static void write_wait_marker() {
+    if (!panel_run || directory.empty() || panel_job_id.empty() || panel_nonce.empty() ||
+        panel_profile_id.empty())
+        return;
+    const auto epoch_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                              std::chrono::system_clock::now().time_since_epoch())
+                              .count();
+    Json marker = {{"job_id", panel_job_id}, {"nonce", panel_nonce},
+                   {"profile_id", panel_profile_id}, {"seq", ++panel_marker_seq},
+                   {"phase", panel_phase()},         {"at_epoch_ms", epoch_ms}};
+    std::string error;
+    const auto target = std::filesystem::path(directory) / L"panel_wait.json";
+    if (!mechdog_panel::write_marker_atomic(target, marker.dump(), error))
+        panel_block["marker_error"] = error;
+}
+
+//: The request file argument shared by every panel entry point: one wstring, inside
+//: this resource root's jobs directory, named callback_request.json.
+static ProError request_argument(ProArgument *inputs, std::wstring &path) {
+    int count = 0;
+    ProError code = host->array_size((ProArray)inputs, &count);
+    if (code || count != 1 || inputs[0].value.type != PRO_VALUE_TYPE_WSTRING ||
+        !inputs[0].value.v.w)
+        return PRO_TK_BAD_INPUTS;
+    auto file = std::filesystem::weakly_canonical(inputs[0].value.v.w);
+    auto jobs = std::filesystem::weakly_canonical(std::filesystem::path(resource_root) / L"jobs");
+    auto a = jobs.begin(), b = file.begin();
+    for (; a != jobs.end(); ++a, ++b)
+        if (b == file.end() || _wcsicmp(a->c_str(), b->c_str()))
+            return PRO_TK_BAD_INPUTS;
+    if (file.filename() != L"callback_request.json")
+        return PRO_TK_BAD_INPUTS;
+    path = file.wstring();
+    return PRO_TK_NO_ERROR;
+}
+
+static void configure_panel_request(const Json &request) {
+    std::string name = request.at("model_name");
+    if (!safe_token(name) || name.size() > 31)
+        throw std::runtime_error("PANEL_REQUEST_MODEL");
+    const Json &sections = request.at("sections");
+    if (!sections.is_array())
+        throw std::runtime_error("PANEL_SECTION_COUNT_OUT_OF_RANGE");
+    std::vector<int> ids;
+    std::vector<int> slots;
+    for (size_t index = 0; index < sections.size(); ++index) {
+        const Json &section = sections.at(index);
+        const int curve = section.at("curve_id").get<int>();
+        if (curve < 0)
+            throw std::runtime_error("PANEL_CURVE_INVALID");
+        ids.push_back(curve);
+        slots.push_back((int)index);
+    }
+    if (ids.size() < 2 || ids.size() > 8)
+        throw std::runtime_error("PANEL_SECTION_COUNT_OUT_OF_RANGE");
+    panel_request_id = request.at("request_id").get<std::string>();
+    panel_job_id = request.at("job_id").get<std::string>();
+    panel_nonce = request.at("nonce").get<std::string>();
+    panel_model_id = request.at("model_id").get<std::string>();
+    panel_profile_id = request.at("profile_id").get<std::string>();
+    // The Done is supplied by the caller: this build has no verified macro text, and
+    // inventing a command name would be a guess dressed as SDK knowledge.
+    panel_done_macro = request.value("done_macro", "");
+    panel_done_command = request.value("done_command", "");
+    if (!panel_done_macro.empty() || !panel_done_command.empty()) {
+        if (!safe_token(panel_done_command) || panel_done_command.size() > 64)
+            throw std::runtime_error("PANEL_DONE_COMMAND_INVALID");
+        if (panel_done_macro.size() > 512 ||
+            panel_done_macro.find('\n') != std::string::npos ||
+            panel_done_macro.rfind("~ ", 0) != 0)
+            throw std::runtime_error("PANEL_DONE_MACRO_INVALID");
+    }
+    expected_model.assign(name.begin(), name.end());
+    curve_ids = ids;
+    section_index = 0;
+    const auto verdict = panel_state.prepare(panel_request_id, panel_job_id, panel_nonce, name,
+                                             panel_model_id, slots, true);
+    if (!verdict.ok)
+        throw std::runtime_error(verdict.code);
+}
+
+//: Queue the restricted Done. ``queue_code`` is the real Toolkit result; the state
+//: machine decides whether that counts as committed.
+static ProError queue_restricted_done(int &queue_code) {
+    queue_code = PRO_TK_GENERAL_ERROR;
+    if (!host2)
+        return PRO_TK_BAD_CONTEXT;
+    if (panel_done_macro.empty() || panel_done_command.empty())
+        return PRO_TK_BAD_INPUTS;
+    uiCmdCmdId found_id = 0;
+    const ProError found = host2->command_id_find(panel_done_command.data(), &found_id);
+    panel_block["done_command_found"] = found == PRO_TK_NO_ERROR;
+    panel_block["done_command"] = panel_done_command;
+    if (found)
+        return found;
+    std::wstring macro = from_utf8(panel_done_macro);
+    queue_code = (int)host2->macro_load(macro.data());
+    return queue_code ? (ProError)queue_code : PRO_TK_NO_ERROR;
+}
+
+static int select_panel_section() {
+    ProSelection selected = nullptr;
+    try {
+        if (!panel_run || panel_state.stage() != mechdog_panel::PanelStage::Prepared) {
+            panel_block["code"] = "PANEL_STATE_NOT_PREPARED";
+            persist_panel();
+            return 0;
+        }
+        if (panel_state.exhausted()) {
+            // Every position already has its selection. Injecting again would toggle
+            // one of them back out.
+            panel_block["code"] = "PANEL_SELECTION_EXHAUSTED";
+            persist_panel();
+            return 0;
+        }
+        const std::vector<mechdog_panel::PanelTicket> tickets = panel_state.tickets();
+        const mechdog_panel::PanelTicket ticket = tickets[(size_t)panel_state.selected()];
+        const mechdog_panel::PanelVerdict verdict = panel_state.record(ticket);
+        if (!verdict.ok) {
+            panel_block["code"] = verdict.code;
+            panel_block["stage"] = mechdog_panel::panel_stage_name(panel_state.stage());
+            persist_panel();
+            return 0;
+        }
+        const bool override = verdict.action == mechdog_panel::PanelSelectionAction::Override;
+        panel_block["action"] = override ? "override" : "toggle";
+        panel_block["slot"] = ticket.slot;
+
+        ProMdl model = nullptr;
+        ProMdlName name = L"";
+        ProError code = host->current_model(&model);
+        if (!code)
+            code = host->model_name(model, name);
+        if (!code && _wcsicmp(name, expected_model.c_str()))
+            code = PRO_TK_BAD_CONTEXT;
+        ProModelitem item;
+        if (!code)
+            code = host->model_item(model, curve_ids[(size_t)ticket.slot], PRO_CURVE, &item);
+        if (!code)
+            code = host->selection_alloc(nullptr, &item, &selected);
+        if (!code)
+            code = host->selection_record(selected,
+                                          override ? PRO_SELECT_OVERRIDE : PRO_SELECT_TOGGLE);
+        if (selected) {
+            host->selection_free(&selected);
+            selected = nullptr;
+        }
+        outcome["codes"].push_back(code);
+        outcome["selected"] = panel_state.selected();
+        if (code) {
+            // The ticket is spent and the dialog now holds an unknown selection:
+            // abort the run instead of continuing misaligned.
+            panel_state.abandon("PANEL_SELECTION_FAILED");
+            panel_block["code"] = "PANEL_SELECTION_FAILED";
+            panel_block["sdk_code"] = code;
+        }
+        panel_block["stage"] = mechdog_panel::panel_stage_name(panel_state.stage());
+        write_wait_marker();
+        persist_panel();
+    } catch (...) {
+        if (selected)
+            host->selection_free(&selected);
+        try {
+            panel_state.abandon("PANEL_SELECTION_EXCEPTION");
+            panel_block["code"] = "PANEL_SELECTION_EXCEPTION";
+            panel_block["stage"] = mechdog_panel::panel_stage_name(panel_state.stage());
+            persist_panel();
+        } catch (...) {
+        }
+    }
+    return 0;
+}
+
+//: Prepare a panel run. ABI1 deployments cannot reach this: the panel generation is
+//: the ABI2 payload, and a protocol-4 request on the blend table is refused instead
+//: of being reinterpreted as curve ids.
+extern "C" PRO_TK_DLL_EXPORT ProError MechDogPanelPrepare(ProArgument *inputs,
+                                                          ProArgument **outputs) {
+    if (outputs)
+        *outputs = nullptr;
+    if (!resident || active || !inputs || !host2)
+        return PRO_TK_BAD_CONTEXT;
+    try {
+        std::wstring path;
+        ProError code = request_argument(inputs, path);
+        if (code)
+            return code;
+        std::ifstream input(path, std::ios::binary);
+        Json request;
+        input >> request;
+        if (request.value("protocol", 0) != mechdog_panel::protocol ||
+            request.value("contract", "") != mechdog_panel::contract)
+            return PRO_TK_BAD_INPUTS;
+        configure_panel_request(request);
+        ProMdl model = nullptr;
+        ProMdlName name = L"";
+        code = host->current_model(&model);
+        if (!code)
+            code = host->model_name(model, name);
+        if (code || _wcsicmp(name, expected_model.c_str()))
+            return code ? code : PRO_TK_BAD_CONTEXT;
+        directory = std::filesystem::path(path).parent_path().wstring();
+        current_request = path;
+        panel_run = true;
+        outcome = {{"protocol", mechdog_panel::protocol},
+                   {"contract", mechdog_panel::contract},
+                   {"creation_route", "resident_panel"},
+                   {"selected", 0},
+                   {"codes", Json::array()},
+                   {"command", resident_command},
+                   {"prepared", true}};
+        panel_block = {{"stage", mechdog_panel::panel_stage_name(panel_state.stage())},
+                       {"slots", (int)panel_state.tickets().size()}};
+        write_wait_marker();
+        persist_panel();
+        active = true;
+        return PRO_TK_NO_ERROR;
+    } catch (const std::exception &exc) {
+        panel_block["code"] = exc.what();
+        try {
+            persist_panel();
+        } catch (...) {
+        }
+        return PRO_TK_BAD_INPUTS;
+    } catch (...) {
+        return PRO_TK_BAD_INPUTS;
+    }
+}
+
+//: Queue the restricted Done and let the state machine decide whether it committed.
+extern "C" PRO_TK_DLL_EXPORT ProError MechDogPanelFinalize(ProArgument *inputs,
+                                                           ProArgument **outputs) {
+    if (outputs)
+        *outputs = nullptr;
+    if (!resident || !panel_run || !inputs)
+        return PRO_TK_BAD_CONTEXT;
+    try {
+        std::wstring path;
+        ProError code = request_argument(inputs, path);
+        if (code)
+            return code;
+        if (panel_done_macro.empty() || panel_done_command.empty()) {
+            // Nothing was attempted, so the run stays selectable: D6 supplies the
+            // verified macro after checking it in the target session.
+            panel_block["code"] = "PANEL_DONE_MACRO_MISSING";
+            persist_panel();
+            return PRO_TK_BAD_INPUTS;
+        }
+        int queue_code = PRO_TK_GENERAL_ERROR;
+        const ProError queued = queue_restricted_done(queue_code);
+        const mechdog_panel::PanelVerdict verdict = panel_state.finalize((int)queue_code);
+        panel_block["done_queued"] = verdict.ok;
+        panel_block["queue_code"] = (int)queue_code;
+        if (!verdict.ok)
+            panel_block["code"] = verdict.code;
+        panel_block["stage"] = mechdog_panel::panel_stage_name(panel_state.stage());
+        write_wait_marker();
+        persist_panel();
+        if (verdict.ok)
+            return PRO_TK_NO_ERROR;
+        return queued ? queued : PRO_TK_BAD_INPUTS;
+    } catch (...) {
+        return PRO_TK_GENERAL_ERROR;
+    }
+}
+
+//: Record one native end-of-run event. The caller names the event; the state machine
+//: decides whether that order is admissible, and the marker phase is derived here,
+//: not taken from the claim.
+extern "C" PRO_TK_DLL_EXPORT ProError MechDogPanelEvent(ProArgument *inputs,
+                                                        ProArgument **outputs) {
+    if (outputs)
+        *outputs = nullptr;
+    if (!resident || !panel_run || !inputs)
+        return PRO_TK_BAD_CONTEXT;
+    try {
+        int count = 0;
+        ProError code = host->array_size((ProArray)inputs, &count);
+        if (code || count != 1 || inputs[0].value.type != PRO_VALUE_TYPE_WSTRING ||
+            !inputs[0].value.v.w)
+            return PRO_TK_BAD_INPUTS;
+        Json event;
+        {
+            std::string text = to_utf8(inputs[0].value.v.w);
+            event = Json::parse(text, nullptr, false);
+            if (event.is_discarded() || !event.is_object())
+                return PRO_TK_BAD_INPUTS;
+        }
+        mechdog_panel::PanelEvent record;
+        record.kind = event.at("kind").get<std::string>();
+        record.event_seq = event.at("event_seq").get<int>();
+        record.job_id = event.value("job_id", panel_job_id);
+        record.nonce = event.value("nonce", panel_nonce);
+        const mechdog_panel::PanelVerdict verdict = panel_state.observe(record);
+        panel_block["event"] = record.kind;
+        panel_block["event_seq"] = record.event_seq;
+        panel_block["stage"] = mechdog_panel::panel_stage_name(panel_state.stage());
+        panel_block["closed"] = panel_state.closed();
+        if (!verdict.ok)
+            panel_block["code"] = verdict.code;
+        write_wait_marker();
+        persist_panel();
+        return verdict.ok ? PRO_TK_NO_ERROR : PRO_TK_BAD_CONTEXT;
+    } catch (...) {
+        return PRO_TK_GENERAL_ERROR;
+    }
+}
+
+//: The run's own state, for the worker and the target-machine checks. Returns a
+//: JSON wstring; no Toolkit state is invented here.
+extern "C" PRO_TK_DLL_EXPORT ProError MechDogPanelState(ProArgument *inputs,
+                                                         ProArgument **outputs) {
+    if (!outputs)
+        return PRO_TK_BAD_INPUTS;
+    *outputs = nullptr;
+    if (!resident || !host)
+        return PRO_TK_BAD_CONTEXT;
+    try {
+        std::wstring path;
+        ProError code = request_argument(inputs, path);
+        if (code)
+            return code;
+        Json state = {{"stage", mechdog_panel::panel_stage_name(panel_state.stage())},
+                      {"selected", panel_state.selected()},
+                      {"slots", (int)panel_state.tickets().size()},
+                      {"closed", panel_state.closed()},
+                      {"exhausted", panel_state.exhausted()},
+                      {"failure_code", panel_state.failure_code()},
+                      {"last_event_seq", panel_state.last_event_seq()}};
+        code = host->array_alloc(1, sizeof(ProArgument), 1, (ProArray *)outputs);
+        if (code)
+            return code;
+        (*outputs)[0] = {};
+        wcscpy_s((*outputs)[0].label, L"panel");
+        (*outputs)[0].value.type = PRO_VALUE_TYPE_WSTRING;
+        auto value = from_utf8(state.dump());
+        code = host->wstring_set(&(*outputs)[0].value, value.data());
+        if (code)
+            host->arguments_free(outputs);
+        return code;
+    } catch (...) {
+        if (*outputs)
+            host->arguments_free(outputs);
+        return PRO_TK_GENERAL_ERROR;
+    }
+}
+
+//: Release the run after it ended. A run that is still open, or one that failed,
+//: refuses: releasing it here would forget a panel that may be open.
+extern "C" PRO_TK_DLL_EXPORT ProError MechDogPanelRelease(ProArgument *inputs,
+                                                          ProArgument **outputs) {
+    if (outputs)
+        *outputs = nullptr;
+    if (!resident || !panel_run || !inputs)
+        return PRO_TK_BAD_CONTEXT;
+    try {
+        std::wstring path;
+        ProError code = request_argument(inputs, path);
+        if (code)
+            return code;
+        if (path != current_request)
+            return PRO_TK_BAD_INPUTS;
+        const mechdog_panel::PanelVerdict verdict = panel_state.release();
+        panel_block["released"] = verdict.ok;
+        panel_block["stage"] = mechdog_panel::panel_stage_name(panel_state.stage());
+        if (!verdict.ok)
+            panel_block["code"] = verdict.code;
+        persist_panel();
+        if (!verdict.ok)
+            return PRO_TK_BAD_CONTEXT;
+        outcome["released"] = true;
+        persist_panel();
+        active = false;
+        panel_run = false;
+        curve_ids.clear();
+        return PRO_TK_NO_ERROR;
+    } catch (...) {
+        return PRO_TK_BAD_INPUTS;
+    }
+}
+
+//: The ABI2 entry point. Separate from MechDogBlendInitialize on purpose: an ABI1
+//: deployment keeps using the blend entry with the blend rules, and a panel
+//: deployment cannot reach the blend one by mistake.
+extern "C" __declspec(dllexport) int MechDogPanelInitialize(int, char **, char *, char *,
+                                                            wchar_t errmsg[80],
+                                                            const wchar_t *application_id,
+                                                            const wchar_t *loader_file,
+                                                            const MechDogCallbackApi2 *api) {
+    try {
+        if (!panel_host_view(api))
+            return PRO_TK_BAD_INPUTS;
+        host2 = api;
+        host = &panel_host;
+        wchar_t filename[MAX_PATH];
+        HMODULE module = nullptr;
+        if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                    GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                (LPCWSTR)&MechDogPanelInitialize, &module) ||
+            !GetModuleFileNameW(module, filename, MAX_PATH))
+            return PRO_TK_GENERAL_ERROR;
+        directory = filename;
+        directory = directory.substr(0, directory.find_last_of(L"\\"));
+        module_directory = directory;
+        resident = true;
+        std::ifstream input(directory + L"\\callback_bootstrap.json");
+        Json request;
+        input >> request;
+        std::string command = request.at("command");
+        if (!safe_token(command))
+            return PRO_TK_BAD_INPUTS;
+        auto actual_root = std::filesystem::path(filename)
+                               .parent_path()
+                               .parent_path()
+                               .parent_path()
+                               .parent_path();
+        if (request.value("protocol", 0) != mechdog_panel::protocol ||
+            request.value("contract", "") != mechdog_panel::contract ||
+            _wcsicmp(actual_root.c_str(), from_utf8(request.at("resource_root")).c_str()) ||
+            request.value("dll_sha256", "") != mechdog_callback::sha256(filename) ||
+            !application_id || !*application_id || !loader_file || !*loader_file)
+            return PRO_TK_BAD_INPUTS;
+        resource_root = from_utf8(request.at("resource_root"));
+        resident_command = command;
+        outcome["protocol"] = mechdog_panel::protocol;
+        outcome["contract"] = mechdog_panel::contract;
+        outcome["terminated"] = false;
+        outcome["command"] = command;
+        outcome["resource_root"] = request.at("resource_root");
+        outcome["module_file"] = std::filesystem::path(filename).u8string();
+        outcome["dll_sha256"] = request.at("dll_sha256");
+        outcome["loader_file"] = std::filesystem::path(loader_file).u8string();
+        outcome["loader_sha256"] = mechdog_callback::sha256(loader_file);
+        outcome["loader_abi"] = mechdog_panel::loader_abi;
+        outcome["process_id"] = GetCurrentProcessId();
+        identity_file = std::filesystem::path(loader_file).parent_path() / L"callback_result.json";
+        persist();
+        ProError identified =
+            application_id && *application_id ? PRO_TK_NO_ERROR : PRO_TK_BAD_INPUTS;
+        outcome["application_id_code"] = identified;
+        if (!identified)
+            outcome["application_id"] = to_utf8(std::wstring(application_id));
+        persist();
+        if (identified)
+            return identified;
+        uiCmdCmdId action;
+        ProError code = host->command_add(command.data(), select_section, uiProeAsynch, access,
+                                          PRO_B_FALSE, PRO_B_FALSE, &action);
+        outcome["initialize_code"] = code;
+        persist();
+        resident_identity = outcome;
+        persist_identity();
+        return code;
+    } catch (...) {
+        wcscpy_s(errmsg, 80, L"Invalid MechDog panel callback request");
+        return PRO_TK_BAD_INPUTS;
+    }
+}
+
 // Required by the Toolkit DLL link support, but payloads are never registered directly.
 extern "C" __declspec(dllexport) int user_initialize(int, char **, char *, char *,
                                                      wchar_t errmsg[80]) {
@@ -115,6 +655,10 @@ extern "C" PRO_TK_DLL_EXPORT ProError MechDogBlendPrepare(ProArgument *inputs,
         std::ifstream input(file, std::ios::binary);
         Json request;
         input >> request;
+        if (request.value("protocol", 0) == mechdog_panel::protocol)
+            // A panel request needs the ABI2 table. Refusing here keeps a protocol-4
+            // request from being parsed as curve ids by the blend rules.
+            return PRO_TK_BAD_CONTEXT;
         if (request.value("protocol", 0) != mechdog_callback::protocol)
             return PRO_TK_BAD_INPUTS;
         configure_request(request);
@@ -168,6 +712,8 @@ static uiCmdAccessState access(uiCmdAccessMode) {
 static int select_section(uiCmdCmdId, uiCmdValue *, void *) {
     if (!resident || !active || resident_identity.value("terminated", true))
         return 0;
+    if (panel_run)
+        return select_panel_section();
     ProSelection selected = nullptr;
     try {
         ProMdl model = nullptr;
