@@ -109,7 +109,7 @@ py -3.12 -m venv .venv
 
 ```json
 {
-    "creo_root":  "C:\\Program Files\\PTC\\Creo 10.0.0.0",
+    "creo_root":  "D:\\Program Files\\PTC\\Creo 10.0.0.0",
     "vcvars64":  "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat",
     "native_timeout_seconds":  180,
     "generic_timeout_seconds":  600,
@@ -117,6 +117,10 @@ py -3.12 -m venv .venv
     "auto_start_creo":  false
 }
 ```
+
+> 这台 Creo 10 机器已确认装在 **D 盘**：`D:\Program Files\PTC\Creo 10.0.0.0`，
+> SDK 头文件在 `D:\Program Files\PTC\Creo 10.0.0.0\Common Files\protoolkit\includes`。
+> `vcvars64` 仍按第 0 步实际查到的路径填（那多半在 C 盘）。
 
 - `creo_root`：第 0 步查到的 **Creo 10** 目录
 - `vcvars64`：第 0 步查到的 `vcvars64.bat` 完整路径

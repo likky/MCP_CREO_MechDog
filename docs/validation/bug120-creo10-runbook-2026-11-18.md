@@ -36,9 +36,12 @@
 ## A 段：编译对照（不需要 Creo、不需要 profile）
 
 ```powershell
-.\.venv\Scripts\python.exe tools\check_creo10_compile.py --sdk "C:\Program Files\PTC\Creo 10.0.0.0" --full
+.\.venv\Scripts\python.exe tools\check_creo10_compile.py --sdk "D:\Program Files\PTC\Creo 10.0.0.0" --full
 .\.venv\Scripts\python.exe tools\panel_target_check.py all
 ```
+
+（这台机器 Creo 10 装在 D 盘；`--sdk` 也可以直接给
+`"D:\Program Files\PTC\Creo 10.0.0.0\Common Files\protoolkit"`，脚本两种都认。）
 
 产出：`build/creo10_check/report.json` + `build/panel_target_check` 会生成
 `build/panel_target_evidence/<时间戳>/`（含 `manifest.json` 与 sha256）。
