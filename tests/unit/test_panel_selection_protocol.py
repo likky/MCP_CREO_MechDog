@@ -441,6 +441,21 @@ class ExitObservationBracket(unittest.TestCase):
         self.assertIn('bracket.value("at_epoch_ms", 0LL) >= selected_at', text)
         self.assertIn('state.value("selected_at_ms", 0LL)', text)
 
+    def test_the_bracket_releases_the_run_it_closes(self):
+        # A released run is what lets the next request pass the busy preflight: the
+        # probe only reads the live identity, so a payload that keeps active=true
+        # after the dialog closed refuses every later panel job as callback_busy.
+        text = self.SYNC.read_text(encoding="utf-8")
+        body = text[text.index("static int panel_exit_bracket(") :]
+        body = body[: body.index("static void write_wait_marker(")]
+        self.assertIn("release_observed_close(panel_nonce)", body)
+        self.assertIn("active = false;", body)
+        self.assertIn("panel_run = false;", body)
+        # The same bracket wraps the open command, so only a close after this run's
+        # own last selection may release it.
+        self.assertIn('panel_block.value("selected_at_ms", 0LL)', body)
+        self.assertIn("epoch_ms >= selected_at", body)
+
 
 if __name__ == "__main__":
     unittest.main()

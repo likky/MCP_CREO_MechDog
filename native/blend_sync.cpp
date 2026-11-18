@@ -173,8 +173,26 @@ static int panel_exit_bracket(uiCmdCmdId command, uiCmdValue *value, int enterin
                     std::filesystem::path(directory) / L"panel_exit.json", event.dump(), error))
                 panel_block["exit_bracket_error"] = error;
             if (!entering) {
-                panel_bracket_closed = true;
-                panel_block["command_finished"] = true;
+                // The same bracket runs around the open command too, so only a close
+                // that happened after this run's last selection can end it.
+                const long long selected_at = panel_block.value("selected_at_ms", 0LL);
+                if (selected_at > 0 && epoch_ms >= selected_at) {
+                    panel_bracket_closed = true;
+                    panel_block["command_finished"] = true;
+                    // The dialog is gone, so the run is finished: release it here, on
+                    // Creo's UI thread. The next request's preflight only reads the
+                    // live identity, and a stale active request would refuse every
+                    // later panel job as busy (`callback_busy`).
+                    const mechdog_panel::PanelVerdict released =
+                        panel_state.release_observed_close(panel_nonce);
+                    if (released.ok) {
+                        active = false;
+                        panel_run = false;
+                        panel_bracket_closed = false;
+                    } else {
+                        panel_block["release_code"] = released.code;
+                    }
+                }
                 persist_panel();
             }
         }

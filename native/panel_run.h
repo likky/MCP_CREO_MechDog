@@ -353,6 +353,23 @@ inline void generic_surface_loft_panel(const J &op) {
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
         selected = panel_selected(read_panel_state());
     }
+    // The Done command's after-execution bracket is written when its dialog finally
+    // closes, which can be a few hundred milliseconds after the last ticket. Wait for
+    // that event with a bounded file poll; no Toolkit task is sent.
+    if (selected >= static_cast<int>(sections.size())) {
+        const auto exit_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        while (std::chrono::steady_clock::now() < exit_deadline) {
+            const J state = read_panel_state();
+            const long long selected_at =
+                state.is_object() ? state.value("selected_at_ms", 0LL) : 0LL;
+            const J event = read_bracket_exit();
+            if (event.is_object() && event.value("entering", 1) == 0 &&
+                event.value("nonce", "") == nonce && selected_at > 0 &&
+                event.value("at_epoch_ms", 0LL) >= selected_at)
+                break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        }
+    }
     stage_panel(selected);
     if (selected != static_cast<int>(sections.size()))
         throw std::runtime_error(
