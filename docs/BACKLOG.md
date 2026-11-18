@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-18（BUG-120 T1 通过 + 面板部署生成）：Creo 10 SDK 头文件已拷入本机，`tools/check_creo10_compile.py --sdk build\creo10_sdk --full` **通过**：4 个编译单元（api_probe/blend_sync/blend_loader/worker）全部 exit 0，20 个必需函数与 6 个枚举在 Creo 10 中全在；证据归档`docs/validation/bug120-creo10-sdk-2026-11-18/`。另补面板部署生成：`prepare_callback(generation="panel")` 写 `loader_abi=2`/协议4/panel contract，切代需显式`allow_generation_switch`，Blend 部署形状不变；面板后端仍未实现，故该部署只待 D6 装载。3982 单测通过。T1 只证明编译兼容，不证明对话框/枚举/退出时序。
+
 2026-11-18（BUG-120 D3 接线）：[BUG-120](work-items/BUG-120.md)把面板状态机接进`blend_sync.cpp`：`select_section`按`panel_run`分派、首位OVERRIDE后续TOGGLE、票据用尽即`PANEL_SELECTION_EXHAUSTED`、SDK失败`abandon`；新增`MechDogPanelInitialize/Prepare/Finalize/Event/State/Release`导出与`panel_exports`校验（面板代只找`MechDogPanelInitialize`，ABI1仍走原入口，协议4请求到Blend入口被明确拒绝）；Done用`ProCmdCmdIdFind`+`ProMacroLoad`执行请求提供的受限宏（不硬编码命令名，缺宏则保持可选）；`panel_wait.json`有了原生生产者（字段与`read_marker()`一致、phase由状态推导、原子写）。`bridge.py build`通过并重编payload，3978单测通过。真实对话框的TOGGLE语义、回调次数、Done宏能否关闭、面板部署生成仍待D6。
 
 2026-11-18（BUG-120 D3 协议4/ABI2）：[BUG-120](work-items/BUG-120.md)新增`panel_protocol.h`（协议4/ABI2、3/1混用拒绝、marker只认本job+nonce+已知类型+递增序号、原子写）与`panel_selection_state.h`（一位置一票据、首位OVERRIDE后续TOGGLE各一次、重复/旧票/错nonce/错模型/跳序不推进、Done仅全选后排队且返回非0不算committed、`Done或Quit/yes→AfterTerminal→OuterDrain`严格递增、反序即锁死unknown、release不可复位）。`MechDogCallbackApi2`在ABI1前缀后追加macro_load/命令查询/bracket/曲线查询，loader同时支持ABI1与ABI2并拒绝混用。`bridge.py build`通过（含loader与payload），`tools/test_panel_selection_state.py`与3973单测通过。loader二进制已变：目标机需重新注册loader，ABI1载荷行为不变。collector接线、SDK侧finalize与实机时序仍待D6。
