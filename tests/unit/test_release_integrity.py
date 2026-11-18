@@ -184,7 +184,7 @@ class SeedArchiveValidationTests(SeedArchiveFixture):
         record.write_text(json.dumps({"profile_digest": "0" * 64}), encoding="utf-8")
         commands = {
             "open_macro": "~ Command `ProCmdFtBndBlend`;",
-            "select_command": panel_profiles.SELECT_PLACEHOLDER,
+            "select_command": "~ Command `" + panel_profiles.SELECT_PLACEHOLDER + "`;",
             "done_macro": "~ Activate `main_dlg_cur` `dashInst0.Done`;",
             "done_command": "ProCmdFtBndBlend",
         }
@@ -504,7 +504,7 @@ class PanelLibraryFixture(unittest.TestCase):
     # resident command by placeholder because it is created at run time.
     commands = {
         "open_macro": "~ Command `ProCmdFtBndBlend`;",
-        "select_command": panel_profiles.SELECT_PLACEHOLDER,
+        "select_command": "~ Command `" + panel_profiles.SELECT_PLACEHOLDER + "`;",
         "done_macro": "~ Activate `main_dlg_cur` `dashInst0.Done`;",
         "done_command": "ProCmdFtBndBlend",
     }

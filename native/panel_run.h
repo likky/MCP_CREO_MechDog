@@ -173,6 +173,13 @@ inline void generic_surface_loft_panel(const J &op) {
             mechdog_panel::select_placeholder +
             "; a step that cannot name the resident command would degrade back into waiting for a "
             "human screen pick. The dialog was not opened.");
+    if (select_template.find("~ Command `") == std::string::npos)
+        // A bare placeholder substitutes to a bare command name, which the macro
+        // engine ignores: three Creo 10 attempts consumed zero positions that way.
+        throw std::runtime_error(
+            "PANEL_COMMAND_MISSING: select_command must be the whole macro line "
+            "~ Command `%MECHDOG_COMMAND%`;, not the bare placeholder; a command name without the "
+            "~ Command wrapper is not a macro step. The dialog was not opened.");
     {
         // T1-B proved that a resident action registered with ProCmdActionAdd is
         // invocable by a macro "~ Command" line, but only if the action exists under

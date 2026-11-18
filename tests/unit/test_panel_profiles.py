@@ -19,7 +19,7 @@ from creo_mechdog import panel_profiles
 #: by placeholder because that command is created at run time.
 COMMANDS = {
     "open_macro": "~ Command `ProCmdFtBndBlend`;\n~ FocusOut `bbl_12curves.1.0` `PH.Curves1DirTbl`;",
-    "select_command": panel_profiles.SELECT_PLACEHOLDER,
+    "select_command": "~ Command `" + panel_profiles.SELECT_PLACEHOLDER + "`;",
     "done_macro": "~ Activate `main_dlg_cur` `dashInst0.Done`;",
     "done_command": "ProCmdFtBndBlend",
 }

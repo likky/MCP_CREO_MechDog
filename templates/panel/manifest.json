@@ -1,6 +1,6 @@
 {
   "contract": "panel-profiles-v1",
-  "notes": "BUG-120/D1+D3: profiles freeze the recorded command text. status=candidate means the text was prepared from a real recording but never accepted on a target host; only the development driver (CREO_MECHDOG_PANEL_CANDIDATE) may use it. Recording originals are preserved under recordings/ and are never rewritten. select_command is the resident command named at runtime; the recorded @PAUSE_FOR_SCREEN_PICK steps are replaced by one invocation per position, because a pause waits for a human click. creo10-bbl-candidate-2 keeps only the T1-B-proven open line (no FocusOut): the recorded FocusOut ran in the T1-A replay only after the dialog existed, and both Creo 10 attempts with it consumed zero positions.",
+  "notes": "BUG-120/D1+D3: profiles freeze the recorded command text. status=candidate means the text was prepared from a real recording but never accepted on a target host; only the development driver (CREO_MECHDOG_PANEL_CANDIDATE) may use it. Recording originals are preserved under recordings/ and are never rewritten. select_command is the resident command named at runtime; the recorded @PAUSE_FOR_SCREEN_PICK steps are replaced by one invocation per position, because a pause waits for a human click. creo10-bbl-candidate-2 keeps only the T1-B-proven open line (no FocusOut): the recorded FocusOut ran in the T1-A replay only after the dialog existed, and both Creo 10 attempts with it consumed zero positions. select_command must be the whole '~ Command `%MECHDOG_COMMAND%`;' line: the bare placeholder substituted to a bare command name, which Creo 10's macro engine ignored.",
   "recordings": {
     "creo10-bbl-candidate-1": {
       "file": "recordings/creo10_blend_gui_t1a.pro",
@@ -21,11 +21,11 @@
       "creo_release": "Creo 10.0.0.0",
       "commands": {
         "open_macro": "~ Command `ProCmdFtBndBlend`;\n~ FocusOut `bbl_12curves.1.0` `PH.Curves1DirTbl`;",
-        "select_command": "%MECHDOG_COMMAND%",
+        "select_command": "~ Command `%MECHDOG_COMMAND%`;",
         "done_macro": "~ Activate `main_dlg_cur` `dashInst0.Done`;",
         "done_command": "ProCmdFtBndBlend"
       },
-      "digest": "8558d6b8b6bf351700da14d60d1d45b4afdb816e2f8884d9a4ec5efbbd6ec058",
+      "digest": "048a91d2bec521c57bcfcbb49314b7cfbe6d8b432801ac586b625b9294d847c0",
       "certification": null
     },
     {
@@ -35,11 +35,11 @@
       "creo_release": "Creo 10.0.0.0",
       "commands": {
         "open_macro": "~ Command `ProCmdFtBndBlend`;",
-        "select_command": "%MECHDOG_COMMAND%",
+        "select_command": "~ Command `%MECHDOG_COMMAND%`;",
         "done_macro": "~ Activate `main_dlg_cur` `dashInst0.Done`;",
         "done_command": "ProCmdFtBndBlend"
       },
-      "digest": "b8f0173c12bcaed8b414eba126fae02bd6a2d74eaee02d7d54043a4985a030ee",
+      "digest": "96d1ee7ed3cd835c11990938ea0c9895ab61fec3287b56d5ed5699c0992f0112",
       "certification": null
     }
   ]

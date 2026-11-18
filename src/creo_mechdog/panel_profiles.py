@@ -159,6 +159,14 @@ def _commands(raw: object, where: str) -> dict[str, str]:
             "command is named at runtime, and a selection step that cannot name it would reopen "
             "the recorded screen-pick pause"
         )
+    if "~ Command `" not in commands["select_command"]:
+        # A bare placeholder substitutes to a bare command name, which the macro
+        # engine ignores: three Creo 10 attempts consumed zero positions that way.
+        raise PanelProfileError(
+            f"{where}.commands['select_command'] must be the whole macro line "
+            "~ Command `%MECHDOG_COMMAND%`;, not the bare placeholder; a command name without "
+            "the ~ Command wrapper is not a macro step and silently does nothing"
+        )
     return commands
 
 
