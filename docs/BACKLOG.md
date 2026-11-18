@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-18（BUG-120 D2+首次原生编译）：[BUG-120](work-items/BUG-120.md)完成曲线引用解析：`panel_references.h` 承载无SDK规则（API失败、特征/owner归属、基准面反例、复合/闭合/开闭未证实、长度有效、2—8段、换模型/换会话拒绝），`panel_references_sdk.h` 用仓库已在用的 `ProFeatureInit`/`ProFeatureGeomitemVisit(PRO_CURVE)`/`ProCurveInit`/`ProCurveTypeGet`/`ProCurveLengthEval` 实现适配；`tools/test_panel_references.py` 离线编译运行通过。授权下执行首次 `bridge.py build` 成功，并修复 D1 遗留的 `worker.cpp` build-info JSON 多余 `}`（此前原生半部分从未编译）。产物 `creo_worker.exe` 在无 Creo 环境运行缺 ToolKit DLL（0xC0000135），故"编译成功"未当作"已运行"；真实枚举、闭合性证明、面板流程接线仍待 D6，3964 单测通过，工具数不变。
+
 2026-11-17（BUG-120 续批：恢复/D5/D8）：[BUG-120](work-items/BUG-120.md)补齐`creo_reconcile_model`的`confirm_panel_closed`恢复动作（令牌+人工确认+不取Toolkit锁，只解除会话保护不改模型unknown）、worker前取消退役预留、`panel_receipt`回执投影（未确证退出强制失败、quilt/选取/面组/面积/关联/树完成冒充均记问题、bbox保近似标记）、panel库打包门禁（manifest白名单+认证摘要+路径逃逸拒绝，空库为合法关闭态）。3964单测与Ruff通过。仍未编译、未连接Creo：D2/D3原生后端、D6/D7目标机验收、发布待专门批次；工具数不变。
 
 2026-11-17（BUG-120 D1/D4离线实现）：[BUG-120](work-items/BUG-120.md)落地不依赖构建授权的三批：`creo_surface_loft`的`creation_route`契约与按路线准入/能力分路线披露、panel profile认证与候选票据库、面板等待阶段预算接入`worker.log`看门狗、跨模型持久会话guard（拦截所有Toolkit入口，仅原生退出观测或runner未启动可退役）。3918项单测与Ruff通过。未编译执行器、未连接Creo：原生后端、协议4/ABI2、几何保存重载、目标机验收与分发均未实施；guard本版无MCP侧退役动作，需人工确认面板已关闭后删除`panel_session_guard.json`，已列入后续任务。109工具数不变。
