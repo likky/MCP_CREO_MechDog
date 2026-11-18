@@ -339,6 +339,15 @@ static int select_panel_section() {
             panel_block["code"] = "PANEL_SELECTION_FAILED";
             panel_block["sdk_code"] = code;
         }
+        if (!code) {
+            // BUG-120/D6: the last consumed ticket's own time orders the Done bracket.
+            // The worker's poll can notice the selection later than it happened, so its
+            // clock cannot be used to tell an open-time bracket from a close-time one.
+            panel_block["selected_at_ms"] =
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch())
+                    .count();
+        }
         panel_block["stage"] = mechdog_panel::panel_stage_name(panel_state.stage());
         write_wait_marker();
         persist_panel();

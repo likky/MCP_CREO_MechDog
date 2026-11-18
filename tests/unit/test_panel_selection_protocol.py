@@ -437,7 +437,9 @@ class ExitObservationBracket(unittest.TestCase):
         self.assertIn('bracket.value("entering", 1) == 0', text)
         self.assertIn('bracket.value("nonce", "") == nonce', text)
         # A bracket that fired before the last ticket was consumed is not a close.
-        self.assertIn('bracket.value("at_epoch_ms", 0LL) >= selection_done_ms', text)
+        # The order uses the payload's own selection time, not the worker poll clock.
+        self.assertIn('bracket.value("at_epoch_ms", 0LL) >= selected_at', text)
+        self.assertIn('state.value("selected_at_ms", 0LL)', text)
 
 
 if __name__ == "__main__":

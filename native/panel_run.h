@@ -263,10 +263,8 @@ inline void generic_surface_loft_panel(const J &op) {
     // This build observes the exit through Creo's own bracket callback on the Done
     // command (registered by the payload before the dialog opened). The event file is
     // written on the UI thread, so it survives exactly where a Toolkit task would
-    // block. A bracket that fired before the selections finished is not a close: the
-    // Done is the last macro step, so a genuine after-execution event is later than
-    // the last consumed ticket.
-    long long selection_done_ms = 0;
+    // block. The event is ordered against the payload's own last-selection time, not
+    // the worker's poll clock: polling can notice a selection later than it happened.
     auto read_bracket_exit = [&]() -> J {
         J event = J::object();
         try {
@@ -282,10 +280,10 @@ inline void generic_surface_loft_panel(const J &op) {
         const J state =
             outcome.contains("panel") && outcome["panel"].is_object() ? outcome["panel"] : J();
         const J bracket = read_bracket_exit();
+        const long long selected_at = state.is_object() ? state.value("selected_at_ms", 0LL) : 0LL;
         const bool finished = bracket.is_object() && bracket.value("entering", 1) == 0 &&
-                              bracket.value("nonce", "") == nonce &&
-                              bracket.value("at_epoch_ms", 0LL) >= selection_done_ms &&
-                              selection_done_ms > 0;
+                              bracket.value("nonce", "") == nonce && selected_at > 0 &&
+                              bracket.value("at_epoch_ms", 0LL) >= selected_at;
         if (finished)
             return J{{"method", "command_bracket"},
                      {"supported", true},
@@ -353,10 +351,6 @@ inline void generic_surface_loft_panel(const J &op) {
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
         selected = panel_selected(read_panel_state());
     }
-    if (selected >= static_cast<int>(sections.size()))
-        selection_done_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                std::chrono::system_clock::now().time_since_epoch())
-                                .count();
     stage_panel(selected);
     if (selected != static_cast<int>(sections.size()))
         throw std::runtime_error(
