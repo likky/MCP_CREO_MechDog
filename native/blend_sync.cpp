@@ -145,6 +145,41 @@ static const char *panel_phase() {
     }
 }
 
+static void *panel_bracket_data = nullptr;
+static bool panel_bracket_registered = false;
+
+//: BUG-120/D6: Creo calls this before (entering=1) and after (entering=0) the Done
+//: command runs. The event is written from Creo's own UI thread, which is the only
+//: place a panel's completion can be observed: a Toolkit task sent while the dialog
+//: owns the session blocks until PRO_TK_COMM_ERROR.
+static int panel_exit_bracket(uiCmdCmdId command, uiCmdValue *value, int entering,
+                              void **data) {
+    (void)command;
+    (void)value;
+    (void)data;
+    try {
+        if (panel_run && !directory.empty() && !panel_nonce.empty()) {
+            const auto epoch_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                      std::chrono::system_clock::now().time_since_epoch())
+                                      .count();
+            Json event = {{"job_id", panel_job_id},        {"nonce", panel_nonce},
+                          {"profile_id", panel_profile_id}, {"command", panel_done_command},
+                          {"entering", entering},          {"at_epoch_ms", epoch_ms}};
+            std::string error;
+            if (!mechdog_panel::write_marker_atomic(
+                    std::filesystem::path(directory) / L"panel_exit.json", event.dump(), error))
+                panel_block["exit_bracket_error"] = error;
+            if (!entering) {
+                panel_block["command_finished"] = true;
+                persist_panel();
+            }
+        }
+    } catch (...) {
+        // A bracket must never break the command it observes.
+    }
+    return 1;  // Non-zero: the command action still runs.
+}
+
 //: Publish the wait marker the Python watchdog reads. Without the full identity the
 //: marker is not written at all: a partial marker is ignored by the watcher, and
 //: writing one anyway would only look like progress that never happened.
@@ -352,6 +387,20 @@ extern "C" PRO_TK_DLL_EXPORT ProError MechDogPanelPrepare(ProArgument *inputs,
         directory = std::filesystem::path(path).parent_path().wstring();
         current_request = path;
         panel_run = true;
+        // BUG-120/D6: register the exit bracket on the Done command now, before the
+        // dialog opens. After that point no Toolkit task can be sent, so this is the
+        // only chance to ask Creo to report the command's completion.
+        if (!panel_done_command.empty() && host2->command_id_find && host2->bracket_func_add) {
+            std::string done_name = panel_done_command;
+            uiCmdCmdId done_id = 0;
+            if (host2->command_id_find(&done_name[0], &done_id) == PRO_TK_NO_ERROR && done_id) {
+                const ProError added = host2->bracket_func_add(
+                    done_id, panel_exit_bracket, const_cast<char *>("MechDogPanelExitBracket"),
+                    &panel_bracket_data);
+                panel_bracket_registered = added == PRO_TK_NO_ERROR;
+                panel_block["exit_bracket_code"] = (int)added;
+            }
+        }
         outcome = {{"protocol", mechdog_panel::protocol},
                    {"contract", mechdog_panel::contract},
                    {"creation_route", "resident_panel"},

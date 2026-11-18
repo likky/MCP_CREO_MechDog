@@ -410,5 +410,35 @@ class CallbackProbeGeneration(unittest.TestCase):
             self.assertIn(constant, text)
 
 
+class ExitObservationBracket(unittest.TestCase):
+    """D6: the panel exit must be observed from Creo's own command bracket.
+
+    A Toolkit task sent while the dialog owns the session blocks until
+    PRO_TK_COMM_ERROR, so the only safe observation point is the bracket callback
+    Creo invokes on the UI thread around the Done command.
+    """
+
+    RUN = ROOT / "native/panel_run.h"
+    SYNC = ROOT / "native/blend_sync.cpp"
+
+    def test_the_payload_brackets_the_done_command_before_opening(self):
+        text = self.SYNC.read_text(encoding="utf-8")
+        self.assertIn("panel_exit_bracket", text)
+        self.assertIn("bracket_func_add", text)
+        self.assertIn("panel_exit.json", text)
+        # The bracket must be registered while preparing, i.e. before the macro runs.
+        register = text.index("panel_bracket_registered = added")
+        self.assertGreater(register, text.index("MechDogPanelPrepare"))
+
+    def test_the_worker_only_trusts_a_bracket_after_the_selections(self):
+        text = self.RUN.read_text(encoding="utf-8")
+        self.assertIn("panel_exit.json", text)
+        self.assertIn('{"method", "command_bracket"}', text)
+        self.assertIn('bracket.value("entering", 1) == 0', text)
+        self.assertIn('bracket.value("nonce", "") == nonce', text)
+        # A bracket that fired before the last ticket was consumed is not a close.
+        self.assertIn('bracket.value("at_epoch_ms", 0LL) >= selection_done_ms', text)
+
+
 if __name__ == "__main__":
     unittest.main()

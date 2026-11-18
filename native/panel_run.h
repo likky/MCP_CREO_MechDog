@@ -260,21 +260,48 @@ inline void generic_surface_loft_panel(const J &op) {
             selected = outcome["panel"].value("selected", selected);
         return selected;
     };
-    // This build registers no Creo UI event source, so the payload cannot record a
-    // closure; that fact is reported as supported=false instead of calling silence
-    // "closed".
+    // This build observes the exit through Creo's own bracket callback on the Done
+    // command (registered by the payload before the dialog opened). The event file is
+    // written on the UI thread, so it survives exactly where a Toolkit task would
+    // block. A bracket that fired before the selections finished is not a close: the
+    // Done is the last macro step, so a genuine after-execution event is later than
+    // the last consumed ticket.
+    long long selection_done_ms = 0;
+    auto read_bracket_exit = [&]() -> J {
+        J event = J::object();
+        try {
+            std::ifstream file(std::filesystem::path(generic_job) / L"panel_exit.json");
+            file >> event;
+        } catch (...) {
+            event = J::object();
+        }
+        return event;
+    };
     auto read_panel_exit = [&]() -> J {
         const J outcome = read_panel_state();
         const J state =
             outcome.contains("panel") && outcome["panel"].is_object() ? outcome["panel"] : J();
+        const J bracket = read_bracket_exit();
+        const bool finished = bracket.is_object() && bracket.value("entering", 1) == 0 &&
+                              bracket.value("nonce", "") == nonce &&
+                              bracket.value("at_epoch_ms", 0LL) >= selection_done_ms &&
+                              selection_done_ms > 0;
+        if (finished)
+            return J{{"method", "command_bracket"},
+                     {"supported", true},
+                     {"closed", true},
+                     {"reason",
+                      "Creo reported the Done command's after-execution bracket for this run, so the "
+                      "dialog's command returned after every position was consumed"},
+                     {"evidence", {{"bracket", bracket}, {"panel", state}}}};
         J observation = {
             {"method", "callback_result"},
             {"supported", false},
             {"closed", J()},
             {"reason",
-             "this build registers no Creo UI event handler for Done/AfterTerminal/OuterDrain, so "
-             "the payload cannot record a panel closure; the exit stays unobservable"},
-            {"evidence", state}};
+             "no after-execution bracket for this run's Done command has been observed yet; the "
+             "panel exit stays unobservable in this process state"},
+            {"evidence", {{"bracket", bracket}, {"panel", state}}}};
         if (state.is_object() && state.value("closed", false)) {
             observation["supported"] = true;
             observation["closed"] = true;
@@ -326,6 +353,10 @@ inline void generic_surface_loft_panel(const J &op) {
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
         selected = panel_selected(read_panel_state());
     }
+    if (selected >= static_cast<int>(sections.size()))
+        selection_done_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::system_clock::now().time_since_epoch())
+                                .count();
     stage_panel(selected);
     if (selected != static_cast<int>(sections.size()))
         throw std::runtime_error(
