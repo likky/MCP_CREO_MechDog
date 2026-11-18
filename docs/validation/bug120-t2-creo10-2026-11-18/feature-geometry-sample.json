@@ -1,0 +1,524 @@
+{
+  "bodies": [
+    {
+      "has_geometry": null,
+      "id": -5778,
+      "material": false,
+      "state": 3,
+      "state_name": "no_geometry"
+    }
+  ],
+  "body_counts": {
+    "active": 0,
+    "counts_meaning": {
+      "bodies": "body_objects",
+      "with_material": "active_bodies_with_surfaces"
+    },
+    "objects": 1,
+    "records": 1,
+    "with_material": 0,
+    "without_material": 1
+  },
+  "center_of_gravity": null,
+  "datum_axes": [],
+  "datum_planes": [
+    {
+      "id": 2,
+      "normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "origin": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 4,
+      "normal": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "origin": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 6,
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "origin": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 42,
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "origin": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 48,
+      "normal": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "origin": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "edges": [],
+  "features": [
+    {
+      "child_ids": [
+        40,
+        46
+      ],
+      "children_query_code": 0,
+      "dimensions": [],
+      "embedded": false,
+      "embedded_query_code": 0,
+      "geometry_items": [
+        {
+          "id": 2,
+          "type": 5
+        }
+      ],
+      "group_query_code": 0,
+      "group_status": 0,
+      "grppattern_query_code": 0,
+      "grppattern_status": 0,
+      "id": 1,
+      "incomplete": false,
+      "name": "RIGHT",
+      "parent_ids": [],
+      "parents_query_code": 0,
+      "pattern_query_code": 0,
+      "pattern_status": 0,
+      "status": 0,
+      "system_required": true,
+      "type": 923,
+      "type_name": "datum_plane"
+    },
+    {
+      "child_ids": [
+        40,
+        46
+      ],
+      "children_query_code": 0,
+      "dimensions": [],
+      "embedded": false,
+      "embedded_query_code": 0,
+      "geometry_items": [
+        {
+          "id": 4,
+          "type": 5
+        }
+      ],
+      "group_query_code": 0,
+      "group_status": 0,
+      "grppattern_query_code": 0,
+      "grppattern_status": 0,
+      "id": 3,
+      "incomplete": false,
+      "name": "TOP",
+      "parent_ids": [],
+      "parents_query_code": 0,
+      "pattern_query_code": 0,
+      "pattern_status": 0,
+      "status": 0,
+      "system_required": true,
+      "type": 923,
+      "type_name": "datum_plane"
+    },
+    {
+      "child_ids": [
+        40,
+        46
+      ],
+      "children_query_code": 0,
+      "dimensions": [],
+      "embedded": false,
+      "embedded_query_code": 0,
+      "geometry_items": [
+        {
+          "id": 6,
+          "type": 5
+        }
+      ],
+      "group_query_code": 0,
+      "group_status": 0,
+      "grppattern_query_code": 0,
+      "grppattern_status": 0,
+      "id": 5,
+      "incomplete": false,
+      "name": "FRONT",
+      "parent_ids": [],
+      "parents_query_code": 0,
+      "pattern_query_code": 0,
+      "pattern_status": 0,
+      "status": 0,
+      "system_required": true,
+      "type": 923,
+      "type_name": "datum_plane"
+    },
+    {
+      "child_ids": [],
+      "children_query_code": 0,
+      "dimensions": [],
+      "embedded": false,
+      "embedded_query_code": 0,
+      "geometry_items": [
+        {
+          "id": 8,
+          "type": 25
+        }
+      ],
+      "group_query_code": 0,
+      "group_status": 0,
+      "grppattern_query_code": 0,
+      "grppattern_status": 0,
+      "id": 7,
+      "incomplete": false,
+      "name": "PRT_CSYS_DEF",
+      "parent_ids": [],
+      "parents_query_code": 0,
+      "pattern_query_code": 0,
+      "pattern_status": 0,
+      "status": 0,
+      "system_required": true,
+      "type": 979,
+      "type_name": "other"
+    },
+    {
+      "child_ids": [
+        40
+      ],
+      "children_query_code": 0,
+      "dimensions": [],
+      "embedded": false,
+      "embedded_query_code": 0,
+      "geometry_items": [
+        {
+          "id": 42,
+          "type": 5
+        }
+      ],
+      "group_query_code": 0,
+      "group_status": 0,
+      "grppattern_query_code": 0,
+      "grppattern_status": 0,
+      "id": 41,
+      "incomplete": false,
+      "name": "no_name",
+      "parent_ids": [
+        1,
+        5
+      ],
+      "parents_query_code": 0,
+      "pattern_query_code": 0,
+      "pattern_status": 0,
+      "status": 0,
+      "system_required": false,
+      "type": 923,
+      "type_name": "datum_plane"
+    },
+    {
+      "child_ids": [],
+      "children_query_code": 0,
+      "dimensions": [
+        {
+          "editable": true,
+          "id": 0,
+          "owner_feature_id": 40,
+          "owner_feature_name": "T2_SK1",
+          "owner_query_code": 0,
+          "relation_driven": false,
+          "relation_query_code": 0,
+          "symbol": "d0",
+          "type": -1,
+          "value": 0.0
+        },
+        {
+          "editable": true,
+          "id": 1,
+          "owner_feature_id": 40,
+          "owner_feature_name": "T2_SK1",
+          "owner_query_code": 0,
+          "relation_driven": false,
+          "relation_query_code": 0,
+          "symbol": "d1",
+          "type": -1,
+          "value": 0.0
+        },
+        {
+          "editable": true,
+          "id": 2,
+          "owner_feature_id": 40,
+          "owner_feature_name": "T2_SK1",
+          "owner_query_code": 0,
+          "relation_driven": false,
+          "relation_query_code": 0,
+          "symbol": "d2",
+          "type": 9,
+          "value": 40.0
+        }
+      ],
+      "embedded": false,
+      "embedded_query_code": 0,
+      "geometry_items": [
+        {
+          "id": 43,
+          "type": 62
+        },
+        {
+          "id": 44,
+          "type": 25
+        },
+        {
+          "id": 45,
+          "type": 62
+        }
+      ],
+      "group_query_code": 0,
+      "group_status": 0,
+      "grppattern_query_code": 0,
+      "grppattern_status": 0,
+      "id": 40,
+      "incomplete": false,
+      "name": "T2_SK1",
+      "parent_ids": [
+        1,
+        3,
+        5
+      ],
+      "parents_query_code": 0,
+      "pattern_query_code": 0,
+      "pattern_status": 0,
+      "sketch_constraint_count": 4,
+      "sketch_dimensions": [
+        {
+          "id": 2,
+          "type": 1,
+          "value": 40.0
+        }
+      ],
+      "status": 0,
+      "system_required": false,
+      "type": 949,
+      "type_name": "sketch_or_curve"
+    },
+    {
+      "child_ids": [
+        46
+      ],
+      "children_query_code": 0,
+      "dimensions": [],
+      "embedded": false,
+      "embedded_query_code": 0,
+      "geometry_items": [
+        {
+          "id": 48,
+          "type": 5
+        }
+      ],
+      "group_query_code": 0,
+      "group_status": 0,
+      "grppattern_query_code": 0,
+      "grppattern_status": 0,
+      "id": 47,
+      "incomplete": false,
+      "name": "no_name",
+      "parent_ids": [
+        1,
+        3
+      ],
+      "parents_query_code": 0,
+      "pattern_query_code": 0,
+      "pattern_status": 0,
+      "status": 0,
+      "system_required": false,
+      "type": 923,
+      "type_name": "datum_plane"
+    },
+    {
+      "child_ids": [],
+      "children_query_code": 0,
+      "dimensions": [
+        {
+          "editable": true,
+          "id": 3,
+          "owner_feature_id": 46,
+          "owner_feature_name": "T2_SK2",
+          "owner_query_code": 0,
+          "relation_driven": false,
+          "relation_query_code": 0,
+          "symbol": "d3",
+          "type": -1,
+          "value": 0.0
+        },
+        {
+          "editable": true,
+          "id": 4,
+          "owner_feature_id": 46,
+          "owner_feature_name": "T2_SK2",
+          "owner_query_code": 0,
+          "relation_driven": false,
+          "relation_query_code": 0,
+          "symbol": "d4",
+          "type": -1,
+          "value": 0.0
+        },
+        {
+          "editable": true,
+          "id": 5,
+          "owner_feature_id": 46,
+          "owner_feature_name": "T2_SK2",
+          "owner_query_code": 0,
+          "relation_driven": false,
+          "relation_query_code": 0,
+          "symbol": "d5",
+          "type": 9,
+          "value": 30.0
+        },
+        {
+          "editable": true,
+          "id": 6,
+          "owner_feature_id": 46,
+          "owner_feature_name": "T2_SK2",
+          "owner_query_code": 0,
+          "relation_driven": false,
+          "relation_query_code": 0,
+          "symbol": "d6",
+          "type": 9,
+          "value": 15.0
+        }
+      ],
+      "embedded": false,
+      "embedded_query_code": 0,
+      "geometry_items": [
+        {
+          "id": 49,
+          "type": 62
+        },
+        {
+          "id": 50,
+          "type": 25
+        },
+        {
+          "id": 51,
+          "type": 62
+        }
+      ],
+      "group_query_code": 0,
+      "group_status": 0,
+      "grppattern_query_code": 0,
+      "grppattern_status": 0,
+      "id": 46,
+      "incomplete": false,
+      "name": "T2_SK2",
+      "parent_ids": [
+        1,
+        5,
+        3
+      ],
+      "parents_query_code": 0,
+      "pattern_query_code": 0,
+      "pattern_status": 0,
+      "sketch_constraint_count": 4,
+      "sketch_dimensions": [
+        {
+          "id": 2,
+          "type": 1,
+          "value": 30.0
+        },
+        {
+          "id": 3,
+          "type": 2,
+          "value": 15.0
+        }
+      ],
+      "status": 0,
+      "system_required": false,
+      "type": 949,
+      "type_name": "sketch_or_curve"
+    }
+  ],
+  "has_solid": false,
+  "healthy": true,
+  "inspection_available": true,
+  "inspection_source": "saved_reloaded",
+  "length_unit": {
+    "name": "mm",
+    "query_code": 0,
+    "scale_query_codes": {
+      "conversion": 0,
+      "mm_unit": 0,
+      "unit": 0
+    },
+    "scale_to_mm": 1.0,
+    "scale_to_mm_known": true
+  },
+  "model_type": "part",
+  "parameters": {
+    "DESCRIPTION": {
+      "type": 51,
+      "value": ""
+    },
+    "MODELED_BY": {
+      "type": 51,
+      "value": ""
+    },
+    "PTC_MASTER_MATERIAL": {
+      "type": 51,
+      "value": "PTC_SYSTEM_MTRL_PROPS"
+    },
+    "PTC_MATERIAL_NAME": {
+      "type": 51,
+      "value": ""
+    },
+    "PTC_REPORTED_MATERIAL": {
+      "type": 51,
+      "value": ""
+    }
+  },
+  "quilts": [],
+  "quilts_visit": {
+    "visit_code": -4,
+    "visit_failed": true
+  },
+  "surfaces": [],
+  "units": "mm",
+  "units_query_code": 0,
+  "volume_mm3": null,
+  "volume_query_code": null,
+  "wall_contour_check": {
+    "bounded": false,
+    "budget": 256,
+    "checked_edges": 0,
+    "edges": [],
+    "enabled": false,
+    "query": "ProSmtedgeContourGet"
+  }
+}
