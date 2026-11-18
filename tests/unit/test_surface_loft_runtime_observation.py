@@ -50,6 +50,57 @@ def _manifest(completion: str = "unsupported") -> dict:
     }
 
 
+def _job(release: int | None = 42, code: int = 0) -> dict:
+    return {
+        "job_id": "job-9",
+        "result": {"creo_release_numeric": release, "creo_release_query_code": code},
+    }
+
+
+class HostReleaseObservationTests(unittest.TestCase):
+    """A certified panel profile needs the release a connected job reported."""
+
+    def setUp(self):
+        self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.patch = mock.patch.object(bridge, "ROOT", self.root)
+        self.patch.start()
+        self.addCleanup(self.patch.stop)
+        self.identity_patch = mock.patch.object(
+            bridge, "worker_build_identity", return_value=_identity()
+        )
+        self.identity_patch.start()
+        self.addCleanup(self.identity_patch.stop)
+
+    def _health(self) -> dict:
+        return json.loads((self.root / "build/toolkit_health.json").read_text(encoding="utf-8"))
+
+    def test_a_connected_job_records_its_release(self):
+        bridge.record_host_release(_job())
+        observed = self._health()["host_release"]
+        self.assertEqual(observed["release_numeric"], 42)
+        self.assertEqual(observed["worker_sha256"], WORKER_SHA)
+        self.assertEqual(observed["job_id"], "job-9")
+
+    def test_the_admission_identity_carries_the_recorded_release(self):
+        bridge.record_host_release(_job())
+        self.assertEqual(bridge.surface_loft_admission_identity()["release_numeric"], 42)
+
+    def test_another_worker_does_not_inherit_the_release(self):
+        bridge.record_host_release(_job())
+        self.assertIsNone(bridge.host_release_observation(_identity(OTHER_SHA)))
+
+    def test_a_failed_release_query_is_not_recorded(self):
+        bridge.record_host_release(_job(release=None, code=-1))
+        self.assertFalse((self.root / "build/toolkit_health.json").exists())
+
+    def test_the_runtime_observation_survives_the_release_record(self):
+        bridge.record_host_release(_job())
+        bridge.record_surface_loft_runtime(_manifest())
+        health = self._health()
+        self.assertEqual(health["host_release"]["release_numeric"], 42)
+        self.assertEqual(health["surface_loft_runtime"]["kernel_completion"], "unsupported")
+
+
 class SurfaceLoftRuntimeObservationTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))

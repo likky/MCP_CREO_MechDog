@@ -1210,12 +1210,68 @@ def surface_loft_runtime_observation(identity: dict) -> dict:
     return observed
 
 
+def record_host_release(manifest: dict) -> None:
+    """Persist the Creo release a completed native job ran on.
+
+    A certified panel profile is bound to one Creo release, and admission must
+    decide before a job exists — before this process may ask Creo anything. The
+    only verified host fact a request can carry is one a connected job already
+    reported, so keep it keyed by the worker SHA that produced it. A worker
+    rebuild invalidates the record rather than lending it a new build.
+    """
+    try:
+        result = manifest.get("result")
+        if not isinstance(result, dict):
+            return
+        release = result.get("creo_release_numeric")
+        if type(release) is not int:
+            return
+        if result.get("creo_release_query_code") not in (0, None):
+            return
+        identity = worker_build_identity()
+        worker_sha = identity.get("worker_sha256")
+        if not worker_sha:
+            return
+        path = ROOT / "build/toolkit_health.json"
+        try:
+            health = read_json(path)
+        except (OSError, ValueError):
+            health = {}
+        if not isinstance(health, dict):
+            health = {}
+        health["host_release"] = {
+            "worker_sha256": worker_sha,
+            "release_numeric": release,
+            "job_id": manifest.get("job_id"),
+            "observed_at": now(),
+        }
+        (ROOT / "build").mkdir(exist_ok=True)
+        write_json(path, health)
+    except Exception:
+        # A disclosure record must never change the task's terminal outcome.
+        return
+
+
+def host_release_observation(identity: dict) -> int | None:
+    """The Creo release this exact worker reported on a connected job."""
+    health = channel_health()
+    observed = health.get("host_release") if isinstance(health, dict) else None
+    worker_sha = identity.get("worker_sha256") if isinstance(identity, dict) else None
+    if not isinstance(observed, dict) or not worker_sha:
+        return None
+    if observed.get("worker_sha256") != worker_sha:
+        return None
+    release = observed.get("release_numeric")
+    return release if type(release) is int else None
+
+
 def surface_loft_admission_identity() -> dict:
     """Copy worker build facts and attach only this worker's recorded loft result.
 
     Admission uses the same read-only observation as status disclosure. Keep the
     cached build identity untouched so a later worker or probe cannot inherit a
-    previous worker's kernel result.
+    previous worker's kernel result. The recorded host release rides along for the
+    same reason: a certified panel profile is matched to it before any job exists.
     """
     identity = worker_build_identity()
     projected = dict(identity)
@@ -1226,6 +1282,9 @@ def surface_loft_admission_identity() -> dict:
             **features,
             "surface_loft": {**feature, **surface_loft_runtime_observation(identity)},
         }
+    release = host_release_observation(identity)
+    if release is not None:
+        projected.setdefault("release_numeric", release)
     return projected
 
 
@@ -1711,6 +1770,7 @@ def _run_job_dispatch(job_id: str) -> None:
         manifest.update(status="unknown_outcome" if worker_started else "failed", message=str(exc))
     apply_terminal_stage(manifest)
     note_native_outcome(manifest)
+    record_host_release(manifest)
     manifest["finished_at"] = now()
     write_json(directory / "job.json", manifest)
 

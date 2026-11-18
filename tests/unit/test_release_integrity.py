@@ -166,11 +166,11 @@ class SeedArchiveValidationTests(SeedArchiveFixture):
         with self.assertRaisesRegex(ValueError, "Trusted seed package record is missing"):
             release_integrity.validate_seed_archive(self.root, self.archive)
 
-    def test_the_empty_panel_library_is_a_valid_release_input(self):
-        # BUG-120/D1: the shipped manifest lists no profile yet. That is the
-        # closed state the packager must accept, not an absent library.
+    def test_the_shipped_panel_library_is_a_valid_release_input(self):
+        # BUG-120/D6: the library carries one certified Creo 10 profile; the
+        # packager must ship its manifest, recording and certification record.
         summary = release_integrity.validate_release_inputs(self.root, self.archive)
-        self.assertEqual(summary["panel_certification_count"], 0)
+        self.assertEqual(summary["panel_certification_count"], 1)
 
     def test_a_missing_panel_manifest_refuses_the_release_inputs(self):
         (self.root / "templates/panel/manifest.json").unlink()
@@ -179,7 +179,7 @@ class SeedArchiveValidationTests(SeedArchiveFixture):
 
     def test_a_stale_panel_certification_refuses_the_release_inputs(self):
         library = self.root / "templates" / "panel"
-        (library / "certifications").mkdir()
+        (library / "certifications").mkdir(exist_ok=True)
         record = library / "certifications" / "creo10-panel-smoke.json"
         record.write_text(json.dumps({"profile_digest": "0" * 64}), encoding="utf-8")
         commands = {
@@ -572,11 +572,9 @@ class PanelLibraryAllowlistTests(PanelLibraryFixture):
         self.assertIn(shipped, files)
         self.assertNotIn(stray, files)
 
-    def test_the_shipped_repository_library_ships_one_candidate_and_its_recording(self):
-        # The library now carries the Creo 10 candidate frozen from the T1-A
-        # recording, so the shipped set is the manifest, the recording and the
-        # profile entry inside the manifest. No certification record exists yet,
-        # which is why normal clients still have no certified profile.
+    def test_the_shipped_repository_library_ships_the_certified_profile(self):
+        # The library carries the Creo 10 profile certified on 2026-11-18, so the
+        # shipped set is the manifest, the recording and that certification record.
         shipped = release_integrity.panel_profile_library_files(ROOT)
         names = {path.relative_to(ROOT).as_posix() for path in shipped}
         self.assertEqual(
@@ -584,10 +582,11 @@ class PanelLibraryAllowlistTests(PanelLibraryFixture):
             {
                 "templates/panel/manifest.json",
                 "templates/panel/recordings/creo10_blend_gui_t1a.pro",
+                "templates/panel/certifications/creo10-bbl-2026-11-18.json",
             },
         )
         self.assertEqual(
-            [entry.status for entry in panel_profiles.profiles(ROOT)], ["candidate", "candidate"]
+            [entry.status for entry in panel_profiles.profiles(ROOT)], ["candidate", "certified"]
         )
 
     def test_the_source_package_ships_the_panel_manifest(self):

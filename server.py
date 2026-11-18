@@ -778,7 +778,7 @@ def _capabilities_payload(tool_entries: list[dict[str, Any]]) -> dict[str, Any]:
         "release_status": release_status(VERSION),
         "families": project_worker_availability(
             families(),
-            bridge.worker_build_identity(),
+            bridge.surface_loft_admission_identity(),
             bridge.channel_health().get("surface_loft_runtime"),
         ),
         "known_limitations": list(KNOWN_LIMITATIONS),

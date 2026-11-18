@@ -8,15 +8,61 @@ a refusal must happen before a job exists and before the Toolkit channel is take
 
 from __future__ import annotations
 
+import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import bridge
 import generic_bridge as general
-from creo_mechdog import capabilities
+from creo_mechdog import capabilities, panel_profiles
 from tests.unit import test_toolkit_channel as channel_tests
 
 WORKER_SHA = "c95cd7c2655b0799bb8efb6f68e21ac891157af970b42d78c135f53e5326864b"
+
+CANDIDATE_ONLY_COMMANDS = {
+    "open_macro": "~ Command `ProCmdFtBndBlend`;",
+    "select_command": "~ Command `%MECHDOG_COMMAND%`;",
+    "done_macro": "~ Activate `main_dlg_cur` `dashInst0.Done`;",
+    "done_command": "ProCmdFtBndBlend",
+}
+
+
+def candidate_only_library(test: unittest.TestCase) -> None:
+    """Point the profile library at a candidate-only manifest for this test.
+
+    The shipped library carries a certified Creo 10 profile, so the "no certified
+    profile" refusal needs its own library instead of borrowing the repository one.
+    """
+    directory = tempfile.TemporaryDirectory()
+    test.addCleanup(directory.cleanup)
+    root = Path(directory.name)
+    base = root / "templates" / "panel"
+    (base / "certifications").mkdir(parents=True)
+    (base / "manifest.json").write_text(
+        json.dumps(
+            {
+                "contract": panel_profiles.CONTRACT,
+                "recordings": {},
+                "profiles": [
+                    {
+                        "profile_id": "creo10-bbl-candidate-only",
+                        "status": "candidate",
+                        "release_numeric": 42,
+                        "creo_release": "Creo 10.0.0.0",
+                        "commands": dict(CANDIDATE_ONLY_COMMANDS),
+                        "digest": panel_profiles.command_digest(CANDIDATE_ONLY_COMMANDS),
+                        "certification": None,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    patcher = patch.object(panel_profiles, "ROOT", root)
+    patcher.start()
+    test.addCleanup(patcher.stop)
 
 
 def tree_feature(**extra):
@@ -118,6 +164,7 @@ class PanelRouteNeedsItsOwnDeclaration(unittest.TestCase):
         self.assertIn("state='not_implemented'", str(caught.exception))
 
     def test_a_declared_backend_still_needs_a_certified_profile(self):
+        candidate_only_library(self)
         declared = identity(panel={"available": True, "state": "ready"})
         with self.assertRaisesRegex(ValueError, "no certified UI profile"):
             capabilities.require_panel_route(declared)
@@ -125,6 +172,7 @@ class PanelRouteNeedsItsOwnDeclaration(unittest.TestCase):
 
 class PanelRouteIsDisclosedSeparately(unittest.TestCase):
     def test_routes_report_the_tree_and_the_panel_gate(self):
+        candidate_only_library(self)
         families = {"surface_loft": {"available": True, "enabled": True}}
         projected = capabilities.project_worker_availability(families, identity())
         entry = projected["surface_loft"]
@@ -138,6 +186,7 @@ class PanelRouteIsDisclosedSeparately(unittest.TestCase):
         self.assertIn("does not declare a surface_loft_panel backend", panel["reason"])
 
     def test_a_compiled_backend_without_a_certified_profile_is_not_ready(self):
+        candidate_only_library(self)
         families = {"surface_loft": {"available": True, "enabled": True}}
         projected = capabilities.project_worker_availability(
             families, identity(panel={"available": True, "state": "ready"})
@@ -167,6 +216,34 @@ class PanelRouteIsDisclosedSeparately(unittest.TestCase):
         self.assertIsNone(routes["element_tree"]["available"])
         self.assertEqual(routes["element_tree"]["state"], "not_declared")
         self.assertFalse(routes["resident_panel"]["runtime_ready"])
+
+
+class PanelRouteDisclosureWithTheCertifiedProfile(unittest.TestCase):
+    """D6: the shipped certified profile is disclosed against the host release."""
+
+    def route(self, **identity_overrides):
+        families = {"surface_loft": {"available": True, "enabled": True}}
+        declared = identity(panel={"available": True, "state": "ready"}, **identity_overrides)
+        projected = capabilities.project_worker_availability(families, declared)
+        return projected["surface_loft"]["routes"]["resident_panel"]
+
+    def test_a_recorded_release_matching_the_profile_is_ready(self):
+        panel = self.route()
+        self.assertTrue(panel["compiled"])
+        self.assertTrue(panel["runtime_ready"])
+        self.assertEqual(panel["profile"]["status"], "certified")
+        self.assertEqual(panel["profile"]["profile_id"], "creo10-bbl-candidate-2")
+        self.assertEqual(panel["profile"]["release_numeric"], 42)
+
+    def test_an_unrecorded_host_release_is_not_ready(self):
+        panel = self.route(release_numeric=None, evidence={})
+        self.assertFalse(panel["runtime_ready"])
+        self.assertIn("not recorded yet", panel["reason"])
+
+    def test_another_host_release_is_not_ready(self):
+        panel = self.route(release_numeric=44)
+        self.assertFalse(panel["runtime_ready"])
+        self.assertIn("was measured on release_numeric=42", panel["reason"])
 
 
 class SubmissionRefusesBeforeTheChannel(unittest.TestCase):
@@ -201,6 +278,7 @@ class SubmissionRefusesBeforeTheChannel(unittest.TestCase):
         self.assertFalse((self.root / "jobs").exists())
 
     def test_a_declared_backend_still_needs_a_certified_profile(self):
+        candidate_only_library(self)
         raw = self.parsed_identity(panel={"available": True, "state": "ready"})
         with (
             patch.object(bridge, "worker_build_identity", return_value=raw),

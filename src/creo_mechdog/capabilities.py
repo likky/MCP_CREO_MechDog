@@ -390,14 +390,29 @@ def _panel_route_document(identity: object) -> dict:
     except (ValueError, OSError, TypeError, KeyError) as exc:
         # Disclosure fails closed: a manifest this release cannot read must not turn
         # creo_capabilities into an error while the route is closed anyway.
+        profile = None
         document["profile"] = {"status": "uncertified", "reason": str(exc)}
     else:
         document["profile"] = {"status": "certified", **profile.document()}
-    document["runtime_ready"] = bool(
-        feature and feature["available"] and document["profile"]["status"] == "certified"
-    )
+    # A certified profile is bound to the release it was measured on. Until a
+    # connected job on this worker recorded that release, admission cannot match
+    # it either, so disclosure must not call the route ready.
+    release = panel_profiles.host_release(identity)
+    profile_ready = bool(profile is not None and release == profile.release_numeric)
+    document["runtime_ready"] = bool(feature and feature["available"] and profile_ready)
     if not document["runtime_ready"] and document["reason"] is None:
-        document["reason"] = "no certified panel UI profile for this release"
+        if profile is None:
+            document["reason"] = "no certified panel UI profile for this release"
+        elif release is None:
+            document["reason"] = (
+                "the host Creo release is not recorded yet: run one native job on this worker "
+                "(a new part or a sketch) so the certified profile can be matched to it"
+            )
+        else:
+            document["reason"] = (
+                f"the certified profile {profile.profile_id!r} was measured on "
+                f"release_numeric={profile.release_numeric}, but this host reports {release}"
+            )
     return document
 
 

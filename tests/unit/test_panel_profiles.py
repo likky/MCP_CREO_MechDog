@@ -74,24 +74,36 @@ class Library(unittest.TestCase):
         return certification
 
 
-class ShippedLibraryIsClosed(Library):
-    def test_the_repository_manifest_carries_the_candidate_lineup(self):
+class ShippedLibrary(Library):
+    def test_the_repository_manifest_carries_one_candidate_and_one_certified_profile(self):
         entries = panel_profiles.profiles()
         self.assertEqual(
             [entry.profile_id for entry in entries],
             ["creo10-bbl-candidate-1", "creo10-bbl-candidate-2"],
         )
-        self.assertEqual([entry.status for entry in entries], ["candidate", "candidate"])
+        self.assertEqual([entry.status for entry in entries], ["candidate", "certified"])
         self.assertEqual({entry.release_numeric for entry in entries}, {42})
+
+    def test_the_shipped_certified_profile_is_admitted_without_a_ticket(self):
+        profile = panel_profiles.certified_profile(release_numeric=42)
+        self.assertEqual(profile.profile_id, "creo10-bbl-candidate-2")
+        admission = panel_profiles.admit_for_request(identity(), environ={})
+        self.assertEqual(admission["mode"], "certified")
+        self.assertEqual(
+            admission["profile_digest"],
+            "96d1ee7ed3cd835c11990938ea0c9895ab61fec3287b56d5ed5699c0992f0112",
+        )
+        self.assertEqual(admission["certification"]["environment"]["release_numeric"], 42)
 
     def test_find_profile_names_the_known_profiles(self):
         with self.assertRaises(panel_profiles.PanelProfileError) as caught:
             panel_profiles.find_profile("creo10-bbl-1")
         self.assertIn("known: creo10-bbl-candidate-1", str(caught.exception))
 
-    def test_normal_requests_have_no_certified_profile(self):
+    def test_a_candidate_only_library_refuses_normal_requests(self):
+        self.write_manifest(manifest([profile()]))
         with self.assertRaises(panel_profiles.PanelProfileError) as caught:
-            panel_profiles.certified_profile()
+            panel_profiles.certified_profile(root=self.root)
         text = str(caught.exception)
         self.assertIn("no certified UI profile", text)
         self.assertIn("No native job was queued".lower(), text.lower())
