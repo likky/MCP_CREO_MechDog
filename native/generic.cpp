@@ -4824,6 +4824,9 @@ static J choice_inspection(const J &holder, const char *key);
 #include "surface_group.cpp"
 #include "surface_curvature.cpp"
 #include "surface_loft_panel.h"
+// BUG-120/D2: the curve-reference rules and their Toolkit adapter. Generic.cpp is
+// the only compile unit with the Toolkit headers, so the adapter rides here.
+#include "panel_references_sdk.h"
 #include "surface_loft.cpp"
 #include "surface_round.cpp"
 #include "surface_boundary_fill.cpp"

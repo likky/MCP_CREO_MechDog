@@ -357,7 +357,7 @@ int wmain(int argc, wchar_t *argv[]) {
                 {"missing_backend",
                  std::string(mechdog_surface_loft_panel_state()) == "ready"
                      ? J::array()
-                     : J::array({"surface_loft_panel"})}}}}}},
+                     : J::array({"surface_loft_panel"})}}}}},
         };
         printf("%s\n", info.dump().c_str());
         return 0;
