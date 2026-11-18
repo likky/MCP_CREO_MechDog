@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-18（BUG-120 T2-B/草图契约）：`creo_create_sketch` 结果新增 `feature_id`（T2 里客户端拿不到自己刚建的草图）与 `curve_facts`（逐条 id/type/type_code/composite/length_mm/length_code，来自 `ProFeatureGeomitemVisit(PRO_CURVE)`+`ProCurveTypeGet`+`ProCurveLengthEval`，与面板路线同源）。T2-B 因此无需新工具：重跑建草图流程看 `curve_facts` 即可判定"一条线两条 type=62"的语义。`bridge.py build` 通过，Creo 10 SDK 对照 4/4 exit 0，3987 单测通过。真实会话尚未读过 `curve_facts`，结论仍待实机。
+
 2026-11-18（BUG-120 T2 实机枚举）：Creo 10.0.0.0 上跑通只读枚举（证据`docs/validation/bug120-t2-creo10-2026-11-18/`）：`connected=true`、`release_numeric=42`、worker digest 校验通过；草图40→曲线43/45、草图46→49/51，两组不重叠；基准面只有1条`type=5`面条目、无`type=62`曲线，故"基准面不误判"成立但**必须按曲线类型判定**（`geometry_items`非空不是反例）。两个新偏差：①`creo_create_sketch`返回无`feature_id`只有`surface_id`（=支撑面几何id），客户端无法直接引用新建草图；②**一条直线产生2条`type=62`**，`type=62`是否等于`PRO_CURVE`无法由`creo_lookup_constants`确认，D2的curve_id选择规则必须先做T2-B只读探针。T2只说明"能枚举、归属正确"，不说明曲线引用解析可用。
 
 2026-11-18（BUG-120 D3 面板后端落地）：`native/panel_run.h` 实现 resident_panel 路线：D2 引用解析→写协议4请求→`MechDogPanelPrepare`→装载 profile 的 `open_macro`→校验位置数→按需 `MechDogPanelFinalize`/失败 `MechDogPanelRelease`；`surface_loft_panel.h` 状态改为 `ready`；`generic_bridge` 为准入作业注入 `panel` 块（job/request/nonce/profile + 宏）。刻意不伪造：缺 profile 宏即 `PANEL_OPEN_MACRO_MISSING`（文件内无硬编码对话框元素名），setup 非4/2即 `PANEL_DEPLOYMENT_REQUIRED`，位置不足即 `PANEL_SELECTION_INCOMPLETE`；Done 排队不算关闭，D5 仍要求原生退出观测。`bridge.py build` 通过，Creo 10 SDK 对照 4/4 exit 0，`test_panel*` 113 项与协议守卫 17 项通过。真实会话（12.4/10）均未运行，对话框元素名与 TOGGLE 时序属 D6。

@@ -215,6 +215,27 @@ class PanelJobWiring(unittest.TestCase):
         self.assertIn("MechDogPanelRelease", text)
 
 
+class SketchContract(unittest.TestCase):
+    """T2 on Creo 10 found two gaps in the sketch result a client needs closed."""
+
+    SOURCE = ROOT / "native/generic.cpp"
+
+    def test_a_created_sketch_reports_its_own_feature_id(self):
+        text = self.SOURCE.read_text(encoding="utf-8")
+        # creo_create_sketch used to answer only surface_id, which is the supporting
+        # datum's geometry id: a client could not reference the sketch it just made.
+        self.assertIn('{"feature_id", (int)f.id}', text)
+
+    def test_a_created_sketch_reports_per_curve_facts(self):
+        text = self.SOURCE.read_text(encoding="utf-8")
+        self.assertIn('"curve_facts"', text)
+        for field in ('"readable"', '"composite"', '"length_mm"', '"type_code"'):
+            self.assertIn(field, text)
+        # The facts come from the live model, never from the request.
+        self.assertIn("ProCurveLengthEval(owned_curve, &owned_length)", text)
+        self.assertIn("ProCurveTypeGet(owned_curve, &owned_kind)", text)
+
+
 class MarkerContract(unittest.TestCase):
     def test_marker_rules_reject_foreign_and_untyped_progress(self):
         text = PANEL_PROTOCOL.read_text(encoding="utf-8")

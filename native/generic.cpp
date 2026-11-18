@@ -2729,7 +2729,8 @@ static J sketch(const J &op) {
         ids[item.first] = item.second;
     remember(
         op, f,
-        {{"entity_ids", ids},
+        {{"feature_id", (int)f.id},
+         {"entity_ids", ids},
          {"dimension_ids", dims},
          {"solver", solver_info},
          {"geometry", spec},
@@ -2747,7 +2748,41 @@ static J sketch(const J &op) {
     // FEAT-008/T09B: publish the section entity ids on the operation record so
     // the reported revolve_axis.id for an internal centerline is verifiable
     // from the client-visible result (same id space, no guessing).
-    J sketch_result = {{"surface_id", frame.surface},
+    // BUG-120/T2-B: the curves this section actually owns, read one by one. T2 on
+    // Creo 10 showed one straight line reporting two curve-type items (43/45) plus a
+    // third non-curve entry (44), and nothing in the public inspect output says which
+    // is which. These facts use the same calls the panel route uses, so a client can
+    // see why a position has more than one candidate id instead of guessing.
+    J curve_facts = J::array();
+    {
+        J owned = J::array();
+        if (!ProFeatureGeomitemVisit(&f, PRO_CURVE, collect_geom_ids, nullptr, &owned))
+            for (auto &entry : owned) {
+                const int owned_id = entry.value("id", 0);
+                ProCurve owned_curve;
+                if (ProCurveInit((ProSolid)board, owned_id, &owned_curve) != PRO_TK_NO_ERROR) {
+                    curve_facts.push_back({{"id", owned_id}, {"readable", false}});
+                    continue;
+                }
+                ProEnttype owned_kind = (ProEnttype)0;
+                const ProError kind_code = ProCurveTypeGet(owned_curve, &owned_kind);
+                double owned_length = 0.0;
+                const ProError length_code = ProCurveLengthEval(owned_curve, &owned_length);
+                curve_facts.push_back(
+                    {{"id", owned_id},
+                     {"readable", true},
+                     {"type", kind_code == PRO_TK_NO_ERROR ? J((int)owned_kind) : J(nullptr)},
+                     {"type_code", (int)kind_code},
+                     {"composite",
+                      kind_code == PRO_TK_NO_ERROR ? J(owned_kind == PRO_ENT_CMP_CRV) : J(nullptr)},
+                     {"length_mm",
+                      length_code == PRO_TK_NO_ERROR ? J(owned_length) : J(nullptr)},
+                     {"length_code", (int)length_code}});
+            }
+    }
+    J sketch_result = {{"feature_id", (int)f.id},
+                       {"curve_facts", curve_facts},
+                       {"surface_id", frame.surface},
                        {"solver", sketch_solver_receipt(solver_info)},
                        {"origin", frame.origin},
                        {"normal", frame.n},
