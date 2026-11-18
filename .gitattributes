@@ -36,6 +36,10 @@ native/third_party/** -text
 # A CRLF checkout would change its digest and invalidate the profile frozen from it.
 templates/panel/recordings/** -text
 
+# BUG-120: certification records are hashed by the manifest and the release gate.
+# A CRLF checkout would change the digest and refuse the release.
+templates/panel/certifications/** -text
+
 # DEV-030: preserve the original G0 evidence SHA256 across checkouts.
 docs/validation/bug-001-repro-2026-10-16/g0_evidence.json -text
 docs/validation/bug-001-recovery-2026-10-17/*.json -text
