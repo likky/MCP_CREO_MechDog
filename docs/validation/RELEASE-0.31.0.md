@@ -53,9 +53,9 @@
 - `MCP_CREO_MechDog-0.31.0-seed-library.zip.sha256`（种子包摘要同样在 sidecar 中）
 
 - 种子包 SHA256：`fef385db303722c3279b9fc6525dc8fd06717b6d67f99d6128c587d04a2e8356`（24 个文件、9 个种子，两次构建摘要一致，与 `docs/seed_package.json` 一致）。
-- 源码包：由本版合入 `main` 的提交源码构建；字节数与 SHA256 见同名 sidecar，不写入包内。
-- Release：<https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.31.0>（发布后执行，当前未验证，非 draft 状态以发布后 POSTCHECK 为准）。
-- 冻结包内记录仍为 `pending`；发布后须执行 `tools\check_release_assets.py --tag v0.31.0`（四个附件齐全、两个 sidecar 与对应 ZIP 摘要一致），并把结果追加到 `main` 的 POSTCHECK。
+- 源码包：由本版合入 `main` 的提交源码构建；SHA256 `e9d2c2db0be6a1500953e474cad9720146a579b079d7acad49e4a60312c1d31b`（11 106 825 字节、2163 个文件，摘要记录在同名 sidecar 中）。
+- Release：<https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.31.0>（已发布，非 draft、非 prerelease，target `main`；id `451300984`，`published_at=2026-11-19T12:15:20Z`）。
+- 发布后核对（2026-11-19 20:17 +08:00 / 12:17Z）：gh 自动下载通道在本机代理下 30 秒内未完成，改用 `gh release download` 取四附件后 `tools\check_release_assets.py --tag v0.31.0 --version 0.31.0 --dir` → exit 0，「four assets present; both sidecars match (version 0.31.0)」；实际列表、标签指向与附件摘要见 POSTCHECK `## v0.31.0` 段。冻结包内副本仍为打包时点措辞（`remote_verification=pending`），不回写、不重发已发布附件。
 
 ## 相对上一正式包核对（上一版本：0.30.0）
 
