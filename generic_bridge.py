@@ -28,6 +28,7 @@ from creo_mechdog.capabilities import (
     is_panel_route,
     require_available,
     require_kernel_completion,
+    require_panel_directions,
     require_panel_route,
     require_worker_availability,
 )
@@ -952,6 +953,7 @@ def submit(
             # before a job or the Toolkit channel is touched. The admission record
             # travels with the request so the job names the profile and mode it ran.
             panel_admission = require_panel_route(identity)
+            require_panel_directions(panel_requests, panel_admission)
     assertions = Assertions.model_validate(assertions or {}).model_dump(exclude_none=True)
     if loft_seed and (model_id is not None or readonly or model_type != "part"):
         raise ValueError("Native loft seed initialization is only available for a new part")

@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.28.0
+# MCP_CREO_MechDog 0.29.0
 
-![version](https://img.shields.io/badge/version-0.28.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.29.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.28.0**（MINOR——Creo 10 `resident_panel` 边界混合认证路线与 WorkBuddy 黑盒（BUG-120）；candidate-3 第二方向导线/末端单点、7 曲线 + 3 导线与 11 位置票据上限；两段式球鼻艏演示体镜像/合并/后盖/实体化（体积 167543.67 mm³）；单特征“点+导线”在 Creo 10 再生失败，真实船体剖面与非圆截面映射未做） · [版本说明](docs/RELEASE_NOTES_0.28.0.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
+当前正式版 **0.29.0**（MINOR——Creo 10 `resident_panel` 的 candidate-3 升为公开认证 profile（BUG-120）：第一方向 2—8 曲线或首/末单点、可选 2—8 条第二方向导线、最多 11 个位置，两段式球鼻艏演示体实体化 167543.67 mm³；并修复“profile 无第二方向槽时带导线请求穿透准入”的缺口，改为提交前拒绝。单特征“点+导线”在 Creo 10 仍再生失败，真实船体非圆剖面映射未做） · [版本说明](docs/RELEASE_NOTES_0.29.0.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 

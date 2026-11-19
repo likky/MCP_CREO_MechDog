@@ -75,36 +75,40 @@ class Library(unittest.TestCase):
 
 
 class ShippedLibrary(Library):
-    def test_the_repository_manifest_carries_two_candidates_and_one_certified_profile(self):
+    def test_the_repository_manifest_carries_one_candidate_and_two_certified_profiles(self):
         entries = panel_profiles.profiles()
         self.assertEqual(
             [entry.profile_id for entry in entries],
             [
-                "creo10-bbl-candidate-1",
-                "creo10-bbl-candidate-2",
                 "creo10-bbl-candidate-3",
+                "creo10-bbl-candidate-2",
+                "creo10-bbl-candidate-1",
             ],
         )
         self.assertEqual(
-            [entry.status for entry in entries], ["candidate", "certified", "candidate"]
+            [entry.status for entry in entries], ["certified", "certified", "candidate"]
         )
         self.assertEqual({entry.release_numeric for entry in entries}, {42})
 
     def test_the_shipped_certified_profile_is_admitted_without_a_ticket(self):
         profile = panel_profiles.certified_profile(release_numeric=42)
-        self.assertEqual(profile.profile_id, "creo10-bbl-candidate-2")
+        # candidate-3 is the superset (the same first-direction steps plus the
+        # optional second_direction_macro) and is listed first, so it serves the
+        # release; candidate-2 stays certified as its own accepted record.
+        self.assertEqual(profile.profile_id, "creo10-bbl-candidate-3")
         admission = panel_profiles.admit_for_request(identity(), environ={})
         self.assertEqual(admission["mode"], "certified")
         self.assertEqual(
             admission["profile_digest"],
-            "96d1ee7ed3cd835c11990938ea0c9895ab61fec3287b56d5ed5699c0992f0112",
+            "bc3bfefb15168ef308e7c9b27977fa787c9fa465b372895ec68783a718ae05b1",
         )
         self.assertEqual(admission["certification"]["environment"]["release_numeric"], 42)
 
-    def test_the_shipped_second_direction_profile_is_a_candidate(self):
+    def test_the_shipped_second_direction_profile_is_certified(self):
         entries = {entry.profile_id: entry for entry in panel_profiles.profiles()}
         third = entries["creo10-bbl-candidate-3"]
-        self.assertEqual(third.status, "candidate")
+        self.assertEqual(third.status, "certified")
+        self.assertIsNotNone(third.certification)
         self.assertIn("Curves2DirRep", third.commands["second_direction_macro"])
         # The panel instance index changes between sessions, so it is not frozen.
         self.assertNotIn("bbl_12curves", third.commands["second_direction_macro"])
@@ -113,7 +117,9 @@ class ShippedLibrary(Library):
     def test_find_profile_names_the_known_profiles(self):
         with self.assertRaises(panel_profiles.PanelProfileError) as caught:
             panel_profiles.find_profile("creo10-bbl-1")
-        self.assertIn("known: creo10-bbl-candidate-1", str(caught.exception))
+        text = str(caught.exception)
+        for name in ("creo10-bbl-candidate-3", "creo10-bbl-candidate-2", "creo10-bbl-candidate-1"):
+            self.assertIn(name, text)
 
     def test_a_candidate_only_library_refuses_normal_requests(self):
         self.write_manifest(manifest([profile()]))

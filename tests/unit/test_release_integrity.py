@@ -167,10 +167,10 @@ class SeedArchiveValidationTests(SeedArchiveFixture):
             release_integrity.validate_seed_archive(self.root, self.archive)
 
     def test_the_shipped_panel_library_is_a_valid_release_input(self):
-        # BUG-120/D6: the library carries one certified Creo 10 profile; the
-        # packager must ship its manifest, recording and certification record.
+        # BUG-120/D6+D7: two certified Creo 10 profiles (candidate-2 and the
+        # candidate-3 superset) plus their own certification records.
         summary = release_integrity.validate_release_inputs(self.root, self.archive)
-        self.assertEqual(summary["panel_certification_count"], 1)
+        self.assertEqual(summary["panel_certification_count"], 2)
 
     def test_a_missing_panel_manifest_refuses_the_release_inputs(self):
         (self.root / "templates/panel/manifest.json").unlink()
@@ -573,9 +573,10 @@ class PanelLibraryAllowlistTests(PanelLibraryFixture):
         self.assertNotIn(stray, files)
 
     def test_the_shipped_repository_library_ships_the_certified_profile(self):
-        # The library carries the Creo 10 profile certified on 2026-11-18 and the
-        # second-direction recording frozen for its candidate, so the shipped set is
-        # the manifest, both recordings and that certification record.
+        # The library carries two certified Creo 10 profiles (candidate-2 from
+        # 2026-11-18 and the candidate-3 superset from 2026-11-19) plus the
+        # second-direction recording frozen for the superset, so the shipped set is
+        # the manifest, both recordings and both certification records.
         shipped = release_integrity.panel_profile_library_files(ROOT)
         names = {path.relative_to(ROOT).as_posix() for path in shipped}
         self.assertEqual(
@@ -585,11 +586,12 @@ class PanelLibraryAllowlistTests(PanelLibraryFixture):
                 "templates/panel/recordings/creo10_blend_gui_t1a.pro",
                 "templates/panel/recordings/creo10_blend_gui_t2.pro",
                 "templates/panel/certifications/creo10-bbl-2026-11-18.json",
+                "templates/panel/certifications/creo10-bbl-2026-11-19.json",
             },
         )
         self.assertEqual(
             [entry.status for entry in panel_profiles.profiles(ROOT)],
-            ["candidate", "certified", "candidate"],
+            ["certified", "certified", "candidate"],
         )
 
     def test_the_source_package_ships_the_panel_manifest(self):

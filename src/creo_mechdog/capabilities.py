@@ -339,6 +339,25 @@ def require_panel_route(identity: object, *, root=None, environ=None) -> dict:
     return panel_profiles.admit_for_request(identity, root=root, environ=environ)
 
 
+def require_panel_directions(operations: list[dict], admission: dict) -> None:
+    """Refuse a second-direction request the admitted profile cannot select.
+
+    The native worker refuses the same request, but only after the job exists and
+    the panel session guard is written. That projects an unknown_outcome onto a
+    model for a request that was never executable. Admission is the last point that
+    can still say "nothing was attempted" and keep that statement true.
+    """
+    needs_second = any(op.get("guides") for op in operations if is_panel_route(op))
+    if not needs_second or str(admission.get("second_direction_macro") or ""):
+        return
+    raise ValueError(
+        "the resident_panel request selects second-direction guides but the admitted profile "
+        f"{admission.get('profile_id')!r} freezes no second_direction_macro; no job was created "
+        "and the dialog was not opened. Use a certified profile that records the second "
+        "direction, or send a first-direction-only request."
+    )
+
+
 def _kernel_observation(identity: object, runtime: object) -> dict:
     """The runtime observation that belongs to this exact worker, else unknown."""
     worker_sha = identity.get("worker_sha256") if isinstance(identity, dict) else None
@@ -366,9 +385,14 @@ def _panel_route_document(identity: object) -> dict:
         "default": False,
         "request_field": {"creation_route": "resident_panel"},
         "limits": (
-            "2-8 MCP-owned sketch labels, each owning one open non-composite curve; no guides, "
-            "points, boundary conditions or template; two sections are ruled and three or more "
-            "are one smooth blend"
+            "2-8 first-direction positions, each an MCP-owned sketch label with one open "
+            "non-composite curve, plus optionally one end position that is an MCP-owned datum "
+            "point (first or last only, at most one per run); optional second direction of 2-8 "
+            "guide curves; at most 11 positions per run (7 curves + 1 point + 3 guides is the "
+            "accepted maximum); no boundary conditions or template. A single feature cannot hold "
+            "both the end point and guides: Creo 10 rejects that combination at regeneration, so "
+            "build the point-converged tip as a second loft that shares the last section. Two "
+            "sections are ruled and three or more are one smooth blend"
         ),
         "compiled": None,
         "state": None,
