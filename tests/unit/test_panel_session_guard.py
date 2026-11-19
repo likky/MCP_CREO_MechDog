@@ -23,7 +23,10 @@ def panel_op():
     return {
         "op": "surface_loft",
         "label": "panel_surface",
-        "sections": ["panel_a", "panel_b"],
+        "sections": [
+            {"label": "panel_a", "open_confirmed": True},
+            {"label": "panel_b", "open_confirmed": True},
+        ],
         "creation_route": "resident_panel",
     }
 

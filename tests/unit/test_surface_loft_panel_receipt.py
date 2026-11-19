@@ -108,6 +108,108 @@ class ProvenRun(unittest.TestCase):
         self.assertTrue(value["success"])
 
 
+class MeasuredGeometry(unittest.TestCase):
+    """BUG-120 task 3: verified is a conclusion from facts, not a native flag."""
+
+    def native_geometry(self, **overrides):
+        check = {
+            "verified": False,
+            "quilt_id": 142,
+            "feature_id": 136,
+            "feature_quilt": 142,
+            "quilt_is_new": True,
+            "face_groups": [[137]],
+            "face_count": 1,
+            "area_mm2": 46555189.24528535,
+            "closed": False,
+            "boundary": {"open_edges": 4, "boundary_edges": 4, "joined_edges": 0},
+            "bbox": {
+                "xyz_min": [0.0, 0.0, 0.0],
+                "xyz_max": [40.0, 20.0, 0.0],
+                "source": "surface_data",
+            },
+            "measured_after_reload": True,
+            "method": "quilt_record + surface_group_receipt on the saved reloaded model",
+        }
+        check.update(overrides)
+        return check
+
+    def value(self, **overrides):
+        value = result()
+        value["operations"][0]["quilt_id"] = 142
+        value["operations"][0]["feature_id"] = 136
+        value["operations"][0]["feature_quilt"] = 142
+        value["operations"][0]["geometry_check"] = self.native_geometry(**overrides)
+        return value
+
+    def test_all_measured_facts_make_the_geometry_verified(self):
+        receipt = annotate(self.value())["panel_receipt"]
+        self.assertTrue(receipt["geometry_check"]["verified"])
+        self.assertEqual(receipt["geometry_check"]["status"], "verified")
+        self.assertEqual(receipt["geometry_check"]["reasons"], [])
+        self.assertEqual(receipt["geometry_check"]["area_mm2"], 46555189.24528535)
+        self.assertEqual(receipt["geometry_check"]["boundary"]["open_edges"], 4)
+        self.assertTrue(receipt["geometry_check"]["quilt_is_new"])
+
+    def test_a_missing_reload_reading_stays_unverified_with_a_reason(self):
+        receipt = annotate(self.value(measured_after_reload=False))["panel_receipt"]
+        check = receipt["geometry_check"]
+        self.assertFalse(check["verified"])
+        self.assertEqual(check["status"], "unverified")
+        self.assertIn("after the saved model was reloaded", " ".join(check["reasons"]))
+        # A missing reading is not a transaction failure by itself.
+        fresh = annotate(self.value(measured_after_reload=False))
+        self.assertTrue(fresh["success"])
+
+    def test_an_unassociated_feature_quilt_stays_unverified(self):
+        receipt = annotate(self.value(feature_quilt="quilt:old_3"))["panel_receipt"]
+        check = receipt["geometry_check"]
+        self.assertFalse(check["verified"])
+        self.assertIn("feature/quilt association", " ".join(check["reasons"]))
+
+    def test_a_measurement_error_is_reported_not_hidden(self):
+        receipt = annotate(self.value(error="surface_group_receipt failed"))["panel_receipt"]
+        self.assertFalse(receipt["geometry_check"]["verified"])
+        self.assertIn("geometry measurement failed", " ".join(receipt["geometry_check"]["reasons"]))
+
+
+class PreDialogRefusal(unittest.TestCase):
+    """BUG-120 task 2: a refusal before the macro is not an unknown panel run."""
+
+    def test_a_preopen_refusal_is_a_normal_failure(self):
+        value = result(success=False, saved_file_reloaded_and_verified=False)
+        operation = value["operations"][0]
+        operation.pop("exit_observation")
+        operation["panel_preopen"] = {
+            "no_dialog_opened": True,
+            "macro_submitted": False,
+            "phase": "reading_references",
+            "job_id": "job_1",
+            "nonce": "n" * 32,
+        }
+        annotate(value)
+        receipt = value["panel_receipt"]
+        self.assertFalse(value["success"])
+        self.assertNotIn("panel_execution_unconfirmed", value)
+        self.assertTrue(receipt["panel_never_opened"])
+        self.assertEqual(receipt["status"], "failed")
+        self.assertIsNone(receipt["exit_observation"]["closed"])
+        self.assertIn("never opened", receipt["exit_observation"]["reason"])
+
+    def test_a_submitted_macro_does_not_use_the_preopen_claim(self):
+        value = result(success=False)
+        operation = value["operations"][0]
+        operation.pop("exit_observation")
+        operation["panel_preopen"] = {
+            "no_dialog_opened": False,
+            "macro_submitted": True,
+            "phase": "macro_submitted",
+        }
+        annotate(value)
+        self.assertFalse(value["panel_receipt"]["panel_never_opened"])
+        self.assertTrue(value["panel_execution_unconfirmed"])
+
+
 class UnprovenRuns(unittest.TestCase):
     def test_a_missing_exit_observation_is_unknown_and_not_successful(self):
         value = result()

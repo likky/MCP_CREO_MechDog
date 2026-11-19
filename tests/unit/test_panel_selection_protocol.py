@@ -455,6 +455,11 @@ class PanelSectionContract(unittest.TestCase):
         # The job path must not send a second Toolkit task while the UI macro is
         # still executing: that blocked a live run until its 600 s budget expired.
         self.assertNotIn("MechDogPanelState", text)
+        # BUG-120 task 2/3: the pre-dialog attestation and the measured receipt.
+        self.assertIn('"panel_preopen"', text)
+        self.assertIn("panel_attach_post_operation_geometry", text)
+        self.assertIn("panel_finalize_reloaded_geometry", text)
+        self.assertIn('"curve_fit_check"', text)
 
 
 class CallbackProbeGeneration(unittest.TestCase):

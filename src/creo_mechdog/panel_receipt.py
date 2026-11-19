@@ -78,7 +78,19 @@ def _exit_observation(record: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-def _geometry_check(record: dict[str, Any], prior_inspection: object) -> dict[str, Any]:
+def _preopen(record: dict[str, Any]) -> dict[str, Any] | None:
+    """The worker's attestation that it refused before any macro was submitted."""
+    value = record.get("panel_preopen")
+    if not isinstance(value, dict):
+        return None
+    if value.get("no_dialog_opened") is not True or value.get("macro_submitted") is not False:
+        return None
+    return value
+
+
+def _geometry_check(
+    record: dict[str, Any], prior_inspection: object, saved_reloaded: bool
+) -> dict[str, Any]:
     check = record.get("geometry_check")
     verification = check if isinstance(check, dict) else {}
     bbox = verification.get("bbox")
@@ -93,6 +105,7 @@ def _geometry_check(record: dict[str, Any], prior_inspection: object) -> dict[st
             "approximate": bbox.get("source") != "measured",
         }
     quilt_id = record.get("quilt_id")
+    feature_id = record.get("feature_id")
     prior_quilts: set[object] = set()
     if isinstance(prior_inspection, dict):
         for key in ("quilts", "surfaces"):
@@ -101,15 +114,50 @@ def _geometry_check(record: dict[str, Any], prior_inspection: object) -> dict[st
                 prior_quilts.update(
                     value.get("id") if isinstance(value, dict) else value for value in values
                 )
+    groups = verification.get("face_groups")
+    area = verification.get("area_mm2")
+    positive_area = isinstance(area, (int, float)) and not isinstance(area, bool) and area > 0.0
+    # BUG-120 task 3: verified needs all of these facts, each read from this run:
+    # the target quilt, the feature that owns it, a positive measured area, one
+    # face group, and a reading taken on the saved and reloaded model.
+    reasons: list[str] = []
+    if not isinstance(quilt_id, int) or isinstance(quilt_id, bool):
+        reasons.append("the run named no created quilt id")
+    if not isinstance(feature_id, int) or isinstance(feature_id, bool):
+        reasons.append("the run named no created feature id")
+    if not positive_area:
+        reasons.append("no positive surface area was measured")
+    if not (isinstance(groups, list) and len(groups) == 1):
+        reasons.append("the created surface is not exactly one face group")
+    if verification.get("feature_quilt") != quilt_id:
+        reasons.append("the feature/quilt association does not name the created quilt")
+    if verification.get("measured_after_reload") is not True:
+        reasons.append("no geometry reading was taken after the saved model was reloaded")
+    if not saved_reloaded:
+        reasons.append("the job did not confirm the saved and reloaded model")
+    if isinstance(verification.get("error"), str):
+        reasons.append("the geometry measurement failed: " + verification["error"])
+    verified = not reasons
+    quilt_is_new = verification.get("quilt_is_new")
+    if quilt_is_new is None and prior_quilts and quilt_id is not None:
+        quilt_is_new = quilt_id not in prior_quilts
     return {
-        "verified": verification.get("verified") is True,
+        "verified": verified,
+        "status": "verified" if verified else "unverified",
+        "reasons": reasons,
         "quilt_id": quilt_id,
-        "quilt_is_new": None
-        if not prior_quilts or quilt_id is None
-        else quilt_id not in prior_quilts,
-        "face_groups": verification.get("face_groups"),
-        "area_mm2": verification.get("area_mm2"),
+        "feature_id": feature_id,
+        "feature_quilt": verification.get("feature_quilt"),
+        "quilt_is_new": quilt_is_new,
+        "face_groups": groups,
+        "face_count": verification.get("face_count"),
+        "area_mm2": area,
+        "area_status": verification.get("area_status"),
+        "closed": verification.get("closed"),
+        "closed_status": verification.get("closed_status"),
+        "boundary": verification.get("boundary"),
         "bbox": bbox_view,
+        "measured_after_reload": verification.get("measured_after_reload") is True,
         "samples": verification.get("samples"),
         "method": verification.get("method"),
     }
@@ -123,7 +171,10 @@ def _selection(record: dict[str, Any], inputs: list[dict[str, Any]] | None, posi
     if isinstance(source, dict):
         sections = source.get("sections")
         if isinstance(sections, list):
-            labels = [str(label) for label in sections]
+            labels = [
+                str(label.get("label")) if isinstance(label, dict) else str(label)
+                for label in sections
+            ]
     problems = []
     if isinstance(recorded, dict):
         selected = recorded.get("labels")
@@ -168,10 +219,27 @@ def annotate(
     record = records[0]
     position = result.get("operations", []).index(record)
     intent, recorded, problems = _selection(record, inputs, position)
-    exit_report = _exit_observation(record)
-    geometry = _geometry_check(record, prior_inspection)
+    preopen = _preopen(record)
+    if preopen is not None:
+        # BUG-120 task 2: the worker refused before a macro was submitted. There is
+        # no dialog to observe, so this is an ordinary failure, not an unknown
+        # panel run; the attestation also lets the session guard be retired.
+        exit_report = {
+            "supported": False,
+            "closed": None,
+            "method": None,
+            "reason": (
+                "the panel was never opened: the worker refused during "
+                + str(preopen.get("phase") or "pre-dialog admission")
+            ),
+            "evidence": preopen,
+        }
+    else:
+        exit_report = _exit_observation(record)
+    saved_reloaded = result.get("saved_file_reloaded_and_verified") is True
+    geometry = _geometry_check(record, prior_inspection, saved_reloaded)
 
-    if exit_report.get("closed") is not True:
+    if preopen is None and exit_report.get("closed") is not True:
         problems.append(
             {
                 "code": "panel_exit_unconfirmed",
@@ -259,6 +327,9 @@ def annotate(
         "selection_intent": intent,
         "selection_record": recorded,
         "exit_observation": exit_report,
+        "panel_never_opened": preopen is not None,
+        "panel_preopen": preopen,
+        "curve_fit_check": record.get("curve_fit_check"),
         "feature_id": record.get("feature_id"),
         "quilt_id": record.get("quilt_id"),
         "geometry_check": geometry,
@@ -279,6 +350,10 @@ def annotate(
             + [f"{problem['code']}: {problem['message']}" for problem in problems]
         ).strip("; ")
         receipt["status"] = "failed"
+    elif preopen is not None:
+        # A pre-dialog refusal is an ordinary failure: no dialog existed, so there
+        # is no unconfirmed run to preserve.
+        receipt["status"] = "succeeded" if result.get("success") else "failed"
     else:
         receipt["status"] = "succeeded" if result.get("success") else "unknown"
     return result

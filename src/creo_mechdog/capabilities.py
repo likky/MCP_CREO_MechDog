@@ -385,14 +385,20 @@ def _panel_route_document(identity: object) -> dict:
         "default": False,
         "request_field": {"creation_route": "resident_panel"},
         "limits": (
-            "2-8 first-direction positions, each an MCP-owned sketch label with one open "
-            "non-composite curve, plus optionally one end position that is an MCP-owned datum "
-            "point (first or last only, at most one per run); optional second direction of 2-8 "
-            "guide curves; at most 11 positions per run (7 curves + 1 point + 3 guides is the "
+            "2-8 first-direction positions, each written as {label, open_confirmed:true} for "
+            "one MCP-owned sketch with one open non-composite curve (a bare label is refused "
+            "before a job exists because this build cannot read a standalone curve's openness), "
+            "plus optionally one end position that is an MCP-owned datum point (first or last "
+            "only, at most one per run); optional second direction of 2-8 guide curves in the "
+            "same form; at most 11 positions per run (7 curves + 1 point + 3 guides is the "
             "accepted maximum); no boundary conditions or template. A single feature cannot hold "
             "both the end point and guides: Creo 10 rejects that combination at regeneration, so "
             "build the point-converged tip as a second loft that shares the last section. Two "
-            "sections are ruled and three or more are one smooth blend"
+            "sections are ruled and three or more are one smooth blend. Before the dialog opens "
+            "the worker reports a per-pair section/guide fit block (21 pairs for 7+3) and, after "
+            "a successful saved/reloaded run, the created feature/quilt association with area, "
+            "openness and boundary records; geometry_check.verified is true only when every one "
+            "of those readings exists"
         ),
         "compiled": None,
         "state": None,

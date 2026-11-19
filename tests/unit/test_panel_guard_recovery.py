@@ -79,6 +79,47 @@ class PanelGuardRecovery(unittest.TestCase):
             self.confirm(confirm=False)
         self.assertEqual(panel_session_guard.inspect(self.root)["status"], "active")
 
+    def test_a_preopen_refusal_retires_the_guard_with_the_matching_nonce(self):
+        self.reserve()
+        result = {
+            "success": False,
+            "operations": [
+                {
+                    "op": "surface_loft",
+                    "creation_route": "resident_panel",
+                    "panel_preopen": {
+                        "no_dialog_opened": True,
+                        "macro_submitted": False,
+                        "phase": "reading_references",
+                        "job_id": self.original,
+                        "nonce": NONCE,
+                    },
+                }
+            ],
+        }
+        general._retire_panel_guard_after_result(self.original, result)
+        self.assertIsNone(panel_session_guard.inspect(self.root))
+
+    def test_a_preopen_refusal_with_another_nonce_leaves_the_guard(self):
+        self.reserve()
+        result = {
+            "success": False,
+            "operations": [
+                {
+                    "op": "surface_loft",
+                    "creation_route": "resident_panel",
+                    "panel_preopen": {
+                        "no_dialog_opened": True,
+                        "macro_submitted": False,
+                        "job_id": self.original,
+                        "nonce": "f" * 32,
+                    },
+                }
+            ],
+        }
+        general._retire_panel_guard_after_result(self.original, result)
+        self.assertEqual(panel_session_guard.inspect(self.root)["status"], "active")
+
     def test_a_confirmation_retires_the_guard_and_leaves_the_model_alone(self):
         self.reserve()
         before = (general.model_path(self.mid) / "model.json").read_bytes()
