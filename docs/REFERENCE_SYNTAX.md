@@ -397,3 +397,47 @@ executable 仅表示静态能力/schema 准入；native/saved_reload 恒为 not_
   需要变更时重建草图。
 - 可用性不依赖 `Probbl.h`；草图实体写入只需要 `Pro2dEntdef.h` 的
   `PRO_2D_B_SPLINE` 定义。
+
+## 装配位姿矩阵与约束组（DEV-092 / BUG-133，开发分支）
+
+`assemble_component` 与 `component_placement` 共用同一份位姿契约：
+
+| 字段 | 规则 |
+| --- | --- |
+| `rotation_matrix` | 3×3 有限实数；与 `rotation`（XYZ Euler 度）互斥；原样写入，不转置、不重正交 |
+| `rotation_convention` | `row`（缺省）或 `column`。`column` 表示 `p_parent(column) = R * p_local(column) + T`，原生入口只转置一次 |
+| `rotation_tolerance` | 可选，`0 < t ≤ 1e-3`，缺省 `1e-6`。Python 与原生读取同一有效值 |
+
+- 准入始终按**规范行向量矩阵**计算 `max |R*Rᵀ−I|` 与 `det`：`column` 输入先转置再判定，
+  所以同一姿态无论用行还是列写法都得到相同结论。请求数组、`rotation_convention`
+  与容差都按原值回显。
+- 上限 `1e-3` 是前置保护：反射的 `|det−1| = 2`，缩放基的偏差也远超该值，因此放宽到
+  1e-3 以上不再描述“四舍五入”，会被两层同时拒绝。规则收紧后，此前传入更大值的调用
+  现在是明确的输入错误（不会静默降级）。
+- 只有显式 `rotation_matrix` 能带 `rotation_convention` / `rotation_tolerance`；Euler
+  输入带任一字段即拒绝，避免无效字段悄悄生效。
+- 成功回执的 `rotation_convention` 仍描述解算变换（行向量），另加
+  `input_rotation_convention` 与 `rotation_tolerance` 说明请求。放置失败时
+  `failed_operation` 给出 `input_matrix`、`matrix_convention`、`admission_tolerance`、
+  `determinant`、`orthogonality_residual`，均按同一有效门槛测量。
+
+约束组（`component_constraints`）：
+
+- 每次调用是**该组件的一整组替换**（原生 `ProAsmcompConstraintsSet`）：上次写入的约束
+  不追加，已有的 FIX 放置也会被替换。因此“22 条拆两批”不能按同一组件累计。
+- `max_length=20` 只作用于 `component_constraints.constraints`；`assemble_component`
+  的初始约束数组没有该上限，不同组件本来也分别写入。22 条跨组件不是整组上限。
+- 支持 `mate`/`align`/`mate_offset`/`align_offset`/`insert`/`csys`；`mate`/`align`/
+  `insert`/`csys` 不接受非零 `offset`。`insert` 需要圆柱面引用，selector 形式还要
+  `radius_mm`，`coaxial="any"` 只用于 insert/concentric。
+- `parallel` 与轴/点 `distance` 仍是 named gap：面距离可用 `mate_offset`/`align_offset`
+  加 `offset` 与 sides 表达；平行约束用 `align`/`align_offset` 近似，但两者并不等价
+  （align 还约束面的位置）。
+- 失败诊断：预解析错误给 `failed_constraint_index`（0 基）、`failed_constraint_type`、
+  `constraint_stage`（`type`/`offset`/`self_reference`/`allocation`/`reference`/
+  `surface_type`/`side`/`offset_write`）与 `constraint_reason="constraint_rejected"`；
+  整组求解失败时索引为 null、`constraint_stage="solve"`、
+  `constraint_reason="solver_failed"`，原始 Toolkit 码保留在
+  `failed_toolkit_call`/`toolkit_code`，不推测具体哪条冲突。
+- 以上为软件层契约与离线回归；Creo 13.4 实机几何、求解与保存重载未验收，本机
+  12.4 结果也不外推。

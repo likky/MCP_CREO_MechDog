@@ -19,7 +19,13 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from creo_mechdog.rotation_admission import PRECISION_ADVICE
+from creo_mechdog.rotation_admission import (
+    ADMISSION_TOLERANCE,
+    NEAR_ORTHONORMAL_TOLERANCE,
+    PRECISION_ADVICE,
+    tolerance_text,
+    validate_tolerance,
+)
 
 #: The raw message is cut to this many characters (the native producer cuts at
 #: the same byte budget). ``message_truncated`` records that a cut happened.
@@ -34,6 +40,10 @@ PRO_ERROR_SOURCES = ("toolkit", "unsupported")
 _MATRIX_FIELDS = (
     "input_matrix",
     "matrix_source",
+    # BUG-133/FEAT-012: the request's own convention and the effective gate, so
+    # the reported numbers can be checked against the admission the entry used.
+    "matrix_convention",
+    "admission_tolerance",
     "determinant",
     "orthogonality_residual",
     # BUG-045/FEAT-012: the numerical class of the admitted pose plus an
@@ -112,33 +122,52 @@ def _euler_rows(euler: list[float]) -> list[list[float]]:
     return [[columns[column][row] for column in range(3)] for row in range(3)]
 
 
-def _precision(residual: float) -> dict[str, Any]:
+def _precision(residual: float, tolerance: float = ADMISSION_TOLERANCE) -> dict[str, Any]:
     """Classify the admitted rotation; advice is a numerical fact, not a cause."""
-    if residual <= 1e-9:
+    if residual > tolerance:
+        return {"precision_class": "invalid", "precision_advice": None}
+    if residual <= NEAR_ORTHONORMAL_TOLERANCE:
         return {"precision_class": "strict", "precision_advice": None}
-    if residual <= 1e-6:
-        return {
-            "precision_class": "near_orthonormal",
-            "precision_advice": PRECISION_ADVICE.format(residual=residual),
-        }
-    return {"precision_class": "invalid", "precision_advice": None}
+    return {
+        "precision_class": "near_orthonormal",
+        "precision_advice": PRECISION_ADVICE.format(
+            tolerance=tolerance_text(tolerance), residual=residual
+        ),
+    }
+
+
+def _canonical_rows(rotation: list[list[float]], convention: str) -> list[list[float]]:
+    """FEAT-012/T2: the row form every gate measures; transposed exactly once."""
+    if convention != "column":
+        return rotation
+    return [[rotation[column][row] for column in range(3)] for row in range(3)]
 
 
 def _matrix_block(
-    rotation: list[list[float]], translation: list[float], source: str
+    rotation: list[list[float]],
+    translation: list[float],
+    source: str,
+    convention: str = "row",
+    tolerance: float | None = ADMISSION_TOLERANCE,
 ) -> dict[str, Any]:
-    determinant = _determinant(rotation)
-    residual = _orthogonality_residual(rotation)
+    # The echoed matrix stays the caller's own array; only the measurement uses
+    # the canonical row form.
+    measured = _canonical_rows(rotation, convention)
+    determinant = _determinant(measured)
+    residual = _orthogonality_residual(measured)
     if not math.isfinite(determinant) or not math.isfinite(residual):
         return {}
     matrix = [[float(rotation[row][column]) for column in range(3)] + [0.0] for row in range(3)]
     matrix.append([float(value) for value in translation] + [1.0])
+    effective = ADMISSION_TOLERANCE if tolerance is None else tolerance
     return {
         "input_matrix": matrix,
         "matrix_source": source,
+        "matrix_convention": convention,
+        "admission_tolerance": tolerance,
         "determinant": determinant,
         "orthogonality_residual": residual,
-        **_precision(residual),
+        **_precision(residual, effective),
     }
 
 
@@ -166,7 +195,15 @@ def placement_matrix(operation: Any) -> dict[str, Any]:
             if numbers is None:
                 return {}
             rotation.append(numbers)
-        return _matrix_block(rotation, translation, "rotation_matrix")
+        convention = operation.get("rotation_convention")
+        convention = "row" if convention is None else convention
+        if convention not in ("row", "column"):
+            return {}
+        try:
+            tolerance: float | None = validate_tolerance(operation.get("rotation_tolerance"))
+        except ValueError:
+            tolerance = None
+        return _matrix_block(rotation, translation, "rotation_matrix", convention, tolerance)
     euler = operation.get("rotation")
     euler = [0.0, 0.0, 0.0] if euler is None else _vector3(euler)
     if euler is None:
@@ -198,15 +235,23 @@ def _native_matrix(block: dict[str, Any]) -> dict[str, Any]:
             return {}
         rows.append(numbers)
     rotation = rows[:3]
+    convention = _text(block.get("matrix_convention")) or "row"
+    measured = _canonical_rows(rotation, convention)
+    try:
+        tolerance: float | None = validate_tolerance(block.get("admission_tolerance"))
+    except ValueError:
+        tolerance = None
     determinant = _number(block.get("determinant"))
     residual = _number(block.get("orthogonality_residual"))
-    residual = residual if residual is not None else _orthogonality_residual(rotation)
+    residual = residual if residual is not None else _orthogonality_residual(measured)
     return {
         "input_matrix": rows,
         "matrix_source": _text(block.get("matrix_source")),
-        "determinant": determinant if determinant is not None else _determinant(rotation),
+        "matrix_convention": convention,
+        "admission_tolerance": tolerance,
+        "determinant": determinant if determinant is not None else _determinant(measured),
         "orthogonality_residual": residual,
-        **_precision(residual),
+        **_precision(residual, ADMISSION_TOLERANCE if tolerance is None else tolerance),
     }
 
 
@@ -307,6 +352,12 @@ def annotate_failed_operation(result: dict[str, Any], inputs: Any = None) -> dic
             "message": message,
             "message_truncated": truncated,
             **{field: placement.get(field) for field in _MATRIX_FIELDS},
+            # DEV-092/T4: pre-parse failures name the constraint slot; a
+            # whole-group solve failure keeps the index null.
+            "failed_constraint_index": _integer(native.get("failed_constraint_index")),
+            "failed_constraint_type": _text(native.get("failed_constraint_type")),
+            "constraint_stage": _text(native.get("constraint_stage")),
+            "constraint_reason": _text(native.get("constraint_reason")),
         }
     )
     result["failed_operation"] = block

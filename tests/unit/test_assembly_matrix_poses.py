@@ -268,5 +268,150 @@ class RowVectorPoseTest(unittest.TestCase):
             ComponentPlacementOp(**placement_operation([[1.0, 2.0], [3.0, 4.0]]))
 
 
+#: FEAT-012/T2 threshold case: the six-decimal column matrix whose own row
+#: reading gives 9.62666e-7 but whose canonical (transposed) row form gives
+#: 1.023309e-6, so only the canonical form can decide the gate.
+MARGINAL_COLUMN = [
+    [0.965337, -0.258191, 0.038222],
+    [0.258661, 0.965936, -0.007826],
+    [-0.034899, 0.017442, 0.999239],
+]
+POINT = [2.0, 3.0, 5.0]
+TRANSLATION = [7.0, -8.0, 9.0]
+COLUMN_90 = [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]
+
+
+def column_rotation_map(rotation, point):
+    return [sum(rotation[j][k] * point[k] for k in range(3)) for j in range(3)]
+
+
+def gram_residual(rotation):
+    return max(
+        abs(sum(rotation[i][k] * rotation[j][k] for k in range(3)) - (1.0 if i == j else 0.0))
+        for i in range(3)
+        for j in range(3)
+    )
+
+
+class ExplicitConventionTest(unittest.TestCase):
+    """FEAT-012/T2: a column input is transposed exactly once, before the gate."""
+
+    def test_column_input_maps_the_known_point(self):
+        operation = {
+            "op": "component_placement",
+            "component": "probe",
+            "rotation_matrix": [row[:] for row in COLUMN_90],
+            "rotation_convention": "column",
+            "translation": TRANSLATION,
+        }
+        admitted = validate_operations([operation])[0]
+        # The request keeps the caller's array and convention.
+        self.assertEqual(admitted["rotation_matrix"], COLUMN_90)
+        self.assertEqual(admitted["rotation_convention"], "column")
+        mapped = [
+            value + TRANSLATION[index]
+            for index, value in enumerate(column_rotation_map(COLUMN_90, POINT))
+        ]
+        self.assertEqual(mapped, [4.0, -6.0, 14.0])
+        # The equivalent row input maps the same point.
+        canonical = [[COLUMN_90[j][i] for j in range(3)] for i in range(3)]
+        row_mapped = row_vector_map(canonical, TRANSLATION, POINT)
+        for actual, expected in zip(row_mapped, mapped, strict=True):
+            self.assertAlmostEqual(actual, expected, places=12)
+
+    def test_row_stays_the_default_and_is_not_transposed(self):
+        operation = {
+            "op": "component_placement",
+            "component": "probe",
+            "rotation_matrix": [row[:] for row in COLUMN_90],
+            "translation": TRANSLATION,
+        }
+        admitted = validate_operations([operation])[0]
+        self.assertIsNone(admitted.get("rotation_convention"))
+        mapped = row_vector_map(COLUMN_90, TRANSLATION, POINT)
+        self.assertAlmostEqual(mapped[0], 10.0, places=12)
+        self.assertAlmostEqual(mapped[1], -10.0, places=12)
+
+    def test_repeated_validation_never_transposes_twice(self):
+        operation = {
+            "op": "component_placement",
+            "component": "probe",
+            "rotation_matrix": [row[:] for row in COLUMN_90],
+            "rotation_convention": "column",
+        }
+        first = validate_operations([operation])[0]
+        second = validate_operations([first])[0]
+        self.assertEqual(second["rotation_matrix"], COLUMN_90)
+        self.assertEqual(second["rotation_convention"], "column")
+
+    def test_both_assembly_branches_accept_the_same_column_pose(self):
+        for operation, model in (
+            (assemble_operation(COLUMN_90), AssembleOp),
+            (placement_operation(COLUMN_90), ComponentPlacementOp),
+        ):
+            operation["rotation_convention"] = "column"
+            admitted = model(**operation)
+            self.assertEqual(admitted.rotation_matrix, COLUMN_90)
+            self.assertEqual(admitted.rotation_convention, "column")
+
+    def test_the_gate_measures_the_canonical_row_form(self):
+        self.assertAlmostEqual(gram_residual(MARGINAL_COLUMN), 9.62666e-7, places=13)
+        canonical = [[MARGINAL_COLUMN[j][i] for j in range(3)] for i in range(3)]
+        self.assertAlmostEqual(gram_residual(canonical), 1.023309e-6, places=13)
+        operation = placement_operation(MARGINAL_COLUMN)
+        operation["rotation_convention"] = "column"
+        with self.assertRaises(ValueError):
+            validate_operations([operation])
+        # The equivalent row input is refused by the same canonical measurement.
+        row_operation = placement_operation(canonical)
+        with self.assertRaises(ValueError):
+            validate_operations([row_operation])
+        for tolerant in (
+            {**operation, "rotation_tolerance": 1e-5},
+            {**row_operation, "rotation_tolerance": 1e-5},
+        ):
+            admitted = validate_operations([tolerant])[0]
+            self.assertEqual(
+                admitted.get("rotation_convention"), tolerant.get("rotation_convention")
+            )
+
+    def test_convention_is_refused_where_it_cannot_apply(self):
+        euler = {"op": "component_placement", "component": "probe", "rotation": [0, 0, 90]}
+        with self.assertRaises(ValueError):
+            validate_operations([{**euler, "rotation_convention": "column"}])
+        with self.assertRaises(ValueError):
+            validate_operations([{**euler, "rotation_tolerance": 1e-5}])
+        with self.assertRaises(ValueError):
+            validate_operations(
+                [{**placement_operation(COLUMN_90), "rotation_convention": "columnar"}]
+            )
+
+
+class FailureContextConventionTest(unittest.TestCase):
+    """BUG-133/FEAT-012: the failure echo measures the same gate as the entry."""
+
+    def test_column_failure_echoes_the_input_and_measures_the_row_form(self):
+        from creo_mechdog.failure_context import placement_matrix
+
+        operation = {
+            "op": "component_placement",
+            "component": "probe",
+            "rotation_matrix": [row[:] for row in MARGINAL_COLUMN],
+            "rotation_convention": "column",
+            "translation": TRANSLATION,
+        }
+        block = placement_matrix(operation)
+        # The echo is the caller's own array, not the transposed measurement form.
+        self.assertEqual([row[:3] for row in block["input_matrix"][:3]], MARGINAL_COLUMN)
+        self.assertEqual(block["matrix_convention"], "column")
+        self.assertEqual(block["admission_tolerance"], 1e-6)
+        self.assertAlmostEqual(block["orthogonality_residual"], 1.023309e-6, places=13)
+        self.assertEqual(block["precision_class"], "invalid")
+        tolerant = placement_matrix({**operation, "rotation_tolerance": 1e-5})
+        self.assertEqual(tolerant["admission_tolerance"], 1e-5)
+        self.assertEqual(tolerant["precision_class"], "near_orthonormal")
+        self.assertIn("not repaired", tolerant["precision_advice"])
+
+
 if __name__ == "__main__":
     unittest.main()

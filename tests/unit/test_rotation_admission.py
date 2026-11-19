@@ -12,6 +12,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from creo_mechdog import rotation_admission
 from creo_mechdog.rotation_admission import (
     NEAR_ORTHONORMAL_TOLERANCE,
     admission_status,
@@ -133,6 +134,112 @@ class RotationAdmissionTests(unittest.TestCase):
             op="component_placement", component="comp_a", rotation_matrix=near
         )
         self.assertEqual(operation.rotation_matrix[0][0], 1 + 1e-7)
+
+
+#: BUG-133 synthetic case: a 28-degree Z rotation rounded to six decimals.
+#: max |R R^T - I| = 1.1294880000178864e-06, so it misses the 1e-6 gate while
+#: still describing a proper rotation.
+ROUNDED_28 = [
+    [0.882948, 0.469472, 0.0],
+    [-0.469472, 0.882948, 0.0],
+    [0.0, 0.0, 1.0],
+]
+SOURCE_ID = "a" * 32
+
+
+def assemble_operation(**overrides):
+    return {
+        "op": "assemble_component",
+        "label": "probe",
+        "source_model_id": SOURCE_ID,
+        "rotation_matrix": [row[:] for row in ROUNDED_28],
+        **overrides,
+    }
+
+
+def placement_operation(**overrides):
+    return {
+        "op": "component_placement",
+        "component": "probe",
+        "rotation_matrix": [row[:] for row in ROUNDED_28],
+        **overrides,
+    }
+
+
+class ExplicitToleranceTests(unittest.TestCase):
+    """BUG-133: one effective tolerance for admission and every native entry."""
+
+    def test_the_rounded_matrix_misses_the_default_gate(self):
+        status = admission_status(ROUNDED_28)
+        self.assertAlmostEqual(status["orthogonality_residual"], 1.1294880000178864e-06, places=18)
+        self.assertFalse(status["accepted"])
+        self.assertEqual(status["tolerance"], 1e-6)
+        for operation in (assemble_operation(), placement_operation()):
+            with self.assertRaises(ValueError):
+                validate_operations([operation])
+
+    def test_explicit_tolerance_admits_the_same_matrix_unchanged(self):
+        for operation in (
+            assemble_operation(rotation_tolerance=1e-5),
+            placement_operation(rotation_tolerance=1e-5),
+        ):
+            admitted = validate_operations([operation])[0]
+            # The echo is the caller's matrix: no repair, no transpose.
+            self.assertEqual(admitted["rotation_matrix"], ROUNDED_28)
+            self.assertEqual(admitted["rotation_tolerance"], 1e-5)
+        status = admission_status(ROUNDED_28, 1e-5)
+        self.assertTrue(status["accepted"])
+        self.assertEqual(status["tolerance"], 1e-5)
+
+    def test_tolerance_below_the_residual_still_refuses(self):
+        with self.assertRaises(ValueError):
+            validate_operations([placement_operation(rotation_tolerance=1e-7)])
+
+    def test_the_ceiling_keeps_a_reflection_and_a_scale_out(self):
+        reflection = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, -1.0]]
+        with self.assertRaises(ValueError) as raised:
+            validate_operations(
+                [
+                    {
+                        "op": "component_placement",
+                        "component": "probe",
+                        "rotation_matrix": reflection,
+                        "rotation_tolerance": 1.0,
+                    }
+                ]
+            )
+        self.assertIn("rotation_tolerance", str(raised.exception))
+        scaled = [[1.0002, 0.0, 0.0], [0.0, 1.0002, 0.0], [0.0, 0.0, 1.0002]]
+        with self.assertRaises(ValueError):
+            validate_operations(
+                [
+                    {
+                        "op": "component_placement",
+                        "component": "probe",
+                        "rotation_matrix": scaled,
+                        "rotation_tolerance": 5e-4,
+                    }
+                ]
+            )
+        # The frozen ceiling admits the reported rounding case.
+        validate_operations([placement_operation(rotation_tolerance=1e-3)])
+        self.assertEqual(rotation_admission.MAX_ADMISSION_TOLERANCE, 1e-3)
+
+    def test_invalid_tolerances_are_refused_before_any_job(self):
+        for tolerance in (True, "1e-5", 0, -1e-5, math.inf, math.nan):
+            with self.assertRaises(ValueError, msg=repr(tolerance)):
+                validate_operations([placement_operation(rotation_tolerance=tolerance)])
+
+    def test_the_native_helper_reads_the_same_effective_tolerance(self):
+        header = (ROOT / "native" / "assembly_pose.h").read_text(encoding="utf-8")
+        for phrase in (
+            "assembly_max_admission_tolerance",
+            "return 1e-3;",
+            "rotation_tolerance",
+            "assembly_rotation_admission(rotation, tolerance)",
+        ):
+            self.assertIn(phrase, header)
+        self.assertNotIn("std::to_string(admission.orthogonality_residual)", header)
 
 
 if __name__ == "__main__":

@@ -8123,70 +8123,77 @@ static J rollback_difference_report(const J &baseline, const J &restored,
 }
 
 static void failed_placement_matrix(const J &operation, J &block) {
-    double matrix[4][4];
-    try {
-        assembly_rigid_transform(operation, matrix);
-    } catch (...) {
-        // The admission gate may have rejected this pose before the kernel saw
-        // it; echo the caller's own rotation_matrix anyway (never repaired) so
-        // the residual that caused the failure stays visible.
-        if (!operation.contains("rotation_matrix"))
+    // BUG-133/FEAT-012: the admission gate may have rejected this pose before
+    // the kernel saw it. Echo the caller's own rotation_matrix (never repaired)
+    // and measure it with the same effective tolerance and the same canonical
+    // row form the entry would have used, so the reported numbers explain the
+    // refusal instead of contradicting it.
+    if (!operation.contains("rotation_matrix") || operation.at("rotation_matrix").is_null())
+        return; // Euler input only ever reaches the kernel, so no matrix echo exists
+    const J &input = operation.at("rotation_matrix");
+    if (!input.is_array() || input.size() != 3)
+        return;
+    double rotation[3][3];
+    for (int i = 0; i < 3; ++i) {
+        if (!input[i].is_array() || input[i].size() != 3)
             return;
-        const J &input = operation.at("rotation_matrix");
-        if (!input.is_array() || input.size() != 3)
-            return;
-        const J zero = J::array({0, 0, 0});
-        const J &translation =
-            operation.contains("translation") ? operation.at("translation") : zero;
-        if (!translation.is_array() || translation.size() != 3)
-            return;
-        for (int i = 0; i < 4; ++i)
-            for (int j = 0; j < 4; ++j)
-                matrix[i][j] = 0;
-        matrix[3][3] = 1;
-        for (int i = 0; i < 3; ++i) {
-            if (!input[i].is_array() || input[i].size() != 3)
-                return;
-            for (int j = 0; j < 3; ++j) {
-                if (!input[i][j].is_number() || !std::isfinite(input[i][j].get<double>()))
-                    return;
-                matrix[i][j] = input[i][j].get<double>();
-            }
-        }
         for (int j = 0; j < 3; ++j) {
-            if (!translation[j].is_number() || !std::isfinite(translation[j].get<double>()))
+            if (!input[i][j].is_number() || !std::isfinite(input[i][j].get<double>()))
                 return;
-            matrix[3][j] = translation[j].get<double>();
+            rotation[i][j] = input[i][j].get<double>();
         }
     }
+    const J zero = J::array({0, 0, 0});
+    const J &translation = operation.contains("translation") ? operation.at("translation") : zero;
+    if (!translation.is_array() || translation.size() != 3)
+        return;
+    for (int j = 0; j < 3; ++j)
+        if (!translation[j].is_number() || !std::isfinite(translation[j].get<double>()))
+            return;
     J echo = J::array();
     for (int i = 0; i < 4; ++i) {
         J row = J::array();
         for (int j = 0; j < 4; ++j) {
-            if (!std::isfinite(matrix[i][j]))
-                return;
-            row.push_back(matrix[i][j]);
+            const double number = i < 3 ? (j < 3 ? rotation[i][j] : 0.0)
+                                        : (j < 3 ? translation[j].get<double>() : 1.0);
+            row.push_back(number);
         }
         echo.push_back(std::move(row));
     }
-    const double det = matrix[0][0] * (matrix[1][1] * matrix[2][2] - matrix[1][2] * matrix[2][1]) -
-                       matrix[0][1] * (matrix[1][0] * matrix[2][2] - matrix[1][2] * matrix[2][0]) +
-                       matrix[0][2] * (matrix[1][0] * matrix[2][1] - matrix[1][1] * matrix[2][0]);
+    std::string convention = "row";
+    J tolerance = J(nullptr);
+    try {
+        convention = assembly_input_convention(operation);
+        tolerance = J(assembly_effective_tolerance(operation));
+    } catch (const std::exception &) {
+        // An invalid convention or tolerance is itself the failure; the numbers
+        // stay reported without inventing which gate applied.
+    }
+    if (convention == "column")
+        for (int i = 0; i < 3; ++i)
+            for (int j = i + 1; j < 3; ++j) {
+                const double swap = rotation[i][j];
+                rotation[i][j] = rotation[j][i];
+                rotation[j][i] = swap;
+            }
+    const double det =
+        rotation[0][0] * (rotation[1][1] * rotation[2][2] - rotation[1][2] * rotation[2][1]) -
+        rotation[0][1] * (rotation[1][0] * rotation[2][2] - rotation[1][2] * rotation[2][0]) +
+        rotation[0][2] * (rotation[1][0] * rotation[2][1] - rotation[1][1] * rotation[2][0]);
     double residual = 0;
     for (int i = 0; i < 3; ++i)
         for (int j = 0; j < 3; ++j) {
             double dot = 0;
             for (int k = 0; k < 3; ++k)
-                dot += matrix[i][k] * matrix[j][k];
+                dot += rotation[i][k] * rotation[j][k];
             residual = std::max(residual, std::abs(dot - (i == j ? 1.0 : 0.0)));
         }
     if (!std::isfinite(det) || !std::isfinite(residual))
         return;
     block["input_matrix"] = echo;
-    block["matrix_source"] =
-        operation.contains("rotation_matrix") && !operation.at("rotation_matrix").is_null()
-            ? J("rotation_matrix")
-            : J("euler");
+    block["matrix_source"] = J("rotation_matrix");
+    block["matrix_convention"] = convention;
+    block["admission_tolerance"] = tolerance;
     block["determinant"] = det;
     block["orthogonality_residual"] = residual;
 }
@@ -8209,8 +8216,14 @@ static J failed_operation_context(const J &operation, int index, bool executing,
                {"message_truncated", false},
                {"input_matrix", nullptr},
                {"matrix_source", nullptr},
+               {"matrix_convention", nullptr},
+               {"admission_tolerance", nullptr},
                {"determinant", nullptr},
-               {"orthogonality_residual", nullptr}};
+               {"orthogonality_residual", nullptr},
+               {"failed_constraint_index", nullptr},
+               {"failed_constraint_type", nullptr},
+               {"constraint_stage", nullptr},
+               {"constraint_reason", nullptr}};
     if (in_flight) {
         if (!last_sketch_solver_info.is_null() &&
             (kind == "sketch" || kind == "update_sketch_geometry" || kind == "update_airfoil"))
@@ -8229,6 +8242,18 @@ static J failed_operation_context(const J &operation, int index, bool executing,
         }
         if (kind == "assemble_component" || kind == "component_placement")
             failed_placement_matrix(operation, block);
+        // DEV-092/T4: the constraint slot that failed. A pre-parse error names
+        // its index/type/stage; a whole-group solve failure reports no index and
+        // reason "solver_failed" with the raw Toolkit code kept elsewhere.
+        if (last_constraint_failure.active &&
+            (kind == "assemble_component" || kind == "component_constraints")) {
+            block["failed_constraint_index"] =
+                last_constraint_failure.index >= 0 ? J(last_constraint_failure.index) : J(nullptr);
+            block["failed_constraint_type"] =
+                last_constraint_failure.type.empty() ? J(nullptr) : J(last_constraint_failure.type);
+            block["constraint_stage"] = J(last_constraint_failure.stage);
+            block["constraint_reason"] = J(last_constraint_failure.reason);
+        }
     }
     if (!message.empty()) {
         const std::string bounded = bounded_failure_message(message);
@@ -8243,6 +8268,7 @@ static int run_generic(const std::wstring &job) {
     generic_phase = "loading_request";
     last_toolkit_error.clear();
     last_feature_error_report = nullptr;
+    last_constraint_failure = AssemblyConstraintFailure();
     J report = {{"success", false},
                 {"saved_file_reloaded_and_verified", false},
                 {"rollback_succeeded", false}};

@@ -2265,7 +2265,23 @@ static ProDatumside constraint_side(const J &spec, const char *key) {
         return PRO_DATUM_SIDE_NONE;
     throw std::runtime_error(std::string(key) + " must be yellow, red or none");
 }
+// DEV-092/T4: the constraint slot that failed. A pre-parse error is knowable
+// and carries its 0-based index, requested type and stage; a whole-group solve
+// failure carries no index (the kernel reports only the group) and keeps the
+// raw Toolkit code instead of inventing a redundant/conflicting item.
+struct AssemblyConstraintFailure {
+    bool active = false;
+    int index = -1;
+    std::string type;
+    std::string stage;
+    std::string reason;
+};
+static AssemblyConstraintFailure last_constraint_failure;
+
 static void component_constraints(ProAsmcomp *c, const J &constraints) {
+    last_constraint_failure = AssemblyConstraintFailure();
+    last_constraint_failure.active = true;
+    last_constraint_failure.reason = "constraint_rejected";
     ProAsmcompconstraint *list = nullptr;
     CK(ProArrayAlloc((int)constraints.size(), sizeof(ProAsmcompconstraint), 1, (ProArray *)&list));
     std::map<std::string, ProAsmcompConstrType> types = {{"mate", PRO_ASM_MATE},
@@ -2276,30 +2292,38 @@ static void component_constraints(ProAsmcomp *c, const J &constraints) {
                                                          {"csys", PRO_ASM_CSYS}};
     for (size_t i = 0; i < constraints.size(); i++) {
         auto spec = constraints[i];
+        last_constraint_failure.index = (int)i;
         const std::string type = spec.value("type", "");
+        last_constraint_failure.type = type;
+        last_constraint_failure.stage = "type";
         auto found = types.find(type);
         if (found == types.end())
             throw std::runtime_error("Unsupported assembly constraint type: " + type);
         // DEV-089 T2 / BUG-041 backstop: PRO_ASM_MATE/PRO_ASM_ALIGN/INSERT/CSYS
         // carry no offset, so a stored value would be read as zero and the pose
         // would not match the request. The Python contract rejects this first.
+        last_constraint_failure.stage = "offset";
         const double requested_offset = spec.value("offset", 0.0);
         if ((type == "mate" || type == "align" || type == "insert" || type == "csys") &&
             fabs(requested_offset) > 1e-12)
             throw std::runtime_error("Assembly constraint type '" + type +
                                      "' has no offset; use mate_offset or align_offset instead "
                                      "of storing a value the kernel ignores");
+        last_constraint_failure.stage = "self_reference";
         if (spec.contains("assembly_component") && !spec.at("assembly_component").is_null() &&
             feature_id(spec.at("assembly_component")) == c->id)
             throw std::runtime_error("A component constraint cannot reference its own component "
                                      "as the assembly side");
+        last_constraint_failure.stage = "allocation";
         CK(ProAsmcompconstraintAlloc(&list[i]));
         CK(ProAsmcompconstraintTypeSet(list[i], found->second));
+        last_constraint_failure.stage = "reference";
         ProSelection a = assembly_reference(spec),
                      b = component_reference(c, spec["component_reference"]);
         // FEAT-068 A1: resolved selector references must be the surface type
         // their relationship requires, not merely something the selector shape
         // allowed.
+        last_constraint_failure.stage = "surface_type";
         const bool plane_required = spec.value("type", std::string()) == "mate";
         if (spec["assembly_reference"].value("kind", std::string()) == "geometry_selector")
             require_constraint_surface_type(a, "assembly_reference", plane_required,
@@ -2307,16 +2331,25 @@ static void component_constraints(ProAsmcomp *c, const J &constraints) {
         if (spec["component_reference"].value("kind", std::string()) == "geometry_selector")
             require_constraint_surface_type(b, "component_reference", plane_required,
                                             spec["component_reference"]);
+        last_constraint_failure.stage = "side";
         CK(ProAsmcompconstraintAsmreferenceSet(list[i], a, constraint_side(spec, "assembly_side")));
         CK(ProAsmcompconstraintCompreferenceSet(list[i], b,
                                                 constraint_side(spec, "component_side")));
         ProSelectionFree(&a);
         ProSelectionFree(&b);
+        last_constraint_failure.stage = "offset_write";
         CK(ProAsmcompconstraintOffsetSet(list[i], spec.value("offset", 0.0)));
     }
+    // The kernel sets or solves the whole array at once: a failure here names no
+    // individual item, so the index stays empty and the raw code is preserved.
+    last_constraint_failure.stage = "solve";
+    last_constraint_failure.reason = "solver_failed";
+    last_constraint_failure.index = -1;
     ProError e = ProAsmcompConstraintsSet(nullptr, c, list);
     ProAsmcompconstraintArrayFree(list);
-    check(e, "ComponentConstraints");
+    if (e != PRO_TK_NO_ERROR)
+        check(e, "ComponentConstraints");
+    last_constraint_failure = AssemblyConstraintFailure();
 }
 // T09: a replay plan binds the source revision and file digest. The Python
 // admission already re-read the registry and file bytes; the native executor
@@ -2344,12 +2377,16 @@ static void verify_rebuild_binding(const J &op, const J &source) {
 // and reports the transform the kernel actually stored — a fresh query, never a
 // copy of the requested pose. An unreadable transform stays null with its raw
 // query code instead of echoing the request as if it had been measured.
-static J assembly_pose_receipt(ProAsmcomp *component) {
+static J assembly_pose_receipt(ProAsmcomp *component, const J &op) {
     ProMatrix position = {};
     const ProError code = component_to_assembly_transform(component, position);
     auto units = inspect_length_units((ProMdl)board);
     MillimeterScale scale = length_scale_to_mm((ProMdl)board, units);
+    // BUG-133/FEAT-012: name the request's own convention and the effective
+    // admission tolerance so the receipt and the gate cannot disagree.
     return {{"rotation_convention", assembly_rotation_convention()},
+            {"input_rotation_convention", assembly_input_convention(op)},
+            {"rotation_tolerance", assembly_effective_tolerance(op)},
             {"transform", code ? J(nullptr) : matrix_json(position)},
             {"transform_source", "component_to_assembly"},
             {"transform_code", (int)code},
@@ -2415,7 +2452,7 @@ static void assemble_component(const J &op) {
     ProName name;
     wcscpy_s(name, wide(op["label"]).c_str());
     CK(ProModelitemNameSet(&comp, name));
-    stage_operation_result(assembly_pose_receipt(&comp));
+    stage_operation_result(assembly_pose_receipt(&comp, op));
     remember(op, comp,
              {{"source_model_id", op["source_model_id"]},
               {"source_revision", source["revision"]},
@@ -2575,7 +2612,7 @@ static void modify_component(const J &op) {
         CK(ProAsmcompAllConstrRemove(&comp));
         CK(ProAsmcompPositionSet(nullptr, &comp, position));
         fix_component(&comp);
-        stage_operation_result(assembly_pose_receipt(&comp));
+        stage_operation_result(assembly_pose_receipt(&comp, op));
     } else {
         int *ids = nullptr;
         ProFeatureDeleteOptions *options = nullptr;

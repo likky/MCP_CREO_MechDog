@@ -34,7 +34,12 @@ from creo_mechdog.references import (
     validate_planar_reference,
     validate_sketch_plane_frame,
 )
-from creo_mechdog.rotation_admission import ADMISSION_TOLERANCE, admission_status
+from creo_mechdog.rotation_admission import (
+    ADMISSION_TOLERANCE,
+    admission_status,
+    tolerance_text,
+    validate_tolerance,
+)
 from creo_mechdog.schema_base import Dimension, Label, Point2, Point3, Positive, StrictModel
 from creo_mechdog.sheetmetal import first_wall_section_problem
 from creo_mechdog.sheetmetal_candidates import SheetmetalCornerReliefOp, SheetmetalQuiltFormOp
@@ -68,12 +73,12 @@ def _rotation_matrix_shape(value: Any) -> Any:
 
 def _rotation_matrix(value: Any, tolerance: float = ADMISSION_TOLERANCE) -> Any:
     _rotation_matrix_shape(value)
-    status = admission_status(value)
+    status = admission_status(value, tolerance)
     residual = status["orthogonality_residual"]
-    tolerance_text = "1e-6" if tolerance == ADMISSION_TOLERANCE else f"{tolerance:g}"
+    within = tolerance_text(tolerance)
     if not math.isfinite(residual) or residual > tolerance:
         raise ValueError(
-            f"rotation_matrix must be orthogonal within {tolerance_text} "
+            f"rotation_matrix must be orthogonal within {within} "
             f"(max |R*R^T-I| = {residual:.9g}); the input is echoed and never repaired, "
             "so supply exact orthonormal values, or pass an explicit rotation_tolerance to "
             "admit a documented rounded matrix"
@@ -81,7 +86,7 @@ def _rotation_matrix(value: Any, tolerance: float = ADMISSION_TOLERANCE) -> Any:
     determinant = status["determinant"]
     if abs(determinant - 1) > tolerance:
         raise ValueError(
-            f"rotation_matrix determinant must be +1 within {tolerance_text} "
+            f"rotation_matrix determinant must be +1 within {within} "
             f"(det = {determinant:.9g}); the input is echoed and never repaired, "
             "so supply a right-handed orthonormal basis"
         )
@@ -127,31 +132,70 @@ class AssemblyPose(StrictModel):
             "applied exactly as given: never transposed, orthonormalized or repaired."
         ),
     )
+    rotation_convention: Literal["row", "column"] | None = Field(
+        default=None,
+        description=(
+            "Convention of rotation_matrix: 'row' (default) means "
+            f"{ROTATION_FORMULA}; 'column' means p_parent(column) = R * p_local(column) + T "
+            "and the matrix is transposed exactly once by the native entry. It only applies to "
+            "an explicit rotation_matrix (Euler input is always row-vector). The request keeps "
+            "the caller's array and convention; the admitted transform stays row-vector."
+        ),
+    )
     rotation_tolerance: Positive | None = Field(
         default=None,
         description=(
             "Optional admission tolerance for rotation_matrix orthogonality and determinant "
-            "(default 1e-6). It admits a documented rounded matrix without repairing it; "
-            "the echoed values remain exactly the caller's input."
+            "(default 1e-6, at most 1e-3). It admits a documented rounded matrix without "
+            "repairing it; the echoed values remain exactly the caller's input. A larger value "
+            "would admit a reflection or a scaled basis and is refused, and the native helper "
+            "applies the same effective tolerance."
         ),
     )
 
     @model_validator(mode="before")
     @classmethod
     def matrix_tolerance_valid(cls, data: Any) -> Any:
-        if not isinstance(data, dict) or data.get("rotation_matrix") is None:
+        if not isinstance(data, dict):
             return data
-        tolerance = data.get("rotation_tolerance", ADMISSION_TOLERANCE)
-        if tolerance is None:
-            tolerance = ADMISSION_TOLERANCE
-        if (
-            isinstance(tolerance, bool)
-            or not isinstance(tolerance, (int, float))
-            or not math.isfinite(float(tolerance))
-            or float(tolerance) <= 0.0
-        ):
-            raise ValueError("rotation_tolerance must be a positive finite number")
-        _rotation_matrix(data["rotation_matrix"], float(tolerance))
+        tolerance = validate_tolerance(data.get("rotation_tolerance"))
+        convention = data.get("rotation_convention")
+        if data.get("rotation_matrix") is None:
+            if data.get("rotation_tolerance") is not None:
+                raise ValueError(
+                    "rotation_tolerance only applies to an explicit rotation_matrix; the Euler "
+                    "expansion is always admitted at the published 1e-6"
+                )
+            if convention is not None:
+                raise ValueError(
+                    "rotation_convention only applies to an explicit rotation_matrix; the Euler "
+                    "expansion is always row-vector"
+                )
+            return data
+        # FEAT-012/T2: the gate always measures the canonical row matrix. A column
+        # input is transposed for validation only; the request itself is unchanged.
+        matrix = data["rotation_matrix"]
+        if convention is None or convention == "row":
+            canonical = matrix
+        elif convention == "column":
+            if (
+                isinstance(matrix, list)
+                and len(matrix) == 3
+                and all(isinstance(row, list) and len(row) == 3 for row in matrix)
+            ):
+                canonical = [list(column) for column in zip(*matrix, strict=True)]
+            else:
+                canonical = matrix
+        else:
+            raise ValueError("rotation_convention must be row or column")
+        try:
+            _rotation_matrix(canonical, tolerance)
+        except ValueError as error:
+            if convention == "column":
+                raise ValueError(
+                    f"{error} (measured as the canonical row form of a column-vector input)"
+                ) from None
+            raise
         return data
 
     @model_validator(mode="after")
@@ -2084,7 +2128,14 @@ class AssembleOp(AssemblyPose):
     label: Label
     source_model_id: Annotated[str, Field(pattern=r"^[a-f0-9]{32}$")]
     placement: Literal["fixed", "default", "constraints"] = "fixed"
-    constraints: list[AssemblyConstraint] = []
+    constraints: list[AssemblyConstraint] = Field(
+        default=[],
+        description=(
+            "DEV-092/T4: constraints for the new component's own placement, written once as a "
+            "single group. There is no 20-item cap here: the 20-item cap belongs to "
+            "component_constraints, which rewrites one existing component's group."
+        ),
+    )
     # T09 replay plans bind the source revision and digest they were planned
     # against; admission and the native executor re-check them before use.
     rebuild_binding: dict[str, Any] | None = None
@@ -2106,7 +2157,19 @@ class ComponentPlacementOp(AssemblyPose):
 class ComponentConstraintsOp(StrictModel):
     op: Literal["component_constraints"]
     component: str | int
-    constraints: Annotated[list[AssemblyConstraint], Field(min_length=1, max_length=20)]
+    constraints: Annotated[
+        list[AssemblyConstraint],
+        Field(
+            min_length=1,
+            max_length=20,
+            description=(
+                "DEV-092/T4: the complete constraint group for this one component. Every call "
+                "replaces the whole group (ProAsmcompConstraintsSet): constraints from a previous "
+                "call are not appended, and a previous FIX placement is replaced. Keep each "
+                "component in its own operation instead of treating 20 as a per-assembly limit."
+            ),
+        ),
+    ]
 
 
 class RemoveComponentOp(StrictModel):
