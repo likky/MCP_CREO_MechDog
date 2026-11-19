@@ -57,7 +57,7 @@
 - 种子包 SHA256：`dfac1ec5b62a0a926d0debf1efaf77ab13cf627ee0c6318ff6993be5201aacf9`（24 个文件、9 个种子，与 `docs/seed_package.json` 一致，重建一次摘要不变）。
 - 源码包：由本版合入 `main` 的提交源码构建，`tools/package.py` 的四附件门禁与发布记录门禁均通过；字节数与 SHA256 见同名 sidecar，不写入包内。
 - Release：<https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.28.0>。
-- 发布后核对：发布后执行，当前未验证；实际列表、标签指向、附件摘要与 `main` 提交只追加到[POSTCHECK](../development/RELEASE-POSTCHECK-2026-11-07.md) `## v0.28.0` 段，冻结包内副本不回写。
+- 发布后核对（2026-11-19 11:22 +08:00 / 03:22Z）：`tools\check_release_assets.py --tag v0.28.0` → exit 0，四个附件下载并重算通过，两个 sidecar 与对应 ZIP 摘要一致；实际列表、标签指向、附件摘要与 `main` 提交见[POSTCHECK](../development/RELEASE-POSTCHECK-2026-11-07.md) `## v0.28.0` 段。冻结包内副本仍为打包时点措辞，不回写、不重发已发布附件。
 - 本版原生修改 `native/blend_sync.cpp`、`native/panel_protocol.h`、`native/panel_references.h`、`native/panel_references_sdk.h`、`native/panel_run.h`、`native/panel_selection_state.h`，升级后必须重编译 worker 并重启 MCP 连接器。
 
 ## 相对上一正式包核对（上一版本：0.27.0）
