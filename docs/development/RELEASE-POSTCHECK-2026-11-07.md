@@ -2,6 +2,15 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
+## v0.31.1（2026-11-19，发布前快照）
+
+- 版本与范围：`0.31.1` PATCH 工程规则，公开工具仍 109；交付 [DEV-093](../work-items/DEV-093.md)——本机实机操作改为 2026-11-19 常设授权（可直接启动/重启 Creo 与 nmsd、结束卡死或异常进程、确认后清理残留 `toolkit.lock` 与保护状态、编译执行器、建模、GUI 操作与实机验收，不再逐次确认），数据与已发布产物仍不可改写，单通道与 revision/保存重载边界不变。发布记录见 [RELEASE-0.31.1](../validation/RELEASE-0.31.1.md)。
+- 打包顺序：`tools\package_seeds.py` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools\package.py` → 标签/发布 → `tools\check_release_assets.py` 远端复核。
+- 种子包 SHA256 `ca5a61b5fb45cae7b73c19d1cff9017a2158728ad3fa94171005ea94a15b5b48`（24 个文件、9 个种子，两次构建摘要一致；包内 `seed_manifest.json` 声明 `compatible_server_version=0.31.1`）。
+- 源码包由发布提交源码构建，字节数与 SHA256 见同名 sidecar，不写入包内文件。
+- Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.31.1`；四附件为 `MCP_CREO_MechDog-0.31.1-source.zip`、`MCP_CREO_MechDog-0.31.1-source.zip.sha256`、`MCP_CREO_MechDog-0.31.1-seed-library.zip` 与 `MCP_CREO_MechDog-0.31.1-seed-library.zip.sha256`。
+- 发布后核对：发布后执行，当前未验证；结果追加到本段，冻结包内快照不回写。
+
 ## v0.31.0（2026-11-19，发布前快照）
 
 - 版本与范围：`0.31.0` MINOR 部分交付，公开工具仍 109；交付 [BUG-120](../work-items/BUG-120.md) 的导线预检（裸标签在建作业前拒绝、开面板前 21 对截面×导线诊断）与建面回执（唯一新增面组关联、保存重载后面积/开闭/边界，`geometry_check.verified` 由证据决定）；任务 5 接缝 G1（6.28°）单独排期；发布记录见 [RELEASE-0.31.0](../validation/RELEASE-0.31.0.md)。
