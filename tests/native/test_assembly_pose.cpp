@@ -128,7 +128,73 @@ int main() {
         J::array({{0.0, 0.307383, -0.951586}, {0.0, 0.951586, 0.307383}, {1.0, 0.0, 0.0}});
     assembly_rigid_transform(J{{"rotation_matrix", near_i032}}, matrix);
     assert(matrix[0][1] == 0.307383 && matrix[1][1] == 0.951586);
+    // BUG-133: an explicit rotation_tolerance must reach this production helper.
+    // The synthetic 28-degree six-decimal matrix misses the published 1e-6 gate
+    // (max |R*R^T-I| = 1.1294880000178864e-6) but stays a proper rotation.
+    const J rounded = {{0.882948, 0.469472, 0}, {-0.469472, 0.882948, 0}, {0, 0, 1}};
+    rejected({{"rotation_matrix", rounded}});
+    assembly_rigid_transform(J{{"rotation_matrix", rounded}, {"rotation_tolerance", 1e-5}},
+                             matrix);
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            assert(matrix[i][j] == rounded[i][j].get<double>()); // echoed, never repaired
+    // An effective tolerance below the residual still refuses the matrix.
+    rejected({{"rotation_matrix", rounded}, {"rotation_tolerance", 1e-7}});
+    // BUG-133: the ceiling keeps an explicit tolerance from admitting a
+    // reflection (|det-1| = 2) or a scaled basis through the gate.
+    rejected({{"rotation_matrix", rounded}, {"rotation_tolerance", 1e-3 + 1e-9}});
+    rejected({{"rotation_matrix", rounded}, {"rotation_tolerance", 1.0}});
+    rejected({{"rotation_matrix", {{1, 0, 0}, {0, 1, 0}, {0, 0, -1}}},
+              {"rotation_tolerance", 1.0}});
+    for (const J &bad : J::array({J(true), J("1e-5"), J(0), J(-1e-5), J(1e308),
+                                  J(std::numeric_limits<double>::infinity()),
+                                  J(std::numeric_limits<double>::quiet_NaN())}))
+        rejected({{"rotation_matrix", rounded}, {"rotation_tolerance", bad}});
+    // The ceiling itself is admissible and still admits the rounded matrix.
+    assembly_rigid_transform(J{{"rotation_matrix", rounded}, {"rotation_tolerance", 1e-3}},
+                             matrix);
+    assert(matrix[0][0] == rounded[0][0].get<double>());
+
+    // FEAT-012/T2: an explicit column-vector input is transposed exactly once.
+    // 90 degrees about Z, column reading: p_parent = R * p_local + T.
+    const J column = {{0, -1, 0}, {1, 0, 0}, {0, 0, 1}};
+    assembly_rigid_transform(
+        J{{"rotation_matrix", column}, {"rotation_convention", "column"},
+          {"translation", {7, -8, 9}}},
+        matrix);
+    assert(matrix[0][0] == 0 && matrix[0][1] == 1 && matrix[1][0] == -1);
+    const double column_point[] = {2, 3, 5};
+    double mapped[3];
+    for (int j = 0; j < 3; ++j) {
+        mapped[j] = matrix[3][j];
+        for (int k = 0; k < 3; ++k)
+            mapped[j] += column_point[k] * matrix[k][j];
+    }
+    close(mapped[0], 4);
+    close(mapped[1], -6);
+    close(mapped[2], 14);
+    // The same array without a convention keeps the published row reading.
+    assembly_rigid_transform(J{{"rotation_matrix", column}, {"translation", {7, -8, 9}}},
+                             matrix);
+    assert(matrix[0][1] == -1 && matrix[1][0] == 1);
+    // Convention is refused where it cannot apply or names something else.
+    rejected({{"rotation_matrix", column}, {"rotation_convention", "euler"}});
+    rejected({{"rotation_matrix", column}, {"rotation_convention", true}});
+    rejected({{"rotation", {0, 0, 90}}, {"rotation_convention", "column"}});
+    rejected({{"rotation_convention", "column"}});
+    // A marginal six-decimal column matrix is measured in its canonical row
+    // form: the default gate refuses it and an explicit 1e-5 admits it.
+    const J marginal_column = {{0.965337, -0.258191, 0.038222},
+                               {0.258661, 0.965936, -0.007826},
+                               {-0.034899, 0.017442, 0.999239}};
+    rejected({{"rotation_matrix", marginal_column}, {"rotation_convention", "column"}});
+    assembly_rigid_transform(J{{"rotation_matrix", marginal_column},
+                               {"rotation_convention", "column"},
+                               {"rotation_tolerance", 1e-5}},
+                             matrix);
+    assert(matrix[0][0] == marginal_column[0][0].get<double>());
+    assert(matrix[0][1] == marginal_column[1][0].get<double>()); // transposed once
     std::puts("assembly_pose: 11 Euler/matrix poses, basis/known-point/inverse maps, defaults, "
-              "tolerance preservation, I032/30-degree admission and invalid-input checks passed; "
-              "no Toolkit connection");
+              "tolerance preservation, I032/30-degree admission, BUG-133 explicit-tolerance "
+              "ceiling and invalid-input checks passed; no Toolkit connection");
 }

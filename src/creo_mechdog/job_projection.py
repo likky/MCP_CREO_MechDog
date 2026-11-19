@@ -290,6 +290,8 @@ SOLIDIFY_KEYS = (
 #: so compact never turns "unread" into a copied request pose.
 ASSEMBLY_POSE_KEYS = (
     "rotation_convention",
+    "input_rotation_convention",
+    "rotation_tolerance",
     "transform",
     "transform_source",
     "transform_code",

@@ -23,18 +23,46 @@ from typing import Any
 #: The published admission tolerance. Both layers use this exact value.
 ADMISSION_TOLERANCE = 1e-6
 
+#: BUG-133: ceiling for a caller-supplied ``rotation_tolerance``. Beyond it the
+#: number stops describing rounding and would admit a reflection
+#: (``|det-1| = 2``) or a scaled basis through the gate. ``native/assembly_pose.h``
+#: mirrors this as ``assembly_max_admission_tolerance``.
+MAX_ADMISSION_TOLERANCE = 1e-3
+
 #: Classification only: at or below this residual the matrix is ``strict``.
 NEAR_ORTHONORMAL_TOLERANCE = 1e-9
 
 PRECISION_CLASSES = ("strict", "near_orthonormal", "invalid")
 
 PRECISION_ADVICE = (
-    "The pose passed admission within 1e-6 but is not strictly orthonormal "
+    "The pose passed admission within {tolerance} but is not strictly orthonormal "
     "(max |R*R^T-I| = {residual:.3g}). It was sent verbatim, not repaired. If the "
     "kernel rejected the placement, rebuild the matrix from exact orthonormal values "
     "(for example rotation angles in degrees); near-orthonormality alone is not a "
     "confirmed cause."
 )
+
+
+def tolerance_text(tolerance: float) -> str:
+    """Format a tolerance the way both layers quote it."""
+    return "1e-6" if tolerance == ADMISSION_TOLERANCE else f"{tolerance:g}"
+
+
+def validate_tolerance(tolerance: float | None) -> float:
+    """Return the effective admission tolerance, refusing anything out of contract."""
+    if tolerance is None:
+        return ADMISSION_TOLERANCE
+    if isinstance(tolerance, bool) or not isinstance(tolerance, (int, float)):
+        raise ValueError("rotation_tolerance must be a positive finite number")
+    value = float(tolerance)
+    if not math.isfinite(value) or value <= 0.0:
+        raise ValueError("rotation_tolerance must be a positive finite number")
+    if value > MAX_ADMISSION_TOLERANCE:
+        raise ValueError(
+            f"rotation_tolerance must be at most {MAX_ADMISSION_TOLERANCE:g}; a larger value "
+            "stops describing a rounded matrix and would admit a reflection or a scaled basis"
+        )
+    return value
 
 
 def orthogonality_residual(rotation: list[list[float]]) -> float:
@@ -61,7 +89,9 @@ def determinant(rotation: list[list[float]]) -> float:
         return math.nan
 
 
-def admission_status(rotation: list[list[float]]) -> dict[str, Any]:
+def admission_status(
+    rotation: list[list[float]], tolerance: float = ADMISSION_TOLERANCE
+) -> dict[str, Any]:
     """Return the admission numbers and the caller-facing classification."""
     residual = orthogonality_residual(rotation)
     try:
@@ -71,8 +101,8 @@ def admission_status(rotation: list[list[float]]) -> dict[str, Any]:
     accepted = (
         math.isfinite(residual)
         and math.isfinite(det)
-        and residual <= ADMISSION_TOLERANCE
-        and abs(det - 1.0) <= ADMISSION_TOLERANCE
+        and residual <= tolerance
+        and abs(det - 1.0) <= tolerance
     )
     if not accepted:
         precision = "invalid"
@@ -85,9 +115,9 @@ def admission_status(rotation: list[list[float]]) -> dict[str, Any]:
         "orthogonality_residual": residual,
         "determinant": det,
         "determinant_error": abs(det - 1.0) if math.isfinite(det) else None,
-        "tolerance": ADMISSION_TOLERANCE,
+        "tolerance": tolerance,
         "precision": precision,
-        "advice": PRECISION_ADVICE.format(residual=residual)
+        "advice": PRECISION_ADVICE.format(tolerance=tolerance_text(tolerance), residual=residual)
         if precision == "near_orthonormal"
         else None,
     }

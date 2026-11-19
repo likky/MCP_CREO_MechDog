@@ -76,3 +76,15 @@ walk 状态/判定/节点写入逻辑提取至共享 `native/assembly_walk.h`（
 R1 §4.1外部Creo10补8组件/变换/约束快照可用而support_status仍planned的证据。基线已将assembly_checks改supported_limited并写限制，不重复登记未交付；R1 §5 P1-3请求的是FEAT-049约束回放，不是本卡只读巡检缺失。R2静态单位确认不能充当本工具实机。T01补余下摘要一致性，原受限四场景与父卡其他范围保留。
 
 共享接口遵循 [DEV-047 基线](DEV-047.md#interface-baseline)。本段仅补来源与已确认的本次子项；T00 未实现业务、未新增实机证据，不据此关闭父卡其他范围。
+
+## 2026-11-19 DEV-092/T3：实例几何与逐面面积测量语义查证（离线，未实现）
+
+SDK 原文在 `references/creo13.4.0.0-sdk/includes/`：
+
+- `ProAsmcomppathTrfGet`（`ProAsmcomppath.h:33-43`）的 `bottom_up=PRO_B_TRUE` 原文只说 "transformation from the member to the assembly"，即 member→其所属 owner 装配，不是 member→root；嵌套路径要逐级取变换再连乘。仓库现有 `native/component_transform.h:9-19` 与 `native/assembly_units.h:169-221`（`normalize_transform_mm`/`transform_point`）可直接复用；两端单位都必须已知，未知单位不得回退成 0 或毫米。
+- `ProSolidOutlineCompute`（`ProSolid.h:958-985`）只接受一个 orientation matrix 并输出 2 个极值点，头文件没有定义平移行如何参与；默认 outline "can include external datums"，必须用 `excludes`（`PRO_OUTL_EXC_DATUM_PLANE/POINT/CSYS/AXES/ALL_CRVS/FACETS`）排除非实体项。`ProSolidOutlineGet`（`ProSolid.h:1021-1044`）是基准坐标系朝向的再生外框，不含基准/注释。仓库现有 bbox 全部来自 `ProSolidBodyOutlineGet`（`native/generic.cpp:1040-1043`、`native/geometry.cpp:285-288` 等），尚未调用上述两个 API。
+- 逐面面积：`ProSurfaceAreaEval`（`ProSurface.h:274-289`）头文件未写单位；仓库实际走 `ProContourAreaEval` 外环减内环（`native/surface_measure.h:47-87`），再由 `area_mm2_json`（同文件 214-231）以 `scale*scale` 换算，未知单位返回 null。`ProSolidDispCompEvaluate` 在头文件中不存在。
+
+结论：`bbox_world_mm` 必须由真实实例测量或明确声明的保守包络得到，不能用局部 bbox 八角点乘变换后冒称精确世界 bbox；逐面面积复用现有 helper，不另写面积算法。
+
+本次只查证，未修改 `native/generic.cpp`/`native/advanced.cpp` 的几何查询，也未连接 Creo。逐实例 bbox/面积字段、分页、单位与失败态回归仍待实现；实机样例（10×20×30 长方体绕 Z 90°、平移 `[7,-8,9]`，预期 bbox `[[-13,-8,9],[7,2,39]]`、体积 6000 mm³、质心 `[-3,-3,24]`）须当次授权后执行。

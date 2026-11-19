@@ -2,7 +2,13 @@
 
 import unittest
 
-from creo_mechdog.schema import AssemblyConstraint, ComponentConstraintsOp, validate_operations
+from creo_mechdog.job_projection import ASSEMBLY_POSE_KEYS, compact_operation
+from creo_mechdog.schema import (
+    AssembleOp,
+    AssemblyConstraint,
+    ComponentConstraintsOp,
+    validate_operations,
+)
 
 
 def constraint(constraint_type, **overrides):
@@ -318,6 +324,130 @@ class BUG132SelectorDiagnosisTests(unittest.TestCase):
                         "component_reference": {"kind": "surface", "id": 42},
                     }
                 )
+
+
+def constraint_row(index):
+    return {
+        "type": "mate",
+        "assembly_reference": {"kind": "surface", "id": 41 + index},
+        "component_reference": {"kind": "surface", "id": 42 + index},
+    }
+
+
+class ConstraintGroupBoundaryTests(unittest.TestCase):
+    """DEV-092/T4: the 20-item cap bounds one component's whole group, not an assembly."""
+
+    def test_one_component_group_is_capped_at_20(self):
+        accepted = ComponentConstraintsOp.model_validate(
+            {
+                "op": "component_constraints",
+                "component": "pin",
+                "constraints": [constraint_row(i) for i in range(20)],
+            }
+        )
+        self.assertEqual(len(accepted.constraints), 20)
+        with self.assertRaises(ValueError):
+            ComponentConstraintsOp.model_validate(
+                {
+                    "op": "component_constraints",
+                    "component": "pin",
+                    "constraints": [constraint_row(i) for i in range(21)],
+                }
+            )
+
+    def test_a_new_component_placement_has_no_20_item_cap(self):
+        checked = AssembleOp.model_validate(
+            {
+                "op": "assemble_component",
+                "label": "cyl",
+                "source_model_id": "a" * 32,
+                "placement": "constraints",
+                "constraints": [constraint_row(i) for i in range(22)],
+            }
+        )
+        self.assertEqual(len(checked.constraints), 22)
+
+    def test_22_constraints_across_components_are_separate_groups(self):
+        plan = [
+            {
+                "op": "component_constraints",
+                "component": component,
+                "constraints": [constraint_row(i) for i in range(11)],
+            }
+            for component in ("pin_a", "pin_b")
+        ]
+        admitted = validate_operations(plan)
+        self.assertEqual([len(entry["constraints"]) for entry in admitted], [11, 11])
+
+    def test_the_public_fields_state_whole_group_replacement(self):
+        description = ComponentConstraintsOp.model_json_schema()["properties"]["constraints"][
+            "description"
+        ]
+        for phrase in ("complete constraint group", "replaces the whole group", "not appended"):
+            self.assertIn(phrase, description)
+
+
+class AssemblyFailureProjectionTests(unittest.TestCase):
+    """DEV-092/T4: the constraint stage reaches the compact polling projection."""
+
+    def test_receipt_keeps_the_input_convention_and_effective_tolerance(self):
+        for key in ("rotation_convention", "input_rotation_convention", "rotation_tolerance"):
+            self.assertIn(key, ASSEMBLY_POSE_KEYS)
+        compact = compact_operation(
+            {
+                "op": "component_placement",
+                "rotation_convention": "row_vectors_local_to_parent",
+                "input_rotation_convention": "column",
+                "rotation_tolerance": 1e-5,
+                "transform": [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [7, -8, 9, 1]],
+                "unrelated": "dropped",
+            }
+        )
+        self.assertEqual(compact["input_rotation_convention"], "column")
+        self.assertEqual(compact["rotation_tolerance"], 1e-5)
+        self.assertNotIn("unrelated", compact)
+
+    def test_pre_parse_failure_names_the_index_and_stage(self):
+        compact = compact_operation(
+            {
+                "op": "component_constraints",
+                "succeeded": False,
+                "failed_operation": {
+                    "index": 0,
+                    "operation": "component_constraints",
+                    "stage": "surface_type",
+                    "failed_constraint_index": 3,
+                    "failed_constraint_type": "insert",
+                    "constraint_stage": "surface_type",
+                    "constraint_reason": "constraint_rejected",
+                },
+            }
+        )
+        block = compact["failed_operation"]
+        self.assertEqual(block["failed_constraint_index"], 3)
+        self.assertEqual(block["failed_constraint_type"], "insert")
+        self.assertEqual(block["constraint_stage"], "surface_type")
+        self.assertEqual(block["constraint_reason"], "constraint_rejected")
+
+    def test_whole_group_solve_failure_reports_no_index(self):
+        compact = compact_operation(
+            {
+                "op": "component_constraints",
+                "succeeded": False,
+                "failed_operation": {
+                    "index": 0,
+                    "operation": "component_constraints",
+                    "stage": "solve",
+                    "failed_constraint_index": None,
+                    "failed_constraint_type": "mate",
+                    "constraint_stage": "solve",
+                    "constraint_reason": "solver_failed",
+                },
+            }
+        )
+        block = compact["failed_operation"]
+        self.assertIsNone(block["failed_constraint_index"])
+        self.assertEqual(block["constraint_reason"], "solver_failed")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
 # FEAT-012：装配定位、源件更新与嵌套子装配
 
-日期：2026-10-17 补全，2026-10-24 Task 4 更新，2026-10-26 实机验收更新，2026-10-26 0.6.0收口更新。类型：功能。优先级：P2。状态：矩阵子项开发者实机已通过、随 0.6.0 交付（WorkBuddy 黑盒经用户 2026-10-26 决定取消，未执行、不记通过）；**0.15.0 已交付**：`rotation_convention="row_vectors_local_to_parent"`、`assembly_pose_receipt` 实读回执与矩阵失败上下文（原生装配回读未跑）；源件更新与嵌套待规划。目标版本：矩阵子项 0.6.0/0.15.0。
+分类：**部分交付 0.30.0**（矩阵约定与回执子项，Creo 实机待验收；源件更新与嵌套待规划）。
+
+日期：2026-10-17 补全，2026-10-24 Task 4 更新，2026-10-26 实机验收更新，2026-10-26 0.6.0收口更新。类型：功能。优先级：P2。状态：矩阵子项开发者实机已通过、随 0.6.0 交付（WorkBuddy 黑盒经用户 2026-10-26 决定取消，未执行、不记通过）；**0.15.0 已交付**：`rotation_convention="row_vectors_local_to_parent"`、`assembly_pose_receipt` 实读回执与矩阵失败上下文（原生装配回读未跑）；**0.30.0 已交付**：可选 `rotation_convention="row"|"column"`（列输入只转置一次、两层按规范行矩阵准入）与回执 `input_rotation_convention`/`rotation_tolerance`，Creo 实机待验收；源件更新与嵌套待规划。目标版本：矩阵子项 0.6.0/0.15.0/0.30.0。
 
 来源：既有台账范围；新增[0.3.3 反馈补录](../validation/FEEDBACK-0.3.3-2026-10-17.md)报告 B 第 7、8 节。关联 BUG-036/041/045、FEAT-008/023/031。
 
@@ -145,4 +147,12 @@ R1 §5 P1-4（矩阵直入/Euler输出）是0.5.2旧请求；矩阵子项已随0
 - 准入判据集中到 `src/creo_mechdog/rotation_admission.py`，与 `native/assembly_pose.h` 共享 1e-6 准入与 1e-9 分类；I032（残差/det 误差 2.2408500011117383e-07）与 30° 精确正例在两层固定。
 - 拒绝文案带原矩阵残差/det 与“不修复”指引；已准入的近正交矩阵在 `failed_operation` 带 `precision_class`/`precision_advice`，明确不把内核 -2 归因近正交。
 - `bridge.py build` 与离线 `tools/test_assembly_pose.py` 通过；**阈值未改**，实机扰动扫描、真实保存重载与内核拒绝分列仍未验证。详见 [BUG-045](BUG-045.md) 同日段。
+
+## 2026-11-19 DEV-092/T2：显式矩阵约定（软件层）
+
+- 新增可选 `rotation_convention: "row" | "column"`，缺省等价 `row`。`column` 表示 `p_parent(column) = R * p_local(column) + T`；原生唯一转换点（`native/assembly_pose.h`）把它转置一次，Python 只用转置后的规范行矩阵做准入，请求数组与约定原样保留。
+- 准入始终测规范行矩阵：六位小数 column 样例自身行残差 `9.62666e-7`，转置后 `1.023309e-6`，两层都按后者判断（默认拒绝、显式 `1e-5` 接受），避免“只看原始数组”造成门槛前后不一致。
+- Euler 输入带 `rotation_convention` 或 `rotation_tolerance` 直接拒绝；回执新增 `input_rotation_convention` 与 `rotation_tolerance`，`rotation_convention` 仍描述解算得到的行向量变换。
+- 回归：非对称 90° 列矩阵已知点 `[2,3,5] + [7,-8,9] → [4,-6,14]`、旧缺省 row 逐值不变、重复验证不二次转置、创建/重定位两条分支一致、阈值附近等价性、失败回显按同一行形式测量。
+- 未做：产品执行器构建与 Creo 实机（10×20×30 非立方体、已知点/轴、原生 bbox/质心、保存重载）。容差上限见 [BUG-133](BUG-133.md) 同日段。
 
