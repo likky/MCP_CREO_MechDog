@@ -20,10 +20,12 @@
 // The backend is compiled into this binary (panel_run.h, included after the helpers
 // it uses). "ready" means the route executes here; it does not mean the recorded
 // profile or the target host has been verified.
-inline const char *mechdog_surface_loft_panel_state() { return "ready"; }
+inline const char *mechdog_surface_loft_panel_state() {
+    return "ready";
+}
 
 // Defined by panel_run.h, which is included later in the same translation unit
 // because it uses the resident-callback helpers.
 void generic_surface_loft_panel(const J &op);
 
-#endif  // MECHDOG_SURFACE_LOFT_PANEL_H
+#endif // MECHDOG_SURFACE_LOFT_PANEL_H

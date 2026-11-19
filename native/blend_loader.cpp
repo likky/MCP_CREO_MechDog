@@ -177,9 +177,9 @@ extern "C" __declspec(dllexport) int user_initialize(int argc, char **argv, char
         }
         // Compare before combining: the two signatures are deliberately different
         // types, so they are never put in one conditional expression.
-        const bool initialized_export =
-            panel_generation ? (initialize2 != nullptr && panel_exports_present)
-                             : initialize != nullptr;
+        const bool initialized_export = panel_generation
+                                            ? (initialize2 != nullptr && panel_exports_present)
+                                            : initialize != nullptr;
         if (!initialized_export || !terminate_payload || !prepare_payload || !release_payload ||
             !identity_payload)
             throw std::runtime_error("Callback loader ABI exports missing");
@@ -188,8 +188,8 @@ extern "C" __declspec(dllexport) int user_initialize(int argc, char **argv, char
             code = initialize2(argc, argv, version, build, errmsg, application_id, filename,
                                &host_api2);
         else
-            code = initialize(argc, argv, version, build, errmsg, application_id, filename,
-                              &host_api);
+            code =
+                initialize(argc, argv, version, build, errmsg, application_id, filename, &host_api);
         initialized = code == PRO_TK_NO_ERROR;
         // Never unload partially initialized code: a Toolkit command may already
         // reference it. Preserve it until process exit and report failure.

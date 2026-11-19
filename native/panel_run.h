@@ -51,6 +51,11 @@ inline void generic_surface_loft_panel(const J &op) {
     // it; when it does not, the live model is the one this run selects in.
     const std::string wanted_model = panel.value("model_name", "");
     const std::string open_macro = panel.value("open_macro", "");
+    // BUG-120/D7: an optional recorded collector switch (the second direction). A
+    // profile that does not freeze it keeps the first-direction sequence unchanged;
+    // when it is present the macro is one more step of the same dialog, never a
+    // second dialog and never a guessed control name.
+    const std::string second_direction_macro = panel.value("second_direction_macro", "");
     const std::string done_macro = panel.value("done_macro", "");
     const std::string done_command = panel.value("done_command", "");
     if (open_macro.empty())
@@ -60,6 +65,29 @@ inline void generic_surface_loft_panel(const J &op) {
             "own, because a guessed command sequence is exactly what the panel route must not do. "
             "No feature was created and the request was not retried on the element tree route.");
 
+    if (!second_direction_macro.empty()) {
+        // The optional slot is replayed as whole UI steps, so a line the macro
+        // engine cannot read is refused here, before the dialog exists, instead of
+        // being submitted as a step that silently does nothing.
+        bool malformed =
+            second_direction_macro.size() > 4096 ||
+            second_direction_macro.find(mechdog_panel::select_placeholder) != std::string::npos;
+        for (size_t start = 0; !malformed && start <= second_direction_macro.size();) {
+            const size_t end = second_direction_macro.find('\n', start);
+            const std::string line = second_direction_macro.substr(
+                start, end == std::string::npos ? std::string::npos : end - start);
+            malformed = line.rfind("~ ", 0) != 0;
+            if (end == std::string::npos)
+                break;
+            start = end + 1;
+        }
+        if (malformed)
+            throw std::runtime_error(
+                "PANEL_SECOND_DIRECTION_MACRO_INVALID: panel.second_direction_macro must be "
+                "whole '~ ' macro lines under 4096 bytes and must not name the resident selection "
+                "command; the dialog was not opened and no position was selected.");
+    }
+
     // D2: resolve every position against the live model before anything is selected.
     // A section names its sketch by label (public clients may pass the plain string)
     // or by {label, open_confirmed}; the sketch feature id is resolved here through
@@ -67,41 +95,124 @@ inline void generic_surface_loft_panel(const J &op) {
     // otherwise hand feature id 0 to ProFeatureInit and refuse a valid request.
     std::vector<mechdog_panel_ref::PanelCurveRequest> wants;
     J intent_labels = J::array();
-    for (const auto &section : op.at("sections")) {
+    auto read_position = [&](const J &entry, const char *role, size_t index) {
         mechdog_panel_ref::PanelCurveRequest want;
         bool open_confirmed = false;
-        if (section.is_string()) {
-            want.label = section.get<std::string>();
-        } else if (section.is_object()) {
-            want.label = section.value("label", "");
-            want.owner_name = section.value("owner", "");
-            want.feature_id = section.value("feature_id", 0);
-            want.curve_id = section.value("curve_id", 0);
-            open_confirmed = section.value("open_confirmed", false);
+        if (entry.is_string()) {
+            want.label = entry.get<std::string>();
+        } else if (entry.is_object()) {
+            const std::string kind = entry.value("kind", "");
+            if (kind == "datum_point_feature") {
+                // BUG-120/D7: a convergence end is an MCP-owned datum point. It is
+                // resolved by label like a sketch, but it has no openness or length
+                // to certify, so the curve-only proof below does not apply.
+                want.point = true;
+                want.label = entry.value("label", "");
+            } else if (kind == "point") {
+                throw std::runtime_error(
+                    std::string("PANEL_SECTION_FORM_INVALID: resident_panel ") + role + " " +
+                    std::to_string(index) +
+                    " uses {kind:'point',id:N}; the panel route resolves a point by its "
+                    "MCP-owned label, so pass {kind:'datum_point_feature',label:'...'}");
+            } else {
+                want.label = entry.value("label", "");
+                want.owner_name = entry.value("owner", "");
+                want.feature_id = entry.value("feature_id", 0);
+                want.curve_id = entry.value("curve_id", 0);
+                open_confirmed = entry.value("open_confirmed", false);
+            }
         } else {
             throw std::runtime_error(
-                "PANEL_SECTION_FORM_INVALID: a resident_panel section is a sketch label or "
-                "{label, open_confirmed}; nothing was selected and the dialog was not opened");
+                std::string("PANEL_SECTION_FORM_INVALID: resident_panel ") + role + " " +
+                std::to_string(index) +
+                " is a sketch label or {label, open_confirmed}; nothing was selected and the "
+                "dialog was not opened");
         }
         if (want.label.empty())
             throw std::runtime_error(
-                "PANEL_SECTION_FORM_INVALID: a resident_panel section carries no label; nothing "
-                "was selected and the dialog was not opened");
-        if (!open_confirmed)
+                std::string("PANEL_SECTION_FORM_INVALID: resident_panel ") + role + " " +
+                std::to_string(index) +
+                " carries no label; nothing was selected and the dialog was not opened");
+        if (!want.point && !open_confirmed)
             // The caller certifies that a position is an open curve. Without that
-            // fact D2 refuses instead of assuming "probably open".
+            // fact D2 refuses instead of assuming "probably open". A point has no
+            // openness to certify, so only curve positions take this proof.
             throw std::runtime_error(
-                "PANEL_CURVE_OPENNESS_UNVERIFIED: section " + want.label +
+                std::string("PANEL_CURVE_OPENNESS_UNVERIFIED: ") + role + " " + want.label +
                 " does not declare open_confirmed=true; this build cannot read a standalone "
                 "curve's openness, so it refuses the position instead of assuming it");
         if (want.feature_id == 0)
             want.feature_id = feature_id(want.label);
         intent_labels.push_back(want.label);
         wants.push_back(want);
-    }
-    if (wants.size() < 2 || wants.size() > 8)
+    };
+    for (size_t index = 0; index < op.at("sections").size(); ++index)
+        read_position(op.at("sections").at(index), "section", index);
+    const size_t section_count = wants.size();
+    if (section_count < 2 || section_count > 8)
         throw std::runtime_error(
-            "PANEL_SECTION_COUNT_OUT_OF_RANGE: the panel route selects 2 to 8 positions");
+            "PANEL_SECTION_COUNT_OUT_OF_RANGE: the panel route selects 2 to 8 first-direction "
+            "sections");
+    size_t point_count = 0;
+    for (size_t index = 0; index < section_count; ++index) {
+        if (!wants[index].point)
+            continue;
+        ++point_count;
+        if (index != 0 && index + 1 != section_count)
+            throw std::runtime_error(
+                "PANEL_POINT_POSITION: resident_panel section " + std::to_string(index) +
+                " is a point; a convergence end is only the first or last section. Move it to "
+                "sections[0] or the last section; nothing was selected and the dialog was not "
+                "opened");
+    }
+    if (point_count > 1)
+        throw std::runtime_error(
+            "PANEL_POINT_COUNT: resident_panel accepts one convergence point per run; this "
+            "request has " +
+            std::to_string(point_count) +
+            ". Keep one point at one end; nothing was selected and the dialog was not opened");
+    // BUG-120/D7: guides are the second direction. They are resolved with the same
+    // openness rule as a section and appended after it, so the selection order is
+    // the dialog order: every first-direction position, then the collector switch,
+    // then every guide.
+    size_t guide_count = 0;
+    if (op.contains("guides") && !op["guides"].is_null()) {
+        if (!op["guides"].is_array())
+            throw std::runtime_error(
+                "PANEL_SECTION_FORM_INVALID: resident_panel guides must be an array of sketch "
+                "labels or {label, open_confirmed}; nothing was selected and the dialog was not "
+                "opened");
+        for (size_t index = 0; index < op["guides"].size(); ++index) {
+            read_position(op["guides"].at(index), "guide", index);
+            if (wants.back().point)
+                throw std::runtime_error(
+                    "PANEL_POINT_NOT_A_GUIDE: resident_panel guide " + std::to_string(index) +
+                    " is a point; a guide is a curve crossing every section and cannot be a "
+                    "convergence end. Nothing was selected and the dialog was not opened");
+        }
+        guide_count = wants.size() - section_count;
+        // An explicit empty array means "no second direction": the shared schema
+        // always serializes guides, so requiring 2 here would refuse every
+        // first-direction-only request (including a point convergence).
+        if (guide_count == 1 || guide_count > 8)
+            throw std::runtime_error(
+                "PANEL_SECTION_COUNT_OUT_OF_RANGE: the panel route selects 2 to 8 second-direction "
+                "guides; omit the array or pass 2 to 8");
+    }
+    if (wants.size() > (size_t)mechdog_panel::position_limit)
+        throw std::runtime_error(
+            "PANEL_SECTION_COUNT_OUT_OF_RANGE: the panel route selects 2 to " +
+            std::to_string(mechdog_panel::position_limit) +
+            " positions per run (sections and guides together); this request has " +
+            std::to_string(wants.size()));
+    if (guide_count > 0 && second_direction_macro.empty())
+        // A guide cannot be picked until the second-direction collector is active. The
+        // profile is the only source of that recorded switch, so a request with guides
+        // against a first-direction-only profile is refused before the dialog opens.
+        throw std::runtime_error(
+            "PANEL_COMMAND_MISSING: the request selects " + std::to_string(guide_count) +
+            " second-direction guides but the profile freezes no second_direction_macro; the "
+            "dialog was not opened and no position was selected.");
 
     ProMdl model = nullptr;
     CK(ProMdlCurrentGet(&model));
@@ -109,16 +220,14 @@ inline void generic_surface_loft_panel(const J &op) {
     CK(ProMdlMdlnameGet(model, live_name));
     const std::string model_name_utf8 = utf8(live_name);
     if (!wanted_model.empty() && model_name_utf8 != wanted_model)
-        throw std::runtime_error(
-            "PANEL_MODEL_CHANGED: the request names model " + wanted_model +
-            " but the session holds " + model_name_utf8 +
-            "; no selection was attempted and the ids were not reused");
+        throw std::runtime_error("PANEL_MODEL_CHANGED: the request names model " + wanted_model +
+                                 " but the session holds " + model_name_utf8 +
+                                 "; no selection was attempted and the ids were not reused");
     int model_id = 0;
     CK(ProMdlIdGet(model, &model_id));
-    const mechdog_panel_ref::PanelResolution resolution =
-        mechdog_panel_ref::resolve_panel_sections((ProSolid)model, model_name_utf8,
-                                                  std::to_string(model_id), wants,
-                                                  mechdog_panel_ref::PanelCurveOpenness::Open);
+    const mechdog_panel_ref::PanelResolution resolution = mechdog_panel_ref::resolve_panel_sections(
+        (ProSolid)model, model_name_utf8, std::to_string(model_id), wants,
+        mechdog_panel_ref::PanelCurveOpenness::Open);
     if (!resolution.ok) {
         std::string detail;
         for (const auto &receipt : resolution.receipts)
@@ -164,8 +273,9 @@ inline void generic_surface_loft_panel(const J &op) {
         throw std::runtime_error(
             "PANEL_COMMAND_MISSING: the profile must freeze done_command (verified with "
             "ProCmdCmdIdFind), done_macro (the restricted Done) and select_command; the request "
-            "carries " + std::to_string(!done_command.empty()) + "/" +
-            std::to_string(!done_macro.empty()) + "/" + std::to_string(!select_template.empty()) +
+            "carries " +
+            std::to_string(!done_command.empty()) + "/" + std::to_string(!done_macro.empty()) +
+            "/" + std::to_string(!select_template.empty()) +
             " of them. The dialog was not opened and no position was selected.");
     if (select_template.find(mechdog_panel::select_placeholder) == std::string::npos)
         throw std::runtime_error(
@@ -212,31 +322,47 @@ inline void generic_surface_loft_panel(const J &op) {
 
     activate_blend_context();
     CK(ProSelbufferClear());
-    const std::string token =
-        "MechDogPanel_" + std::to_string(GetCurrentProcessId()) + "_" +
-        std::to_string(GetTickCount64());
+    const std::string token = "MechDogPanel_" + std::to_string(GetCurrentProcessId()) + "_" +
+                              std::to_string(GetTickCount64());
     std::filesystem::path callback_dir = std::filesystem::path(generic_job) / token;
     std::filesystem::create_directory(callback_dir);
     J sections = J::array();
-    for (size_t index = 0; index < resolution.table.refs.size(); ++index)
-        sections.push_back({{"label", resolution.table.refs[index].label},
-                            {"curve_id", resolution.table.refs[index].curve_id},
-                            {"feature_id", resolution.table.refs[index].feature_id}});
+    for (size_t index = 0; index < resolution.table.refs.size(); ++index) {
+        const auto &ref = resolution.table.refs[index];
+        J entry{{"label", ref.label}, {"feature_id", ref.feature_id}};
+        if (ref.point) {
+            entry["kind"] = "point";
+            entry["point_id"] = ref.point_id;
+        } else {
+            entry["curve_id"] = ref.curve_id;
+        }
+        sections.push_back(entry);
+    }
     {
+        // The optional collector switch travels with the run as evidence: the payload
+        // does not need it to select, but callback_result.json then names the exact
+        // sequence this dialog was driven with. It is omitted when the profile has no
+        // such slot, so the first-direction request stays byte-identical.
+        J request_doc{{"protocol", mechdog_panel::protocol},
+                      {"contract", mechdog_panel::contract},
+                      {"request_id", request_id},
+                      {"job_id", job_id},
+                      {"nonce", nonce},
+                      {"profile_id", profile_id},
+                      {"model_name", model_name_utf8},
+                      {"model_id", std::to_string(model_id)},
+                      {"command", resident_command},
+                      {"sections", sections},
+                      {"done_macro", done_macro},
+                      {"done_command", done_command}};
+        if (!second_direction_macro.empty())
+            request_doc["second_direction_macro"] = second_direction_macro;
+        if (guide_count > 0)
+            // The payload groups the one-shot tickets by direction, so the first
+            // guide replaces the empty second collector instead of toggling into it.
+            request_doc["second_direction_start"] = static_cast<int>(section_count);
         std::ofstream request(callback_dir / L"callback_request.json", std::ios::binary);
-        request << J{{"protocol", mechdog_panel::protocol},
-                     {"contract", mechdog_panel::contract},
-                     {"request_id", request_id},
-                     {"job_id", job_id},
-                     {"nonce", nonce},
-                     {"profile_id", profile_id},
-                     {"model_name", model_name_utf8},
-                     {"model_id", std::to_string(model_id)},
-                     {"command", resident_command},
-                     {"sections", sections},
-                     {"done_macro", done_macro},
-                     {"done_command", done_command}}
-                       .dump(2);
+        request << request_doc.dump(2);
     }
     log("PANEL_CALLBACK_MODE=resident_panel\n");
     // BUG-120/T1-B (Creo 10, 2026-11-17): the whole dialog sequence must be ONE
@@ -287,13 +413,14 @@ inline void generic_surface_loft_panel(const J &op) {
                               bracket.value("nonce", "") == nonce && selected_at > 0 &&
                               bracket.value("at_epoch_ms", 0LL) >= selected_at;
         if (finished)
-            return J{{"method", "command_bracket"},
-                     {"supported", true},
-                     {"closed", true},
-                     {"reason",
-                      "Creo reported the Done command's after-execution bracket for this run, so the "
-                      "dialog's command returned after every position was consumed"},
-                     {"evidence", {{"bracket", bracket}, {"panel", state}}}};
+            return J{
+                {"method", "command_bracket"},
+                {"supported", true},
+                {"closed", true},
+                {"reason",
+                 "Creo reported the Done command's after-execution bracket for this run, so the "
+                 "dialog's command returned after every position was consumed"},
+                {"evidence", {{"bracket", bracket}, {"panel", state}}}};
         J observation = {
             {"method", "callback_result"},
             {"supported", false},
@@ -311,15 +438,14 @@ inline void generic_surface_loft_panel(const J &op) {
         return observation;
     };
     auto stage_panel = [&](int selected) {
-        stage_operation_result(
-            {{"op", "surface_loft"},
-             {"creation_route", "resident_panel"},
-             {"panel",
-              {{"profile_id", profile_id},
-               {"selected", selected},
-               {"slots", static_cast<int>(sections.size())}}},
-             {"selection_intent", {{"labels", intent_labels}}},
-             {"exit_observation", read_panel_exit()}});
+        stage_operation_result({{"op", "surface_loft"},
+                                {"creation_route", "resident_panel"},
+                                {"panel",
+                                 {{"profile_id", profile_id},
+                                  {"selected", selected},
+                                  {"slots", static_cast<int>(sections.size())}}},
+                                {"selection_intent", {{"labels", intent_labels}}},
+                                {"exit_observation", read_panel_exit()}});
     };
     resident_blend_task(module, "MechDogPanelPrepare",
                         (callback_dir / L"callback_request.json").wstring());
@@ -331,7 +457,17 @@ inline void generic_surface_loft_panel(const J &op) {
     select_text.replace(select_text.find(mechdog_panel::select_placeholder),
                         std::strlen(mechdog_panel::select_placeholder), resident_command);
     std::string sequence = open_macro;
-    for (size_t index = 0; index < sections.size(); ++index)
+    // BUG-120/D7: the recorded second-direction collector switch sits between the two
+    // direction phases, because the dialog's active collector decides where the next
+    // selection lands. Without guides the macro is absent and the sequence is
+    // byte-identical to the certified first-direction profile. It is never sent as a
+    // separate task: anything queued after the dialog opens blocks behind it (T1-B,
+    // Creo 10).
+    for (size_t index = 0; index < section_count; ++index)
+        sequence += "\n" + select_text;
+    if (guide_count > 0)
+        sequence += "\n" + second_direction_macro;
+    for (size_t index = section_count; index < sections.size(); ++index)
         sequence += "\n" + select_text;
     sequence += "\n" + done_macro;
     {
@@ -342,8 +478,7 @@ inline void generic_surface_loft_panel(const J &op) {
             shown += c == '\n' ? " | " : std::string(1, c);
         log("PANEL_MACRO=%s\n", shown.c_str());
     }
-    CK(trace_blend_call("panel_macro_submit",
-                        [&] { return ProMacroLoad(wide(sequence).data()); }));
+    CK(trace_blend_call("panel_macro_submit", [&] { return ProMacroLoad(wide(sequence).data()); }));
     // Bounded wait for the payload to record one ticket per position. Only the file
     // is polled: a Toolkit task here is exactly what blocked the 2026-11-18 run.
     int selected = panel_selected(read_panel_state());
@@ -381,4 +516,4 @@ inline void generic_surface_loft_panel(const J &op) {
     log("PANEL_ROUTE=resident_panel selected=%zu\n", sections.size());
 }
 
-#endif  // MECHDOG_PANEL_RUN_H
+#endif // MECHDOG_PANEL_RUN_H

@@ -23,6 +23,12 @@
 - **无图形启动**：本机 Creo 12.4.0.0 实测 `-g:no_graphics` + `-i:rpc_input` 下 `xtop.exe` 带同名参数且无界面，连接 `toolkit_code=0`，板件建模成功（`window_activate_code=-8` 仅记录），见 [BUG-125](work-items/BUG-125.md)/[BUG-126](work-items/BUG-126.md)。
 - **不支持声明**：以上不构成 Creo 13 支持声明；Creo 9/10 运行期状态不变，Creo 10 仍按下方 0.23.2 分节处理。
 
+## 2026-11-19：Creo 10 resident_panel 边界混合路线实机通过（BUG-120 D7/T-D/T-E）
+
+- **认证路线**：Creo 10.0.0.0 / `release_numeric=42`，panel callback protocol 4 / loader ABI 2，认证 profile `creo10-bbl-candidate-2`；公开能力为 **2—8 个 MCP 自有草图标签**（每个一条开放非复合曲线，2 截面直纹、3+ 截面 smooth），不接受 guides、点、边界条件或模板。WorkBuddy 黑盒两轮均通过：两次面板放样、quilt 查询、4 边测量、保存重载、旧 revision 拒绝/当前 revision 成功；半圆柱壳镜像/合并/两端封口/实体化，体积 6283.1853 mm³、质心 [10,0,0]。
+- **候选能力（candidate-3，未认证）**：已实机记录 2 截面 + 2/3 导线、2 截面 + 末端点、7 曲线 + 点、7 曲线 + 3 导线（10 位置）；两段式球鼻艏演示体完成镜像/合并/后盖/实体化（体积 167543.67 mm³）。**11 位置“7 曲线 + 点 + 3 导线”与 10 位置“7 曲线 + 点 + 2 导线”均在 Creo 10 再生失败**，边界是“末端基准点 + 任意第二方向导线”同时存在；不要将其列为公开能力。
+- **与元素树路线区分**：下方 2026-11-13 的 `ProFeatureElemtreeExtract=-18` 结论仍适用于 `creation_route="element_tree"`；resident_panel 不依赖 Extract，是独立的 Creo 10 路线。Creo 9 仍只有编译探测，无运行期证据；其他 Creo 版本未因本轮结果改变支持声明。
+
 ## 2026-11-13：Creo 10 运行期边界混合不可提取（随 0.23.2 披露）
 
 - **编译证据**：0.21.0—0.23.1 四份报告均记录 Creo 10.0.0.0 + 匹配 Toolkit SDK

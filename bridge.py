@@ -785,6 +785,14 @@ def build_native() -> Path:
         "native/blend_sync.cpp",
         "native/callback_identity.h",
         "native/callback_api.h",
+        # BUG-120/D7: blend_sync.cpp includes the panel route headers. Without
+        # them a header-only change (the direction split, the point role or the
+        # position bound) kept the cached DLL and silently ran the previous rules.
+        "native/panel_protocol.h",
+        "native/panel_selection_state.h",
+        "native/panel_run.h",
+        "native/panel_references.h",
+        "native/panel_references_sdk.h",
         "native/third_party/json.hpp",
     )
     loader_relatives = (

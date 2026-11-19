@@ -48,13 +48,28 @@ panel::PanelSelectionState prepared() {
 void test_prepare_rules() {
     panel::PanelSelectionState state;
     expect_code(state.prepare("req-1", "job-1", "nonce-1", "part", "session", {0}, true),
-                "PANEL_SLOT_COUNT_OUT_OF_RANGE", "one position is below the 2-8 range");
+                "PANEL_SLOT_COUNT_OUT_OF_RANGE", "one position is below the 2-11 range");
     expect_code(state.prepare("req-1", "job-1", "nonce-1", "part", "session", {0, 0}, true),
                 "PANEL_SLOT_DUPLICATE", "the same position twice is refused");
     expect_code(
         state.prepare("req-1", "job-1", "nonce-1", "part", "session", {0, 1}, false),
         "PANEL_TICKET_REGISTRATION_FAILED",
         "a partially registered dialog is not started");
+
+    // BUG-120/D7: seven curves + one point + three guides is the documented
+    // 11-position boundary; one more position is refused.
+    panel::PanelSelectionState large;
+    std::vector<int> eleven;
+    for (int slot = 0; slot < 11; ++slot)
+        eleven.push_back(slot);
+    expect(large.prepare("req-11", "job-11", "nonce-11", "part", "session", eleven, true).ok,
+           "eleven positions prepare");
+    std::vector<int> twelve = eleven;
+    twelve.push_back(11);
+    panel::PanelSelectionState over;
+    expect_code(
+        over.prepare("req-12", "job-12", "nonce-12", "part", "session", twelve, true),
+        "PANEL_SLOT_COUNT_OUT_OF_RANGE", "twelve positions are above the 2-11 range");
     expect(state.stage() == panel::PanelStage::Idle,
            "a refused Prepare leaves the state idle instead of half-started");
     expect_code(state.prepare("", "job-1", "nonce-1", "part", "session", {0, 1}, true),
@@ -337,9 +352,36 @@ void test_observed_close_release() {
                 "an observed close never erases a locked failure");
 }
 
+void test_second_direction_actions() {
+    panel::PanelSelectionState state;
+    const std::vector<int> slots{0, 1, 2, 3};
+    const std::vector<int> directions{0, 0, 1, 1};
+    expect(state
+               .prepare("req-dir", "job-dir", "nonce-dir", "panel_part", "session-7", slots, true,
+                        directions)
+               .ok,
+           "a two-direction run prepares");
+
+    std::vector<panel::PanelSelectionAction> actions;
+    for (const panel::PanelTicket &ticket : state.tickets())
+        actions.push_back(state.record(ticket).action);
+    expect(actions.size() == 4, "one action per position");
+    expect(actions[0] == panel::PanelSelectionAction::Override &&
+               actions[1] == panel::PanelSelectionAction::Toggle &&
+               actions[2] == panel::PanelSelectionAction::Override &&
+               actions[3] == panel::PanelSelectionAction::Toggle,
+           "the first position of each direction replaces, later ones toggle");
+
+    panel::PanelSelectionState wrong;
+    expect_code(wrong.prepare("req-dir", "job-dir", "nonce-dir", "panel_part", "session-7", slots,
+                              true, {0, 1}),
+                "PANEL_DIRECTION_COUNT", "directions and positions must agree");
+}
+
 int main() {
     test_prepare_rules();
     test_override_then_toggle();
+    test_second_direction_actions();
     test_ticket_identity();
     test_finalize_gates_done();
     test_end_sequence_order();

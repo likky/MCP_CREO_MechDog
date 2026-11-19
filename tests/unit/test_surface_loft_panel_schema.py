@@ -2,9 +2,11 @@
 
 Every request written before this field existed must serialize exactly as before, so
 the omitted route never adds a key. The panel route accepts 2-8 MCP-owned sketch
-labels only: a bare id, a curve/edge/point reference, guides, boundary conditions and
-templates stay on the element tree, and the refusal happens while validating the plan
-(before a job exists), not after a UI run.
+labels: a bare id, a curve/edge reference or a bare point id stays on the element
+tree, and the refusal happens while validating the plan (before a job exists), not
+after a UI run. BUG-120/D7 adds guides as the same kind of label (2 or more, at most
+8 positions together with the sections) and one datum-point label at either end as
+the convergence section.
 """
 
 from __future__ import annotations
@@ -89,8 +91,6 @@ class PanelRouteRefusesTheTreeOnlyForms(unittest.TestCase):
         forms = [
             {"kind": "edge", "id": 7},
             {"kind": "curve", "id": 9},
-            {"kind": "point", "id": 11},
-            {"kind": "datum_point_feature", "label": "tip_point"},
         ]
         for form in forms:
             with self.subTest(form=form):
@@ -98,16 +98,17 @@ class PanelRouteRefusesTheTreeOnlyForms(unittest.TestCase):
                     validate_operations([panel(sections=["panel_a", form])])
                 self.assertIn("MCP-owned sketch label", str(caught.exception))
 
+    def test_a_bare_point_id_is_refused_in_favour_of_its_label(self):
+        with self.assertRaises(ValueError) as caught:
+            validate_operations([panel(sections=["panel_a", {"kind": "point", "id": 11}])])
+        self.assertIn("MCP-owned label", str(caught.exception))
+        self.assertIn("datum_point_feature", str(caught.exception))
+
     def test_a_bare_feature_id_is_refused(self):
         with self.assertRaises(ValueError) as caught:
             validate_operations([panel(sections=["panel_a", 41])])
         self.assertIn("bare feature id", str(caught.exception))
         self.assertIn("element_tree", str(caught.exception))
-
-    def test_guides_are_refused(self):
-        with self.assertRaises(ValueError) as caught:
-            validate_operations([panel(guides=["guide_a", "guide_b"])])
-        self.assertIn("does not accept guides", str(caught.exception))
 
     def test_boundary_conditions_are_refused(self):
         with self.assertRaises(ValueError) as caught:
@@ -123,6 +124,128 @@ class PanelRouteRefusesTheTreeOnlyForms(unittest.TestCase):
             with self.assertRaises(ValueError) as caught:
                 validate_operations([panel(template={"file": str(tree)})])
             self.assertIn("does not accept template", str(caught.exception))
+
+
+class PanelRouteAcceptsTheSecondDirection(unittest.TestCase):
+    """BUG-120/D7: guides are the second direction, admitted as sketch labels."""
+
+    def test_two_guides_pass_and_keep_their_order(self):
+        dumped = validate_operations(
+            [panel(sections=["sec_a", "sec_b"], guides=["guide_a", "guide_b"])]
+        )[0]
+        self.assertEqual(dumped["guides"], ["guide_a", "guide_b"])
+        self.assertEqual(dumped["sections"], ["sec_a", "sec_b"])
+
+    def test_label_objects_with_open_confirmed_pass(self):
+        dumped = validate_operations(
+            [
+                panel(
+                    sections=[
+                        {"label": "sec_a", "open_confirmed": True},
+                        {"label": "sec_b", "open_confirmed": True},
+                    ],
+                    guides=[
+                        {"label": "guide_a", "open_confirmed": True},
+                        {"label": "guide_b", "open_confirmed": True},
+                    ],
+                )
+            ]
+        )[0]
+        self.assertEqual(len(dumped["guides"]), 2)
+
+    def test_one_guide_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            validate_operations([panel(guides=["guide_a"])])
+        self.assertIn("2 or more guides", str(caught.exception))
+
+    def test_a_guide_reference_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            validate_operations([panel(guides=["guide_a", {"kind": "edge", "id": 7}])])
+        self.assertIn("MCP-owned sketch label", str(caught.exception))
+
+    def test_a_guide_repeating_a_section_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            validate_operations([panel(sections=["sec_a", "sec_b"], guides=["sec_a", "guide_b"])])
+        self.assertIn("must be distinct sketches", str(caught.exception))
+
+    def test_sections_and_guides_share_the_eleven_position_budget(self):
+        sections = [f"sec_{index}" for index in range(8)]
+        guides = [f"guide_{index}" for index in range(4)]
+        with self.assertRaises(ValueError) as caught:
+            validate_operations([panel(sections=sections, guides=guides, interpolation="smooth")])
+        self.assertIn("at most 11 positions", str(caught.exception))
+
+    def test_the_seven_curve_point_and_three_guide_case_fits(self):
+        sections = [f"sec_{index}" for index in range(7)] + [
+            {"kind": "datum_point_feature", "label": "tip"}
+        ]
+        guides = [f"guide_{index}" for index in range(3)]
+        dumped = validate_operations(
+            [panel(sections=sections, guides=guides, interpolation="smooth")]
+        )[0]
+        self.assertEqual(len(dumped["sections"]), 8)
+        self.assertEqual(len(dumped["guides"]), 3)
+
+
+class PanelRouteAcceptsTheConvergencePoint(unittest.TestCase):
+    """BUG-120/D7: one end may be an MCP-owned datum point, by label only."""
+
+    def test_a_point_at_the_last_section_passes(self):
+        sections = ["sec_a", "sec_b", {"kind": "datum_point_feature", "label": "tip"}]
+        dumped = validate_operations([panel(sections=sections, interpolation="smooth")])[0]
+        self.assertEqual(dumped["sections"], sections)
+
+    def test_a_point_at_the_first_section_passes(self):
+        sections = [{"kind": "datum_point_feature", "label": "tip"}, "sec_a", "sec_b"]
+        dumped = validate_operations([panel(sections=sections, interpolation="smooth")])[0]
+        self.assertEqual(dumped["sections"][0], sections[0])
+
+    def test_a_point_in_the_middle_is_refused(self):
+        sections = ["sec_a", {"kind": "datum_point_feature", "label": "tip"}, "sec_b"]
+        with self.assertRaises(ValueError) as caught:
+            validate_operations([panel(sections=sections, interpolation="smooth")])
+        self.assertIn("first or last section", str(caught.exception))
+
+    def test_two_points_are_refused(self):
+        sections = [
+            {"kind": "datum_point_feature", "label": "tip_a"},
+            "sec_a",
+            {"kind": "datum_point_feature", "label": "tip_b"},
+        ]
+        with self.assertRaises(ValueError) as caught:
+            validate_operations([panel(sections=sections, interpolation="smooth")])
+        self.assertIn("one convergence point", str(caught.exception))
+
+    def test_a_point_needs_a_non_empty_label(self):
+        sections = ["sec_a", "sec_b", {"kind": "datum_point_feature", "label": ""}]
+        with self.assertRaises(ValueError) as caught:
+            validate_operations([panel(sections=sections, interpolation="smooth")])
+        self.assertIn("point label", str(caught.exception))
+
+    def test_a_point_with_extra_keys_is_refused(self):
+        sections = [
+            "sec_a",
+            "sec_b",
+            {"kind": "datum_point_feature", "label": "tip", "id": 11},
+        ]
+        with self.assertRaises(ValueError) as caught:
+            validate_operations([panel(sections=sections, interpolation="smooth")])
+        self.assertIn("only kind and label", str(caught.exception))
+
+    def test_a_point_cannot_be_a_guide(self):
+        with self.assertRaises(ValueError) as caught:
+            validate_operations(
+                [
+                    panel(
+                        sections=["sec_a", "sec_b"],
+                        guides=[
+                            {"kind": "datum_point_feature", "label": "tip"},
+                            "guide_b",
+                        ],
+                    )
+                ]
+            )
+        self.assertIn("cannot be a convergence point", str(caught.exception))
 
 
 class ToolWrapperForwardsTheRoute(unittest.TestCase):

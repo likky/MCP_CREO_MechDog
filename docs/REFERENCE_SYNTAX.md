@@ -174,6 +174,8 @@
 
 `creo_surface_loft`（`surface_loft`）自 0.18.3 起公开，**取代**了「多截面放样未发布」的旧说法：2—32 个截面草图按提交顺序建一张边界混合曲面，两截面为直纹（`interpolation="straight"`），三截面及以上由内核拟合成一张光滑面，必须显式 `interpolation="smooth"`。`guides` 是可选第二方向：2—8 个草图、每条恰好一条非复合曲线、不得与截面重复；只给一条导线在校验层直接拒绝（实测单条 2DIR 曲线能建特征但不再生）。导线是否穿过截面由内核判定，不穿过就再生失败而不是被忽略。`creo_loft` 本身仍只接受 `mode="add"`，`mode="surface"`、`cut` 与 `new_body=true` 都在入队前拒绝，实体放样与曲面放样是两条独立路线。
 
+**`creation_route`（BUG-120）**：省略或传 `element_tree` 时保持上面的 2—32 截面、2—8 导线与边界条件语义。`resident_panel` 是 Creo 10 / release 42 的独立后端，认证 profile 只接受 **2—8 个 MCP 自有草图标签**（每个标签一条开放非复合曲线；2 截面直纹，3 截面及以上 `smooth`），不接受 guides、点、边界条件或模板；它需要已部署并注册的 panel callback（protocol 4 / loader ABI 2），缺 profile、部署不匹配或形式超出认证范围时在打开对话框前拒绝，**不回退** `element_tree`。candidate profile 可加入第二方向导线与首/末收敛点（最大 11 个位置），属候选能力，不在公开认证范围；本机已记录 2+2、2+3、2+点、7+点、7+3 与两段式实体化证据，单特征“点+导线”组合在 Creo 10 再生失败。
+
 **截面/导线的已有几何引用（FEAT-065 M3；2026-11-11 Creo 12.4.0.0 实机验收通过）**：`sections`/`guides` 的元素除草图标签或特征 ID 外，还接受下列既有裸引用，不加 `reference`/`chain` 包装，每个元素对应一个链容器：
 
 ```json

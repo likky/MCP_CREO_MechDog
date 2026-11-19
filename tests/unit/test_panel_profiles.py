@@ -75,13 +75,19 @@ class Library(unittest.TestCase):
 
 
 class ShippedLibrary(Library):
-    def test_the_repository_manifest_carries_one_candidate_and_one_certified_profile(self):
+    def test_the_repository_manifest_carries_two_candidates_and_one_certified_profile(self):
         entries = panel_profiles.profiles()
         self.assertEqual(
             [entry.profile_id for entry in entries],
-            ["creo10-bbl-candidate-1", "creo10-bbl-candidate-2"],
+            [
+                "creo10-bbl-candidate-1",
+                "creo10-bbl-candidate-2",
+                "creo10-bbl-candidate-3",
+            ],
         )
-        self.assertEqual([entry.status for entry in entries], ["candidate", "certified"])
+        self.assertEqual(
+            [entry.status for entry in entries], ["candidate", "certified", "candidate"]
+        )
         self.assertEqual({entry.release_numeric for entry in entries}, {42})
 
     def test_the_shipped_certified_profile_is_admitted_without_a_ticket(self):
@@ -94,6 +100,15 @@ class ShippedLibrary(Library):
             "96d1ee7ed3cd835c11990938ea0c9895ab61fec3287b56d5ed5699c0992f0112",
         )
         self.assertEqual(admission["certification"]["environment"]["release_numeric"], 42)
+
+    def test_the_shipped_second_direction_profile_is_a_candidate(self):
+        entries = {entry.profile_id: entry for entry in panel_profiles.profiles()}
+        third = entries["creo10-bbl-candidate-3"]
+        self.assertEqual(third.status, "candidate")
+        self.assertIn("Curves2DirRep", third.commands["second_direction_macro"])
+        # The panel instance index changes between sessions, so it is not frozen.
+        self.assertNotIn("bbl_12curves", third.commands["second_direction_macro"])
+        self.assertNotIn("second_direction_macro", entries["creo10-bbl-candidate-2"].commands)
 
     def test_find_profile_names_the_known_profiles(self):
         with self.assertRaises(panel_profiles.PanelProfileError) as caught:
@@ -214,6 +229,51 @@ class ManifestValidation(Library):
             )
         )
         with self.assertRaisesRegex(panel_profiles.PanelProfileError, "must stay inside"):
+            panel_profiles.profiles(self.root)
+
+
+SECOND_DIRECTION = "~ Trigger `main_dlg_cur` `maindashInst0.Curves2DirRep` `0`;"
+
+
+class SecondDirectionSlot(Library):
+    """BUG-120/D7: the collector switch is optional frozen evidence, not a guess."""
+
+    def test_the_slot_is_read_and_travels_with_a_candidate_admission(self):
+        commands = dict(COMMANDS, second_direction_macro=SECOND_DIRECTION)
+        self.write_manifest(manifest([profile(commands=commands)]))
+        admission = panel_profiles.admit_for_request(
+            identity(),
+            root=self.root,
+            environ=ticket(
+                str(self.root.resolve()),
+                profile_digest=panel_profiles.command_digest(commands),
+            ),
+        )
+        self.assertEqual(admission["second_direction_macro"], SECOND_DIRECTION)
+        self.assertEqual(admission["commands"]["second_direction_macro"], SECOND_DIRECTION)
+
+    def test_a_profile_without_the_slot_admits_an_empty_string(self):
+        self.write_manifest(manifest([profile()]))
+        admission = panel_profiles.admit_for_request(
+            identity(),
+            root=self.root,
+            environ=ticket(str(self.root.resolve())),
+        )
+        self.assertEqual(admission["second_direction_macro"], "")
+
+    def test_a_line_that_is_not_a_macro_step_is_refused(self):
+        commands = dict(COMMANDS, second_direction_macro="Trigger Curves2DirRep 0;")
+        self.write_manifest(manifest([profile(commands=commands)]))
+        with self.assertRaisesRegex(panel_profiles.PanelProfileError, "must start with '~ '"):
+            panel_profiles.profiles(self.root)
+
+    def test_the_slot_cannot_name_the_resident_selection_command(self):
+        commands = dict(
+            COMMANDS,
+            second_direction_macro="~ Command `" + panel_profiles.SELECT_PLACEHOLDER + "`;",
+        )
+        self.write_manifest(manifest([profile(commands=commands)]))
+        with self.assertRaisesRegex(panel_profiles.PanelProfileError, "must not contain"):
             panel_profiles.profiles(self.root)
 
 

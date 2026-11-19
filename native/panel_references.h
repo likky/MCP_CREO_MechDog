@@ -23,6 +23,8 @@
 #include <string>
 #include <vector>
 
+#include "panel_protocol.h"
+
 namespace mechdog_panel_ref {
 
 //: A resolved, re-checked curve reference. ``curve_type`` keeps the SDK's own
@@ -34,6 +36,10 @@ struct PanelCurveRef {
     int curve_id = 0;
     int curve_type = 0;
     double length_mm = 0.0;
+    //: BUG-120/D7: one convergence end may be a datum point instead of a curve.
+    //: ``point_id`` is the PRO_POINT geometry id the dialog must select.
+    int point_id = 0;
+    bool point = false;
 };
 
 //: What the caller asked for: the label it used and the ids the alias table claims.
@@ -42,10 +48,17 @@ struct PanelCurveRequest {
     std::string owner_name;
     int feature_id = 0;
     int curve_id = 0;
+    //: True when the label names an MCP-owned single-point datum feature; the
+    //: openness and curve-length rules do not apply to it.
+    bool point = false;
 };
 
 //: Whether a curve is open. UNKNOWN is not "probably open".
-enum class PanelCurveOpenness { Open, Closed, Unknown };
+enum class PanelCurveOpenness {
+    Open,
+    Closed,
+    Unknown
+};
 
 //: What the Toolkit adapter observed. Every field is a fact it read, never a wish.
 struct PanelCurveProbe {
@@ -60,6 +73,9 @@ struct PanelCurveProbe {
     PanelCurveOpenness openness = PanelCurveOpenness::Unknown;
     double length_mm = 0.0;
     bool length_known = false;
+    //: Set when a point request found exactly one PRO_POINT under its feature.
+    bool point_found = false;
+    int point_id = 0;
     std::string api_error;
 };
 
@@ -73,6 +89,8 @@ struct PanelCurveReceipt {
     int curve_type = 0;
     double length_mm = 0.0;
     bool openness_verified = false;
+    int point_id = 0;
+    bool point = false;
 };
 
 inline PanelCurveReceipt failure(const std::string &code, const std::string &message) {
@@ -89,6 +107,8 @@ inline PanelCurveReceipt success(const PanelCurveRef &ref, bool openness_verifie
     receipt.curve_type = ref.curve_type;
     receipt.length_mm = ref.length_mm;
     receipt.openness_verified = openness_verified;
+    receipt.point_id = ref.point_id;
+    receipt.point = ref.point;
     return receipt;
 }
 
@@ -97,13 +117,34 @@ inline PanelCurveReceipt success(const PanelCurveRef &ref, bool openness_verifie
 //: instead of being misread as "the curve is missing".
 inline PanelCurveReceipt validate(const PanelCurveRequest &want, const PanelCurveProbe &probe) {
     if (!probe.api_error.empty())
-        return failure("PANEL_CURVE_API_ERROR",
-                       "a Toolkit query for this reference failed (" + probe.api_error +
-                           "); no selection was made");
+        return failure("PANEL_CURVE_API_ERROR", "a Toolkit query for this reference failed (" +
+                                                    probe.api_error + "); no selection was made");
+    if (want.point) {
+        // A convergence end is a point, not a curve: openness, composite and
+        // length cannot be read from it and must not be faked. The probe proves
+        // the label owns exactly one PRO_POINT and that the point resolves.
+        if (!probe.feature_found)
+            return failure("PANEL_FEATURE_NOT_FOUND", "the point label resolved to feature " +
+                                                          std::to_string(want.feature_id) +
+                                                          ", which this model no longer holds");
+        if (!probe.point_found || probe.point_id <= 0)
+            return failure("PANEL_POINT_NOT_FOUND",
+                           "label '" + want.label +
+                               "' does not identify exactly one datum point under feature " +
+                               std::to_string(want.feature_id) +
+                               "; a convergence end needs a single-point datum feature");
+        PanelCurveRef ref;
+        ref.label = want.label;
+        ref.owner_name = want.owner_name;
+        ref.feature_id = want.feature_id;
+        ref.point = true;
+        ref.point_id = probe.point_id;
+        return success(ref, false);
+    }
     if (!probe.feature_found)
-        return failure("PANEL_FEATURE_NOT_FOUND",
-                       "the label resolved to feature " + std::to_string(want.feature_id) +
-                           ", which this model no longer holds");
+        return failure("PANEL_FEATURE_NOT_FOUND", "the label resolved to feature " +
+                                                      std::to_string(want.feature_id) +
+                                                      ", which this model no longer holds");
     if (probe.curves_in_feature == 0)
         // A datum plane or a solid feature carries no curve at all; T1-C's datum id
         // counter-example lands here instead of becoming a bogus selection.
@@ -119,8 +160,7 @@ inline PanelCurveReceipt validate(const PanelCurveRequest &want, const PanelCurv
                            "; the id belongs to another owner in this model");
     if (!probe.type_known)
         return failure("PANEL_CURVE_TYPE_UNKNOWN",
-                       "the SDK did not report a type for curve " +
-                           std::to_string(probe.curve_id) +
+                       "the SDK did not report a type for curve " + std::to_string(probe.curve_id) +
                            ", so a composite curve cannot be ruled out");
     if (probe.composite)
         return failure("PANEL_CURVE_COMPOSITE",
@@ -154,9 +194,11 @@ inline PanelCurveReceipt validate(const PanelCurveRequest &want, const PanelCurv
     return success(ref, true);
 }
 
-//: Section-count and label rules, checked before anything touches the model.
+//: Position-count and label rules, checked before anything touches the model.
+//: resolve_panel_sections receives every position of the run (sections and
+//: guides), so the bound is the protocol position limit, not the section bound.
 inline std::string check_sections(const std::vector<PanelCurveRequest> &sections) {
-    if (sections.size() < 2 || sections.size() > 8)
+    if (sections.size() < 2 || sections.size() > (size_t)mechdog_panel::position_limit)
         return "PANEL_SECTION_COUNT_OUT_OF_RANGE";
     for (size_t i = 0; i < sections.size(); ++i) {
         if (sections[i].label.empty())
@@ -176,7 +218,9 @@ struct PanelReferenceTable {
     std::string model_id;
     std::vector<PanelCurveRef> refs;
 
-    bool bound() const { return !model_name.empty() && !model_id.empty(); }
+    bool bound() const {
+        return !model_name.empty() && !model_id.empty();
+    }
 
     PanelCurveReceipt recheck(const std::string &current_model_name,
                               const std::string &current_model_id) const {
@@ -195,6 +239,6 @@ struct PanelReferenceTable {
     }
 };
 
-}  // namespace mechdog_panel_ref
+} // namespace mechdog_panel_ref
 
-#endif  // MECHDOG_PANEL_REFERENCES_H
+#endif // MECHDOG_PANEL_REFERENCES_H

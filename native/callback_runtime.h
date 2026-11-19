@@ -68,8 +68,7 @@ static J callback_live_identity(ProToolkitDllHandle handle) {
 // the blend constants read every complete panel setup as "version_mismatch".
 static bool callback_matches_generation(const J &value, int protocol, int loader_abi,
                                         const char *contract) {
-    return value.value("protocol", 0) == protocol &&
-           value.value("loader_abi", 0) == loader_abi &&
+    return value.value("protocol", 0) == protocol && value.value("loader_abi", 0) == loader_abi &&
            value.value("contract", "") == contract;
 }
 

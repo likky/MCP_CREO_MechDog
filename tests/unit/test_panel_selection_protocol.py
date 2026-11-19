@@ -79,6 +79,10 @@ class ProtocolGenerations(unittest.TestCase):
         text = PANEL_PROTOCOL.read_text(encoding="utf-8")
         self.assertRegex(text, r"constexpr int ticket_capacity = 512;")
 
+    def test_the_position_limit_is_eleven(self):
+        text = PANEL_PROTOCOL.read_text(encoding="utf-8")
+        self.assertRegex(text, r"constexpr int position_limit = 11;")
+
 
 class Abi2Table(unittest.TestCase):
     def _struct_fields(self, name: str) -> list[str]:
@@ -238,7 +242,8 @@ class PanelProfileToBackend(unittest.TestCase):
         shipped = panel_profiles.profiles()
         self.assertTrue(shipped, "the library must carry the Creo 10 candidate profile")
         for profile in shipped:
-            self.assertEqual(set(profile.commands), set(panel_profiles.COMMAND_SLOTS))
+            # Optional slots (the second-direction collector switch) are additive.
+            self.assertLessEqual(set(panel_profiles.COMMAND_SLOTS), set(profile.commands))
 
     def test_the_shipped_profile_keeps_the_recording_and_drops_the_pauses(self):
         import json
@@ -264,6 +269,60 @@ class PanelProfileToBackend(unittest.TestCase):
         text = self.SUBMIT.read_text(encoding="utf-8")
         for key in ("open_macro", "select_command", "done_macro", "done_command"):
             self.assertIn(f'"{key}": str(panel_admission.get("{key}") or "")', text)
+
+    def test_the_second_direction_slot_reaches_the_job_and_the_macro(self):
+        submit = self.SUBMIT.read_text(encoding="utf-8")
+        self.assertIn('"second_direction_macro":', submit)
+        native = self.RUN.read_text(encoding="utf-8")
+        self.assertIn('panel.value("second_direction_macro", "")', native)
+        # One step of the same macro, between the two direction phases.
+        first_select = native.index('sequence += "\\n" + select_text')
+        switch = native.index('sequence += "\\n" + second_direction_macro')
+        done = native.index('sequence += "\\n" + done_macro')
+        self.assertLess(first_select, switch)
+        self.assertLess(switch, done)
+
+    def test_the_second_direction_boundary_reaches_the_payload(self):
+        native = self.RUN.read_text(encoding="utf-8")
+        self.assertIn('request_doc["second_direction_start"]', native)
+        payload = (ROOT / "native" / "blend_sync.cpp").read_text(encoding="utf-8")
+        self.assertIn('request.value("second_direction_start"', payload)
+        # The first position of each direction replaces; the state machine decides by
+        # the ticket's direction group, not by a global index.
+        state = (ROOT / "native" / "panel_selection_state.h").read_text(encoding="utf-8")
+        self.assertIn("tickets_[(size_t)index].override", state)
+        self.assertIn("PANEL_DIRECTION_COUNT", state)
+
+    def test_a_convergence_point_keeps_its_type_to_the_payload(self):
+        native = self.RUN.read_text(encoding="utf-8")
+        self.assertIn('entry["kind"] = "point"', native)
+        self.assertIn('entry["point_id"]', native)
+        self.assertIn("PANEL_POINT_POSITION", native)
+        self.assertIn("PANEL_POINT_NOT_A_GUIDE", native)
+        # The schema always serializes guides, so an empty array must mean "no
+        # second direction" instead of failing the 2-8 guide rule.
+        self.assertIn("guide_count == 1 || guide_count > 8", native)
+        payload = (ROOT / "native" / "blend_sync.cpp").read_text(encoding="utf-8")
+        self.assertIn("(ProType)item_types[(size_t)ticket.slot]", payload)
+        refs = (ROOT / "native" / "panel_references_sdk.h").read_text(encoding="utf-8")
+        self.assertIn("PRO_FEAT_DATUM_POINT", refs)
+        self.assertIn("panel_probe_point", refs)
+
+    def test_the_second_direction_recording_is_frozen_with_its_profile(self):
+        import hashlib
+        import json
+
+        manifest = json.loads(self.MANIFEST.read_text(encoding="utf-8"))
+        recording = manifest["recordings"]["creo10-bbl-candidate-3"]
+        path = ROOT / "templates/panel" / recording["file"]
+        self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), recording["sha256"])
+        profile = next(
+            entry
+            for entry in manifest["profiles"]
+            if entry["profile_id"] == "creo10-bbl-candidate-3"
+        )
+        self.assertEqual(profile["status"], "candidate")
+        self.assertIn("Curves2DirRep", profile["commands"]["second_direction_macro"])
 
     def test_a_missing_command_refuses_before_the_dialog_opens(self):
         text = self.RUN.read_text(encoding="utf-8")
@@ -375,7 +434,7 @@ class PanelSectionContract(unittest.TestCase):
     def test_the_backend_resolves_the_label_and_reads_the_proof(self):
         text = self.RUN.read_text(encoding="utf-8")
         self.assertIn("want.feature_id = feature_id(want.label)", text)
-        self.assertIn('open_confirmed = section.value("open_confirmed", false)', text)
+        self.assertIn('open_confirmed = entry.value("open_confirmed", false)', text)
         # A section that names no label is refused before any selection.
         self.assertIn("PANEL_SECTION_FORM_INVALID", text)
 

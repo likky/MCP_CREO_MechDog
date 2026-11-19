@@ -354,10 +354,9 @@ int wmain(int argc, wchar_t *argv[]) {
                 // The symbols are not the blocker; the backend is. Reporting them as
                 // "missing" would claim this SDK lacks something it declares.
                 {"missing_sdk_requirements", J::array()},
-                {"missing_backend",
-                 std::string(mechdog_surface_loft_panel_state()) == "ready"
-                     ? J::array()
-                     : J::array({"surface_loft_panel"})}}}}},
+                {"missing_backend", std::string(mechdog_surface_loft_panel_state()) == "ready"
+                                        ? J::array()
+                                        : J::array({"surface_loft_panel"})}}}}},
         };
         printf("%s\n", info.dump().c_str());
         return 0;

@@ -31,7 +31,11 @@
 
 namespace mechdog_panel {
 
-enum class PanelSelectionAction { None, Override, Toggle };
+enum class PanelSelectionAction {
+    None,
+    Override,
+    Toggle
+};
 
 enum class PanelStage {
     Idle,
@@ -65,6 +69,12 @@ inline const char *panel_stage_name(PanelStage stage) {
 struct PanelTicket {
     std::string ticket_id;
     int slot = 0;
+    //: 0 = first direction (sections), 1 = second direction (guides). It only
+    //: decides the selection action; the ticket identity stays request/nonce/slot.
+    int direction = 0;
+    //: True for the first position of its direction: the collector starts empty (or
+    //: the dialog still holds the other direction's picks), so that injection replaces.
+    bool override = false;
     std::string job_id;
     std::string nonce;
     std::string model_name;
@@ -74,7 +84,7 @@ struct PanelTicket {
 //: A native end-of-run event. ``kind`` is one of the strings below; the collector
 //: fills it from the callback, never from the request file.
 struct PanelEvent {
-    std::string kind;  // done | quit_yes | after_terminal | outer_drain
+    std::string kind; // done | quit_yes | after_terminal | outer_drain
     int event_seq = 0;
     std::string job_id;
     std::string nonce;
@@ -103,7 +113,7 @@ inline PanelVerdict acceptance(PanelSelectionAction action) {
     return verdict;
 }
 
-}  // namespace detail
+} // namespace detail
 
 class PanelSelectionState {
   public:
@@ -114,7 +124,8 @@ class PanelSelectionState {
     PanelVerdict prepare(const std::string &request_id, const std::string &job_id,
                          const std::string &nonce, const std::string &model_name,
                          const std::string &model_id, const std::vector<int> &slots,
-                         bool tickets_registered) {
+                         bool tickets_registered,
+                         const std::vector<int> &directions = std::vector<int>()) {
         if (stage_ != PanelStage::Idle)
             // Not sticky: refusing a second Prepare must not destroy the run that
             // already owns the dialog.
@@ -126,10 +137,10 @@ class PanelSelectionState {
             return detail::refusal(
                 "PANEL_PREPARE_IDENTITY",
                 "Prepare needs the request id, job, nonce, model name and model id");
-        if (slots.size() < 2 || slots.size() > 8)
+        if (slots.size() < 2 || slots.size() > (size_t)position_limit)
             return refuse("PANEL_SLOT_COUNT_OUT_OF_RANGE",
-                          "the panel route takes 2-8 positions, received " +
-                              std::to_string(slots.size()));
+                          "the panel route takes 2-" + std::to_string(position_limit) +
+                              " positions, received " + std::to_string(slots.size()));
         if ((int)slots.size() > ticket_capacity)
             return refuse("PANEL_TICKET_CAPACITY_EXCEEDED",
                           "more positions than the protocol ticket capacity");
@@ -138,9 +149,26 @@ class PanelSelectionState {
                 return refuse("PANEL_SLOT_INVALID", "a position cannot be negative");
             for (size_t other = index + 1; other < slots.size(); ++other)
                 if (slots[index] == slots[other])
-                    return refuse("PANEL_SLOT_DUPLICATE",
-                                  "position " + std::to_string(slots[index]) +
-                                      " was prepared twice");
+                    return refuse("PANEL_SLOT_DUPLICATE", "position " +
+                                                              std::to_string(slots[index]) +
+                                                              " was prepared twice");
+        }
+        if (!directions.empty()) {
+            // BUG-120/D7: the run has one collector switch, so the groups must be 0
+            // then 1, in order; a direction that restarts would ask for a second
+            // switch the recorded macro does not contain.
+            if (directions.size() != slots.size())
+                return refuse("PANEL_DIRECTION_COUNT",
+                              "the direction groups and the positions disagree");
+            for (size_t index = 0; index < directions.size(); ++index) {
+                if (directions[index] != 0 && directions[index] != 1)
+                    return refuse("PANEL_DIRECTION_INVALID",
+                                  "a panel position belongs to direction 0 or 1, received " +
+                                      std::to_string(directions[index]));
+                if (index > 0 && directions[index] < directions[index - 1])
+                    return refuse("PANEL_DIRECTION_ORDER",
+                                  "a direction cannot restart after the collector switched away");
+            }
         }
         if (!tickets_registered)
             return refuse("PANEL_TICKET_REGISTRATION_FAILED",
@@ -158,6 +186,9 @@ class PanelSelectionState {
             PanelTicket ticket;
             ticket.ticket_id = ticket_identity(request_id, nonce, slots[index]);
             ticket.slot = slots[index];
+            ticket.direction = directions.empty() ? 0 : directions[index];
+            ticket.override =
+                index == 0 || ticket.direction != (directions.empty() ? 0 : directions[index - 1]);
             ticket.job_id = job_id;
             ticket.nonce = nonce;
             ticket.model_name = model_name;
@@ -189,9 +220,8 @@ class PanelSelectionState {
                 "the ticket was minted for another model; the ids mean nothing here");
         const int index = slot_index(ticket.slot);
         if (index < 0)
-            return detail::refusal(
-                "PANEL_SLOT_UNKNOWN",
-                "position " + std::to_string(ticket.slot) + " was never prepared");
+            return detail::refusal("PANEL_SLOT_UNKNOWN", "position " + std::to_string(ticket.slot) +
+                                                             " was never prepared");
         if (ticket.ticket_id != tickets_[(size_t)index].ticket_id)
             return detail::refusal("PANEL_TICKET_STALE",
                                    "the ticket id does not match this position; a stale macro is "
@@ -209,9 +239,10 @@ class PanelSelectionState {
                     "reconstructed");
         consumed_[(size_t)index] = true;
         ++next_index_;
-        // The first position replaces whatever the dialog held; later positions add.
-        return detail::acceptance(index == 0 ? PanelSelectionAction::Override
-                                             : PanelSelectionAction::Toggle);
+        // The first position of each direction replaces whatever that collector held;
+        // later positions add. A single-direction run therefore keeps the old rule.
+        return detail::acceptance(tickets_[(size_t)index].override ? PanelSelectionAction::Override
+                                                                   : PanelSelectionAction::Toggle);
     }
 
     //: Queue the restricted Done after every position was selected. ``queue_code`` is
@@ -222,17 +253,17 @@ class PanelSelectionState {
                           std::string("Done cannot be queued while the run is ") +
                               panel_stage_name(stage_));
         if (next_index_ != tickets_.size()) {
-            const PanelVerdict verdict = refuse(
-                "PANEL_SELECTION_INCOMPLETE",
-                "not every position was selected; a partial selection is not a surface");
+            const PanelVerdict verdict =
+                refuse("PANEL_SELECTION_INCOMPLETE",
+                       "not every position was selected; a partial selection is not a surface");
             lock(verdict.code);
             return verdict;
         }
         if (queue_code != 0) {
-            const PanelVerdict verdict = refuse(
-                "PANEL_DONE_QUEUE_FAILED",
-                "queueing the restricted Done returned " + std::to_string(queue_code) +
-                    "; this is not a committed result and the panel stays unknown");
+            const PanelVerdict verdict =
+                refuse("PANEL_DONE_QUEUE_FAILED",
+                       "queueing the restricted Done returned " + std::to_string(queue_code) +
+                           "; this is not a committed result and the panel stays unknown");
             lock(verdict.code);
             return verdict;
         }
@@ -287,7 +318,9 @@ class PanelSelectionState {
     }
 
     //: True only when the full sequence was observed in order.
-    bool closed() const { return stage_ == PanelStage::OuterDrained; }
+    bool closed() const {
+        return stage_ == PanelStage::OuterDrained;
+    }
 
     //: Release the run after it ended. A locked run is never released: the failure
     //: is the record, and a new request id is not an exit.
@@ -326,7 +359,9 @@ class PanelSelectionState {
 
     //: Every prepared position was consumed. The native collector asks before it
     //: injects anything, so an extra callback cannot re-toggle the last position.
-    bool exhausted() const { return next_index_ >= tickets_.size(); }
+    bool exhausted() const {
+        return next_index_ >= tickets_.size();
+    }
 
     //: Record a native failure that happened *after* a ticket was spent (an SDK
     //: error, an exception at the callback boundary). The run cannot continue as if
@@ -338,11 +373,21 @@ class PanelSelectionState {
         return detail::refusal(code, "the run was abandoned after a native failure");
     }
 
-    PanelStage stage() const { return stage_; }
-    const std::string &failure_code() const { return failure_code_; }
-    std::vector<PanelTicket> tickets() const { return tickets_; }
-    int selected() const { return (int)next_index_; }
-    int last_event_seq() const { return last_seq_; }
+    PanelStage stage() const {
+        return stage_;
+    }
+    const std::string &failure_code() const {
+        return failure_code_;
+    }
+    std::vector<PanelTicket> tickets() const {
+        return tickets_;
+    }
+    int selected() const {
+        return (int)next_index_;
+    }
+    int last_event_seq() const {
+        return last_seq_;
+    }
 
   private:
     //: A failure inside a run is the run's record: it locks. A malformed call made
@@ -405,6 +450,6 @@ class PanelSelectionState {
     std::string failure_code_;
 };
 
-}  // namespace mechdog_panel
+} // namespace mechdog_panel
 
-#endif  // MECHDOG_PANEL_SELECTION_STATE_H
+#endif // MECHDOG_PANEL_SELECTION_STATE_H

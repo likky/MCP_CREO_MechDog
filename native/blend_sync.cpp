@@ -24,6 +24,9 @@ static const MechDogCallbackApi *host = nullptr;
 using Json = nlohmann::json;
 static std::wstring directory, expected_model;
 static std::vector<int> curve_ids;
+//: BUG-120/D7: the ProType of each position (PRO_CURVE or PRO_POINT). A
+//: convergence end is selected as a point; every other position stays a curve.
+static std::vector<int> item_types;
 static Json outcome = {{"selected", 0}, {"codes", Json::array()}};
 static size_t section_index = 0;
 static bool resident = false, active = false;
@@ -110,8 +113,7 @@ static void persist_panel() {
 //: shared calls are copied once into a real ABI1 table instead of aliasing two
 //: struct types. The size check is what makes the copy safe.
 static bool panel_host_view(const MechDogCallbackApi2 *api) {
-    if (!api || api->abi != mechdog_panel::loader_abi ||
-        api->size != sizeof(MechDogCallbackApi2))
+    if (!api || api->abi != mechdog_panel::loader_abi || api->size != sizeof(MechDogCallbackApi2))
         return false;
     panel_host = {mechdog_callback::loader_abi,
                   sizeof(MechDogCallbackApi),
@@ -155,8 +157,7 @@ static bool panel_bracket_closed = false;
 //: command runs. The event is written from Creo's own UI thread, which is the only
 //: place a panel's completion can be observed: a Toolkit task sent while the dialog
 //: owns the session blocks until PRO_TK_COMM_ERROR.
-static int panel_exit_bracket(uiCmdCmdId command, uiCmdValue *value, int entering,
-                              void **data) {
+static int panel_exit_bracket(uiCmdCmdId command, uiCmdValue *value, int entering, void **data) {
     (void)command;
     (void)value;
     (void)data;
@@ -165,9 +166,9 @@ static int panel_exit_bracket(uiCmdCmdId command, uiCmdValue *value, int enterin
             const auto epoch_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                                       std::chrono::system_clock::now().time_since_epoch())
                                       .count();
-            Json event = {{"job_id", panel_job_id},        {"nonce", panel_nonce},
+            Json event = {{"job_id", panel_job_id},         {"nonce", panel_nonce},
                           {"profile_id", panel_profile_id}, {"command", panel_done_command},
-                          {"entering", entering},          {"at_epoch_ms", epoch_ms}};
+                          {"entering", entering},           {"at_epoch_ms", epoch_ms}};
             std::string error;
             if (!mechdog_panel::write_marker_atomic(
                     std::filesystem::path(directory) / L"panel_exit.json", event.dump(), error))
@@ -199,7 +200,7 @@ static int panel_exit_bracket(uiCmdCmdId command, uiCmdValue *value, int enterin
     } catch (...) {
         // A bracket must never break the command it observes.
     }
-    return 1;  // Non-zero: the command action still runs.
+    return 1; // Non-zero: the command action still runs.
 }
 
 //: Publish the wait marker the Python watchdog reads. Without the full identity the
@@ -212,7 +213,7 @@ static void write_wait_marker() {
     const auto epoch_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                               std::chrono::system_clock::now().time_since_epoch())
                               .count();
-    Json marker = {{"job_id", panel_job_id}, {"nonce", panel_nonce},
+    Json marker = {{"job_id", panel_job_id},         {"nonce", panel_nonce},
                    {"profile_id", panel_profile_id}, {"seq", ++panel_marker_seq},
                    {"phase", panel_phase()},         {"at_epoch_ms", epoch_ms}};
     std::string error;
@@ -249,16 +250,22 @@ static void configure_panel_request(const Json &request) {
     if (!sections.is_array())
         throw std::runtime_error("PANEL_SECTION_COUNT_OUT_OF_RANGE");
     std::vector<int> ids;
+    std::vector<int> types;
     std::vector<int> slots;
     for (size_t index = 0; index < sections.size(); ++index) {
         const Json &section = sections.at(index);
-        const int curve = section.at("curve_id").get<int>();
-        if (curve < 0)
-            throw std::runtime_error("PANEL_CURVE_INVALID");
-        ids.push_back(curve);
+        const bool point = section.value("kind", "") == "point";
+        const int id =
+            point ? section.at("point_id").get<int>() : section.at("curve_id").get<int>();
+        if (id < 0)
+            throw std::runtime_error(point ? "PANEL_POINT_INVALID" : "PANEL_CURVE_INVALID");
+        ids.push_back(id);
+        types.push_back(point ? (int)PRO_POINT : (int)PRO_CURVE);
         slots.push_back((int)index);
     }
-    if (ids.size() < 2 || ids.size() > 8)
+    // BUG-120/D7: the array carries every position (sections and guides), so its
+    // bound is the position limit; sections and guides keep their own 2-8 bounds.
+    if (ids.size() < 2 || ids.size() > (size_t)mechdog_panel::position_limit)
         throw std::runtime_error("PANEL_SECTION_COUNT_OUT_OF_RANGE");
     panel_request_id = request.at("request_id").get<std::string>();
     panel_job_id = request.at("job_id").get<std::string>();
@@ -272,16 +279,26 @@ static void configure_panel_request(const Json &request) {
     if (!panel_done_macro.empty() || !panel_done_command.empty()) {
         if (!safe_token(panel_done_command) || panel_done_command.size() > 64)
             throw std::runtime_error("PANEL_DONE_COMMAND_INVALID");
-        if (panel_done_macro.size() > 512 ||
-            panel_done_macro.find('\n') != std::string::npos ||
+        if (panel_done_macro.size() > 512 || panel_done_macro.find('\n') != std::string::npos ||
             panel_done_macro.rfind("~ ", 0) != 0)
             throw std::runtime_error("PANEL_DONE_MACRO_INVALID");
     }
     expected_model.assign(name.begin(), name.end());
     curve_ids = ids;
+    item_types = types;
     section_index = 0;
+    // BUG-120/D7: positions before ``second_direction_start`` belong to the first
+    // direction, the rest to the second. Absent means one direction, so a
+    // first-direction-only request keeps its old ticket actions.
+    const int second_direction_start =
+        request.value("second_direction_start", static_cast<int>(ids.size()));
+    if (second_direction_start < 0 || second_direction_start > static_cast<int>(ids.size()))
+        throw std::runtime_error("PANEL_DIRECTION_COUNT");
+    std::vector<int> directions(ids.size(), 0);
+    for (int index = second_direction_start; index < static_cast<int>(ids.size()); ++index)
+        directions[(size_t)index] = 1;
     const auto verdict = panel_state.prepare(panel_request_id, panel_job_id, panel_nonce, name,
-                                             panel_model_id, slots, true);
+                                             panel_model_id, slots, true, directions);
     if (!verdict.ok)
         throw std::runtime_error(verdict.code);
 }
@@ -332,6 +349,7 @@ static int select_panel_section() {
         const bool override = verdict.action == mechdog_panel::PanelSelectionAction::Override;
         panel_block["action"] = override ? "override" : "toggle";
         panel_block["slot"] = ticket.slot;
+        panel_block["direction"] = ticket.direction;
 
         ProMdl model = nullptr;
         ProMdlName name = L"";
@@ -342,7 +360,8 @@ static int select_panel_section() {
             code = PRO_TK_BAD_CONTEXT;
         ProModelitem item;
         if (!code)
-            code = host->model_item(model, curve_ids[(size_t)ticket.slot], PRO_CURVE, &item);
+            code = host->model_item(model, curve_ids[(size_t)ticket.slot],
+                                    (ProType)item_types[(size_t)ticket.slot], &item);
         if (!code)
             code = host->selection_alloc(nullptr, &item, &selected);
         if (!code)
@@ -365,10 +384,9 @@ static int select_panel_section() {
             // BUG-120/D6: the last consumed ticket's own time orders the Done bracket.
             // The worker's poll can notice the selection later than it happened, so its
             // clock cannot be used to tell an open-time bracket from a close-time one.
-            panel_block["selected_at_ms"] =
-                std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::system_clock::now().time_since_epoch())
-                    .count();
+            panel_block["selected_at_ms"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                std::chrono::system_clock::now().time_since_epoch())
+                                                .count();
         }
         panel_block["stage"] = mechdog_panel::panel_stage_name(panel_state.stage());
         write_wait_marker();
@@ -552,7 +570,7 @@ extern "C" PRO_TK_DLL_EXPORT ProError MechDogPanelEvent(ProArgument *inputs,
 //: The run's own state, for the worker and the target-machine checks. Returns a
 //: JSON wstring; no Toolkit state is invented here.
 extern "C" PRO_TK_DLL_EXPORT ProError MechDogPanelState(ProArgument *inputs,
-                                                         ProArgument **outputs) {
+                                                        ProArgument **outputs) {
     if (!outputs)
         return PRO_TK_BAD_INPUTS;
     *outputs = nullptr;
@@ -616,6 +634,7 @@ extern "C" PRO_TK_DLL_EXPORT ProError MechDogPanelRelease(ProArgument *inputs,
         active = false;
         panel_run = false;
         curve_ids.clear();
+        item_types.clear();
         return PRO_TK_NO_ERROR;
     } catch (...) {
         return PRO_TK_BAD_INPUTS;
@@ -652,11 +671,8 @@ extern "C" __declspec(dllexport) int MechDogPanelInitialize(int, char **, char *
         std::string command = request.at("command");
         if (!safe_token(command))
             return PRO_TK_BAD_INPUTS;
-        auto actual_root = std::filesystem::path(filename)
-                               .parent_path()
-                               .parent_path()
-                               .parent_path()
-                               .parent_path();
+        auto actual_root =
+            std::filesystem::path(filename).parent_path().parent_path().parent_path().parent_path();
         if (request.value("protocol", 0) != mechdog_panel::protocol ||
             request.value("contract", "") != mechdog_panel::contract ||
             _wcsicmp(actual_root.c_str(), from_utf8(request.at("resource_root")).c_str()) ||

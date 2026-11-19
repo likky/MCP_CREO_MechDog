@@ -60,6 +60,11 @@ CERTIFICATION_KEYS = frozenset({"file", "digest", "environment"})
 #: of them is refused at admission, which is before a job exists and long before a
 #: dialog opens.
 COMMAND_SLOTS = ("open_macro", "select_command", "done_macro", "done_command")
+#: Slots a profile may add on top of the required four. BUG-120/D7: a second
+#: direction is a collector inside the same dialog, so it is activated by one more
+#: recorded UI sequence rather than by a different dialog. A profile without the
+#: slot keeps the first-direction-only sequence byte for byte.
+OPTIONAL_COMMAND_SLOTS = ("second_direction_macro",)
 #: Substituted with the resident command the payload registered at initialize time.
 #: The recorded mapkey's screen-pick pauses are replaced by one invocation of this
 #: command per position, so the profile never carries "wait for a human click".
@@ -167,7 +172,35 @@ def _commands(raw: object, where: str) -> dict[str, str]:
             "~ Command `%MECHDOG_COMMAND%`;, not the bare placeholder; a command name without "
             "the ~ Command wrapper is not a macro step and silently does nothing"
         )
+    for slot in OPTIONAL_COMMAND_SLOTS:
+        text = commands.get(slot)
+        if text is None:
+            continue
+        _macro_fragment(text, f"{where}.commands[{slot!r}]")
     return commands
+
+
+def _macro_fragment(text: str, where: str) -> None:
+    """Check that an optional slot is a sequence of whole macro steps.
+
+    The optional slots are replayed exactly like the open and Done macros, so a
+    blank line, a line without the ``~ `` prefix or a leaked selection placeholder
+    would either do nothing or wait for the human screen pick this route replaced.
+    """
+    if SELECT_PLACEHOLDER in text:
+        raise PanelProfileError(
+            f"{where} must not contain {SELECT_PLACEHOLDER}; only select_command names the "
+            "resident command, and one placeholder inside a collector switch would substitute a "
+            "command that is not a macro step"
+        )
+    if len(text.encode("utf-8")) > 4096:
+        raise PanelProfileError(f"{where} is longer than the 4096-byte macro budget")
+    for number, line in enumerate(text.split("\n"), start=1):
+        if not line.startswith("~ "):
+            raise PanelProfileError(
+                f"{where} line {number} is {line!r}; every line of an optional macro slot must "
+                "start with '~ ', because Creo ignores a line it cannot read as a UI step"
+            )
 
 
 def _certification(raw: object, base: Path, where: str, digest: str) -> dict:
@@ -463,6 +496,7 @@ def admit(
             # command the profile was not measured with.
             "commands": dict(profile.commands),
             **{slot: profile.commands[slot] for slot in COMMAND_SLOTS},
+            **{slot: profile.commands.get(slot, "") for slot in OPTIONAL_COMMAND_SLOTS},
         }
     if ticket is None:
         raise PanelProfileError(
@@ -521,6 +555,7 @@ def admit(
         "certification": None,
         "commands": dict(profile.commands),
         **{slot: profile.commands[slot] for slot in COMMAND_SLOTS},
+        **{slot: profile.commands.get(slot, "") for slot in OPTIONAL_COMMAND_SLOTS},
         "candidate": {
             "run_id": ticket["run_id"],
             "workspace": ticket["workspace"],

@@ -138,16 +138,24 @@ void test_length_rules() {
 void test_section_rules() {
     ref::PanelCurveRequest one = request();
     expect(ref::check_sections({one}) == "PANEL_SECTION_COUNT_OUT_OF_RANGE",
-           "one section is below the 2-8 range");
+           "one position is below the 2-11 range");
 
-    std::vector<ref::PanelCurveRequest> nine;
-    for (int i = 0; i < 9; ++i) {
+    std::vector<ref::PanelCurveRequest> twelve;
+    for (int i = 0; i < 12; ++i) {
         ref::PanelCurveRequest section = request();
         section.label = "panel_" + std::to_string(i);
-        nine.push_back(section);
+        twelve.push_back(section);
     }
-    expect(ref::check_sections(nine) == "PANEL_SECTION_COUNT_OUT_OF_RANGE",
-           "nine sections are above the 2-8 range");
+    expect(ref::check_sections(twelve) == "PANEL_SECTION_COUNT_OUT_OF_RANGE",
+           "twelve positions are above the 2-11 range");
+
+    std::vector<ref::PanelCurveRequest> eleven;
+    for (int i = 0; i < 11; ++i) {
+        ref::PanelCurveRequest section = request();
+        section.label = "panel_" + std::to_string(i);
+        eleven.push_back(section);
+    }
+    expect(ref::check_sections(eleven).empty(), "eleven distinct positions are accepted");
 
     std::vector<ref::PanelCurveRequest> duplicated{request(), request()};
     expect(ref::check_sections(duplicated) == "PANEL_SECTION_LABEL_DUPLICATE",

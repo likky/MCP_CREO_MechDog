@@ -1,6 +1,6 @@
 {
   "contract": "panel-profiles-v1",
-  "notes": "BUG-120/D1+D3: profiles freeze the recorded command text. status=candidate means the text was prepared from a real recording but never accepted on a target host; only the development driver (CREO_MECHDOG_PANEL_CANDIDATE) may use it. status=certified means the profile passed the documented target-host acceptance run and normal clients may use it; its certification record must bind this profile digest and ship with the library. creo10-bbl-candidate-2 is certified on Creo 10.0.0.0 (release_numeric=42) as of 2026-11-18; the 'candidate-2' id is historical, the status is what admission reads. Recording originals are preserved under recordings/ and are never rewritten. select_command is the resident command named at runtime; the recorded @PAUSE_FOR_SCREEN_PICK steps are replaced by one invocation per position, because a pause waits for a human click. creo10-bbl-candidate-2 keeps only the T1-B-proven open line (no FocusOut): the recorded FocusOut ran in the T1-A replay only after the dialog existed, and both Creo 10 attempts with it consumed zero positions. select_command must be the whole '~ Command `%MECHDOG_COMMAND%`;' line: the bare placeholder substituted to a bare command name, which Creo 10's macro engine ignored.",
+  "notes": "BUG-120/D1+D3+D7: profiles freeze the recorded command text. status=candidate means the text was prepared from a real recording but never accepted on a target host; only the development driver (CREO_MECHDOG_PANEL_CANDIDATE) may use it. status=certified means the profile passed the documented target-host acceptance run and normal clients may use it; its certification record must bind this profile digest and ship with the library. creo10-bbl-candidate-2 is certified on Creo 10.0.0.0 (release_numeric=42) as of 2026-11-18; the 'candidate-2' id is historical, the status is what admission reads. Recording originals are preserved under recordings/ and are never rewritten. select_command is the resident command named at runtime; the recorded @PAUSE_FOR_SCREEN_PICK steps are replaced by one invocation per position, because a pause waits for a human click. creo10-bbl-candidate-2 keeps only the T1-B-proven open line (no FocusOut): the recorded FocusOut ran in the T1-A replay only after the dialog existed, and both Creo 10 attempts with it consumed zero positions. select_command must be the whole '~ Command `%MECHDOG_COMMAND%`;' line: the bare placeholder substituted to a bare command name, which Creo 10's macro engine ignored. creo10-bbl-candidate-3 adds the optional second_direction_macro recorded on the target host (2026-11-18): the recorded '~ FocusOut `bbl_12curves.0.0` `PH.Curves1DirTbl`;' line is omitted because the panel instance index changes between sessions (T1-A recorded bbl_12curves.1.0), so only dialog-level main_dlg_cur/maindashInst0 steps are frozen. The slot is not published until the target-host acceptance run proves the second direction.",
   "recordings": {
     "creo10-bbl-candidate-1": {
       "file": "recordings/creo10_blend_gui_t1a.pro",
@@ -11,6 +11,11 @@
       "file": "recordings/creo10_blend_gui_t1a.pro",
       "sha256": "2394ef0431d1349951fa1f60e08fd49739d0853995ebd2fcbc741d4079fd0270",
       "source": "docs/validation/bug120-creo10-t1a-2026-11-17/originals/t1_blend_mapkey.pro"
+    },
+    "creo10-bbl-candidate-3": {
+      "file": "recordings/creo10_blend_gui_t2.pro",
+      "sha256": "a60ffd70ec64092b2150d4e3d7528b622406eff67560dad31372c21b5c967c7a",
+      "source": "templates/panel/recordings/creo10_blend_gui_t2.pro"
     }
   },
   "profiles": [
@@ -50,6 +55,21 @@
           "payload_sha256": "883001e05286bce332237885db7d3ec61713ca8c18719efe27f3ab2382178348"
         }
       }
+    },
+    {
+      "profile_id": "creo10-bbl-candidate-3",
+      "status": "candidate",
+      "release_numeric": 42,
+      "creo_release": "Creo 10.0.0.0",
+      "commands": {
+        "open_macro": "~ Command `ProCmdFtBndBlend`;",
+        "second_direction_macro": "~ Trigger `main_dlg_cur` `maindashInst0.Curves2DirRep` `0`;\n~ Focus `main_dlg_cur` `maindashInst0.Curves2DirRep`;\n~ Select `main_dlg_cur` `maindashInst0.Curves2DirRep` 0;\n~ Trigger `main_dlg_cur` `maindashInst0.Curves2DirRep` ``;",
+        "select_command": "~ Command `%MECHDOG_COMMAND%`;",
+        "done_macro": "~ Activate `main_dlg_cur` `dashInst0.Done`;",
+        "done_command": "ProCmdFtBndBlend"
+      },
+      "digest": "bc3bfefb15168ef308e7c9b27977fa787c9fa465b372895ec68783a718ae05b1",
+      "certification": null
     }
   ]
 }

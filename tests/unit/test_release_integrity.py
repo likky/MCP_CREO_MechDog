@@ -573,8 +573,9 @@ class PanelLibraryAllowlistTests(PanelLibraryFixture):
         self.assertNotIn(stray, files)
 
     def test_the_shipped_repository_library_ships_the_certified_profile(self):
-        # The library carries the Creo 10 profile certified on 2026-11-18, so the
-        # shipped set is the manifest, the recording and that certification record.
+        # The library carries the Creo 10 profile certified on 2026-11-18 and the
+        # second-direction recording frozen for its candidate, so the shipped set is
+        # the manifest, both recordings and that certification record.
         shipped = release_integrity.panel_profile_library_files(ROOT)
         names = {path.relative_to(ROOT).as_posix() for path in shipped}
         self.assertEqual(
@@ -582,11 +583,13 @@ class PanelLibraryAllowlistTests(PanelLibraryFixture):
             {
                 "templates/panel/manifest.json",
                 "templates/panel/recordings/creo10_blend_gui_t1a.pro",
+                "templates/panel/recordings/creo10_blend_gui_t2.pro",
                 "templates/panel/certifications/creo10-bbl-2026-11-18.json",
             },
         )
         self.assertEqual(
-            [entry.status for entry in panel_profiles.profiles(ROOT)], ["candidate", "certified"]
+            [entry.status for entry in panel_profiles.profiles(ROOT)],
+            ["candidate", "certified", "candidate"],
         )
 
     def test_the_source_package_ships_the_panel_manifest(self):

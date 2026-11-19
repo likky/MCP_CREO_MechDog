@@ -96,7 +96,8 @@ inline PanelCurveProbe panel_probe_curve(ProSolid model, const PanelCurveRequest
             ++candidates;
         }
         if (candidates != 1) {
-            probe.api_error = candidates ? "PANEL_CURVE_AMBIGUOUS" : "PANEL_CURVE_NONE_NON_COMPOSITE";
+            probe.api_error =
+                candidates ? "PANEL_CURVE_AMBIGUOUS" : "PANEL_CURVE_NONE_NON_COMPOSITE";
             return probe;
         }
         curve_id = candidate;
@@ -129,6 +130,71 @@ inline PanelCurveProbe panel_probe_curve(ProSolid model, const PanelCurveRequest
     return probe;
 }
 
+//: Visit context for PRO_POINT. A convergence end needs exactly one point under
+//: the label; zero or several are refused instead of picked by id order.
+struct PanelPointVisit {
+    int count = 0;
+    int id = 0;
+    std::vector<int> ids;
+};
+
+inline ProError panel_point_visit(ProGeomitem *item, ProError status, ProAppData data) {
+    if (status == PRO_TK_NO_ERROR && item && data) {
+        PanelPointVisit *visit = static_cast<PanelPointVisit *>(data);
+        ++visit->count;
+        visit->ids.push_back(item->id);
+        if (visit->count == 1)
+            visit->id = item->id;
+    }
+    return PRO_TK_NO_ERROR;
+}
+
+//: Read the single datum point a point label owns. The feature type is checked
+//: first so a sketch that happens to contain a point is not mistaken for the
+//: datum point feature the caller named.
+inline PanelCurveProbe panel_probe_point(ProSolid model, const PanelCurveRequest &want) {
+    PanelCurveProbe probe;
+    probe.feature_id = want.feature_id;
+
+    ProFeature feature;
+    if (ProFeatureInit(model, want.feature_id, &feature) != PRO_TK_NO_ERROR) {
+        probe.api_error = "ProFeatureInit:" + std::to_string((int)PRO_TK_E_NOT_FOUND);
+        return probe;
+    }
+    probe.feature_found = true;
+
+    ProFeattype type = {};
+    if (ProFeatureTypeGet(&feature, &type) != PRO_TK_NO_ERROR) {
+        probe.api_error = "ProFeatureTypeGet";
+        return probe;
+    }
+    if (type != PRO_FEAT_DATUM_POINT) {
+        probe.api_error = "PANEL_POINT_FEATURE_TYPE";
+        return probe;
+    }
+
+    PanelPointVisit visit;
+    const ProError visited =
+        ProFeatureGeomitemVisit(&feature, PRO_POINT, panel_point_visit, nullptr, &visit);
+    if (visited != PRO_TK_NO_ERROR) {
+        probe.api_error = "ProFeatureGeomitemVisit:" + std::to_string((int)visited);
+        return probe;
+    }
+    if (visit.count != 1) {
+        probe.api_error = visit.count ? "PANEL_POINT_AMBIGUOUS" : "PANEL_POINT_NONE";
+        return probe;
+    }
+    probe.point_found = true;
+    probe.point_id = visit.id;
+
+    ProPoint point;
+    if (ProPointInit(model, visit.id, &point) != PRO_TK_NO_ERROR) {
+        probe.api_error = "ProPointInit:" + std::to_string((int)PRO_TK_E_NOT_FOUND);
+        probe.point_found = false;
+    }
+    return probe;
+}
+
 //: Resolve every requested section against the live model. The table is only bound
 //: when every reference validated with the openness proof the caller supplied, so a
 //: partially resolved plan can never reach a selection loop.
@@ -152,7 +218,8 @@ inline PanelResolution resolve_panel_sections(ProSolid model, const std::string 
     resolution.table.model_name = model_name;
     resolution.table.model_id = model_id;
     for (const PanelCurveRequest &want : sections) {
-        const PanelCurveProbe probe = panel_probe_curve(model, want, openness);
+        const PanelCurveProbe probe =
+            want.point ? panel_probe_point(model, want) : panel_probe_curve(model, want, openness);
         const PanelCurveReceipt receipt = validate(want, probe);
         resolution.receipts.push_back(receipt);
         if (!receipt.ok) {
@@ -167,6 +234,8 @@ inline PanelResolution resolve_panel_sections(ProSolid model, const std::string 
         ref.curve_id = probe.curve_id;
         ref.curve_type = probe.ent_type;
         ref.length_mm = probe.length_mm;
+        ref.point = want.point;
+        ref.point_id = probe.point_id;
         resolution.table.refs.push_back(ref);
     }
     // All or nothing: a plan with one unproven section must not select the rest.
@@ -178,6 +247,6 @@ inline PanelResolution resolve_panel_sections(ProSolid model, const std::string 
     return resolution;
 }
 
-}  // namespace mechdog_panel_ref
+} // namespace mechdog_panel_ref
 
-#endif  // MECHDOG_PANEL_REFERENCES_SDK_H
+#endif // MECHDOG_PANEL_REFERENCES_SDK_H

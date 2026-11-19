@@ -25,9 +25,15 @@ constexpr int loader_abi = 2;
 constexpr const char *contract = "resident-panel-selection-v4-ticketed-mm";
 
 //: One entry per selection position the protocol will accept in a single run.
-//: Sized by the documented resource boundary, not by the 2-8 section bound: the
+//: Sized by the documented resource boundary, not by the section bound: the
 //: tickets also cover probes that never become sections.
 constexpr int ticket_capacity = 512;
+
+//: BUG-120/D7: the largest live shape is 7 first-direction curves, one
+//: convergence point and 3 guides (11 positions). This is a boundary of the
+//: accepted workflow, not of the ticket buffer; raise it only with a new live
+//: receipt. Sections and guides keep their own 2-8 bounds below that total.
+constexpr int position_limit = 11;
 
 //: The token a profile's selection step carries instead of a recorded screen-pick
 //: pause. It is substituted with the resident command at run time; the same literal
@@ -38,14 +44,8 @@ constexpr const char *select_placeholder = "%MECHDOG_COMMAND%";
 //: finalize / event / state / release entry points (the blend ones keep the blend
 //: rules), plus the identity probe and the Toolkit-required terminate.
 constexpr const char *panel_exports[] = {
-    "MechDogPanelInitialize",
-    "user_terminate",
-    "MechDogPanelPrepare",
-    "MechDogPanelFinalize",
-    "MechDogPanelEvent",
-    "MechDogPanelState",
-    "MechDogPanelRelease",
-    "MechDogBlendIdentity",
+    "MechDogPanelInitialize", "user_terminate",    "MechDogPanelPrepare", "MechDogPanelFinalize",
+    "MechDogPanelEvent",      "MechDogPanelState", "MechDogPanelRelease", "MechDogBlendIdentity",
 };
 
 //: Why a deployment cannot serve the panel route. ``Ready`` is the only value a
@@ -141,6 +141,6 @@ inline bool write_marker_atomic(const std::filesystem::path &target, const std::
     return true;
 }
 
-}  // namespace mechdog_panel
+} // namespace mechdog_panel
 
-#endif  // MECHDOG_PANEL_PROTOCOL_H
+#endif // MECHDOG_PANEL_PROTOCOL_H

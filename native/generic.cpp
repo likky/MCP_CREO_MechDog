@@ -2775,8 +2775,7 @@ static J sketch(const J &op) {
                      {"type_code", (int)kind_code},
                      {"composite",
                       kind_code == PRO_TK_NO_ERROR ? J(owned_kind == PRO_ENT_CMP_CRV) : J(nullptr)},
-                     {"length_mm",
-                      length_code == PRO_TK_NO_ERROR ? J(owned_length) : J(nullptr)},
+                     {"length_mm", length_code == PRO_TK_NO_ERROR ? J(owned_length) : J(nullptr)},
                      {"length_code", (int)length_code}});
             }
     }
@@ -5184,8 +5183,7 @@ static void execute_operation_body(const J &op) {
                 "SURFACE_LOFT_UNKNOWN_ROUTE: creation_route must be element_tree or "
                 "resident_panel; no feature was created and the request was not retried on "
                 "another route.");
-    }
-    else if (kind == "surface_boundary_fill")
+    } else if (kind == "surface_boundary_fill")
         generic_surface_boundary_fill(op);
     else if (kind == "surface_round")
         generic_surface_round(op);
