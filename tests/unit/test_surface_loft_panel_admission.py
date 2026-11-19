@@ -95,11 +95,15 @@ def identity(panel=None, **tree):
     }
 
 
+def panel_sec(label):
+    return {"label": label, "open_confirmed": True}
+
+
 def panel_op():
     return {
         "op": "surface_loft",
         "label": "loft_surface",
-        "sections": ["loft_a", "loft_b"],
+        "sections": [panel_sec("loft_a"), panel_sec("loft_b")],
         "creation_route": "resident_panel",
     }
 

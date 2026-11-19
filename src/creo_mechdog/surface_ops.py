@@ -138,7 +138,23 @@ LOFT_INPUT_LIVE_STATUS = "Creo 12.4.0.0 live-verified on 2026-11-11 (FEAT-065 M3
 #: BUG-120/D1: the only object form the resident panel route takes. ``label`` names
 #: an MCP-owned sketch; ``open_confirmed`` is the caller's proof that the curve is
 #: open, because this build has no verified way to read a standalone curve's closure.
+#: A bare label string carries no such proof, so it is refused here (2026-11-19):
+#: the worker repeating that refusal is a late failure that can leave the session
+#: guard behind, while this one happens before a job or the Toolkit channel exists.
 PANEL_SECTION_KEYS = frozenset({"label", "open_confirmed"})
+
+
+def _panel_bare_label_message(field: str, index: int, label: str) -> str:
+    return (
+        f"creation_route='resident_panel' {field}[{index}] is the bare label {label!r}: this "
+        "build cannot read whether a standalone curve is closed, so the route needs the "
+        "caller's explicit openness proof instead of assuming it. Pass "
+        f'{{"label": "{label}", "open_confirmed": true}} (the sketch must hold one open '
+        "non-composite curve). No job was created and the Toolkit channel was not touched; "
+        "the element_tree route still accepts the bare label."
+    )
+
+
 #: BUG-120/D7: an MCP-owned datum point may close one end of the blend. The panel
 #: route resolves it by label (the same alias table as a sketch), never by a bare
 #: geometry id, because a point id is not an owner the worker can re-check.
@@ -422,7 +438,7 @@ class SurfaceLoftOp(StrictModel):
         point_count = 0
         for index, value in enumerate(self.sections):
             if isinstance(value, str):
-                continue
+                raise ValueError(_panel_bare_label_message("sections", index, value))
             if isinstance(value, dict) and value.get("kind") == PANEL_POINT_KIND:
                 point_count += 1
                 if set(value) != {"kind", "label"}:
@@ -481,7 +497,7 @@ class SurfaceLoftOp(StrictModel):
             # MCP-owned open sketch as a section, selected after the recorded
             # collector switch, so they are admitted under the same form rules.
             if isinstance(value, str):
-                continue
+                raise ValueError(_panel_bare_label_message("guides", index, value))
             if isinstance(value, dict) and value.get("kind") in (PANEL_POINT_KIND, "point"):
                 raise ValueError(
                     f"creation_route='resident_panel' guides[{index}] is a point: a guide is a "
