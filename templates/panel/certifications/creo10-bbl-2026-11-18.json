@@ -1,0 +1,94 @@
+{
+  "contract": "panel-certification-v1",
+  "profile_id": "creo10-bbl-candidate-2",
+  "profile_digest": "96d1ee7ed3cd835c11990938ea0c9895ab61fec3287b56d5ed5699c0992f0112",
+  "certified_at": "2026-11-18T21:27:00+08:00",
+  "certified_by": "BUG-120 D6 target-host acceptance on Creo 10; branch codex/bug120-plan-0270, commits 8f01496 (select step), 42cd05f/a6f214b/af42ac8 (exit observation and release)",
+  "environment": {
+    "host_os": "Windows x64",
+    "creo_release": "Creo Parametric 10.0.0.0",
+    "release_numeric": 42,
+    "protocol": 4,
+    "loader_abi": 2,
+    "contract": "resident-panel-selection-v4-ticketed-mm",
+    "payload_sha256": "883001e05286bce332237885db7d3ec61713ca8c18719efe27f3ab2382178348",
+    "loader_sha256": "edceae2e3eb91b2ecde5f89b51fa9f5eb2adf2a2463c141c0d776fd564e2726d",
+    "loader_fingerprint": "83ad907dae0ffdee8944c339455fd39af34aeae7267392c6aa8a5d2535d4a754"
+  },
+  "cases": [
+    {
+      "case": "planar_two_lines",
+      "model_name": "t6j_panel_two_lines",
+      "model_id": "4a612d8e747c4aa9bf2dd5f457976283",
+      "jobs": {
+        "new_part": "6d01fb5ce460471c8232e0061cb6e691",
+        "end_a_sketch": "749791e346e24e098f0c2bf168e26039",
+        "end_b_sketch": "7845545e687249489d4b6ee7e48291c8",
+        "panel_surface": "b43885d9e5ed4f129f26079b7c783197",
+        "measure": "c1891bc1e94947668b5438a9326e7805"
+      },
+      "sections": ["line_left", "line_right"],
+      "selected": "2/2",
+      "exit_observation": "command_bracket/closed, after-execution event 260 ms after the last consumed ticket",
+      "geometry": {
+        "quilt_id": 59,
+        "feature_ids": [52],
+        "face_count": 1,
+        "closed": false,
+        "area_mm2": 800.0,
+        "bbox_mm": [[0.0, 0.0, 0.0], [20.0, 40.0, 0.0]],
+        "open_edges": 4,
+        "open_edge_lengths_mm": [20.0, 40.0, 20.0, 40.0]
+      },
+      "saved_file_reloaded_and_verified": true,
+      "revision": "3 -> 4"
+    },
+    {
+      "case": "nonplanar_three_sections",
+      "model_name": "t7b_nonplanar_three",
+      "model_id": "83fc1197ae1b4c6d90fccc541a397198",
+      "jobs": {
+        "new_part": "077f86e1de564ff5a635dd748a8e51ce",
+        "mid_sketch": "6fdd63e2cf7f48c7a0742bf3ffbcc0d3",
+        "end_a_sketch": "3b7970bd1f1c412eb769e00d6cc4d405",
+        "end_b_sketch": "87ff6c70cb1044568d76443234477c52",
+        "panel_surface": "3255e5fa81314c16af9f689eb576c0b1",
+        "measure": "11cc110b21254dee98efcd29d815baed"
+      },
+      "sections": ["end_a_sec", "mid_sec", "end_b_sec"],
+      "interpolation": "smooth",
+      "selected": "3/3",
+      "exit_observation": "command_bracket/closed, after-execution event 60 ms after the last consumed ticket",
+      "geometry": {
+        "quilt_id": 66,
+        "feature_ids": [60],
+        "face_count": 1,
+        "closed": false,
+        "area_mm2": 810.7517266935558,
+        "bbox_mm": [
+          [-0.120004800192008, -0.12000480019200767, -0.12000480019200767],
+          [20.120004800192007, 40.12000480019201, 3.120004800192009]
+        ],
+        "open_edges": 4,
+        "open_edge_lengths_mm": [20.0, 40.53758672092689, 20.0, 40.53758672092687]
+      },
+      "external_reference": "T1-C measured 810.7517 mm2 with the same three sections; Z max 3.12 mm is 3.0 mm of geometry plus the 0.12 mm ProSurfaceDataGet margin",
+      "saved_file_reloaded_and_verified": true,
+      "revision": "4 -> 5"
+    }
+  ],
+  "verified": [
+    "the frozen profile reaches the executor: the native log records one '~ Command `MechDogPanel_<payload>_<manager>`;' step per position plus the restricted Done",
+    "selection: callback_result.json records selected equal to the position count, code 0 per position, OVERRIDE for the first and TOGGLE for later positions",
+    "Done: the restricted Done is the last line of the same macro; no second Toolkit task is sent after the dialog opens",
+    "exit: Creo's after-execution bracket on the Done command is written to panel_exit.json with the run nonce and a time later than the last consumed ticket",
+    "the payload releases the run at that bracket, so the next panel job is admitted without a restart or a release task",
+    "save and reload verified on both cases; the quilt, area, bbox and open-edge records were measured after reload"
+  ],
+  "unverified": [
+    "smooth three-section shape direction along the surface parameter u was not probed; only area, bbox and section participation were observed",
+    "cusp/crossing sections, second-direction guides, end-point convergence and the full bulbous bow",
+    "Creo releases other than 10.0.0.0 and builds other than the payload digest above",
+    "boundary conditions, closed sections, guides and template inputs (the panel route refuses them)"
+  ]
+}

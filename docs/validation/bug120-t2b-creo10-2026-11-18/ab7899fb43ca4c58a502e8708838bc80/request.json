@@ -1,0 +1,107 @@
+{
+  "new": false,
+  "model": {
+    "model_id": "6fe2f54effe04e79acd6632a90c478ef",
+    "model_name": "t2b_probe_01",
+    "revision": 1,
+    "created_at": "2026-11-18T06:15:35.581643+00:00",
+    "status": "ready",
+    "model_type": "part",
+    "output_directory": "D:\\my\\MCP_CREO_MechDog\\models\\6fe2f54effe04e79acd6632a90c478ef\\output",
+    "part_file": "D:\\my\\MCP_CREO_MechDog\\models\\6fe2f54effe04e79acd6632a90c478ef\\output\\t2b_probe_01.prt.2",
+    "pending_job": "ab7899fb43ca4c58a502e8708838bc80",
+    "part_sha256": "6363027d50d25cde774aa7bef15e93983f092498b0b7f44a090b830562a0ff2c",
+    "updated_at": "2026-11-18T06:15:47.961918+00:00",
+    "last_job": "deee91cd1e9e4fdd982793fed7d09932",
+    "aliases": {},
+    "inspection_ref": {
+      "file": "D:\\my\\MCP_CREO_MechDog\\jobs\\deee91cd1e9e4fdd982793fed7d09932\\inspection-verified-b21fe91d4f4c0cac.json",
+      "sha256": "b21fe91d4f4c0cacaacd65f82410662f5f5f65af39632c12a0e5481dd80ba89b",
+      "bytes": 4647
+    },
+    "inspection_summary": {
+      "healthy": true,
+      "has_solid": false,
+      "units": "mm",
+      "units_query_code": 0,
+      "length_unit": {
+        "name": "mm",
+        "query_code": 0,
+        "scale_query_codes": {
+          "conversion": 0,
+          "mm_unit": 0,
+          "unit": 0
+        },
+        "scale_to_mm": 1.0,
+        "scale_to_mm_known": true
+      },
+      "center_of_gravity": null,
+      "model_type": "part",
+      "volume_mm3": null,
+      "volume_query_code": null,
+      "inspection_source": "saved_reloaded",
+      "inspection_available": true,
+      "counts": {
+        "features": 4,
+        "surfaces": 0,
+        "edges": 0,
+        "quilts": 0,
+        "bodies": 1,
+        "components": null
+      },
+      "body_counts": {
+        "objects": 1,
+        "records": 1,
+        "active": 0,
+        "with_material": 0,
+        "without_material": 1,
+        "counts_meaning": {
+          "bodies": "body_objects",
+          "with_material": "active_bodies_with_surfaces"
+        }
+      }
+    }
+  },
+  "operations": [
+    {
+      "op": "sketch",
+      "label": "t2b_sketch_xy",
+      "plane": "XY",
+      "offset": 0.0,
+      "entities": [
+        {
+          "type": "line",
+          "name": "open_line_a",
+          "start": [
+            0.0,
+            0.0
+          ],
+          "end": [
+            120.0,
+            0.0
+          ],
+          "construction": false
+        }
+      ],
+      "endpoint_policy": "report",
+      "weld_pairs": [],
+      "snap_endpoints": false,
+      "dimensions": [],
+      "constraints": [],
+      "dimensioning": "auto"
+    }
+  ],
+  "readonly": false,
+  "readonly_source": "request",
+  "components": {},
+  "template_file": "D:\\Program Files\\PTC\\Creo 10.0.0.0\\Common Files\\templates\\mmns_part_solid_abs.prt",
+  "assertions": {
+    "require_solid": false,
+    "volume_tolerance": 0.01,
+    "require_exact_solve": false,
+    "preserve_input_geometry": false,
+    "surface_area_tolerance_mm2": 0.01
+  },
+  "timeout_seconds": 600,
+  "timeout_source": "server"
+}

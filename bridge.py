@@ -445,6 +445,12 @@ def toolkit_lock(
     model_id: str | None = None,
 ):
     """Serialize all native calls across MCP clients and detached jobs."""
+    # BUG-120/D4.4: a resident panel that may still be open holds the whole Creo
+    # session, not one model. This is the single place every Toolkit entry passes,
+    # so the guard is checked here as well as being advertised in status.
+    from creo_mechdog import panel_session_guard
+
+    panel_session_guard.require_clear(job_id=job_id, operation=operation, root=ROOT)
     lock = ROOT / "toolkit.lock"
     with _open_toolkit_lock(lock) as f:
         # Windows byte-range locking also covers empty files; no pre-lock write.
@@ -704,11 +710,30 @@ def check_environment() -> dict:
     }
 
 
+def _published_callback_generation(build: Path) -> str:
+    """The generation this build tree already publishes, or the blend default.
+
+    ``build_native`` republishes the callback metadata on every startup
+    preparation. Publishing the blend generation over a panel deployment would
+    trip the immutable-bootstrap check and strand the session, so the republish
+    has to keep whichever generation the operator deployed.
+    """
+    setup = build / "blend_callback_setup.json"
+    try:
+        recorded = read_json(setup)
+    except (OSError, ValueError, KeyError):
+        return "blend"
+    generation = recorded.get("generation") if isinstance(recorded, dict) else None
+    return generation if generation in ("blend", "panel") else "blend"
+
+
 def build_native() -> Path:
     """Caller holds toolkit_lock. Source hash invalidates the local build."""
     c = config()
     build = ROOT / "build"
     build.mkdir(exist_ok=True)
+    # BUG-120/D6: keep the generation the operator deployed (blend or panel).
+    published_generation = _published_callback_generation(build)
     exe = build / "creo_worker.exe"
     blend_dll = build / "creo_blend_sync.dll"
     loader_dll = build / "creo_blend_loader.dll"
@@ -760,6 +785,14 @@ def build_native() -> Path:
         "native/blend_sync.cpp",
         "native/callback_identity.h",
         "native/callback_api.h",
+        # BUG-120/D7: blend_sync.cpp includes the panel route headers. Without
+        # them a header-only change (the direction split, the point role or the
+        # position bound) kept the cached DLL and silently ran the previous rules.
+        "native/panel_protocol.h",
+        "native/panel_selection_state.h",
+        "native/panel_run.h",
+        "native/panel_references.h",
+        "native/panel_references_sdk.h",
         "native/third_party/json.hpp",
     )
     loader_relatives = (
@@ -850,7 +883,7 @@ def build_native() -> Path:
                 f"publishing under {generation}",
                 file=sys.stderr,
             )
-        prepare_callback(build, callback_sha256, generation)
+        prepare_callback(build, callback_sha256, generation, generation=published_generation)
         write_json(
             callback_stamp,
             {
@@ -889,7 +922,9 @@ def build_native() -> Path:
             and loader_cache.get("generation_key") == loader_generation
         )
         if cache_current:
-            prepare_callback(build, callback_cache["sha256"], loader_generation)
+            prepare_callback(
+                build, callback_cache["sha256"], loader_generation, generation=published_generation
+            )
         else:
             record_callback()
         return exe
@@ -1002,22 +1037,42 @@ def _parse_worker_build_info(payload: object, worker_sha256: str) -> dict | None
         return None
     requirements = loft.get("sdk_requirements")
     missing = loft.get("missing_sdk_requirements")
+    projected = {
+        "surface_loft": {
+            "available": loft["available"],
+            "state": loft.get("state"),
+            "sdk_requirements": (
+                list(requirements) if isinstance(requirements, list) else ["Probbl.h"]
+            ),
+            "missing_sdk_requirements": (list(missing) if isinstance(missing, list) else []),
+        }
+    }
+    # BUG-120/D1: the resident panel route is a separate backend and its own
+    # declaration. A worker that predates it simply omits the key, which admission
+    # reads as "not declared" rather than as a supported route.
+    panel = features.get("surface_loft_panel")
+    if isinstance(panel, dict) and isinstance(panel.get("available"), bool):
+        projected["surface_loft_panel"] = {
+            "available": panel["available"],
+            "state": panel.get("state"),
+            "sdk_requirements": (
+                list(panel["sdk_requirements"])
+                if isinstance(panel.get("sdk_requirements"), list)
+                else []
+            ),
+            "missing_sdk_requirements": (
+                list(panel["missing_sdk_requirements"])
+                if isinstance(panel.get("missing_sdk_requirements"), list)
+                else []
+            ),
+        }
     return {
         "identity_status": "verified",
         "identity_schema": payload["identity_schema"],
         "source_digest": digest,
         "worker_sha256": worker_sha256,
         "identity_source": "worker_self_report",
-        "features": {
-            "surface_loft": {
-                "available": loft["available"],
-                "state": loft.get("state"),
-                "sdk_requirements": (
-                    list(requirements) if isinstance(requirements, list) else ["Probbl.h"]
-                ),
-                "missing_sdk_requirements": (list(missing) if isinstance(missing, list) else []),
-            }
-        },
+        "features": projected,
     }
 
 
@@ -1163,12 +1218,68 @@ def surface_loft_runtime_observation(identity: dict) -> dict:
     return observed
 
 
+def record_host_release(manifest: dict) -> None:
+    """Persist the Creo release a completed native job ran on.
+
+    A certified panel profile is bound to one Creo release, and admission must
+    decide before a job exists — before this process may ask Creo anything. The
+    only verified host fact a request can carry is one a connected job already
+    reported, so keep it keyed by the worker SHA that produced it. A worker
+    rebuild invalidates the record rather than lending it a new build.
+    """
+    try:
+        result = manifest.get("result")
+        if not isinstance(result, dict):
+            return
+        release = result.get("creo_release_numeric")
+        if type(release) is not int:
+            return
+        if result.get("creo_release_query_code") not in (0, None):
+            return
+        identity = worker_build_identity()
+        worker_sha = identity.get("worker_sha256")
+        if not worker_sha:
+            return
+        path = ROOT / "build/toolkit_health.json"
+        try:
+            health = read_json(path)
+        except (OSError, ValueError):
+            health = {}
+        if not isinstance(health, dict):
+            health = {}
+        health["host_release"] = {
+            "worker_sha256": worker_sha,
+            "release_numeric": release,
+            "job_id": manifest.get("job_id"),
+            "observed_at": now(),
+        }
+        (ROOT / "build").mkdir(exist_ok=True)
+        write_json(path, health)
+    except Exception:
+        # A disclosure record must never change the task's terminal outcome.
+        return
+
+
+def host_release_observation(identity: dict) -> int | None:
+    """The Creo release this exact worker reported on a connected job."""
+    health = channel_health()
+    observed = health.get("host_release") if isinstance(health, dict) else None
+    worker_sha = identity.get("worker_sha256") if isinstance(identity, dict) else None
+    if not isinstance(observed, dict) or not worker_sha:
+        return None
+    if observed.get("worker_sha256") != worker_sha:
+        return None
+    release = observed.get("release_numeric")
+    return release if type(release) is int else None
+
+
 def surface_loft_admission_identity() -> dict:
     """Copy worker build facts and attach only this worker's recorded loft result.
 
     Admission uses the same read-only observation as status disclosure. Keep the
     cached build identity untouched so a later worker or probe cannot inherit a
-    previous worker's kernel result.
+    previous worker's kernel result. The recorded host release rides along for the
+    same reason: a certified panel profile is matched to it before any job exists.
     """
     identity = worker_build_identity()
     projected = dict(identity)
@@ -1179,6 +1290,9 @@ def surface_loft_admission_identity() -> dict:
             **features,
             "surface_loft": {**feature, **surface_loft_runtime_observation(identity)},
         }
+    release = host_release_observation(identity)
+    if release is not None:
+        projected.setdefault("release_numeric", release)
     return projected
 
 
@@ -1664,6 +1778,7 @@ def _run_job_dispatch(job_id: str) -> None:
         manifest.update(status="unknown_outcome" if worker_started else "failed", message=str(exc))
     apply_terminal_stage(manifest)
     note_native_outcome(manifest)
+    record_host_release(manifest)
     manifest["finished_at"] = now()
     write_json(directory / "job.json", manifest)
 

@@ -1,0 +1,29 @@
+{
+  "new": true,
+  "model": {
+    "model_id": "6fe2f54effe04e79acd6632a90c478ef",
+    "model_name": "t2b_probe_01",
+    "revision": 0,
+    "created_at": "2026-11-18T06:15:35.581643+00:00",
+    "status": "new",
+    "aliases": {},
+    "model_type": "part",
+    "output_directory": "D:\\my\\MCP_CREO_MechDog\\models\\6fe2f54effe04e79acd6632a90c478ef\\output",
+    "part_file": null,
+    "pending_job": "deee91cd1e9e4fdd982793fed7d09932"
+  },
+  "operations": [],
+  "readonly": false,
+  "readonly_source": "request",
+  "components": {},
+  "template_file": "D:\\Program Files\\PTC\\Creo 10.0.0.0\\Common Files\\templates\\mmns_part_solid_abs.prt",
+  "assertions": {
+    "require_solid": false,
+    "volume_tolerance": 0.01,
+    "require_exact_solve": false,
+    "preserve_input_geometry": false,
+    "surface_area_tolerance_mm2": 0.01
+  },
+  "timeout_seconds": 600,
+  "timeout_source": "server"
+}

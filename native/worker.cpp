@@ -342,7 +342,21 @@ int wmain(int argc, wchar_t *argv[]) {
                  std::string(loft_state) == "compiled"
                      ? J::array()
                      : J::array({"PRO_E_BNBLN_CURVES", "PRO_E_BNBLN_1DIR", "PRO_E_BNBLN_2DIR",
-                                 "PRO_E_BNBLN_DIR_CURVES", "PRO_E_BNBLN_TAN_COND"})}}}}},
+                                 "PRO_E_BNBLN_DIR_CURVES", "PRO_E_BNBLN_TAN_COND"})}}},
+              // BUG-120/D1: the resident panel route is a separate backend. It is
+              // declared here so admission can refuse it by name instead of
+              // inferring from the element-tree feature or from release_numeric.
+              {"surface_loft_panel",
+               {{"available", std::string(mechdog_surface_loft_panel_state()) == "ready"},
+                {"state", mechdog_surface_loft_panel_state()},
+                {"sdk_requirements",
+                 J::array({"ProMacroLoad", "ProCmdCmdIdFind", "ProCmdBracketFuncAdd"})},
+                // The symbols are not the blocker; the backend is. Reporting them as
+                // "missing" would claim this SDK lacks something it declares.
+                {"missing_sdk_requirements", J::array()},
+                {"missing_backend", std::string(mechdog_surface_loft_panel_state()) == "ready"
+                                        ? J::array()
+                                        : J::array({"surface_loft_panel"})}}}}},
         };
         printf("%s\n", info.dump().c_str());
         return 0;

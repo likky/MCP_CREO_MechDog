@@ -56,6 +56,10 @@ RESULT_KEYS = (
     # difference. Both are failure evidence, never a selectable detail block.
     "save_failure",
     "rollback_difference",
+    # BUG-120/D5: which route ran and the panel receipt (profile, selection, exit
+    # observation, geometry check). Selectable, like the other detail blocks.
+    "creation_route",
+    "panel_receipt",
     "preview_file",
     "preview_status",
     "preview_code",

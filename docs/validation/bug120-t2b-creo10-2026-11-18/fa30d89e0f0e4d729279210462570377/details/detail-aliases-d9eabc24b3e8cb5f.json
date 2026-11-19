@@ -1,0 +1,380 @@
+{
+  "t2b_sketch_xy": {
+    "dimension_ids": {},
+    "entity_ids": {
+      "open_line_a": 5
+    },
+    "feature_id": 40,
+    "geometry": [
+      {
+        "construction": false,
+        "end": [
+          120.0,
+          0.0
+        ],
+        "name": "open_line_a",
+        "start": [
+          0.0,
+          0.0
+        ],
+        "type": "line"
+      }
+    ],
+    "geometry_stale": false,
+    "last_dimensioning": "auto",
+    "normal": [
+      0.0,
+      0.0,
+      1.0
+    ],
+    "op": "sketch",
+    "origin": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "section_normal_sign": 1,
+    "solver": {
+      "completed": true,
+      "coordinate_scaling": false,
+      "epsilon_mm": 0.0001,
+      "epsilon_source": "mode_default",
+      "final_units": "mm",
+      "geometry_deviation": {
+        "accepted_by_request": null,
+        "accepted_rigid": false,
+        "available": true,
+        "enforced": false,
+        "exceeds_warning": false,
+        "max_deviation_mm": 4.6105191249090375e-49,
+        "measurement_scope": "named_section_entities",
+        "residual_mm": 2.3052595624545187e-49,
+        "rigid": false,
+        "sample": [
+          {
+            "deviation_mm": 4.6105191249090375e-49,
+            "entity": "open_line_a",
+            "kind": "line",
+            "measurement": "endpoints",
+            "reason": null
+          },
+          {
+            "deviation_mm": 4.6105191249090375e-49,
+            "entity": "open_line_a",
+            "kind": "line",
+            "measurement": "endpoints",
+            "reason": null
+          }
+        ],
+        "shape_deviation_mm": 2.3052595624545187e-49,
+        "shift_detected": null,
+        "stages": {
+          "complete_feature": {
+            "available": true,
+            "max_deviation_mm": 4.6105191249090375e-49,
+            "point_count": 2,
+            "residual_mm": 2.3052595624545187e-49,
+            "rigid": false,
+            "sample": [
+              {
+                "deviation_mm": 4.6105191249090375e-49,
+                "entity": "open_line_a",
+                "kind": "line",
+                "measurement": "endpoints",
+                "reason": null
+              }
+            ],
+            "shape_deviation_mm": 2.3052595624545187e-49,
+            "total": 1,
+            "translation_magnitude_mm": null,
+            "translation_mm": null,
+            "truncated": false,
+            "unavailable_reason": null
+          },
+          "section_regenerate": {
+            "available": true,
+            "max_deviation_mm": 4.6105191249090375e-49,
+            "point_count": 2,
+            "residual_mm": 2.3052595624545187e-49,
+            "rigid": false,
+            "sample": [
+              {
+                "deviation_mm": 4.6105191249090375e-49,
+                "entity": "open_line_a",
+                "kind": "line",
+                "measurement": "endpoints",
+                "reason": null
+              }
+            ],
+            "shape_deviation_mm": 2.3052595624545187e-49,
+            "total": 1,
+            "translation_magnitude_mm": null,
+            "translation_mm": null,
+            "truncated": false,
+            "unavailable_reason": null
+          }
+        },
+        "tolerance_source": "default_autodim",
+        "total": 2,
+        "translation_mm": null,
+        "truncated": false,
+        "unavailable_reason": null,
+        "warning_threshold_mm": 0.001
+      },
+      "native_section": {
+        "available": true,
+        "branched_points": 0,
+        "closed_contours": 0,
+        "construction_entities": 0,
+        "contours": 1,
+        "curves": 1,
+        "entities": 1,
+        "max_cluster_spread_mm": 0.0,
+        "max_endpoint_gap_mm": 120.0,
+        "open_end_samples": [
+          {
+            "entity": 5,
+            "nearest_entity": 5,
+            "nearest_gap_mm": 120.0,
+            "point": [
+              0.0,
+              -4.6105191249090375e-49
+            ]
+          },
+          {
+            "entity": 5,
+            "nearest_entity": 5,
+            "nearest_gap_mm": 120.0,
+            "point": [
+              0.0,
+              120.0
+            ]
+          }
+        ],
+        "open_end_samples_truncated": false,
+        "open_ends": 2,
+        "reference_entities": 2,
+        "standalone_curves": 0,
+        "tolerance_mm": 1e-06,
+        "tolerance_scope": "diagnostic_endpoint_clustering",
+        "unsupported_entities": 0
+      },
+      "recovered": true,
+      "requested": "auto",
+      "section_location": {
+        "identity_plausible": true,
+        "matrix_identity": false,
+        "uv_mapping": "location_matrix"
+      },
+      "selection_reason": "small_profile",
+      "sketch_shifted": null,
+      "stages": {
+        "autodimension": 0,
+        "initial_solve": -1,
+        "section_regenerate": 0
+      },
+      "used": "autodim",
+      "weld_requested": false
+    },
+    "surface_id": 6,
+    "u_axis": [
+      1.0,
+      0.0,
+      0.0
+    ],
+    "v_axis": [
+      0.0,
+      1.0,
+      0.0
+    ]
+  },
+  "t2b_sketch_xz": {
+    "dimension_ids": {},
+    "entity_ids": {
+      "open_line_b": 5
+    },
+    "feature_id": 46,
+    "geometry": [
+      {
+        "construction": false,
+        "end": [
+          80.0,
+          0.0
+        ],
+        "name": "open_line_b",
+        "start": [
+          0.0,
+          0.0
+        ],
+        "type": "line"
+      }
+    ],
+    "geometry_stale": false,
+    "last_dimensioning": "auto",
+    "normal": [
+      -0.0,
+      -1.0,
+      -0.0
+    ],
+    "op": "sketch",
+    "origin": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "section_normal_sign": -1,
+    "solver": {
+      "completed": true,
+      "coordinate_scaling": false,
+      "epsilon_mm": 0.0001,
+      "epsilon_source": "mode_default",
+      "final_units": "mm",
+      "geometry_deviation": {
+        "accepted_by_request": null,
+        "accepted_rigid": false,
+        "available": true,
+        "enforced": false,
+        "exceeds_warning": false,
+        "max_deviation_mm": 2.1382117680737565e-48,
+        "measurement_scope": "named_section_entities",
+        "residual_mm": 1.0691058840368783e-48,
+        "rigid": false,
+        "sample": [
+          {
+            "deviation_mm": 2.1382117680737565e-48,
+            "entity": "open_line_b",
+            "kind": "line",
+            "measurement": "endpoints",
+            "reason": null
+          },
+          {
+            "deviation_mm": 2.1382117680737565e-48,
+            "entity": "open_line_b",
+            "kind": "line",
+            "measurement": "endpoints",
+            "reason": null
+          }
+        ],
+        "shape_deviation_mm": 1.0691058840368783e-48,
+        "shift_detected": null,
+        "stages": {
+          "complete_feature": {
+            "available": true,
+            "max_deviation_mm": 2.1382117680737565e-48,
+            "point_count": 2,
+            "residual_mm": 1.0691058840368783e-48,
+            "rigid": false,
+            "sample": [
+              {
+                "deviation_mm": 2.1382117680737565e-48,
+                "entity": "open_line_b",
+                "kind": "line",
+                "measurement": "endpoints",
+                "reason": null
+              }
+            ],
+            "shape_deviation_mm": 1.0691058840368783e-48,
+            "total": 1,
+            "translation_magnitude_mm": null,
+            "translation_mm": null,
+            "truncated": false,
+            "unavailable_reason": null
+          },
+          "section_regenerate": {
+            "available": true,
+            "max_deviation_mm": 2.1382117680737565e-48,
+            "point_count": 2,
+            "residual_mm": 1.0691058840368783e-48,
+            "rigid": false,
+            "sample": [
+              {
+                "deviation_mm": 2.1382117680737565e-48,
+                "entity": "open_line_b",
+                "kind": "line",
+                "measurement": "endpoints",
+                "reason": null
+              }
+            ],
+            "shape_deviation_mm": 1.0691058840368783e-48,
+            "total": 1,
+            "translation_magnitude_mm": null,
+            "translation_mm": null,
+            "truncated": false,
+            "unavailable_reason": null
+          }
+        },
+        "tolerance_source": "default_autodim",
+        "total": 2,
+        "translation_mm": null,
+        "truncated": false,
+        "unavailable_reason": null,
+        "warning_threshold_mm": 0.001
+      },
+      "native_section": {
+        "available": true,
+        "branched_points": 0,
+        "closed_contours": 0,
+        "construction_entities": 0,
+        "contours": 1,
+        "curves": 1,
+        "entities": 1,
+        "max_cluster_spread_mm": 0.0,
+        "max_endpoint_gap_mm": 80.0,
+        "open_end_samples": [
+          {
+            "entity": 5,
+            "nearest_entity": 5,
+            "nearest_gap_mm": 80.0,
+            "point": [
+              5.986005906926977e-61,
+              -2.1382117680737565e-48
+            ]
+          },
+          {
+            "entity": 5,
+            "nearest_entity": 5,
+            "nearest_gap_mm": 80.0,
+            "point": [
+              6.0163917237134085e-61,
+              80.0
+            ]
+          }
+        ],
+        "open_end_samples_truncated": false,
+        "open_ends": 2,
+        "reference_entities": 2,
+        "standalone_curves": 0,
+        "tolerance_mm": 1e-06,
+        "tolerance_scope": "diagnostic_endpoint_clustering",
+        "unsupported_entities": 0
+      },
+      "recovered": true,
+      "requested": "auto",
+      "section_location": {
+        "identity_plausible": false,
+        "matrix_identity": false,
+        "uv_mapping": "location_matrix"
+      },
+      "selection_reason": "small_profile",
+      "sketch_shifted": null,
+      "stages": {
+        "autodimension": 0,
+        "initial_solve": -1,
+        "section_regenerate": 0
+      },
+      "used": "autodim",
+      "weld_requested": false
+    },
+    "surface_id": 4,
+    "u_axis": [
+      1.0,
+      0.0,
+      0.0
+    ],
+    "v_axis": [
+      0.0,
+      0.0,
+      1.0
+    ]
+  }
+}

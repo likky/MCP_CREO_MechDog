@@ -2,6 +2,25 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
+## v0.28.0（2026-11-19，发布前快照）
+
+- 版本与范围：`0.28.0` MINOR 部分交付，公开工具仍 109；交付 [BUG-120](../work-items/BUG-120.md) 的 Creo 10 resident_panel 认证路线、candidate-3 导线/点、两段式球鼻艏演示体与 WorkBuddy 两轮黑盒；发布记录见 [RELEASE-0.28.0](../validation/RELEASE-0.28.0.md)。
+- 打包顺序：`tools\package_seeds.py` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools\package.py` → 标签/发布 → `tools\check_release_assets.py` 远端复核。
+- 种子包 SHA256 `dfac1ec5b62a0a926d0debf1efaf77ab13cf627ee0c6318ff6993be5201aacf9`（24 个文件、9 个种子，两次构建摘要一致；包内 `seed_manifest.json` 声明 `compatible_server_version=0.28.0`）。
+- 源码包由发布提交源码构建，字节数与 SHA256 见同名 sidecar，不写入包内文件。
+- Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.28.0`；四附件为 `MCP_CREO_MechDog-0.28.0-source.zip`、`MCP_CREO_MechDog-0.28.0-source.zip.sha256`、`MCP_CREO_MechDog-0.28.0-seed-library.zip` 与 `MCP_CREO_MechDog-0.28.0-seed-library.zip.sha256`。
+- 发布后核对（2026-11-19 11:22 +08:00 / 03:22Z）：`tools\check_release_assets.py --tag v0.28.0` → exit 0，「v0.28.0: four assets downloaded and verified; both sidecars match」。远端 digest、本地重算与 sidecar 内容逐一致：
+
+| 附件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.28.0-source.zip` | 11 001 175 | `3d425b80e6d15a5cae9dc7680b6b0df138b570de5f7146053ca9f88f1275910e` |
+| `MCP_CREO_MechDog-0.28.0-source.zip.sha256` | 101 | `27149c0f36f3fdb6bd28217514c1b1584e2e37023fdc6aa475b2dfeb2b7019ac` |
+| `MCP_CREO_MechDog-0.28.0-seed-library.zip` | 493 442 | `dfac1ec5b62a0a926d0debf1efaf77ab13cf627ee0c6318ff6993be5201aacf9` |
+| `MCP_CREO_MechDog-0.28.0-seed-library.zip.sha256` | 107 | `0a695ab71a76dd0450012f458c39ffa9248c1f7b6475ec664acfcead73ccf6a3` |
+
+- Release 元数据：id `450838061`，非 draft、非 prerelease，`created_at=2026-11-19T03:18:57Z`，`published_at=2026-11-19T03:21:43Z`，target `main`（提交 `e1ea2da3a6c62602855ce5d7fde3f5407e1dcfe4`，标签对象 `8808bfed449218609311229412e33599b1a4efc9`）。
+- 包内快照与 `main` 的差异：已冻结源码包内的 POSTCHECK/发布记录仍是打包时点措辞（`remote_verification=pending`），本段实际结果与 `docs/releases/0.28.0.json` 的 `verified` 只存在于 `main`，不改写、不重发已发布附件。
+
 ## 方法与范围
 
 - 工具：`tools/check_release_assets.py --tag <tag> --version <version>`（gh 取 API 元数据 → 精确 tag 附件 → 下载四文件 → 重算 SHA256 → 比对 sidecar 内容）。

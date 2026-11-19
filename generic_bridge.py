@@ -15,11 +15,20 @@ import uuid
 from pathlib import Path
 
 import bridge
-from creo_mechdog import component_changes, feature_state, model_registry, operation_results
+from creo_mechdog import (
+    component_changes,
+    feature_state,
+    model_registry,
+    operation_results,
+    panel_session_guard,
+    panel_wait,
+)
 from creo_mechdog.capabilities import (
     WORKER_CONDITIONAL_OPERATIONS,
+    is_panel_route,
     require_available,
     require_kernel_completion,
+    require_panel_route,
     require_worker_availability,
 )
 from creo_mechdog.model_queries import inspect_page, list_page, model_summary
@@ -472,6 +481,9 @@ CANCEL_ACTIVE_STATUSES = ("queued", "running")
 #: BUG-131: a native worker whose log stops growing for this long counts as
 #: stalled. The regular job budget still applies; 0 disables the watchdog.
 STALL_WATCHDOG_SECONDS = 600
+#: BUG-120/D4.3: a verified panel wait phase may be silent for this long before the
+#: job is treated as stalled. It never extends the job budget; see panel_wait.py.
+PANEL_PHASE_SECONDS = 300
 WORKER_POLL_SECONDS = 2.0
 TERMINATION_SECONDS = 30
 
@@ -485,6 +497,39 @@ def stall_watchdog_seconds() -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         return STALL_WATCHDOG_SECONDS
     return value
+
+
+def panel_phase_seconds() -> int:
+    """BUG-120/D4.3: how long a trusted panel wait phase may stay silent.
+
+    A bounded constant, not a knob a client or a sidecar can extend: the watcher
+    measures the phase from its own clock and the job budget still caps it.
+    """
+    value = bridge.config().get("generic_panel_phase_seconds", PANEL_PHASE_SECONDS)
+    # Unlike generic_stall_seconds, 0 is not "disabled" here: a zero-length phase
+    # window would terminate on the first tick, so a non-positive value keeps the
+    # default bounded window instead of quietly changing the contract.
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return PANEL_PHASE_SECONDS
+    return min(value, EXECUTOR_TIMEOUT_MAX_SECONDS)
+
+
+def _panel_wait_identity(request: dict | None) -> dict | None:
+    """The job/nonce/profile a panel wait marker must carry to count as progress."""
+    if not isinstance(request, dict):
+        return None
+    guard = request.get("panel_guard")
+    admission = request.get("panel_admission")
+    if not isinstance(guard, dict) or not isinstance(admission, dict):
+        return None
+    values = {
+        "job_id": guard.get("job_id"),
+        "nonce": guard.get("nonce"),
+        "profile_id": admission.get("profile_id"),
+    }
+    if not all(isinstance(value, str) and value for value in values.values()):
+        return None
+    return values
 
 
 def _terminate_process_tree(pid: object) -> dict:
@@ -603,6 +648,11 @@ def cancel_job(job_id: str) -> dict:
     bridge.write_json(manifest_file, manifest, durable=True)
     if termination.get("returncode") == 0:
         bridge.clear_channel_claim(job_id)
+    if not started:
+        # BUG-120/D4.4: a job cancelled before any worker existed cannot have opened a
+        # panel, so its reserve is retired on that positive evidence. A job killed
+        # after the worker started keeps the guard: the dialog may still be open.
+        _retire_panel_guard_for_cancel(job_id)
     try:
         request = bridge.read_json(directory / "request.json")
     except (OSError, ValueError):
@@ -656,6 +706,7 @@ def _run_worker_with_watchdog(
         watcher = threading.Thread(
             target=_watch_worker_log,
             args=(directory, stop, stall_state),
+            kwargs={"request": request, "job_deadline_at": time.monotonic() + budget},
             name="creo-worker-watchdog",
             daemon=True,
         )
@@ -675,9 +726,78 @@ def _run_worker_with_watchdog(
         if watcher is not None:
             watcher.join(timeout=TERMINATION_SECONDS)
     if stall_state.get("stalled"):
+        # The watcher keeps its own monotonic clock in this state; only measured
+        # facts belong in the job evidence a client reads.
+        stall_state.pop("last_growth", None)
         manifest["stall_watchdog"] = stall_state
         raise WorkerStalled(str(stall_state.get("message")))
     return proc.returncode
+
+
+def _retire_panel_guard_for_cancel(job_id: str) -> None:
+    """Release a panel reserve whose job was cancelled before any worker started."""
+    guard = panel_session_guard.inspect(bridge.ROOT)
+    if guard is None or guard.get("status") != "active" or guard.get("job_id") != job_id:
+        return
+    try:
+        panel_session_guard.retire(
+            job_id,
+            reason="cancelled before any worker started",
+            evidence={
+                "no_ui_started_confirmed": True,
+                "source": "cancel_before_worker",
+                "job_id": job_id,
+            },
+            root=bridge.ROOT,
+        )
+    except (ValueError, OSError, panel_session_guard.PanelSessionLocked):
+        # The guard stays: an unproven release is worse than a refused job.
+        return
+
+
+def _panel_exit_evidence(result: object) -> dict | None:
+    """Positive native evidence that the resident panel closed during this run."""
+    if not isinstance(result, dict) or result.get("panel_execution_unconfirmed") is True:
+        return None
+    operations = result.get("operations")
+    if not isinstance(operations, list):
+        return None
+    for entry in operations:
+        if not isinstance(entry, dict) or entry.get("op") != "surface_loft":
+            continue
+        observation = entry.get("exit_observation")
+        if isinstance(observation, dict) and observation.get("closed") is True:
+            return {
+                "ui_closed_confirmed": True,
+                "source": "native_exit_observation",
+                "method": observation.get("method"),
+                "job_id": result.get("job_id"),
+            }
+    return None
+
+
+def _retire_panel_guard_after_result(job_id: str, result: object) -> None:
+    """Retire the session guard only for its holder and only on native evidence.
+
+    Anything else — an unconfirmed exit, another job's guard, an unreadable record —
+    leaves the protection in place, because the model-level cleanup paths must not
+    silently free a session that may still hold a dialog.
+    """
+    guard = panel_session_guard.inspect(bridge.ROOT)
+    if guard is None or guard.get("status") != "active" or guard.get("job_id") != job_id:
+        return
+    evidence = _panel_exit_evidence(result)
+    if evidence is None:
+        return
+    try:
+        panel_session_guard.retire(
+            job_id,
+            reason="native panel exit observed",
+            evidence=evidence,
+            root=bridge.ROOT,
+        )
+    except (ValueError, OSError, panel_session_guard.PanelSessionLocked):
+        return
 
 
 def _worker_owner_pid(directory: Path) -> int | None:
@@ -690,17 +810,32 @@ def _worker_owner_pid(directory: Path) -> int | None:
     return pid if isinstance(pid, int) and not isinstance(pid, bool) and pid > 0 else None
 
 
-def _watch_worker_log(directory: Path, stop: threading.Event, state: dict) -> None:
+def _watch_worker_log(
+    directory: Path,
+    stop: threading.Event,
+    state: dict,
+    *,
+    request: dict | None = None,
+    job_deadline_at: float | None = None,
+) -> None:
     """Kill a native worker whose log stopped growing for the stall budget.
 
     The worker records its pid in ``native_owner.json`` before it opens Creo, so
     a log that goes silent can be attributed to a live process instead of
     waiting for the much larger job budget. Without a recorded pid nothing is
     killed; the job budget remains the backstop.
+
+    BUG-120/D4.3: a panel wait legitimately writes no ``worker.log`` bytes. Only a
+    marker that names this job, nonce and profile, advances its ``seq`` and names a
+    trusted phase replaces the stall budget — with a phase deadline measured from
+    this watcher's own clock, never from the sidecar and never past the job budget.
     """
     budget = stall_watchdog_seconds()
+    phase_budget = panel_phase_seconds()
     last_size = 0
     last_growth = time.monotonic()
+    identity = _panel_wait_identity(request)
+    state.setdefault("last_growth", last_growth)
     while not stop.wait(WORKER_POLL_SECONDS):
         now = time.monotonic()
         try:
@@ -710,23 +845,57 @@ def _watch_worker_log(directory: Path, stop: threading.Event, state: dict) -> No
         if size > last_size:
             last_size = size
             last_growth = now
-        if now - last_growth < budget:
-            continue
-        silent = round(now - last_growth)
-        termination = _terminate_process_tree(_worker_owner_pid(directory))
-        state.update(
-            stalled=True,
-            budget_seconds=budget,
-            silent_seconds=silent,
-            log_bytes=last_size,
-            source="generic_stall_seconds",
-            termination=termination,
-            message=(
-                f"Native worker log stopped growing for {silent} s (budget {budget} s); "
-                "the worker was terminated and the outcome is unknown. Inspect the model "
-                "and finish with creo_reconcile_model"
-            ),
+        state["last_growth"] = last_growth
+        record = None
+        if identity is not None:
+            candidate = panel_wait.read_marker(directory / panel_wait.WAIT_FILE)
+            if panel_wait.matches(candidate, **identity):
+                record = candidate
+        verdict = panel_wait.tick(
+            state,
+            record,
+            now,
+            stall_budget=budget,
+            phase_budget=phase_budget,
+            job_deadline_at=job_deadline_at,
         )
+        if verdict["action"] == "continue":
+            continue
+        reason = verdict["reason"]
+        termination = _terminate_process_tree(_worker_owner_pid(directory))
+        evidence = verdict.get("evidence") or {}
+        if reason == "stall":
+            state.update(
+                stalled=True,
+                budget_seconds=budget,
+                silent_seconds=evidence.get("silent_seconds"),
+                log_bytes=last_size,
+                source="generic_stall_seconds",
+                termination=termination,
+                message=(
+                    f"Native worker log stopped growing for {evidence.get('silent_seconds')} s "
+                    f"(budget {budget} s); the worker was terminated and the outcome is unknown. "
+                    "Inspect the model and finish with creo_reconcile_model"
+                ),
+            )
+        else:
+            state.update(
+                stalled=True,
+                source="generic_panel_phase_seconds"
+                if reason == "panel_phase_deadline"
+                else "job_timeout_seconds",
+                wait_evidence=evidence,
+                termination=termination,
+                message=(
+                    "The resident panel wait did not finish within its "
+                    f"{'phase' if reason == 'panel_phase_deadline' else 'job'} budget "
+                    f"({evidence}); the worker was terminated and the outcome is unknown. "
+                    "The panel is not proven closed: confirm it in Creo before resolving the "
+                    "model with creo_reconcile_model"
+                ),
+            )
+            if reason == "panel_phase_deadline":
+                state["budget_seconds"] = phase_budget
         return
 
 
@@ -767,10 +936,22 @@ def submit(
             raise ValueError("import_geometry creates a model and cannot run read-only")
         if model_type != "part":
             raise ValueError(f"import_geometry imports into a part model, not into a {model_type}")
-    if any(op["op"] in WORKER_CONDITIONAL_OPERATIONS for op in operations):
+    panel_requests = [op for op in operations if is_panel_route(op)]
+    panel_admission = None
+    panel_identity = None
+    if panel_requests or any(op["op"] in WORKER_CONDITIONAL_OPERATIONS for op in operations):
         identity = bridge.surface_loft_admission_identity()
+        panel_identity = identity
+        # BUG-120/D1: the tree gates cover the element_tree route only, so a panel
+        # request never inherits the boundary-blend element-id refusal.
         require_worker_availability(operations, identity)
         require_kernel_completion(operations, identity)
+        if panel_requests:
+            # The panel route needs its own worker declaration and a versioned UI
+            # profile admitted for this request; either one missing refuses here,
+            # before a job or the Toolkit channel is touched. The admission record
+            # travels with the request so the job names the profile and mode it ran.
+            panel_admission = require_panel_route(identity)
     assertions = Assertions.model_validate(assertions or {}).model_dump(exclude_none=True)
     if loft_seed and (model_id is not None or readonly or model_type != "part"):
         raise ValueError("Native loft seed initialization is only available for a new part")
@@ -1104,6 +1285,12 @@ def submit(
             request["loft_seed"] = loft_seed
         if region_adaptation:
             request["region_adaptation"] = region_adaptation
+        if panel_admission:
+            # BUG-120/D1: which frozen profile and which mode (certified or
+            # candidate) this job was admitted with. The native side ignores it; it
+            # is the job's own record so a receipt never reads as released support
+            # when the run was a candidate.
+            request["panel_admission"] = panel_admission
         manifest = {
             "job_id": job_id,
             "kind": "generic",
@@ -1130,6 +1317,68 @@ def submit(
             manifest["construction"] = "native_multisection_blend_seed_rebinding"
         if region_adaptation:
             manifest["region_adaptation"] = region_adaptation
+        if panel_admission:
+            # BUG-120/D4.4: the session guard is written before the worker that may
+            # open UI exists. The nonce is generated here, stored in the request and
+            # bound to the guard, so a later marker can prove which run wrote it.
+            request["panel_nonce"] = uuid.uuid4().hex
+            # BUG-120/D3: the panel route's native half reads one block per operation:
+            # the run identity the payload binds its tickets to, plus the recorded
+            # dialog macro a certified profile supplies. With no profile macro the
+            # worker refuses (PANEL_OPEN_MACRO_MISSING) instead of guessing a command
+            # sequence, so an uncertified release cannot silently drive the dialog.
+            for operation in operations:
+                if (
+                    operation.get("op") != "surface_loft"
+                    or operation.get("creation_route") != "resident_panel"
+                ):
+                    continue
+                operation["panel"] = {
+                    "job_id": job_id,
+                    "request_id": str(request.get("request_id") or job_id),
+                    "nonce": request["panel_nonce"],
+                    "profile_id": str(panel_admission.get("profile_id") or ""),
+                    "open_macro": str(panel_admission.get("open_macro") or ""),
+                    "second_direction_macro": str(
+                        panel_admission.get("second_direction_macro") or ""
+                    ),
+                    "select_command": str(panel_admission.get("select_command") or ""),
+                    "done_macro": str(panel_admission.get("done_macro") or ""),
+                    "done_command": str(panel_admission.get("done_command") or ""),
+                }
+            try:
+                guard = panel_session_guard.reserve(
+                    job_id,
+                    nonce=request["panel_nonce"],
+                    profile_id=str(panel_admission.get("profile_id") or ""),
+                    mode=str(panel_admission.get("mode") or ""),
+                    model_id=model_id,
+                    executor_identity=(
+                        {
+                            "worker_sha256": panel_identity.get("worker_sha256"),
+                            "source_digest": panel_identity.get("source_digest"),
+                        }
+                        if isinstance(panel_identity, dict)
+                        else None
+                    ),
+                    root=bridge.ROOT,
+                )
+            except panel_session_guard.PanelSessionLocked:
+                bridge.write_json(directory / "request.json", request)
+                model.update(status="failed" if new else "ready", pending_job=None)
+                model_registry.write_model(path, model)
+                manifest.update(
+                    status="failed",
+                    message="A resident panel still owns the Creo session; no native job was started",
+                    finished_at=bridge.now(),
+                )
+                bridge.write_json(directory / "job.json", manifest)
+                raise
+            request["panel_guard"] = {
+                "job_id": guard["job_id"],
+                "nonce": guard["nonce"],
+                "created_at": guard["created_at"],
+            }
         bridge.write_json(directory / "request.json", request)
         bridge.write_json(directory / "job.json", manifest)
         try:
@@ -1144,6 +1393,18 @@ def submit(
                     close_fds=True,
                 )
         except Exception as exc:
+            if panel_admission:
+                # The runner never started, so no dialog could have opened. That is
+                # positive local evidence, not an inference from a dead pid.
+                try:
+                    panel_session_guard.retire(
+                        job_id,
+                        reason="runner did not start",
+                        evidence={"no_ui_started_confirmed": True, "source": "runner_spawn_failed"},
+                        root=bridge.ROOT,
+                    )
+                except (ValueError, OSError, panel_session_guard.PanelSessionLocked):
+                    pass
             model.update(status="failed" if new else "ready", pending_job=None)
             model_registry.write_model(path, model)
             manifest.update(status="failed", message=str(exc), finished_at=bridge.now())
@@ -1259,6 +1520,28 @@ def run_generic_job(job_id: str, manifest: dict):
                         readonly=request["readonly"],
                         inputs=request["operations"],
                         is_new_model=bool(request.get("new")),
+                    )
+                    # BUG-120/D4.4: a confirmed panel exit is the only result-side
+                    # evidence that frees the session guard.
+                    _retire_panel_guard_after_result(job_id, result)
+                    # BUG-120/D5: a resident-panel run is only successful when its
+                    # exit was observed and the product is this run's. The projection
+                    # also downgrades a claimed tree completion.
+                    from creo_mechdog import panel_receipt
+
+                    panel_receipt.annotate(
+                        result,
+                        admission=request.get("panel_admission"),
+                        inputs=request["operations"],
+                        prior_inspection=prior_state.get("inspection"),
+                        route=next(
+                            (
+                                op.get("creation_route")
+                                for op in request["operations"]
+                                if op.get("op") == "surface_loft"
+                            ),
+                            None,
+                        ),
                     )
                     # FEAT-052: project the native recolor block into the
                     # stable result shape (missing fields stay unknown and are
@@ -1452,6 +1735,7 @@ def run_generic_job(job_id: str, manifest: dict):
             model["last_job"] = job_id
             bridge.apply_terminal_stage(manifest)
             bridge.note_native_outcome(manifest)
+            bridge.record_host_release(manifest)
             bridge.record_surface_loft_runtime(manifest)
             model_registry.write_model(path, model)
     except bridge.ToolkitBusy as exc:

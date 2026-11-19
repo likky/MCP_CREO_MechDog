@@ -251,7 +251,9 @@ class StallWatchdogTests(unittest.TestCase):
         self.assertNotIn("stall_watchdog", self.manifest)
 
     def test_stalled_watchdog_raises_and_records_evidence(self):
-        def stalled(_directory, _stop, state):
+        # BUG-120/D4.3: the watcher also receives the request and the job deadline,
+        # because a panel wait phase is judged against its own bounded window.
+        def stalled(_directory, _stop, state, **_kwargs):
             state.update(stalled=True, budget_seconds=2, message="silent")
 
         with (

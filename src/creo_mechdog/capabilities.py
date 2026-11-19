@@ -202,8 +202,27 @@ def require_available(operations: list[dict]) -> None:
 # H13: operations whose native implementation is compiled only when the worker's
 # Toolkit SDK carries a specific header. The running worker's own build-info is
 # the only authority; Python must not inspect this machine's SDK or guess from
-# release_numeric.
+# release_numeric. BUG-120/D1: the entry covers the element_tree route only; the
+# resident_panel route is a separate backend with its own worker declaration.
 WORKER_CONDITIONAL_OPERATIONS = ("surface_loft",)
+
+#: BUG-120/D1: the worker build-info key the resident panel backend declares. The
+#: panel route reuses ``op="surface_loft"`` with ``creation_route="resident_panel"``
+#: instead of adding a public tool, so its readiness is a separate fact.
+PANEL_FEATURE = "surface_loft_panel"
+
+
+def is_panel_route(op: dict) -> bool:
+    """True when this operation asks for the resident panel creation route."""
+    return op.get("op") == "surface_loft" and op.get("creation_route") == "resident_panel"
+
+
+def _tree_route_operations(operations: list[dict]) -> list[dict]:
+    return [
+        op
+        for op in operations
+        if op.get("op") in WORKER_CONDITIONAL_OPERATIONS and not is_panel_route(op)
+    ]
 
 
 def _verified_worker_feature(identity: object, name: str) -> dict | None:
@@ -231,12 +250,12 @@ def require_worker_availability(operations: list[dict], identity: object) -> Non
 
     Only a verified worker self-report can reject. A missing or invalid identity
     stays unknown: the runtime error remains the authority, and Python never
-    substitutes its own SDK inspection for the loaded executor.
+    substitutes its own SDK inspection for the loaded executor. BUG-120/D1: this
+    gate is about the element_tree route only, so a resident_panel request never
+    inherits a missing boundary-blend element id from it.
     """
-    for op in operations:
+    for op in _tree_route_operations(operations):
         name = op.get("op")
-        if name not in WORKER_CONDITIONAL_OPERATIONS:
-            continue
         feature = _verified_worker_feature(identity, name)
         if feature is None or feature["available"]:
             continue
@@ -263,7 +282,7 @@ def require_kernel_completion(operations: list[dict], identity: object) -> None:
     route. Only an entry in ``UNAVAILABLE_OPERATIONS`` may remove a compiled tool, and
     this refusal is about the host, not the build.
     """
-    if not any(op.get("op") in WORKER_CONDITIONAL_OPERATIONS for op in operations):
+    if not _tree_route_operations(operations):
         return
     feature = _verified_worker_feature(identity, "surface_loft")
     if feature is None or feature.get("kernel_completion") != "unsupported":
@@ -287,6 +306,39 @@ def require_kernel_completion(operations: list[dict], identity: object) -> None:
     )
 
 
+def require_panel_route(identity: object, *, root=None, environ=None) -> dict:
+    """BUG-120/D1: admit a resident_panel request, or refuse before a job exists.
+
+    Three facts must hold, in this order: the loaded worker declares a panel
+    backend, that backend is available, and an admitted UI profile exists for this
+    request (certified for normal clients, ticket-bound for the development
+    driver). A missing declaration is a refusal, never a reason to run the element
+    tree instead; a compiled backend alone is not readiness either.
+
+    Returns the admission record so the job can carry which profile and mode ran.
+    """
+    from creo_mechdog import panel_profiles
+
+    feature = _verified_worker_feature(identity, PANEL_FEATURE)
+    digest = identity.get("source_digest") if isinstance(identity, dict) else None
+    if feature is None:
+        raise ValueError(
+            "creation_route='resident_panel' is not available on this executor: the current "
+            "worker does not declare a surface_loft_panel backend (worker "
+            f"source_digest={digest}). No native job was queued and the request is not retried "
+            "on the element_tree route. Rebuild the worker with the panel backend, or ask for "
+            "creation_route='element_tree' explicitly on a host that supports it."
+        )
+    if not feature["available"]:
+        raise ValueError(
+            "creation_route='resident_panel' is not available on this executor: the worker "
+            f"declares surface_loft_panel state={feature.get('state')!r} (worker "
+            f"source_digest={digest}). No native job was queued; compiled and runtime-ready are "
+            "separate facts, so read creo_capabilities before retrying."
+        )
+    return panel_profiles.admit_for_request(identity, root=root, environ=environ)
+
+
 def _kernel_observation(identity: object, runtime: object) -> dict:
     """The runtime observation that belongs to this exact worker, else unknown."""
     worker_sha = identity.get("worker_sha256") if isinstance(identity, dict) else None
@@ -298,6 +350,70 @@ def _kernel_observation(identity: object, runtime: object) -> dict:
     ):
         return {"kernel_completion": "unknown"}
     return runtime
+
+
+def _panel_route_document(identity: object) -> dict:
+    """BUG-120/D1: what the resident_panel route needs, and what is missing.
+
+    ``compiled`` describes the loaded worker; ``runtime_ready`` additionally needs a
+    certified UI profile for this release. Neither one promises geometry, and the
+    two are reported separately so a compiled backend never reads as usable.
+    """
+    from creo_mechdog import panel_profiles
+
+    feature = _verified_worker_feature(identity, PANEL_FEATURE)
+    document: dict = {
+        "default": False,
+        "request_field": {"creation_route": "resident_panel"},
+        "limits": (
+            "2-8 MCP-owned sketch labels, each owning one open non-composite curve; no guides, "
+            "points, boundary conditions or template; two sections are ruled and three or more "
+            "are one smooth blend"
+        ),
+        "compiled": None,
+        "state": None,
+        "runtime_ready": False,
+        "reason": None,
+    }
+    if feature is None:
+        document["state"] = "not_declared"
+        document["reason"] = "the loaded worker does not declare a surface_loft_panel backend"
+    else:
+        document["compiled"] = feature["available"]
+        document["state"] = feature.get("state")
+        if not feature["available"]:
+            document["reason"] = "the panel backend is compiled out of this worker"
+    try:
+        profile = panel_profiles.certified_profile(
+            release_numeric=panel_profiles.host_release(identity)
+        )
+    except (ValueError, OSError, TypeError, KeyError) as exc:
+        # Disclosure fails closed: a manifest this release cannot read must not turn
+        # creo_capabilities into an error while the route is closed anyway.
+        profile = None
+        document["profile"] = {"status": "uncertified", "reason": str(exc)}
+    else:
+        document["profile"] = {"status": "certified", **profile.document()}
+    # A certified profile is bound to the release it was measured on. Until a
+    # connected job on this worker recorded that release, admission cannot match
+    # it either, so disclosure must not call the route ready.
+    release = panel_profiles.host_release(identity)
+    profile_ready = bool(profile is not None and release == profile.release_numeric)
+    document["runtime_ready"] = bool(feature and feature["available"] and profile_ready)
+    if not document["runtime_ready"] and document["reason"] is None:
+        if profile is None:
+            document["reason"] = "no certified panel UI profile for this release"
+        elif release is None:
+            document["reason"] = (
+                "the host Creo release is not recorded yet: run one native job on this worker "
+                "(a new part or a sketch) so the certified profile can be matched to it"
+            )
+        else:
+            document["reason"] = (
+                f"the certified profile {profile.profile_id!r} was measured on "
+                f"release_numeric={profile.release_numeric}, but this host reports {release}"
+            )
+    return document
 
 
 def project_worker_availability(
@@ -312,7 +428,23 @@ def project_worker_availability(
     """
     feature = _verified_worker_feature(identity, "surface_loft")
     entry = families_doc.get("surface_loft")
-    if feature is None or not isinstance(entry, dict):
+    if not isinstance(entry, dict):
+        return families_doc
+    if feature is None:
+        # No verified tree declaration: the top-level fields keep their published
+        # meaning, and the routes block still reports both routes by name so a
+        # missing tree feature cannot hide a declared panel backend.
+        entry["routes"] = {
+            "element_tree": {
+                "default": True,
+                "available": None,
+                "state": "not_declared",
+                "request_field": "creation_route omitted or 'element_tree'",
+                "scope": "keeps 2-32 sections, guides, boundary conditions and template trees",
+                "reason": "the loaded worker did not declare a verified surface_loft feature",
+            },
+            "resident_panel": _panel_route_document(identity),
+        }
         return families_doc
     available = feature["available"]
     entry["available"] = available
@@ -365,6 +497,16 @@ def project_worker_availability(
         entry["enabled_semantics"] = (
             "compiled out of the current worker; the SDK requirement is not satisfied"
         )
+    entry["routes"] = {
+        "element_tree": {
+            "default": True,
+            "available": available,
+            "state": feature.get("state"),
+            "request_field": "creation_route omitted or 'element_tree'",
+            "scope": "keeps 2-32 sections, guides, boundary conditions and template trees",
+        },
+        "resident_panel": _panel_route_document(identity),
+    }
     return families_doc
 
 

@@ -2729,7 +2729,8 @@ static J sketch(const J &op) {
         ids[item.first] = item.second;
     remember(
         op, f,
-        {{"entity_ids", ids},
+        {{"feature_id", (int)f.id},
+         {"entity_ids", ids},
          {"dimension_ids", dims},
          {"solver", solver_info},
          {"geometry", spec},
@@ -2747,7 +2748,40 @@ static J sketch(const J &op) {
     // FEAT-008/T09B: publish the section entity ids on the operation record so
     // the reported revolve_axis.id for an internal centerline is verifiable
     // from the client-visible result (same id space, no guessing).
-    J sketch_result = {{"surface_id", frame.surface},
+    // BUG-120/T2-B: the curves this section actually owns, read one by one. T2 on
+    // Creo 10 showed one straight line reporting two curve-type items (43/45) plus a
+    // third non-curve entry (44), and nothing in the public inspect output says which
+    // is which. These facts use the same calls the panel route uses, so a client can
+    // see why a position has more than one candidate id instead of guessing.
+    J curve_facts = J::array();
+    {
+        J owned = J::array();
+        if (!ProFeatureGeomitemVisit(&f, PRO_CURVE, collect_geom_ids, nullptr, &owned))
+            for (auto &entry : owned) {
+                const int owned_id = entry.value("id", 0);
+                ProCurve owned_curve;
+                if (ProCurveInit((ProSolid)board, owned_id, &owned_curve) != PRO_TK_NO_ERROR) {
+                    curve_facts.push_back({{"id", owned_id}, {"readable", false}});
+                    continue;
+                }
+                ProEnttype owned_kind = (ProEnttype)0;
+                const ProError kind_code = ProCurveTypeGet(owned_curve, &owned_kind);
+                double owned_length = 0.0;
+                const ProError length_code = ProCurveLengthEval(owned_curve, &owned_length);
+                curve_facts.push_back(
+                    {{"id", owned_id},
+                     {"readable", true},
+                     {"type", kind_code == PRO_TK_NO_ERROR ? J((int)owned_kind) : J(nullptr)},
+                     {"type_code", (int)kind_code},
+                     {"composite",
+                      kind_code == PRO_TK_NO_ERROR ? J(owned_kind == PRO_ENT_CMP_CRV) : J(nullptr)},
+                     {"length_mm", length_code == PRO_TK_NO_ERROR ? J(owned_length) : J(nullptr)},
+                     {"length_code", (int)length_code}});
+            }
+    }
+    J sketch_result = {{"feature_id", (int)f.id},
+                       {"curve_facts", curve_facts},
+                       {"surface_id", frame.surface},
                        {"solver", sketch_solver_receipt(solver_info)},
                        {"origin", frame.origin},
                        {"normal", frame.n},
@@ -4823,6 +4857,13 @@ static J choice_inspection(const J &holder, const char *key);
 #include "surface_trim.cpp"
 #include "surface_group.cpp"
 #include "surface_curvature.cpp"
+#include "surface_loft_panel.h"
+// BUG-120/D2: the curve-reference rules and their Toolkit adapter. Generic.cpp is
+// the only compile unit with the Toolkit headers, so the adapter rides here.
+#include "panel_references_sdk.h"
+// BUG-120/D3: the selection protocol state machine. Pure C++, so it rides the same
+// translation unit and is compiled against the real build configuration.
+#include "panel_selection_state.h"
 #include "surface_loft.cpp"
 #include "surface_round.cpp"
 #include "surface_boundary_fill.cpp"
@@ -4833,6 +4874,9 @@ static J choice_inspection(const J &holder, const char *key);
 #include "loft_mode.cpp"
 #include "loft_seed.cpp"
 #include "blend_create.cpp"
+// BUG-120/D3: the panel route's execution sequence. Included after blend_create.cpp
+// because it reuses the resident-callback helpers defined there.
+#include "panel_run.h"
 #include "sketch_edit.cpp"
 #include "planar_wall.h"
 #include "planar_wall.cpp"
@@ -5119,9 +5163,27 @@ static void execute_operation_body(const J &op) {
         generic_surface_offset(op);
     else if (kind == "surface_trim")
         generic_surface_trim(op);
-    else if (kind == "surface_loft")
-        generic_surface_loft(op);
-    else if (kind == "surface_boundary_fill")
+    else if (kind == "surface_loft") {
+        // BUG-120/D1: creation_route names the backend. An explicit panel request
+        // never falls back to the element tree, because only the panel route is
+        // expected to complete on a host whose kernel refuses the tree readback.
+        std::string route = "element_tree";
+        auto route_it = op.find("creation_route");
+        if (route_it != op.end() && route_it->is_string())
+            route = route_it->get<std::string>();
+        // Only an absent field falls back to the element tree. An unrecognised
+        // route is refused, because silently building the tree is exactly the
+        // fallback BUG-120 rules out.
+        if (route == "element_tree")
+            generic_surface_loft(op);
+        else if (route == "resident_panel")
+            generic_surface_loft_panel(op);
+        else
+            throw std::runtime_error(
+                "SURFACE_LOFT_UNKNOWN_ROUTE: creation_route must be element_tree or "
+                "resident_panel; no feature was created and the request was not retried on "
+                "another route.");
+    } else if (kind == "surface_boundary_fill")
         generic_surface_boundary_fill(op);
     else if (kind == "surface_round")
         generic_surface_round(op);

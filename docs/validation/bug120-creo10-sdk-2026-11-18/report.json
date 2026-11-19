@@ -1,0 +1,74 @@
+{
+  "timestamp_utc": "2026-11-18T01:48:23Z",
+  "sdk": {
+    "include_dir": "E:\\Projects\\MCP_CREO_MechDog\\build\\creo10_sdk\\includes",
+    "header_count": 415,
+    "headers_sha256": "a77b729bdb0bc9cbf063d3e786f7f57c661fbd202468c4dac7b223fd401799b9",
+    "resolved_from": "E:\\Projects\\MCP_CREO_MechDog\\build\\creo10_sdk"
+  },
+  "symbols_in_headers": {
+    "functions": {
+      "ProArraySizeGet": true,
+      "ProArrayAlloc": true,
+      "ProArgumentProarrayFree": true,
+      "ProValuedataWstringSet": true,
+      "ProMdlCurrentGet": true,
+      "ProMdlMdlnameGet": true,
+      "ProModelitemInit": true,
+      "ProSelectionAlloc": true,
+      "ProSelectExternalselectionRecord": true,
+      "ProSelectionFree": true,
+      "ProCmdActionAdd": true,
+      "ProToolkitDllIdGet": true,
+      "ProMacroLoad": true,
+      "ProCmdCmdIdFind": true,
+      "ProCmdBracketFuncAdd": true,
+      "ProFeatureGeomitemVisit": true,
+      "ProCurveInit": true,
+      "ProCurveTypeGet": true,
+      "ProCurveLengthEval": true,
+      "ProFeatureInit": true
+    },
+    "enums": {
+      "PRO_SELECT_OVERRIDE": true,
+      "PRO_SELECT_TOGGLE": true,
+      "PRO_ENT_CMP_CRV": true,
+      "uiProeAsynch": true,
+      "PRO_VALUE_TYPE_WSTRING": true,
+      "PRO_TK_NO_ERROR": true
+    }
+  },
+  "compile": [
+    {
+      "translation_unit": "api_probe.cpp",
+      "exit_code": 0,
+      "seconds": 2.1,
+      "object": "E:\\Projects\\MCP_CREO_MechDog\\build\\creo10_check\\api_probe.obj",
+      "errors": []
+    },
+    {
+      "translation_unit": "blend_sync.cpp",
+      "exit_code": 0,
+      "seconds": 5.0,
+      "object": "E:\\Projects\\MCP_CREO_MechDog\\build\\creo10_check\\blend_sync.obj",
+      "errors": []
+    },
+    {
+      "translation_unit": "blend_loader.cpp",
+      "exit_code": 0,
+      "seconds": 4.0,
+      "object": "E:\\Projects\\MCP_CREO_MechDog\\build\\creo10_check\\blend_loader.obj",
+      "errors": []
+    },
+    {
+      "translation_unit": "worker.cpp",
+      "exit_code": 0,
+      "seconds": 21.7,
+      "object": "E:\\Projects\\MCP_CREO_MechDog\\build\\creo10_check\\worker.obj",
+      "errors": []
+    }
+  ],
+  "full": true,
+  "verdict": "compiles against this SDK; runtime behaviour on the target machine is NOT proven",
+  "success": true
+}

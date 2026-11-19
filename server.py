@@ -470,6 +470,7 @@ async def creo_reconcile_model(
         "abandon_new",
         "ack_no_mutation",
         "ack_failure",
+        "confirm_panel_closed",
     ]
     | None = None,
     expected_revision: int | None = Field(
@@ -507,8 +508,18 @@ async def creo_reconcile_model(
             "pending or recovery job, and no failed rollback. Available for assemblies too."
         ),
     ),
+    confirm_panel_closed: bool = Field(
+        default=False,
+        description=(
+            "Apply only, action=confirm_panel_closed: set true after checking in Creo that no "
+            "resident panel or dialog from this model's panel job is still open. It retires the "
+            "session-wide panel guard that refuses every native job for every model; it never "
+            "changes this model's status, revision or pending job, and a dead pid or a cancelled "
+            "job is not that confirmation."
+        ),
+    ),
 ) -> dict[str, Any]:
-    """Inspect uncertain owned models without requiring Creo. live=true performs a bounded read-only session preflight. Apply an explicitly selected available action with the returned token, revision, pending_job (null when absent) and a unique 8–80 character idempotency_key. Poll its independent recovery job; never replay the original plan. Execution failures expose reason and failure_phase: before_native refusals release only their own recovery reservation under the channel lock; native_worker_started means dispatch may have begun and unknown_outcome protection remains. restore_baseline keeps revision; accept_saved/live increments once; abandon_new preserves files and archives the model. ack_no_mutation (confirm_zero_mutation=true) records that a failed job changed nothing and returns the model to ready as a metadata transaction: no worker, no Toolkit connection, no file writes, revision unchanged, an audit block under reconciliation and no need to edit model.json by hand. It qualifies for parts, sheetmetal, assemblies and drawings when status=failed, nothing is pending, the checkpoint identity still matches and the failed job's rollback did not fail; it never re-scopes component ownership. ack_failure (confirm_failure_ack=true) is the exit for a terminal failure whose disk or component state cannot be proven: it accepts the failure and returns the model to ready without a worker, without Toolkit, without touching revision, model files or component bindings, and records prior_job_status plus outcome_uncertain (true when the last job ended as unknown_outcome) and disk_state_verified=false under reconciliation. It is available for assemblies and drawings too; when a zero-mutation acknowledgement is also provable, prefer ack_no_mutation. accept_live requires live preflight. Unsupported/unproven ownership is rejected; no Creo restart or user file deletion."""
+    """Inspect uncertain owned models without requiring Creo. live=true performs a bounded read-only session preflight. Apply an explicitly selected available action with the returned token, revision, pending_job (null when absent) and a unique 8–80 character idempotency_key. Poll its independent recovery job; never replay the original plan. Execution failures expose reason and failure_phase: before_native refusals release only their own recovery reservation under the channel lock; native_worker_started means dispatch may have begun and unknown_outcome protection remains. restore_baseline keeps revision; accept_saved/live increments once; abandon_new preserves files and archives the model. ack_no_mutation (confirm_zero_mutation=true) records that a failed job changed nothing and returns the model to ready as a metadata transaction: no worker, no Toolkit connection, no file writes, revision unchanged, an audit block under reconciliation and no need to edit model.json by hand. It qualifies for parts, sheetmetal, assemblies and drawings when status=failed, nothing is pending, the checkpoint identity still matches and the failed job's rollback did not fail; it never re-scopes component ownership. ack_failure (confirm_failure_ack=true) is the exit for a terminal failure whose disk or component state cannot be proven: it accepts the failure and returns the model to ready without a worker, without Toolkit, without touching revision, model files or component bindings, and records prior_job_status plus outcome_uncertain (true when the last job ended as unknown_outcome) and disk_state_verified=false under reconciliation. It is available for assemblies and drawings too; when a zero-mutation acknowledgement is also provable, prefer ack_no_mutation. accept_live requires live preflight. Unsupported/unproven ownership is rejected; no Creo restart or user file deletion. confirm_panel_closed (confirm_panel_closed=true) is the exit for a resident panel that refuses every native job for every model: it retires that session-wide guard only after a human confirms the panel is closed, takes no Toolkit call, and leaves this model's status, revision and pending job exactly as they were."""
     return await invoke(
         reconcile,
         model_id,
@@ -521,6 +532,7 @@ async def creo_reconcile_model(
         idempotency_key,
         confirm_zero_mutation,
         confirm_failure_ack,
+        confirm_panel_closed,
     )
 
 
@@ -766,7 +778,7 @@ def _capabilities_payload(tool_entries: list[dict[str, Any]]) -> dict[str, Any]:
         "release_status": release_status(VERSION),
         "families": project_worker_availability(
             families(),
-            bridge.worker_build_identity(),
+            bridge.surface_loft_admission_identity(),
             bridge.channel_health().get("surface_loft_runtime"),
         ),
         "known_limitations": list(KNOWN_LIMITATIONS),
@@ -3048,6 +3060,7 @@ async def creo_surface_loft(
     interpolation: Literal["straight", "smooth"] = "straight",
     guides: Annotated[list[str | int | dict[str, Any]], Field(max_length=8)] | None = None,
     boundary_conditions: Annotated[list[dict[str, str]], Field(max_length=4)] | None = None,
+    creation_route: Literal["element_tree", "resident_panel"] | None = None,
 ) -> dict[str, Any]:
     """Create a native boundary-blend surface quilt through section sketches.
 
@@ -3094,6 +3107,16 @@ async def creo_surface_loft(
     a 90 deg seam), 'normal' (indistinguishable from free on that geometry) and
     any non-free condition on first_guide/last_guide (not measured) are refused
     before a job is queued.
+
+    creation_route (BUG-120/D1) chooses the creation path. Omitted or
+    'element_tree' keeps everything above. 'resident_panel' replays recorded Creo UI
+    commands through the resident callback instead of building an element tree, and
+    in this version publishes 2-8 MCP-owned sketch labels only: each label must own
+    one open non-composite curve, and guides, points, boundary_conditions and
+    template are refused. It is refused before a job unless the loaded worker
+    declares a panel backend and a certified UI profile for this release exists;
+    read creo_capabilities.routes.resident_panel for both facts. It never falls back
+    to the element tree.
     """
     operation: dict[str, Any] = dict(
         op="surface_loft", label=label, sections=sections, interpolation=interpolation
@@ -3102,6 +3125,8 @@ async def creo_surface_loft(
         operation["guides"] = guides
     if boundary_conditions:
         operation["boundary_conditions"] = boundary_conditions
+    if creation_route is not None:
+        operation["creation_route"] = creation_route
     return await invoke(
         general.submit,
         [operation],

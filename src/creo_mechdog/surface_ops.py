@@ -135,6 +135,19 @@ LOFT_CHAIN_KINDS = ("curve", "edge")
 LOFT_POINT_KINDS = ("point", "datum_point_feature")
 LOFT_INPUT_LIVE_STATUS = "Creo 12.4.0.0 live-verified on 2026-11-11 (FEAT-065 M3/T3)"
 
+#: BUG-120/D1: the only object form the resident panel route takes. ``label`` names
+#: an MCP-owned sketch; ``open_confirmed`` is the caller's proof that the curve is
+#: open, because this build has no verified way to read a standalone curve's closure.
+PANEL_SECTION_KEYS = frozenset({"label", "open_confirmed"})
+#: BUG-120/D7: an MCP-owned datum point may close one end of the blend. The panel
+#: route resolves it by label (the same alias table as a sketch), never by a bare
+#: geometry id, because a point id is not an owner the worker can re-check.
+PANEL_POINT_KIND = "datum_point_feature"
+#: BUG-120/D7: 7 first-direction curves + 1 convergence point + 3 guides is the
+#: largest shape the recorded workflow is accepted for. Sections stay 2-8 and
+#: guides 2-8; this cap is their combined position budget.
+PANEL_POSITION_LIMIT = 11
+
 LOFT_INPUT_FORMS = (
     "a sketch label or integer feature id, {kind:'curve',id:N} (a PRO_CURVE geometry id, "
     "e.g. a project_curve curve_id) or {kind:'edge',id:N} (an edge geometry id from "
@@ -209,6 +222,10 @@ def loft_input_key(value: Any) -> tuple[str, Any]:
     """Identity of one section/guide entry for the distinctness checks."""
     if isinstance(value, dict):
         kind = value.get("kind")
+        if kind is None and "label" in value:
+            # BUG-120/D1: a panel section object is still a sketch reference; its
+            # identity is the label, so two positions naming one sketch collide.
+            return ("sketch", value.get("label"))
         return (str(kind), value.get("label") if kind == "datum_point_feature" else value.get("id"))
     return ("sketch", value)
 
@@ -216,6 +233,8 @@ def loft_input_key(value: Any) -> tuple[str, Any]:
 def _loft_input_text(value: Any) -> str:
     if isinstance(value, dict):
         key = loft_input_key(value)
+        if key[0] == "sketch":
+            return repr(key[1])
         field = "label" if key[0] == "datum_point_feature" else "id"
         return f"{{kind:'{key[0]}',{field}:{key[1]!r}}}"
     return repr(value)
@@ -377,6 +396,142 @@ class SurfaceLoftOp(StrictModel):
     # BUG-123/B2: read the tree from a dumped template instead of building it.
     # The receipt then reports tree_source="template_xml" and the parsed counts.
     template: LoftTemplate | None = None
+    # BUG-120/D1: which creation path the request asks for. Omitted keeps every
+    # earlier request on the element tree; "resident_panel" replays recorded Creo
+    # UI commands through the resident callback instead. The panel route has its
+    # own narrower input subset (see the validator below) and never falls back to
+    # the tree.
+    creation_route: Literal["element_tree", "resident_panel"] | None = None
+
+    @model_validator(mode="after")
+    def resident_panel_is_a_curve_subset(self):
+        # BUG-120/D1 stage A: the panel route replays the recorded boundary-blend
+        # UI on real source curves, so it accepts 2-8 MCP-owned sketch labels and
+        # nothing the tree route's SDK-bound reference forms add. Refusing here
+        # keeps the request out of the native panel queue: the client learns the
+        # limit before a job exists instead of after a UI run.
+        if self.creation_route != "resident_panel":
+            return self
+        if len(self.sections) > 8:
+            raise ValueError(
+                "creation_route='resident_panel' publishes 2-8 sections in this version "
+                f"(the request has {len(self.sections)}); split the surface or use the "
+                "element_tree route, which keeps 2-32"
+            )
+        last = len(self.sections) - 1
+        point_count = 0
+        for index, value in enumerate(self.sections):
+            if isinstance(value, str):
+                continue
+            if isinstance(value, dict) and value.get("kind") == PANEL_POINT_KIND:
+                point_count += 1
+                if set(value) != {"kind", "label"}:
+                    raise ValueError(
+                        f"creation_route='resident_panel' sections[{index}] "
+                        "{kind:'datum_point_feature'} accepts only kind and label"
+                    )
+                label = value.get("label")
+                if not isinstance(label, str) or not label:
+                    raise ValueError(
+                        f"creation_route='resident_panel' sections[{index}] point label must be "
+                        "the non-empty label of an MCP-owned single-point datum_points feature"
+                    )
+                if index not in (0, last):
+                    raise ValueError(
+                        f"creation_route='resident_panel' sections[{index}] is a point: a point "
+                        "is only accepted as the first or last section (a convergence end); "
+                        "move it to sections[0] or the last section"
+                    )
+                continue
+            if isinstance(value, dict) and value.get("kind") == "point":
+                raise ValueError(
+                    f"creation_route='resident_panel' sections[{index}] uses {{kind:'point',id:N}}: "
+                    "the panel route resolves a point by its MCP-owned label; pass "
+                    "{kind:'datum_point_feature',label:'...'} instead"
+                )
+            if isinstance(value, dict) and set(value) <= PANEL_SECTION_KEYS:
+                label = value.get("label")
+                if isinstance(label, str) and label and value.get("open_confirmed") is True:
+                    continue
+                raise ValueError(
+                    f"creation_route='resident_panel' sections[{index}] must carry a non-empty "
+                    "label and open_confirmed=true: this build cannot read whether a standalone "
+                    "curve is closed, so the caller supplies that proof instead of the route "
+                    "assuming it"
+                )
+            form = (
+                "a bare feature id"
+                if isinstance(value, int) and not isinstance(value, bool)
+                else f"the reference {_loft_input_text(value)}"
+            )
+            raise ValueError(
+                f"creation_route='resident_panel' sections[{index}] is {form}: the panel route "
+                "resolves each section from an MCP-owned sketch label, so pass the sketch label "
+                "(a string), {label:'...',open_confirmed:true}, or at a convergence end "
+                "{kind:'datum_point_feature',label:'...'}. Curve, edge and bare-id forms stay on "
+                "the element_tree route"
+            )
+        if point_count > 1:
+            raise ValueError(
+                "creation_route='resident_panel' accepts one convergence point per run "
+                f"(this request has {point_count}); keep one point at one end"
+            )
+        for index, value in enumerate(self.guides):
+            # BUG-120/D7: guides are the second direction. They are the same kind of
+            # MCP-owned open sketch as a section, selected after the recorded
+            # collector switch, so they are admitted under the same form rules.
+            if isinstance(value, str):
+                continue
+            if isinstance(value, dict) and value.get("kind") in (PANEL_POINT_KIND, "point"):
+                raise ValueError(
+                    f"creation_route='resident_panel' guides[{index}] is a point: a guide is a "
+                    "curve crossing every section and cannot be a convergence point"
+                )
+            if isinstance(value, dict) and set(value) <= PANEL_SECTION_KEYS:
+                label = value.get("label")
+                if isinstance(label, str) and label and value.get("open_confirmed") is True:
+                    continue
+                raise ValueError(
+                    f"creation_route='resident_panel' guides[{index}] must carry a non-empty "
+                    "label and open_confirmed=true: this build cannot read whether a standalone "
+                    "curve is closed, so the caller supplies that proof instead of the route "
+                    "assuming it"
+                )
+            form = (
+                "a bare feature id"
+                if isinstance(value, int) and not isinstance(value, bool)
+                else f"the reference {_loft_input_text(value)}"
+            )
+            raise ValueError(
+                f"creation_route='resident_panel' guides[{index}] is {form}: the panel route "
+                "resolves each guide from an MCP-owned sketch label, so pass the sketch label "
+                "(a string) or {label:'...',open_confirmed:true}. Curve, edge and bare-id forms "
+                "stay on the element_tree route"
+            )
+        if self.guides and len(self.guides) < 2:
+            raise ValueError(
+                "creation_route='resident_panel' needs 2 or more guides for a second direction; "
+                "one guide is not a direction, and the native route refuses it before the dialog "
+                "opens"
+            )
+        if len(self.sections) + len(self.guides) > PANEL_POSITION_LIMIT:
+            raise ValueError(
+                f"creation_route='resident_panel' selects at most {PANEL_POSITION_LIMIT} positions "
+                f"per run in this version (the request has {len(self.sections)} sections + "
+                f"{len(self.guides)} guides); split the surface or use the element_tree route"
+            )
+        for field, value in (
+            ("boundary_conditions", self.boundary_conditions),
+            ("template", self.template),
+        ):
+            if value:
+                raise ValueError(
+                    f"creation_route='resident_panel' does not accept {field} in this version: "
+                    "the panel route builds direction curves only, and a boundary condition or a "
+                    "template tree is not part of its recorded command sequence. Remove the "
+                    "field or use creation_route='element_tree'"
+                )
+        return self
 
     @model_validator(mode="after")
     def template_route_limits(self):
@@ -400,6 +555,29 @@ class SurfaceLoftOp(StrictModel):
 
     @model_validator(mode="after")
     def distinct_sections(self):
+        if self.creation_route == "resident_panel":
+            # The panel route takes sketch labels (or the label/open_confirmed
+            # object) only; its native resolver refuses any other form, so this
+            # validator checks repeated sketches and leaves the reference rules to
+            # that refusal.
+            repeat = _first_repeat(self.sections)
+            if repeat:
+                first, second = repeat
+                raise ValueError(
+                    "Surface loft sections must be distinct sketches: "
+                    f"sections[{second}] repeats sections[{first}] "
+                    f"({_loft_input_text(self.sections[second])})"
+                )
+            positions = list(self.sections) + list(self.guides)
+            repeat = _first_repeat(positions)
+            if repeat:
+                first, second = repeat
+                raise ValueError(
+                    "Surface loft sections and guides must be distinct sketches: "
+                    f"position {second} repeats position {first} "
+                    f"({_loft_input_text(positions[second])})"
+                )
+            return self
         last = len(self.sections) - 1
         for index, value in enumerate(self.sections):
             problem = loft_input_problem(
@@ -439,6 +617,11 @@ class SurfaceLoftOp(StrictModel):
         # and its geometry follows them. Probbl.h states the same minimum, so a
         # one-guide request is refused here instead of failing after a job.
         if not self.guides:
+            return self
+        if self.creation_route == "resident_panel":
+            # BUG-120/D7: the panel route takes the same sketch-label forms as its
+            # sections, and its own validator already checked each guide and the
+            # two-guide minimum. The reference rules below belong to the tree route.
             return self
         for index, value in enumerate(self.guides):
             problem = loft_input_problem(

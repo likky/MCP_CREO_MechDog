@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **2026-11-17执行基准更新：** T1-C后的具体开发使用[正式实现计划D1—D8](2026-11-17-bug120-resident-panel-implementation.md)。本文件保留原始路线比较、输入和球鼻艏几何验收；旧协议/ABI、固定命令槽及先验收后才能调用等工程细节以新计划修正为准。
+
 **Goal:** 完善 MCP，使目标 Creo 10.0.0.0 能依据 v2 的七个截面、尖点和三条完整导线生成原生边界混合曲面，进一步封闭成球鼻艏实体并保存重载。
 
 **Architecture:** 保留现有 `surface_loft` 元素树路线，增加显式 `creation_route="resident_panel"`。新路线由驻留回调向原生边界混合面板按方向注入引用，完成后用真实特征/面组验收，不依赖 `ProFeatureElemtreeExtract` 补全特征；先在目标机取得可行性证据，再实现通用调度与兼容准入。

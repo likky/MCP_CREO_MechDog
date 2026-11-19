@@ -12,6 +12,10 @@ config.json
 seed_registry.json
 # DEV-066: runtime session history remains local; preserve its existing path.
 /session_activity.json
+# BUG-120/D4.4: the resident panel session guard is local runtime state, like the
+# Toolkit lock it sits beside; it names a live job and must never ship.
+/panel_session_guard.json
+/panel_session_guard.tmp
 client-config.json
 native/constants.inc
 *.zip

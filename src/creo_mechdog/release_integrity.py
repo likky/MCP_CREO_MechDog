@@ -16,6 +16,7 @@ import re
 import zipfile
 from pathlib import Path, PurePosixPath
 
+from creo_mechdog import panel_profiles
 from creo_mechdog.seed_distribution import seed_file_bytes
 
 TRUSTED_RECORD = "docs/seed_package.json"
@@ -235,6 +236,77 @@ def template_library_files(root: Path) -> list[Path]:
     return files
 
 
+def panel_profile_library_files(root: Path | None = None) -> list[Path]:
+    """Resident-panel UI profiles that belong to the source release.
+
+    ``templates/panel/manifest.json`` is the allowlist, exactly as the element
+    tree manifest is: the shipped set is the manifest plus every certification
+    record it references, and a file nobody references is not shipped. The rules
+    that decide what a profile is — command digest, certification presence,
+    certification digest, and the ``profile_digest`` binding — stay in
+    :mod:`creo_mechdog.panel_profiles`; this gate only turns that module's
+    refusal into a packaging failure, so the two can never disagree about what
+    an admissible profile is.
+
+    An empty ``profiles`` list is valid and ships the manifest alone. That is
+    the currently shipped state (no profile has been accepted on a target host
+    yet) and it is deliberately closed rather than absent: the manifest is what
+    lets admission report "no certified profile" instead of replaying command
+    text nobody measured.
+    """
+    base = Path(root) if root is not None else panel_profiles.ROOT
+    try:
+        profiles = panel_profiles.profiles(base)
+    except panel_profiles.PanelProfileError as error:
+        raise ValueError(f"Panel profile library is not distributable: {error}") from error
+    manifest = base / panel_profiles.MANIFEST
+    files = [manifest]
+    library = (base / panel_profiles.LIBRARY).resolve()
+    for profile in profiles:
+        record = profile.certification
+        if record is None:
+            continue
+        path = base / panel_profiles.CERTIFICATIONS / record["file"]
+        if not path.is_file() or path.is_symlink():
+            raise ValueError(f"Panel certification is missing or is a symlink: {path}")
+        if not path.resolve().is_relative_to(library):
+            raise ValueError(
+                f"Panel certification escapes {panel_profiles.LIBRARY}: {path}; evidence "
+                "outside the library is not part of this release"
+            )
+        files.append(path)
+    # The recording a profile was frozen from ships with it. An admissible profile
+    # whose evidence stayed behind would reach a client as command text nobody can
+    # re-read, which is exactly the claim this library exists to prevent.
+    try:
+        document = json.loads(manifest.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"Panel profile manifest cannot be read: {manifest} ({error})") from error
+    recordings = document.get("recordings") or {}
+    if not isinstance(recordings, dict):
+        raise ValueError(f"{panel_profiles.MANIFEST}.recordings must be an object")
+    for name, entry in recordings.items():
+        if not isinstance(entry, dict) or not isinstance(entry.get("file"), str):
+            raise ValueError(f"{panel_profiles.MANIFEST}.recordings[{name!r}] must name a file")
+        path = base / panel_profiles.LIBRARY / entry["file"]
+        if not path.is_file() or path.is_symlink():
+            raise ValueError(f"Panel recording is missing or is a symlink: {path}")
+        if not path.resolve().is_relative_to(library):
+            raise ValueError(
+                f"Panel recording escapes {panel_profiles.LIBRARY}: {path}; evidence outside "
+                "the library is not part of this release"
+            )
+        declared = str(entry.get("sha256") or "").lower()
+        if hashlib.sha256(path.read_bytes()).hexdigest() != declared:
+            raise ValueError(
+                f"Panel recording {path.name} does not match the digest "
+                f"{panel_profiles.MANIFEST} declares; a changed recording invalidates the "
+                "profile it was frozen from"
+            )
+        files.append(path)
+    return files
+
+
 def trusted_seed_package(root: Path) -> dict:
     """The explicit release record naming the trusted seed archive digest."""
     path = Path(root) / TRUSTED_RECORD
@@ -446,8 +518,9 @@ def assert_repo_record_matches(
 def validate_release_inputs(root: Path, seed_archive: Path) -> dict[str, object]:
     """Check the release inputs before the public source package is written.
 
-    The source version, both seed manifests, the README version sections and the
-    seed archive must all describe one and the same release.
+    The source version, both seed manifests, the README version sections, the
+    seed archive, the element tree templates and the resident-panel profile
+    library (BUG-120/D1) must all describe one and the same release.
     """
     root = Path(root)
     version = read_version(root)
@@ -493,6 +566,11 @@ def validate_release_inputs(root: Path, seed_archive: Path) -> dict[str, object]
     # BUG-123: the source package now carries element tree templates, so the
     # manifest must match the bytes on disk before anything is written.
     template_count = len(template_library_files(root)) - 1
+    # BUG-120/D1: the resident-panel profile library ships the same way, as the
+    # manifest plus the certification records it references. A missing manifest,
+    # a referenced record that is gone or changed, or a path outside
+    # templates/panel refuses the package instead of reaching a client.
+    panel_files = panel_profile_library_files(root)
     return {
         **summary,
         "version": version,
@@ -500,6 +578,11 @@ def validate_release_inputs(root: Path, seed_archive: Path) -> dict[str, object]
         "readme_current_version": readme["current"],
         "manifest_seed_count": summary["seed_count"],
         "template_count": template_count,
+        # Certification records only: the manifest and the frozen recordings also ship
+        # with the library, but they are not acceptance evidence.
+        "panel_certification_count": sum(
+            1 for path in panel_files if panel_profiles.CERTIFICATIONS in path.as_posix()
+        ),
     }
 
 
