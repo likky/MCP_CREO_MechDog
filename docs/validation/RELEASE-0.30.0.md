@@ -55,8 +55,10 @@
 
 - 种子包 SHA256：`e210ee229590a474c5fc22c5d81a0d39448f09055b55011671e6eac7177c2c13`（24 个文件、9 个种子，与 `docs/seed_package.json` 一致）。
 - 源码包：由本版合入 `main` 的提交源码构建；字节数与 SHA256 见同名 sidecar，不写入包内。
-- Release：<https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.30.0>（**尚未发布**；本记录所在开发分支未合入 `main`、未打包、未上传）
-- 发布后核对：发布后执行，当前未验证；`docs/releases/0.30.0.json` 的 `remote_verification` 为 `pending`。发布后须执行 `tools\check_release_assets.py --tag v0.30.0`（四个附件齐全、两个 sidecar 与对应 ZIP 摘要一致）并把结果追加到 POSTCHECK。
+- Release：<https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.30.0>（已发布，非 draft、非 prerelease，target `main`）。
+- 发布后核对（2026-11-19 13:20 +08:00 / 05:20Z）：`tools\check_release_assets.py --tag v0.30.0` → exit 0，「v0.30.0: four assets downloaded and verified; both sidecars match」；实际列表、标签指向与附件摘意见 POSTCHECK `## v0.30.0` 段。冻结包内副本仍为打包时点措辞（`remote_verification=pending`），不回写、不重发已发布附件。
+- 源码包 SHA256：`a52fa49d5d1c089485fddd7997487ac4cb292a84ad8ecc5df907fbf86cf46e67`（11 110 422 字节、2169 个文件；摘要记录在同名 sidecar 中）。
+- 已冻结的源码包内记录仍是 `pending`，本段的 `verified` 与远端结果只存在于 `main`。`docs/releases/0.30.0.json` 的 `remote_verification` 为 `pending`。发布后须执行 `tools\check_release_assets.py --tag v0.30.0`（四个附件齐全、两个 sidecar 与对应 ZIP 摘要一致）并把结果追加到 POSTCHECK。
 
 ## 相对上一正式包核对（上一版本：0.29.0）
 

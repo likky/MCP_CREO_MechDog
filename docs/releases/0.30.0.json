@@ -4,7 +4,7 @@
   "previous_version": "0.29.0",
   "previous_release_tag": "v0.29.0",
   "previous_release_commit": "e0ae9767ab7867ee89a3b756ecd62b77b00ef3b0",
-  "remote_verification": "pending",
+  "remote_verification": "verified",
   "delivery_ids": [
     "BUG-133",
     "FEAT-012",
