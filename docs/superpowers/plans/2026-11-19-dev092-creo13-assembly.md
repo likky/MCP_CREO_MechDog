@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: 实施时使用 `subagent-driven-development` 或 `executing-plans`，逐任务核对下列验收。当前用户要求先分析和计划；本文件是待评审方案，不代表已实施或已获 Creo 实机授权。
 
+2026-11-19 交接补充：用户要求将头文件放到项目并建立任务，交由另一 AI agent 处理。执行索引、资料位置和接手提示词见 [AGENT-HANDOFF](../../development/DEV-092-AGENT-HANDOFF.md)。这次整理不表示本 agent 已执行产品实现，也不增加实机授权。
+
 **Goal:** 让外部矩阵输入在各层按同一约定和容差解释，并能用原生测量检查组件的真实位置；把 22 条配合的可解性作为独立验证任务。
 
 **Architecture:** 沿用 stdio → server → bridge/generic_bridge → C TOOLKIT。Python 负责输入契约与保护；原生共享 helper 解释位姿，原生测量提供装配坐标中的几何证据。约束写入继续按组件整组替换，不在本轮未经查证增加 FIX 与配合混写。
@@ -16,7 +18,7 @@
 - 默认矩阵准入容差保持 `1e-6`。显式容差不表示 Creo 内核必然接受该精度；不自动正交化、修复或猜测矩阵约定。
 - 原生执行器构建、启动/连接 Creo、建模与保存重载须用户当次明确确认；纯 SDK 无关 C++ 数学算例不建立 Toolkit 连接。
 - 不结束/重启 Creo 或 nmsd、不清锁/unknown、不改用户模型；故障注入需单独授权。
-- SDK 与常量表不复制进源码/发布包。历史 `docs/validation/` 原件保持字节不变；本次只新增归档。
+- 按 2026-11-19 用户指定例外，仅本次 SDK 参考原 ZIP 与433个头文件存入 `references/creo13.4.0.0-sdk/`，保留版权/原字节/校验清单，不参与产品构建或公开源码包。其他 SDK 与常量表继续不复制进源码/发布包。历史 `docs/validation/` 原件保持字节不变。
 - Creo 13 目录名和头文件声明不构成受支持版本或运行期成功声明；本机 12.4 结果不外推到反馈环境。
 - 本轮只交付分析与计划；不改版本、不合入 main、不发布。以后合入 main 时按项目要求同步版本与完整 Release。
 

@@ -98,3 +98,11 @@ docs/PRODUCT_RULES.md text eol=lf
 docs/validation/feedback-0.17.4-2026-11-07/originals/** -text
 
 docs/validation/feedback-0.18.4-surface-2026-11-08/originals/** -text
+
+# DEV-092: user-requested PTC SDK references stay byte-exact and out of source archives.
+/references/creo13.4.0.0-sdk export-ignore
+/references/creo13.4.0.0-sdk/** export-ignore
+references/creo13.4.0.0-sdk/includes/** -text -diff
+references/creo13.4.0.0-sdk/includes.zip -text -diff
+references/creo13.4.0.0-sdk/README.md text eol=lf
+references/creo13.4.0.0-sdk/manifest.json text eol=lf
