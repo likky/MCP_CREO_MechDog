@@ -5,7 +5,7 @@
 ## 环境与基线
 
 - 工作目录：`E:/Projects/MCP_CREO_MechDog`；分支 `codex/dev-092-creo13-assembly-plan`。
-- 起始提交：`db1e43b`（DEV-092 资料与交接任务）；版本 0.27.0。
+- 起始提交：`db1e43b`（DEV-092 资料与交接任务）；本次实施提交：`2f28f67`；版本 0.27.0。
 - 工作区：改动本批源码与文档后 dirty；未跟踪 `.trae/`、`underwater_plan.json` 保留，未提交。
 - 环境：Windows x64、Python 3.12.14、ruff 0.17.0、clang-format 23.1.3。
 - 受测源码指纹（`tools/dev_check.py` 记录）：`9692a6b34eb07c3b46ad8680c2fb301ecd6cd6d4dc8ec4c132113dad8d3469dc`。
