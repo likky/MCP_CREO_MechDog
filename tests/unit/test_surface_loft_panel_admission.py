@@ -232,7 +232,7 @@ class PanelRouteDisclosureWithTheCertifiedProfile(unittest.TestCase):
         self.assertTrue(panel["compiled"])
         self.assertTrue(panel["runtime_ready"])
         self.assertEqual(panel["profile"]["status"], "certified")
-        self.assertEqual(panel["profile"]["profile_id"], "creo10-bbl-candidate-2")
+        self.assertEqual(panel["profile"]["profile_id"], "creo10-bbl-candidate-3")
         self.assertEqual(panel["profile"]["release_numeric"], 42)
 
     def test_an_unrecorded_host_release_is_not_ready(self):
@@ -325,6 +325,88 @@ class SubmissionRefusesBeforeTheChannel(unittest.TestCase):
         ):
             with self.assertRaisesRegex(ValueError, "compiled out of the current worker"):
                 general.submit([panel_op(), {**tree_op(), "label": "loft_tree"}])
+            lock.assert_not_called()
+        self.assertFalse((self.root / "jobs").exists())
+
+
+class SecondDirectionGate(unittest.TestCase):
+    """BUG-120/D7: a guide request needs a profile that froze the collector switch."""
+
+    def guides(self):
+        return [
+            {"label": "guide_a", "open_confirmed": True},
+            {"label": "guide_b", "open_confirmed": True},
+        ]
+
+    def test_guides_need_the_profile_slot(self):
+        with self.assertRaisesRegex(ValueError, "second_direction_macro"):
+            capabilities.require_panel_directions(
+                [{**panel_op(), "guides": self.guides()}],
+                {"profile_id": "creo10-bbl-candidate-2", "second_direction_macro": ""},
+            )
+
+    def test_a_profile_with_the_slot_admits_guides(self):
+        capabilities.require_panel_directions(
+            [{**panel_op(), "guides": self.guides()}],
+            {"profile_id": "creo10-bbl-candidate-3", "second_direction_macro": "~ Trigger x;"},
+        )
+
+    def test_an_empty_guides_array_is_not_a_second_direction(self):
+        capabilities.require_panel_directions(
+            [{**panel_op(), "guides": []}], {"profile_id": "creo10-bbl-candidate-2"}
+        )
+
+    def test_the_gate_ignores_the_element_tree_route(self):
+        capabilities.require_panel_directions(
+            [{**tree_op(), "guides": self.guides()}], {"profile_id": "creo10-bbl-candidate-2"}
+        )
+
+
+class GuidesAreRefusedBeforeTheChannel(unittest.TestCase):
+    setUp = channel_tests.ToolkitChannel.setUp
+
+    def parsed_identity(self):
+        parsed = bridge._parse_worker_build_info(
+            {
+                "identity_schema": 1,
+                "source_digest": "a" * 64,
+                "features": {
+                    "surface_loft": {
+                        "available": True,
+                        "state": "compiled",
+                        "sdk_requirements": ["PRO_E_BNBLN_CURVES"],
+                        "missing_sdk_requirements": [],
+                    },
+                    "surface_loft_panel": {"available": True, "state": "ready"},
+                },
+            },
+            WORKER_SHA,
+        )
+        self.assertIsNotNone(parsed)
+        return parsed
+
+    def test_a_profile_without_the_slot_refuses_guides_before_the_lock(self):
+        admission = {
+            "profile_id": "creo10-bbl-candidate-2",
+            "mode": "certified",
+            "open_macro": "~ Command `ProCmdFtBndBlend`;",
+            "second_direction_macro": "",
+            "select_command": "~ Command `%MECHDOG_COMMAND%`;",
+            "done_macro": "~ Activate `main_dlg_cur` `dashInst0.Done`;",
+            "done_command": "ProCmdFtBndBlend",
+        }
+        request = panel_op()
+        request["guides"] = [
+            {"label": "guide_a", "open_confirmed": True},
+            {"label": "guide_b", "open_confirmed": True},
+        ]
+        with (
+            patch.object(bridge, "worker_build_identity", return_value=self.parsed_identity()),
+            patch.object(general, "require_panel_route", return_value=admission),
+            patch.object(bridge, "toolkit_lock") as lock,
+        ):
+            with self.assertRaisesRegex(ValueError, "second_direction_macro"):
+                general.submit([request])
             lock.assert_not_called()
         self.assertFalse((self.root / "jobs").exists())
 
