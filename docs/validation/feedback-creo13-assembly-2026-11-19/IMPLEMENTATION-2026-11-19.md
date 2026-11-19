@@ -46,6 +46,14 @@
 - 列约定 90° Z：`R=[[0,-1,0],[1,0,0],[0,0,1]]`、`T=[7,-8,9]`、点 `[2,3,5]` → `[4,-6,14]`；同数组缺省为行约定时结果不同。
 - 阈值附近 column 样例：自身行残差 `9.62666e-7`，规范（转置）行残差 `1.023309e-6`；两层都按后者判断，默认拒绝、`1e-5` 接受。
 
+## 合并 origin/main（0.28.0）后复核
+
+- 合并提交 `1dd75c9`，主干头部 `14485e8`（0.28.0）。唯一冲突 `docs/BACKLOG.md`：保留主干 0.28.0 条目在前，DEV-092 条目随后；台账计数复核 `consistent=true`（194 项：BUG 87 / FEAT 66 / DEV 41，无重复）。
+- `python bridge.py build` → exit 0，产出 `build/creo_worker.exe`（loader DLL 因指纹变化重建）。只编译，未启动或连接 Creo。
+- `python tools/dev_check.py --work-item DEV-092` → `success=true`、`unit_tests=passed`、`lint_findings=0`、`unformatted_files=0`（C++ 67、Python 549 个文件）；受测源码指纹 `d93431e78f76b77f075f81e17efe978425e01dbfa000faa8c70b111be299621e`。
+- `python tools/test_assembly_pose.py` → `success=true`（构建 0、运行 0）。
+- 未做：Creo 实机放置/测量/保存重载、WorkBuddy 黑盒、版本号变更与发布。`version.py` 仍为 0.28.0；合入 main 前须升到 0.29.0 并完成四附件发布与 `check_release_assets.py` 核对。
+
 ## 未验证（不能由本次结果外推）
 
 - 产品执行器构建（`bridge.py build`）与 Creo 实机：新建/重定位放置、原生测量、约束求解、revision、保存重载、失败回滚。
