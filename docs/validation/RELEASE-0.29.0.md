@@ -56,7 +56,7 @@
 - 种子包 SHA256：`cd3a5d5ec11928670f9e35aa6cdc2deb06314ce94ab9b7d8df5825af34ae8db3`（24 个文件、9 个种子，与 `docs/seed_package.json` 一致，重建一次摘要不变）。
 - 源码包：由本版合入 `main` 的提交源码构建，`tools/package.py` 的四附件门禁与发布记录门禁均通过；字节数与 SHA256 见同名 sidecar，不写入包内。
 - Release：<https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.29.0>。
-- 发布后核对：发布后执行，当前未验证；`docs/releases/0.29.0.json` 的 `remote_verification` 在打包时为 `pending`，远端列表、标签指向与附件摘要只追加到 `main` 的 [POSTCHECK](../development/RELEASE-POSTCHECK-2026-11-07.md) `## v0.29.0` 段。
+- 发布后核对（2026-11-19 12:02 +08:00 / 04:02Z）：`tools\check_release_assets.py --tag v0.29.0` → exit 0，四个附件下载并重算通过，两个 sidecar 与对应 ZIP 摘要一致；实际列表、标签指向、附件摘要与 `main` 提交见[POSTCHECK](../development/RELEASE-POSTCHECK-2026-11-07.md) `## v0.29.0` 段。冻结包内副本仍为打包时点措辞，不回写、不重发已发布附件。
 - 本版没有原生源码改动；`native/`、worker、loader 与面板载荷与 0.28.0 相同，升级只需更新源码、重启 MCP 连接器并换用新种子包。
 
 ## 相对上一正式包核对（上一版本：0.28.0）

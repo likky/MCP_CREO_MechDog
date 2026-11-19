@@ -4,7 +4,7 @@
   "previous_version": "0.28.0",
   "previous_release_tag": "v0.28.0",
   "previous_release_commit": "e1ea2da3a6c62602855ce5d7fde3f5407e1dcfe4",
-  "remote_verification": "pending",
+  "remote_verification": "verified",
   "delivery_ids": [
     "BUG-120"
   ],
