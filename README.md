@@ -2,11 +2,7 @@
 
 ![version](https://img.shields.io/badge/version-0.31.1-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.31.1**（PATCH——工程规则：本机实机操作改为**常设授权**，不再逐次确认；可直接新建 Toolkit 连接、启动/重启 Creo 与 nmsd、结束卡死或异常的 Creo/worker 进程、确认后清理残留 `toolkit.lock` 与保护状态、编译执行器、建模、GUI 操作与几何/保存重载验收。数据边界不变：不删除或改写用户模型、历史证据与已发布产物；Toolkit 单通道、busy 拒绝、revision 保护与保存重载核验不变） · [版本说明](docs/RELEASE_NOTES_0.31.1.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
-
-0.31.0（MINOR——[BUG-120](docs/work-items/BUG-120.md) 导线预检与建面回执：`resident_panel` 的 `sections`/`guides` 必须在 Python 准入阶段写成 `{label, open_confirmed:true}`，裸标签在建作业前被拒绝；原生新增 `panel_fit.h`，开面板前输出 21 对截面×导线诊断（实际 feature/curve ID、参数、位置、间隙 mm/native、原始码、端点闭合与穿过顺序），采样失败记 `unverified`、不写零；成功回执按“作业前后唯一新增面组 + 其 owner feature”关联，保存重载后用 `quilt_record`/`surface_group_receipt` 读取面积、开闭与边界，`geometry_check.verified` 由证据决定。未验：任务 5 接缝 G1 仍 6.28°（另行排期）、WorkBuddy 黑盒） · [版本说明](docs/RELEASE_NOTES_0.31.0.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
-
-0.30.0（MINOR——装配位姿与约束契约补齐：[BUG-133](docs/work-items/BUG-133.md) 让显式 `rotation_tolerance` 在 Python 与原生使用同一有效值，上限收紧到 `1e-3`（默认 `1e-6` 不变）；[FEAT-012](docs/work-items/FEAT-012.md) 新增 `rotation_convention="column"`，原生只转置一次、两层都按规范行矩阵准入；[DEV-092](docs/work-items/DEV-092.md) 明确约束整组替换边界并新增 `failed_constraint_index`/`constraint_stage`/`constraint_reason` 诊断。未验：Creo 实机放置与保存重载、WorkBuddy 黑盒） · [版本说明](docs/RELEASE_NOTES_0.30.0.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
+当前正式版 **0.31.1**（PATCH——工程规则：本机实机操作改为**常设授权**，不再逐次确认；可直接新建 Toolkit 连接、启动/重启 Creo 与 nmsd、结束卡死或异常的 Creo/worker 进程、确认后清理残留 `toolkit.lock` 与保护状态、编译执行器、建模、GUI 操作与几何/保存重载验收。数据边界不变：不删除或改写用户模型、历史证据与已发布产物；Toolkit 单通道、busy 拒绝、revision 保护与保存重载核验不变） · [版本说明](docs/RELEASE_NOTES_0.31.1.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases) 
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 
