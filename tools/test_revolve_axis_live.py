@@ -224,6 +224,13 @@ def check_contract() -> dict:
             "per sketch, so a truly multi-centerline scene needs an external native fixture and "
             "is reported as unverified until then; an admission refusal is not a geometry pass"
         ),
+        "axis_plane_relation": (
+            "DEV-093 T4: an explicit revolve axis publishes revolve_axis_plane_relation, "
+            "measured from the axis geometry and the sketch alias frame. This control's X axis "
+            "lies in the XY plane, so origin_distance_mm=0, direction_angle_to_plane_deg=0 and "
+            "axis_lies_in_plane=true. The numbers classify the relation; they never admit or "
+            "refuse a feature"
+        ),
         "note": (
             "revolve_axis comes from the resolved axis/centerline; the driver compares it with "
             "these request-derived volumes, with the direction/origin it can predict, with the "
@@ -237,6 +244,18 @@ def axis_block(terminal: dict) -> dict:
     for operation in result.get("operations") or []:
         if isinstance(operation, dict) and isinstance(operation.get("revolve_axis"), dict):
             return operation["revolve_axis"]
+    return {}
+
+
+def plane_relation_block(terminal: dict) -> dict:
+    """The measured axis/sketch-plane relation (DEV-093 T4)."""
+    result = terminal.get("result") if isinstance(terminal, dict) else None
+    block = result if isinstance(result, dict) else {}
+    for operation in block.get("operations") or []:
+        if isinstance(operation, dict) and isinstance(
+            operation.get("revolve_axis_plane_relation"), dict
+        ):
+            return operation["revolve_axis_plane_relation"]
     return {}
 
 
@@ -305,6 +324,8 @@ async def run_case(runner: LiveRunner, case: str) -> dict:
     entry["volume_mm3"] = volume_of(snapshot)
     block = axis_block(terminal)
     entry["revolve_axis"] = {key: block.get(key) for key in FIELD_KEYS} if block else None
+    relation = plane_relation_block(terminal)
+    entry["revolve_axis_plane_relation"] = relation or None
 
     if not EXPECTED[case]["succeeds"]:
         entry["failure"] = failure_text(terminal)
@@ -380,6 +401,30 @@ async def run_case(runner: LiveRunner, case: str) -> dict:
             f"section_centerline_count={resolution.get('section_centerline_count')!r} "
             f"expected {expected_count!r} (system reference lines must not be counted)"
         )
+
+    # DEV-093 T4 control: the X axis lies in the XY sketch plane, so the measured
+    # relation must say so instead of staying absent or restating the request.
+    if EXPECTED[case]["kind"] == "datum_axis":
+        if not relation:
+            problems.append("the operation record carries no revolve_axis_plane_relation")
+        else:
+            if relation.get("available") is not True:
+                problems.append(f"plane relation unavailable: {relation.get('reason')!r}")
+            if not near(relation.get("origin_distance_mm"), 0.0, 1e-6):
+                problems.append(
+                    f"origin_distance_mm={relation.get('origin_distance_mm')!r}; the X axis lies "
+                    "in the XY sketch plane"
+                )
+            if not near(relation.get("direction_angle_to_plane_deg"), 0.0, 1e-6):
+                problems.append(
+                    f"direction_angle_to_plane_deg="
+                    f"{relation.get('direction_angle_to_plane_deg')!r}; the X axis is parallel to "
+                    "the XY plane"
+                )
+            if relation.get("axis_lies_in_plane") is not True:
+                problems.append(
+                    f"axis_lies_in_plane={relation.get('axis_lies_in_plane')!r} for a coplanar axis"
+                )
 
     # ID source: the section_centerline id is the sketch section entity id of
     # the drawn centerline (same id space as the sketch result entity_ids).
