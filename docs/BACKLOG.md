@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-20（BUG-120 任务 5 结项：真实件接缝 G1 达标，实体化主体参照受限）：真实件 `ADOPT_A2ABB1FA`（模型 `a2abb1faebfd41daa8e234689e0d7393`）在界面把 `边界混合 2`（feature 166）接缝链设为 `相切`、参考 `曲面:F27(边界混合_1)` 后，quilt 142 接缝 **G1 = 0.007489186°（边 209）/ 0.007489186°（边 211）**，阈值 0.5°，较基线 6.28045° 改善约 3 个数量级；`creo_measure_surface_group(142)` 仍 `state=closed`、`open_edges=0`、`gap_max_mm=8.41e-16`。保存受阻于下游 `BOW_BULB_SOLID`（feature 250，`PRO_E_BODY_USE=2` + `PRO_E_BODY_SELECT=251 PRO_REF_INVALID`）：故障排除器报 `主体不含几何`，失败态下 `确定` 灰显、主体条目无法重拾、`创建新主体` 灰显，元素树导出见 `feature_250.xml`。本轮全程未保存，`models\a2abb1fa…\output` 无新 `.prt`/`.lck`；证据归档 `build/bug120_task5/work/g1_result_20261120.json`、`quilt142_group_20261120.json`。任务 5 结论：几何方案成立，差一条“实体化重定义重建主体参照”的能力；后续如需要另立条目跟进。台账仍 194 项。
+
 2026-11-19（0.31.1 工程规则 PATCH）：`AGENTS.md` 的本机实机联调补充改为 **2026-11-19 常设授权**：无需逐次确认即可启动/重启 Creo 与 nmsd、结束卡死或异常的 Creo/worker 进程、确认后清理残留 `toolkit.lock` 与 unknown 保护状态、编译执行器、建模、GUI 操作（含坐标点击与计算机使用）以及几何/保存重载验收；授权自动延续到后续会话。数据边界不变（不删除或改写用户模型、历史证据与已发布产物）；Toolkit 单通道、busy 拒绝、revision 保护与保存重载核验不变。`docs/DEVELOPMENT.md` 中“实机确认制”表述同步为“实机常设授权”。本版无代码/原生改动，公开工具仍 109；任务 5 接缝 G1 与 WorkBuddy 黑盒仍未验。台账仍194项（DEV-093 已登记并归档，不占活动行）。
 
 2026-11-19（0.31.0 候选，BUG-120 任务 1–4）：本批把导线预检与建面回执升版为 **0.31.0** 并补齐版本入口、README、两处种子清单、种子包快照与三份发布资料（`remote_verification=pending`，本分支尚未合入 main、未打包、未发布）。内容：`resident_panel` 的 `sections`/`guides` 必须写成 `{label, open_confirmed:true}`；新增 `native/panel_fit.h` 输出 21 对截面×导线诊断；成功回执按唯一新增面组关联并在保存重载后测量；`panel_preopen` 让未开面板的前置拒绝正常失败。实机 B/C 回归与离线 4078 项通过见下一条记录；任务 5 接缝 G1（6.28°）单独排期，WorkBuddy 黑盒未重跑。台账仍194项。
