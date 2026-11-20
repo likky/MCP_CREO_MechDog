@@ -1,7 +1,7 @@
 # 发布记录 v0.34.0（0.34.0，2026-11-21）
 
 - 版本：`0.34.0`（MINOR 部分交付）。
-- 发布提交：合入 `main` 后由该提交源码构建（提交号发布后回填）。
+- 发布提交：`bbd81cdbaa92f7acdc1988d574dfdab832e01bed`（`main`），由该提交源码构建并冻结附件。
 - 上一版本：0.33.0（`v0.33.0`，提交 `613cc4bc3424ce066fb255d5781aa157b23f35a3`）。
 - 交付快照：[releases/0.34.0.json](../releases/0.34.0.json)。
 - 版本说明：[RELEASE_NOTES_0.34.0.md](../RELEASE_NOTES_0.34.0.md)。
@@ -10,15 +10,15 @@
 
 ## 逐 ID 状态核对
 
-台账以 [BACKLOG.md](../BACKLOG.md) 与 `docs/releases/0.34.0.json`（frozen 交付集）为准；工作卡状态只读首页 `分类：` 行的粗体词。本批五项均为 `部分交付 0.34.0`，与主台账逐字一致。
+台账以 [BACKLOG.md](../BACKLOG.md) 与 `docs/releases/0.34.0.json`（frozen 交付集）为准；工作卡状态只读首页 `分类：` 行的粗体词。本批五项均已随 v0.34.0 发布：BUG-137、BUG-138、DEV-097 无保留范围并移入完成档案；BUG-139、FEAT-070 保留实机失败路径或稳定性范围，继续列为部分交付。
 
 | ID | 交付版本 | 实际 Release | 卡首页 | 主台账 | 差异说明 |
 | --- | --- | --- | --- | --- | --- |
-| [BUG-137](../work-items/BUG-137.md) | 0.34.0 | v0.34.0 | 部分交付 0.34.0 | 部分交付 0.34.0 | — |
-| [BUG-138](../work-items/BUG-138.md) | 0.34.0 | v0.34.0 | 部分交付 0.34.0 | 部分交付 0.34.0 | — |
-| [BUG-139](../work-items/BUG-139.md) | 0.34.0 | v0.34.0 | 部分交付 0.34.0 | 部分交付 0.34.0 | — |
-| [DEV-097](../work-items/DEV-097.md) | 0.34.0 | v0.34.0 | 部分交付 0.34.0 | 部分交付 0.34.0 | — |
-| [FEAT-070](../work-items/FEAT-070.md) | 0.34.0 | v0.34.0 | 部分交付 0.34.0 | 部分交付 0.34.0 | — |
+| [BUG-137](../work-items/BUG-137.md) | 0.34.0 | v0.34.0 | 已完成（0.34.0 交付） | 已完成（0.34.0 交付） | 已移入完成档案 |
+| [BUG-138](../work-items/BUG-138.md) | 0.34.0 | v0.34.0 | 已完成（0.34.0 交付） | 已完成（0.34.0 交付） | 已移入完成档案 |
+| [BUG-139](../work-items/BUG-139.md) | 0.34.0 | v0.34.0 | 部分交付 0.34.0，剩余待验收 | 部分交付 0.34.0，剩余待验收 | — |
+| [DEV-097](../work-items/DEV-097.md) | 0.34.0 | v0.34.0 | 已完成（0.34.0 交付） | 已完成（0.34.0 交付） | 已移入完成档案 |
+| [FEAT-070](../work-items/FEAT-070.md) | 0.34.0 | v0.34.0 | 部分交付 0.34.0，剩余待验收 | 部分交付 0.34.0，剩余待验收 | — |
 
 ## 发布前核对
 
@@ -58,4 +58,8 @@
 
 ## 发布后核对
 
-发布后执行，当前未验证。
+- Release：id `RE_kwDOU_ueTM4bAM2T`，非 draft、非 prerelease，`created_at=2026-11-20T18:20:17Z`，`published_at=2026-11-20T18:21:23Z`，target `main`。
+- 远端命令：`.\.venv\Scripts\python.exe tools\check_release_assets.py --tag v0.34.0` → exit 0，输出「v0.34.0: four assets downloaded and verified; both sidecars match; release body self-proof verified」。
+- 远端引用：注释标签对象 `9f03d60c81a067da3ccb038b10bbc3070f8124c9` 指向发布提交 `bbd81cdbaa92f7acdc1988d574dfdab832e01bed`；发布时远端 `main` 为同一提交。
+- 四附件的逐件字节数与 SHA256 已回填 [POSTCHECK `## v0.34.0`](../development/RELEASE-POSTCHECK-2026-11-07.md)；两个 ZIP 与各自 sidecar、API digest 及 Release 正文自证一致。
+- 本段与交付快照的 `remote_verification=verified` 只回填到 `main`；冻结源码包仍保留发布前的 `pending` 快照，不重打、不覆盖已发布标签或附件。

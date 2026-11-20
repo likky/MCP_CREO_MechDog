@@ -2,14 +2,24 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
-## v0.34.0（2026-11-21，发布前快照）
+## v0.34.0（2026-11-21，发布后已核对）
 
 - 版本与范围：`0.34.0` MINOR 部分交付，公开工具 109→110；交付 0.31.1/0.32.0 反馈剩余项 + BUG-120 实体化链路收官——[FEAT-070](../work-items/FEAT-070.md) 新增 `creo_redefine_solidify_body`，以 `strategy=new` 重建失效主体参照、解除 `BOW_BULB_SOLID`（feature 250）自锁；[BUG-137](../work-items/BUG-137.md) 隔离 `subprocess.Popen` 消除全量单测 teardown WinError 32，并加“全量通过”口径须 `success=true` 报告的发布门禁；[BUG-138](../work-items/BUG-138.md) 去除验收脚本硬编码工具数 82/84、改以 `creo_capabilities` 为准，`dev_check` 新增离线验收门禁；[BUG-139](../work-items/BUG-139.md) 启动协调器探测超时可配/循环外成功落地/连接相位/预算分段/准入降级/身份归因/文案修复；[DEV-097](../work-items/DEV-097.md) Release 正文自证门禁（四附件名 + sidecar 指引 + 摘要比对，≥0.34.0 强制执行，历史版本祖父化）。发布记录见 [RELEASE-0.34.0](../validation/RELEASE-0.34.0.md)。
 - 打包顺序：`tools\package_seeds.py` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools\package.py` → 标签/发布 → `tools\check_release_assets.py` 远端复核。
 - 种子包 SHA256 `b3bfcab0ad754cb087019fda0f763fd020fa98ac23f38475e3189179df971343`（24 个文件、9 个种子，两次构建摘要一致；包内 `seed_manifest.json` 声明 `compatible_server_version=0.34.0`）。
 - 源码包由发布提交源码构建，字节数与 SHA256 见同名 sidecar，不写入包内文件。
-- Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.34.0`；四附件为 `MCP_CREO_MechDog-0.34.0-source.zip`、`MCP_CREO_MechDog-0.34.0-source.zip.sha256`、`MCP_CREO_MechDog-0.34.0-seed-library.zip` 与 `MCP_CREO_MechDog-0.34.0-seed-library.zip.sha256`（发布时间、release id 与远端核对在发布后补记）。
-- 发布后核对：发布后执行，当前未验证。
+- Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.34.0`；四附件为 `MCP_CREO_MechDog-0.34.0-source.zip`、`MCP_CREO_MechDog-0.34.0-source.zip.sha256`、`MCP_CREO_MechDog-0.34.0-seed-library.zip` 与 `MCP_CREO_MechDog-0.34.0-seed-library.zip.sha256`。Release id `RE_kwDOU_ueTM4bAM2T`，非 draft、非 prerelease，`created_at=2026-11-20T18:20:17Z`，`published_at=2026-11-20T18:21:23Z`，target `main`。
+- 发布后核对（2026-11-21）：`tools\check_release_assets.py --tag v0.34.0` → exit 0，「v0.34.0: four assets downloaded and verified; both sidecars match; release body self-proof verified」。远端 API digest、本地重算与 sidecar 内容逐一致：
+
+| 附件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.34.0-source.zip` | 11 349 952 | `ce6e461e678f0df82f6936f364b9ace0ba63475c08827fa11ae2508bb3e4f5dd` |
+| `MCP_CREO_MechDog-0.34.0-source.zip.sha256` | 101 | `77811a2052de8a96edd65d8744ea1fe5bfca8e128a88fae21be97ba64d9b6792` |
+| `MCP_CREO_MechDog-0.34.0-seed-library.zip` | 493 442 | `b3bfcab0ad754cb087019fda0f763fd020fa98ac23f38475e3189179df971343` |
+| `MCP_CREO_MechDog-0.34.0-seed-library.zip.sha256` | 107 | `855e6e6eec56e2ddd22ae88b5054ed1a2c3af5cdaf7f0832ec2d93b064f68c91` |
+
+- 远端引用：`git ls-remote --tags origin v0.34.0` → `9f03d60c81a067da3ccb038b10bbc3070f8124c9 refs/tags/v0.34.0`（注释标签，指向发布提交 `bbd81cdbaa92f7acdc1988d574dfdab832e01bed`）；`git ls-remote origin refs/heads/main` 在发布时为同一提交。
+- 包内快照与 `main` 的差异：已冻结源码包内的 POSTCHECK/发布记录仍是打包时点措辞（`remote_verification=pending`），本段实际结果与 `docs/releases/0.34.0.json` 的 `verified` 只存在于 `main`，不改写、不重发已发布附件。
 - 未验证：发布后未重复执行 Creo 实机与 WorkBuddy 黑盒，实机范围以发布前记录为准。
 
 ## v0.33.0（2026-11-20，发布前快照）
