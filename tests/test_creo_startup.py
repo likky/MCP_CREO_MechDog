@@ -56,6 +56,7 @@ class CreoStartupTests(unittest.TestCase):
             "creo_root": str(self.creo),
             "creo_session_id": "",
             "creo_startup_timeout_seconds": 10,
+            "creo_probe_timeout_seconds": 7,
         }
         self.coordinator = self.root / "coordinator"
         self.coordinator.mkdir()

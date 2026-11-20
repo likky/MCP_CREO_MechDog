@@ -1286,15 +1286,19 @@ static void generic_surface_loft(const J &op) {
         if (regen_code != PRO_TK_NO_ERROR)
             throw std::runtime_error(
                 "surface_loft accepted the created feature (create_code=" +
-                std::to_string((int)created) + ") but the regeneration after the incomplete "
-                "create failed (code " + std::to_string((int)regen_code) +
+                std::to_string((int)created) +
+                ") but the regeneration after the incomplete "
+                "create failed (code " +
+                std::to_string((int)regen_code) +
                 ", SURFACE_LOFT_ACCEPT_REGENERATE_FAILED); the job was rolled back");
         if (details["feature_incomplete_after_regenerate"].get<bool>())
             throw std::runtime_error(
                 "surface_loft created the blend (create_code=" + std::to_string((int)created) +
                 ") but this Creo release refused its element tree (code " +
-                std::to_string((int)extract_code) + "), the redefine with the creation tree "
-                "failed (code " + std::to_string((int)redefine_code) +
+                std::to_string((int)extract_code) +
+                "), the redefine with the creation tree "
+                "failed (code " +
+                std::to_string((int)redefine_code) +
                 ") and regeneration left feature_incomplete=true (SURFACE_LOFT_ACCEPT_INCOMPLETE); "
                 "the retained feature owns no geometry and the job was rolled back; use the "
                 "resident_panel route on this release");

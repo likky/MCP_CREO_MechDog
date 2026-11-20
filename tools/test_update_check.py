@@ -14,6 +14,7 @@ import json
 import platform
 import sys
 import time
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -27,11 +28,47 @@ from version import VERSION
 OFFLINE_SERVER = """
 import server
 from creo_mechdog import update_check
-async def offline():
+async def offline(timeout_seconds=None):
     raise update_check.UpdateFailure('Controlled developer-test network failure')
 update_check.fetch_releases = offline
 server.mcp.run(transport='stdio')
 """
+
+
+def assert_tool_count_consistency(capabilities: dict, tools: list) -> None:
+    """Fail loudly if creo_capabilities.tool_count drifts from the listed tools.
+
+    The mismatch is printed before raising so the real expected-vs-actual values
+    are never masked by the MCP client's TaskGroup exception wrapping on context
+    exit (BUG-138). The check is intentionally decoupled from any fixed number:
+    only the runtime consistency between capabilities and the actual tool list
+    matters.
+    """
+    listed = len(tools)
+    reported = capabilities.get("tool_count")
+    if reported != listed:
+        message = (
+            f"creo_capabilities tool_count ({reported}) does not match the listed "
+            f"tool count ({listed})"
+        )
+        print(f"tool-count assertion failed: {message}", file=sys.stderr, flush=True)
+        raise AssertionError(message)
+
+
+_VOLATILE_UPDATE_FIELDS = {"cache_age_seconds", "checked_at", "retry_after_at"}
+
+
+def stable_update(update: dict) -> dict:
+    """Snapshot fields excluding timing fields that legitimately differ per call.
+
+    cache_age_seconds is recomputed live on every call; checked_at and
+    retry_after_at are captured when each snapshot is built, and creo_capabilities
+    returns a snapshot frozen for up to 600 s, so its update can lag a later
+    creo_check_update refresh. Comparing the stable projection verifies the
+    meaningful cross-tool consistency (same status/error/latest version) without
+    being timing-sensitive (BUG-138).
+    """
+    return {key: value for key, value in update.items() if key not in _VOLATILE_UPDATE_FIELDS}
 
 
 def provenance() -> dict:
@@ -101,11 +138,19 @@ async def run(args: argparse.Namespace) -> dict:
             report["update_tool"] = tool.model_dump(mode="json")
             assert tool.annotations.read_only_hint and tool.annotations.open_world_hint
             capabilities = await call(client, "creo_capabilities", {})
-            report["runtime"] = capabilities["runtime"]
-            assert not report["runtime"]["source_changed_since_startup"]
-            assert Path(report["runtime"]["code_root"]).resolve() == ROOT
+            # Compact capabilities no longer inlines runtime (paginated since
+            # FEAT-044). Fetch it from its own section so the source-fingerprint
+            # and code-root assertions keep working; this also used to be masked
+            # by the MCP client TaskGroup wrapping (BUG-138).
+            runtime_page = await call(
+                client, "creo_capabilities", {"detail": "full", "section": "runtime"}
+            )
+            runtime = {entry["key"]: entry["value"] for entry in runtime_page["entries"]}
+            report["runtime"] = runtime
+            assert not runtime["source_changed_since_startup"], runtime
+            assert Path(runtime["code_root"]).resolve() == ROOT
             assert capabilities["version"] == VERSION
-            assert capabilities["tool_count"] == len(tools) == 82
+            assert_tool_count_consistency(capabilities, tools)
             checked = await call(client, "creo_check_update", {"force": True})
             if args.network_failure:
                 assert checked["status"] == "failed"
@@ -120,7 +165,11 @@ async def run(args: argparse.Namespace) -> dict:
             caps = await call(client, "creo_capabilities", {})
             state = await call(client, "creo_startup_status", {})
             assert cached["from_cache"]
-            assert cached == caps["update"] == state["update"]
+            assert (
+                stable_update(cached)
+                == stable_update(caps["update"])
+                == stable_update(state["update"])
+            ), (cached, caps["update"], state["update"])
             report["update"] = cached
             report["startup"] = state
             report["environment"] = await call(client, "creo_check_environment", {})
@@ -171,6 +220,10 @@ async def run(args: argparse.Namespace) -> dict:
             report["update_interfaces_verified"] = True
             report["success"] = not args.create or report["modeling"].get("status") == "succeeded"
     except Exception as exc:
+        # Print the full traceback (including ExceptionGroup sub-exceptions raised
+        # by the MCP client TaskGroup) so the real assertion context is visible
+        # instead of being masked as "unhandled errors in a TaskGroup" (BUG-138).
+        traceback.print_exc()
         report["failure"] = str(exc)
     finally:
         args.output.parent.mkdir(parents=True, exist_ok=True)

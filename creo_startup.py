@@ -35,11 +35,19 @@ ACTIVE = {
     "checking",
     "waiting_for_channel",
     "building_worker",
+    "connecting",
     "starting",
     "waiting_for_connection",
 }
 PREPARATION_BUDGET = 180
 READY_FRESHNESS_SECONDS = 30
+# BUG-139: the old hard-coded 2 s probe never let a slow Toolkit handshake
+# (observed between 2 s and 9 s) succeed. Default above the measured ceiling
+# and let operators raise it for cold hosts.
+DEFAULT_PROBE_TIMEOUT_SECONDS = 15
+# A recent independent connected probe can keep admission open even when the
+# startup coordinator snapshot has regressed to a non-ready terminal state.
+RECENT_CONNECTED_GRACE_SECONDS = READY_FRESHNESS_SECONDS
 FAILURE_CODES = {
     "disabled": "automatic_startup_disabled",
     "launch_failed": "launch_failed",
@@ -56,6 +64,19 @@ def _deadline_at(monotonic_deadline: float | None) -> str | None:
         return None
     remaining = monotonic_deadline - time.monotonic()
     return (datetime.now(timezone.utc) + timedelta(seconds=remaining)).isoformat()
+
+
+def _iso_age_seconds(value: object) -> float | None:
+    """Seconds since an ISO-8601 timestamp, or None when it is unparseable."""
+    if not isinstance(value, str):
+        return None
+    try:
+        stamp = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    return max(0.0, (datetime.now(timezone.utc) - stamp).total_seconds())
 
 
 def _retry_explanation(state: str, *, allowed: bool, blocked_by: str | None, running: bool) -> dict:
@@ -102,16 +123,38 @@ class Settings:
     timeout: int
     selected: bool
     args: tuple[str, ...] = ()
+    probe_timeout: int = DEFAULT_PROBE_TIMEOUT_SECONDS
+    total_budget: int = PREPARATION_BUDGET + 120
 
     @classmethod
     def load(cls) -> Settings:
         value = bridge.config()
         auto = value.get("auto_start_creo", True)
         timeout = value.get("creo_startup_timeout_seconds", 120)
+        probe_timeout = value.get("creo_probe_timeout_seconds", DEFAULT_PROBE_TIMEOUT_SECONDS)
+        total_budget = value.get("startup_total_budget_seconds")
         if not isinstance(auto, bool):
             raise ValueError("auto_start_creo must be a boolean")
         if isinstance(timeout, bool) or not isinstance(timeout, int) or not 10 <= timeout <= 600:
             raise ValueError("creo_startup_timeout_seconds must be an integer from 10 to 600")
+        if (
+            isinstance(probe_timeout, bool)
+            or not isinstance(probe_timeout, int)
+            or not 1 <= probe_timeout <= 60
+        ):
+            raise ValueError("creo_probe_timeout_seconds must be an integer from 1 to 60")
+        if total_budget is None:
+            total_budget = timeout + PREPARATION_BUDGET
+        elif (
+            isinstance(total_budget, bool)
+            or not isinstance(total_budget, int)
+            or not 60 <= total_budget <= 1800
+            or total_budget < timeout
+        ):
+            raise ValueError(
+                "startup_total_budget_seconds must be an integer from 60 to 1800, "
+                "at least creo_startup_timeout_seconds"
+            )
         if not isinstance(value.get("creo_root"), str) or not value["creo_root"]:
             raise ValueError("creo_root must be an absolute installation path")
         root = Path(value["creo_root"])
@@ -130,7 +173,16 @@ class Settings:
         args = _startup_args(value.get("creo_startup_args"))
         # Missing launch files do not prevent reuse or manual connection when
         # automatic startup is disabled; validate them immediately before launch.
-        return cls(executable.resolve(), psf.resolve(), auto, timeout, bool(selected), args)
+        return cls(
+            executable.resolve(),
+            psf.resolve(),
+            auto,
+            timeout,
+            bool(selected),
+            args,
+            probe_timeout=probe_timeout,
+            total_budget=total_budget,
+        )
 
 
 _kernel = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -447,6 +499,11 @@ class CreoStartup:
         self._requested_at = bridge.now()
         self._retry_id = self._new_retry_id()
         self._expired = False
+        # BUG-139: operator override and a recent independent connected probe can
+        # keep admission open when the coordinator snapshot is not ready.
+        self._force_ready = False
+        self._force_ready_at: str | None = None
+        self._last_connected_monotonic: float | None = None
         self._state = {
             "state": "checking",
             "phase": "checking",
@@ -475,13 +532,18 @@ class CreoStartup:
 
     def _publish(self, state: str, message: str, *, shared: bool = True, **fields) -> dict:
         with self._mutex:
+            # A ready publish carrying verified_at is a genuine Toolkit handshake
+            # that landed in this process; it must not be downgraded to timeout
+            # just because the deadline ticked over while the probe was running
+            # (BUG-139 race: success right before the budget expires).
+            verified_ready = state == "ready" and fields.get("verified_at") is not None
             if any(
                 time.monotonic() >= limit
                 for limit in (self._attempt_deadline, self._phase_deadline)
                 if limit is not None
             ):
                 self._expired = True
-            if self._expired and (state in ACTIVE or state == "ready"):
+            if self._expired and not verified_ready and (state in ACTIVE or state == "ready"):
                 state = "timeout"
                 message = "Startup total budget expired; inspect the in-flight phase and occupying job before retrying. Existing Creo and reservations were preserved."
             retained = {
@@ -569,7 +631,7 @@ class CreoStartup:
                         0, phase_deadline - time.monotonic()
                     )
                     value["phase_deadline_at"] = _deadline_at(phase_deadline)
-                if time.monotonic() >= effective_deadline:
+                if time.monotonic() >= effective_deadline and value.get("state") != "ready":
                     self._expired = True
                     value.update(
                         state="timeout",
@@ -656,6 +718,9 @@ class CreoStartup:
             terminal = current_state not in ACTIVE and current_state != "ready"
             value["failure_code"] = FAILURE_CODES.get(current_state) if terminal else None
             value["terminal_reason"] = value.get("message") if terminal else None
+            value["force_ready"] = self._force_ready
+            value["force_ready_at"] = self._force_ready_at
+            value["recent_connected_probe"] = self._recent_connected_probe()
             value.pop("phase_deadline_monotonic", None)
             return value
 
@@ -724,12 +789,61 @@ class CreoStartup:
         # Do not kill Creo, cancel an in-flight native call, or block MCP shutdown.
         self._stop.set()
 
+    def _recent_connected_probe(self) -> dict:
+        """Return whether a recent shared probe observed an open Toolkit channel.
+
+        ``bridge.channel_health`` is written by every probe (the coordinator loop
+        and the live ``creo_session_status`` tool), so a connected observation
+        there can keep admission open even when this coordinator snapshot has
+        regressed to a non-ready terminal state (BUG-139 admission downgrade).
+        """
+        try:
+            health = bridge.channel_health()
+        except (OSError, ValueError):
+            return {"available": False, "checked_at": None, "age_seconds": None}
+        checked_at = health.get("checked_at")
+        age = _iso_age_seconds(checked_at)
+        available = (
+            bool(health.get("connected"))
+            and age is not None
+            and age <= RECENT_CONNECTED_GRACE_SECONDS
+        )
+        return {"available": available, "checked_at": checked_at, "age_seconds": age}
+
+    def force_ready(self, *, enabled: bool) -> dict:
+        """Operator override to open admission despite a non-ready snapshot.
+
+        The override is a flag only: it does not rewrite the coordinator
+        snapshot, so clearing it restores the real readiness picture and a
+        genuine probe can still overwrite the state normally.
+        """
+        with self._mutex:
+            self._force_ready = bool(enabled)
+            if enabled:
+                self._force_ready_at = bridge.now()
+                self._last_connected_monotonic = time.monotonic()
+            else:
+                self._force_ready_at = None
+        return self.status()
+
     def require_ready(self) -> None:
         value = self.status()
-        if not value["connected"]:
-            raise RuntimeError(
-                f"Creo is not ready ({value['state']}): {value['message']}; poll creo_startup_status. No modeling job was queued."
-            )
+        if self._force_ready or value["connected"]:
+            return
+        recent = value.get("recent_connected_probe") or {}
+        if recent.get("available"):
+            return
+        native = value.get("native") or {}
+        try:
+            probe_timeout = Settings.load().probe_timeout
+        except (ValueError, OSError):
+            probe_timeout = DEFAULT_PROBE_TIMEOUT_SECONDS
+        toolkit_code = native.get("toolkit_code")
+        raise RuntimeError(
+            f"Creo is not ready ({value['state']}): {value['message']}; "
+            f"last toolkit_code={toolkit_code!r}, connect_timeout_seconds={probe_timeout}; "
+            f"poll creo_startup_status. No modeling job was queued."
+        )
 
     def session_status(self) -> dict:
         with self._mutex:
@@ -753,8 +867,13 @@ class CreoStartup:
         except (ValueError, OSError) as exc:
             settings = None
             snapshot = {"available": False, "reason": f"configuration_error_{type(exc).__name__}"}
+        probe_timeout = (
+            settings.probe_timeout if settings is not None else DEFAULT_PROBE_TIMEOUT_SECONDS
+        )
         try:
-            native = bridge.session_status(connect_timeout_seconds=2, build_worker=False)
+            native = bridge.session_status(
+                connect_timeout_seconds=probe_timeout, build_worker=False
+            )
         except bridge.ToolkitBusy as exc:
             return {
                 "connected": False,
@@ -782,6 +901,7 @@ class CreoStartup:
                 "message": f"Toolkit probe failed ({type(exc).__name__}); inspect the session and worker, then request explicit retry",
             }
         if native.get("connected"):
+            self._last_connected_monotonic = time.monotonic()
             self._publish(
                 "ready",
                 "Toolkit connection verified",
@@ -812,11 +932,11 @@ class CreoStartup:
         try:
             settings = Settings.load()
             self._directory = self._target_directory(settings)
+            # BUG-139: total budget is configurable; preparation and connection are
+            # accounted separately inside _drive but both capped by this deadline.
             deadline = (
-                (self._attempt_started if self._attempt_started is not None else time.monotonic())
-                + settings.timeout
-                + PREPARATION_BUDGET
-            )
+                self._attempt_started if self._attempt_started is not None else time.monotonic()
+            ) + settings.total_budget
             self._attempt_deadline = deadline
             while not self._stop.is_set():
                 try:
@@ -983,8 +1103,9 @@ class CreoStartup:
         try:
             while not self._stop.is_set() and time.monotonic() < deadline:
                 try:
-                    native = bridge.session_status(connect_timeout_seconds=2, build_worker=False)
-                    break
+                    native = bridge.session_status(
+                        connect_timeout_seconds=settings.probe_timeout, build_worker=False
+                    )
                 except bridge.ToolkitBusy as exc:
                     self._publish(
                         "waiting_for_connection",
@@ -994,6 +1115,18 @@ class CreoStartup:
                         **details,
                     )
                     self._stop.wait(0.25)
+                    continue
+                if native.get("connection_state") == "probe_timeout":
+                    self._publish(
+                        "waiting_for_connection",
+                        "Existing-session probe timed out; retrying within its connection budget without replacing unknown startup history",
+                        shared=False,
+                        native=native,
+                        **details,
+                    )
+                    self._stop.wait(0.25)
+                    continue
+                break
         except (RuntimeError, OSError) as exc:
             self._publish(
                 "selection_required",
@@ -1008,6 +1141,7 @@ class CreoStartup:
                     "timeout",
                     "Existing-session recheck exceeded its connection budget; inspect the occupying operation and preserve unknown startup history",
                     shared=False,
+                    native=native,
                     **details,
                 )
             return
@@ -1189,6 +1323,16 @@ class CreoStartup:
         launched = False
         process = None
         attempt = previous.get("launch_attempt", 0)
+        # BUG-139: surface the connection phase as soon as native build returns so
+        # observers no longer see a stale "building_worker" during the connect loop.
+        self._publish(
+            "connecting",
+            "Native worker built; probing the Toolkit channel for an existing session",
+            launch_reserved=previous.get("launch_reserved", False),
+            launch_attempt=attempt,
+        )
+        last_native = None
+        verified_native = None
         while not self._stop.is_set() and time.monotonic() < deadline:
             current = inventory(settings)
             if current["uncertain"] or any(not p["matches"] for p in current["processes"]):
@@ -1213,7 +1357,9 @@ class CreoStartup:
                         launch_attempt=attempt,
                         probe="session_status",
                     )
-                    native = bridge.session_status(connect_timeout_seconds=2, build_worker=False)
+                    native = bridge.session_status(
+                        connect_timeout_seconds=settings.probe_timeout, build_worker=False
+                    )
             except bridge.ToolkitBusy as exc:
                 self._publish(
                     "waiting_for_connection",
@@ -1232,18 +1378,24 @@ class CreoStartup:
                 )
                 self._stop.wait(0.5)
                 continue
+            last_native = native
             if native.get("connected"):
+                # Land the success after the loop so a probe that succeeds right
+                # before the connect deadline still publishes ready (BUG-139).
+                verified_native = native
+                break
+            if native.get("connection_state") == "probe_timeout":
                 self._publish(
-                    "ready",
-                    "Toolkit connection verified; modeling is available",
+                    "waiting_for_connection",
+                    "Toolkit connection probe timed out; retrying within the connection budget without launching another Creo",
                     native=native,
-                    verified_at=bridge.now(),
-                    launched_by_coordinator=launched,
-                    launch_reserved=False,
                     launch_attempt=attempt,
                 )
-                return
-            if native.get("connection_state") in ("probe_timeout", "worker_unavailable"):
+                if time.monotonic() >= deadline:
+                    break
+                self._stop.wait(0.5)
+                continue
+            if native.get("connection_state") == "worker_unavailable":
                 self._publish("timeout", native["message"], native=native)
                 return
             if native.get("connection_state") == "ambiguous":
@@ -1361,10 +1513,28 @@ class CreoStartup:
                 launch_attempt=attempt,
             )
             self._stop.wait(0.5)
+        # A probe that returned connected right before the deadline still wins:
+        # the success decision lives outside the loop (BUG-139).
+        if verified_native is not None:
+            self._last_connected_monotonic = time.monotonic()
+            self._publish(
+                "ready",
+                "Toolkit connection verified; modeling is available",
+                native=verified_native,
+                verified_at=bridge.now(),
+                launched_by_coordinator=launched,
+                launch_reserved=False,
+                launch_attempt=attempt,
+            )
+            return
         if not self._stop.is_set():
+            toolkit_code = (last_native or {}).get("toolkit_code")
             self._publish(
                 "timeout",
-                "Toolkit did not become ready within the startup budget; inspect Creo dialogs/environment, then request retry. Existing Creo processes were preserved",
+                "Toolkit did not become ready within the startup budget; "
+                f"last toolkit_code={toolkit_code!r}, connect_timeout_seconds={settings.probe_timeout}. "
+                "Inspect Creo dialogs/environment, then request retry. Existing Creo processes were preserved",
+                native=last_native,
                 launch_reserved=launched or previous.get("launch_reserved", False),
                 launch_attempt=attempt,
             )

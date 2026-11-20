@@ -11,6 +11,7 @@ import platform
 import runpy
 import subprocess
 import sys
+import time
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,6 +20,15 @@ ROOT = Path(__file__).resolve().parents[1]
 BASELINE = Path("docs/development/style-baseline.json")
 CONFIG_FILES = ("pyproject.toml", ".clang-format", "requirements-dev.txt")
 DEFAULT_UNIT_TIMEOUT_SECONDS = 900
+DEFAULT_OFFLINE_TIMEOUT_SECONDS = 240
+# Independent acceptance scripts that must keep passing offline (no Creo, no
+# network). BUG-138: their tool-count assertions used to be hard-coded and were
+# never covered by any gate, so they rotted silently across versions. Each entry
+# is (display name, argv relative to the repo root).
+OFFLINE_ACCEPTANCE_SCRIPTS = (
+    ("test_update_check", ["tools/test_update_check.py", "--network-failure"]),
+    ("test_model_reconciliation", ["tools/test_model_reconciliation.py", "--offline"]),
+)
 
 
 def positive_seconds(text: str) -> int:
@@ -176,6 +186,48 @@ def save_json(path: Path, value: dict) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def run_offline_acceptance(
+    root: Path, timeout_seconds: int = DEFAULT_OFFLINE_TIMEOUT_SECONDS
+) -> dict:
+    """Run independent acceptance scripts in their offline, no-Creo mode.
+
+    Returns a per-script result dict; failures (non-zero exit or timeout) are
+    recorded with tail output so the gate report is self-diagnosing. The caller
+    decides whether to fail the overall check.
+    """
+    results: dict = {}
+    for name, rel_args in OFFLINE_ACCEPTANCE_SCRIPTS:
+        started = time.monotonic()
+        try:
+            proc = subprocess.run(
+                [sys.executable, *rel_args],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout_seconds,
+            )
+        except subprocess.TimeoutExpired:
+            results[name] = {
+                "status": "timed_out",
+                "elapsed_seconds": round(time.monotonic() - started, 3),
+            }
+            break
+        entry = {
+            "status": "passed" if proc.returncode == 0 else "failed",
+            "exit_code": proc.returncode,
+            "elapsed_seconds": round(time.monotonic() - started, 3),
+        }
+        if proc.returncode:
+            entry["stdout_tail"] = proc.stdout[-2000:]
+            entry["stderr_tail"] = proc.stderr[-4000:]
+        results[name] = entry
+        if proc.returncode:
+            break
+    return results
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -207,6 +259,7 @@ def main(argv: list[str] | None = None) -> int:
         "environment": {"os": platform.system(), "python": platform.python_version()},
         "source": git_state(ROOT),
         "native_validation": "not_run",
+        "offline_acceptance": "not_run",
         "unit_tests": "not_run",
         "unit_test_timeout_seconds": args.unit_timeout_seconds,
         "success": False,
@@ -244,6 +297,22 @@ def main(argv: list[str] | None = None) -> int:
                 raise RuntimeError(
                     f"{len(errors)} style regression(s); see build/development_check.json"
                 )
+        # Offline gate (BUG-138): independent acceptance scripts run without Creo
+        # or network so their tool-count consistency assertions cannot rot across
+        # versions. Runs on every invocation, including --skip-unit.
+        report["offline_acceptance"] = run_offline_acceptance(ROOT)
+        failed = [
+            name
+            for name, entry in report["offline_acceptance"].items()
+            if entry.get("status") != "passed"
+        ]
+        if failed:
+            detail = report["offline_acceptance"][failed[0]]
+            raise RuntimeError(
+                f"Offline acceptance failed for {', '.join(failed)}; "
+                f"see build/development_check.json. stderr tail: "
+                f"{detail.get('stderr_tail', '')}"
+            )
         if not args.skip_unit:
             if os.name != "nt":
                 raise RuntimeError("Run unit validation on Windows; --skip-unit is styles only")

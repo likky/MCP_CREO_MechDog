@@ -316,7 +316,7 @@ class ReferenceContractTests(unittest.TestCase):
         # 107 = 102 that carry creo_surface_trim (live P3), creo_project_curve
         # (live S04) and creo_surface_offset (live S07, 2026-11-05), plus five
         # later live tools.
-        self.assertEqual(len(tools), 109)
+        self.assertEqual(len(tools), 110)
         axis = tools["creo_axis_pattern"].input_schema["properties"]["axis"]
         self.assertEqual(
             {form["properties"]["kind"]["const"] for form in axis["oneOf"]},

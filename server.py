@@ -362,9 +362,14 @@ async def creo_reclaim_generations(
 
 
 @mcp.tool(annotations=CREATE)
-async def creo_startup_status(retry: bool = False) -> dict[str, Any]:
-    """Read a background snapshot with verified_at, verification_age_seconds and stale. retry=true rechecks the channel within 180s preparation plus configured startup budget; overlapping retries share coordination. Unreadable startup history can be archived/rebuilt only when it predates a verified Windows reboot, both recovery locks are held and no Creo session exists; startup_recovery identifies the backup. Same-boot/unverified history requires manual reconciliation. waiting_for_channel includes busy details. Never closes Creo, clears unknown job/model reservations or replays jobs. Poll until ready; inspect recovery guidance otherwise. session_health is a read-only evidence summary (unknown/suspected_damage/no_failure_observed) built from recorded save/connection results; it opens no connection, saves nothing and is not a health guarantee."""
-    result = await invoke(startup.start, retry=True) if retry else await invoke(startup.status)
+async def creo_startup_status(retry: bool = False, force_ready: bool = False) -> dict[str, Any]:
+    """Read a background snapshot with verified_at, verification_age_seconds and stale. retry=true rechecks the channel within 180s preparation plus configured startup budget; overlapping retries share coordination. force_ready=true is an operator override that opens modeling admission despite a non-ready snapshot (sets force_ready/force_ready_at; verify Toolkit connectivity before modeling); force_ready=false clears it. Unreadable startup history can be archived/rebuilt only when it predates a verified Windows reboot, both recovery locks are held and no Creo session exists; startup_recovery identifies the backup. Same-boot/unverified history requires manual reconciliation. waiting_for_channel includes busy details. Never closes Creo, clears unknown job/model reservations or replays jobs. Poll until ready; inspect recovery guidance otherwise. session_health is a read-only evidence summary (unknown/suspected_damage/no_failure_observed) built from recorded save/connection results; it opens no connection, saves nothing and is not a health guarantee."""
+    if force_ready:
+        result = await invoke(startup.force_ready, enabled=True)
+    elif retry:
+        result = await invoke(startup.start, retry=True)
+    else:
+        result = await invoke(startup.status)
     return {**result, "update": updates.snapshot(), "session_health": session_health()}
 
 
@@ -3053,6 +3058,41 @@ async def creo_solidify(
         None,
         expected_revision,
     )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_redefine_solidify_body(
+    model_id: str,
+    expected_revision: int,
+    feature: str | int,
+    body_strategy: Literal["existing", "body_id", "new"] = "existing",
+    body_id: int | None = None,
+) -> dict[str, Any]:
+    """FEAT-070: rebuild an invalid body reference on an existing solidify/patch (实体化) feature.
+
+    Use this when a solidify feature self-locks because its PRO_E_BODY_SELECT reference is stale
+    (PRO_REF_INVALID): Creo GUI refuses to redefine it and the model will not regenerate. This
+    tool extracts the feature element tree through Toolkit, validates the current body reference,
+    rewrites PRO_E_BODY_USE / PRO_E_BODY_SELECT to a resolvable target body, redefines the feature
+    and regenerates. On any failure the job rolls back to the saved checkpoint, so the model is
+    never left dirty.
+
+    feature is the target solidify feature id (int) or its Creo feature name (str); obtain it from
+    creo_inspect_model. body_strategy selects the replacement body reference:
+      - 'existing' (default): point at the part's current active solid body.
+      - 'body_id': point at body <body_id>; requires an active/scopable body.
+      - 'new': switch PRO_E_BODY_USE to NEW so the feature materializes into a fresh body.
+
+    The finished job echoes the repair receipt in result.operations[0]: old_body (use, ref_type,
+    ref_id, ref_status, valid), new_body (strategy, use, ref_type, ref_id, ref_resolved),
+    redefine_code, regenerate_code, feature_incomplete, body_count/volume before and after. Run
+    creo_get_job to terminal state; success requires status=succeeded and
+    saved_file_reloaded_and_verified=true.
+    """
+    operation = dict(op="redefine_solidify_body", feature=feature, body_strategy=body_strategy)
+    if body_id is not None:
+        operation["body_id"] = body_id
+    return await invoke(general.submit, [operation], model_id, None, expected_revision)
 
 
 @mcp.tool(annotations=CREATE)

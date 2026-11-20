@@ -1,0 +1,23 @@
+{
+  "work_item": "BUG-137/BUG-138/BUG-139",
+  "archived_on": "2026-11-20",
+  "source_directory": "C:\\Users\\Administrator\\Desktop\\0.32.0",
+  "source_baseline": "95852899d893f590c6ef37a3724ac669ca7c845e",
+  "source_version": "0.31.1",
+  "file_count": 2,
+  "total_bytes": 23756,
+  "files": [
+    {
+      "id": "F01",
+      "file": "originals/2026-11-20_CREO_0.31.1_上轮两项反馈跨6版本未修全量单测仍3errors且验收脚本硬编码82.md",
+      "bytes": 11443,
+      "sha256": "4307f3d672cfbe8615002570d5c953485f15c12e364d23c1e20c81b173f00207"
+    },
+    {
+      "id": "F02",
+      "file": "originals/2026-11-20_CREO_0.31.1_启动校验2秒探测超时且预算耗尽后丢弃已成功探测致109个建模工具全部拒单.md",
+      "bytes": 12313,
+      "sha256": "03b566073c68754d3c266310ef8443122328dacdd89fa39b70c1e03c482c5891"
+    }
+  ]
+}

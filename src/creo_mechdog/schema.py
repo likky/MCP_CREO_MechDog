@@ -2907,6 +2907,36 @@ class SolidifyOp(StrictModel):
         return self
 
 
+class RedefineSolidifyBodyOp(StrictModel):
+    """FEAT-070: rebuild an invalid body reference on an existing solidify/patch.
+
+    When a solidify (实体化/patch) feature carries a stale PRO_E_BODY_SELECT
+    reference (status PRO_REF_INVALID) Creo self-locks the feature GUI and the
+    model refuses to regenerate. This operation redefines the feature's body
+    options through Toolkit, pointing PRO_E_BODY_SELECT at a resolvable body (or
+    switching to a fresh body with body_strategy='new').
+    """
+
+    op: Literal["redefine_solidify_body"]
+    feature: str | int
+    body_strategy: Literal["existing", "body_id", "new"] = "existing"
+    body_id: int | None = None
+
+    @model_validator(mode="after")
+    def _validate_body_id(self):
+        if self.body_strategy == "body_id":
+            if self.body_id is None or self.body_id < 0:
+                raise ValueError(
+                    "redefine_solidify_body requires a non-negative body_id when "
+                    "body_strategy='body_id'"
+                )
+        elif self.body_id is not None:
+            raise ValueError(
+                "redefine_solidify_body body_id is only allowed with body_strategy='body_id'"
+            )
+        return self
+
+
 class BooleanOp(StrictModel):
     op: Literal["boolean_bodies"]
     label: Label
@@ -3017,6 +3047,7 @@ Operation = Annotated[
         ThickenOp,
         SurfaceOffsetOp,
         SolidifyOp,
+        RedefineSolidifyBodyOp,
         SurfaceTrimOp,
         SurfaceLoftOp,
         SurfaceBoundaryFillOp,

@@ -3407,6 +3407,434 @@ static J scope_applied_report(const J &op, ProFeature f, const J &before) {
             non_target_bodies_unchanged(before, body_fingerprints(), requested);
     return report;
 }
+// ---------------------------------------------------------------------------
+// FEAT-070: rebuild a stale/invalid body reference on an existing solidify /
+// patch feature. In Creo a failed PRO_E_BODY_SELECT reference (status
+// PRO_REF_INVALID) self-locks the feature GUI and refuses regeneration even
+// when a valid solid body exists. The repair extracts the feature element
+// tree, validates the current body reference, rewrites PRO_E_BODY_USE /
+// PRO_E_BODY_SELECT to a resolvable target body, redefines and regenerates.
+// Any failure throws so the job finalizer rolls back to its saved checkpoint;
+// the model is never left dirty. Partial receipts are staged before throwing
+// so the failed operation record carries old_body / phase / raw Toolkit code.
+// ---------------------------------------------------------------------------
+static std::string feat070_body_use_label(int use) {
+    if (use == PRO_BODY_USE_NEW)
+        return "new";
+    if (use == PRO_BODY_USE_ALL)
+        return "all";
+    if (use == PRO_BODY_USE_SELECTED)
+        return "selected";
+    return "unknown";
+}
+static std::string feat070_lower(const std::string &s) {
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s)
+        out.push_back((c >= 'A' && c <= 'Z') ? char(c - 'A' + 'a') : c);
+    return out;
+}
+// Best-effort body counts + volume for the before/after receipt. A failed
+// model may refuse mass-property evaluation; null is reported rather than
+// aborting the repair. Also returns the live inspection state (features[]) so
+// the target feature can be resolved by its Creo name.
+static J feat070_snapshot() {
+    J state = nullptr;
+    try {
+        state = inspection(false);
+    } catch (...) {
+        state = nullptr;
+    }
+    J counts = nullptr;
+    if (state.is_object() && state.contains("body_counts") && state["body_counts"].is_object())
+        counts = {{"objects", state["body_counts"].value("objects", 0)},
+                  {"active", state["body_counts"].value("active", 0)},
+                  {"with_material", state["body_counts"].value("with_material", 0)}};
+    bool vol_ok = true;
+    double vol = 0.0;
+    try {
+        vol = volume();
+    } catch (...) {
+        vol_ok = false;
+    }
+    return {
+        {"state", state}, {"body_counts", counts}, {"volume_mm3", vol_ok ? J(vol) : J(nullptr)}};
+}
+// Resolve the target feature by id (int / digit string), MCP-owned label, or
+// live Creo feature name (adopted / real parts are not registered aliases).
+static int feat070_resolve_feature(const J &target, const J &state, std::string &out_name) {
+    out_name.clear();
+    bool numeric = target.is_number_integer();
+    if (!numeric && target.is_string()) {
+        const std::string &s = target.get_ref<const std::string &>();
+        numeric = !s.empty() && s.find_first_not_of("0123456789") == std::string::npos;
+    }
+    int id = -1;
+    if (numeric) {
+        id = feature_id(target);
+    } else if (target.is_string()) {
+        try {
+            id = feature_id(target);
+        } catch (const std::exception &) {
+            id = -1;
+        }
+        if (id < 0 && state.is_object() && state.contains("features")) {
+            const std::string want = target.get<std::string>();
+            const std::string want_lo = feat070_lower(want);
+            for (const auto &f : state["features"]) {
+                if (!f.contains("id"))
+                    continue;
+                const std::string name = f.value("name", "");
+                if (name == want || feat070_lower(name) == want_lo) {
+                    id = f["id"].get<int>();
+                    break;
+                }
+            }
+        }
+    }
+    if (id < 0)
+        throw std::runtime_error(
+            "FEAT070_FEATURE_NOT_FOUND: target feature was not found by id or name; run "
+            "creo_inspect_model and pass the feature id");
+    if (state.is_object() && state.contains("features"))
+        for (const auto &f : state["features"])
+            if (f.contains("id") && f["id"].get<int>() == id) {
+                out_name = f.value("name", "");
+                break;
+            }
+    return id;
+}
+// Read the current PRO_E_BODY / PRO_E_BODY_USE / PRO_E_BODY_SELECT from an
+// extracted tree and decide whether the body reference is valid. Mirrors
+// scope_applied_report() and adds the ProReferenceStatus check that catches
+// PRO_REF_INVALID (the exact self-locked state FEAT-070 targets).
+static J feat070_read_body_reference(ProElement tree, int &query_code) {
+    query_code = PRO_TK_NO_ERROR;
+    J report = {{"use", nullptr},    {"use_name", nullptr},   {"ref_type_int", nullptr},
+                {"ref_id", nullptr}, {"ref_status", nullptr}, {"valid", false}};
+    ProElement body = nullptr;
+    try {
+        body = get_path(tree, {PRO_E_BODY});
+    } catch (ProError missing) {
+        query_code = missing;
+        return report;
+    }
+    ProElement use_elem = nullptr;
+    try {
+        use_elem = get_path(body, {PRO_E_BODY_USE});
+    } catch (ProError missing) {
+        query_code = missing;
+        return report;
+    }
+    int use = PRO_BODY_USE_SELECTED;
+    ProError c = ProElementIntegerGet(use_elem, nullptr, &use);
+    query_code = c;
+    if (c != PRO_TK_NO_ERROR)
+        return report;
+    report["use"] = use;
+    report["use_name"] = feat070_body_use_label(use);
+    if (use != PRO_BODY_USE_SELECTED)
+        return report;
+    ProElement select_elem = nullptr;
+    try {
+        select_elem = get_path(body, {PRO_E_BODY_SELECT});
+    } catch (ProError) {
+        // USE=SELECTED without a SELECT child is itself an invalid reference.
+        query_code = PRO_TK_NO_ERROR;
+        report["ref_status"] = "missing";
+        return report;
+    }
+    ProReference reference = nullptr;
+    c = ProElementReferenceGet(select_elem, nullptr, &reference);
+    query_code = c;
+    if (c != PRO_TK_NO_ERROR || !reference) {
+        report["ref_status"] = c == PRO_TK_NO_ERROR ? "null" : "reference_get_failed";
+        return report;
+    }
+    ProType rtype = PRO_TYPE_UNUSED;
+    int rid = -1;
+    ProError tc = ProReferenceTypeGet(reference, &rtype);
+    ProError ic = ProReferenceIdGet(reference, &rid);
+    report["ref_type_int"] = tc == PRO_TK_NO_ERROR ? J((int)rtype) : J(nullptr);
+    report["ref_id"] = ic == PRO_TK_NO_ERROR ? J(rid) : J(nullptr);
+    // ProRefState is the status enum used by ProReferenceStatusGet in both the
+    // Creo 10 and Creo 13 Toolkit SDKs (ProRefInfo.h). The type is read here to
+    // detect PRO_REF_INVALID, the exact self-locked state FEAT-070 targets.
+    ProRefState status;
+    ProError sc = ProReferenceStatusGet(reference, &status);
+    if (sc == PRO_TK_NO_ERROR) {
+        if (status == PRO_REF_INVALID)
+            report["ref_status"] = "invalid";
+        else if (status == PRO_REF_MISSING)
+            report["ref_status"] = "missing";
+        else
+            report["ref_status"] = "ok";
+    } else if (sc == PRO_TK_EMPTY) {
+        report["ref_status"] = "ok";
+    } else {
+        report["ref_status"] = "unknown";
+    }
+    bool type_ok = (tc == PRO_TK_NO_ERROR && rtype == PRO_BODY);
+    bool resolvable = (sc == PRO_TK_EMPTY || (sc == PRO_TK_NO_ERROR && status != PRO_REF_INVALID &&
+                                              status != PRO_REF_MISSING));
+    report["valid"] = type_ok && resolvable && rid >= 0;
+    query_code = PRO_TK_NO_ERROR;
+    return report;
+}
+static J generic_redefine_solidify_body(const J &op) {
+    const std::string strategy = op.value("body_strategy", std::string("existing"));
+    if (strategy != "existing" && strategy != "body_id" && strategy != "new")
+        throw std::runtime_error(
+            "FEAT070_BAD_STRATEGY: body_strategy must be 'existing', 'body_id' or 'new'");
+
+    J before = feat070_snapshot();
+    const J &state = before["state"];
+
+    std::string feature_name;
+    int fid = feat070_resolve_feature(op.at("feature"), state, feature_name);
+    ProFeature f = feature(fid);
+
+    ProElement tree = nullptr;
+    ProError ec = ProFeatureElemtreeExtract(&f, nullptr, PRO_FEAT_EXTRACT_NO_OPTS, &tree);
+    if (ec != PRO_TK_NO_ERROR || !tree) {
+        stage_operation_result({{"phase", "extract"},
+                                {"feature_id", fid},
+                                {"feature_name", feature_name},
+                                {"feature_incomplete", true},
+                                {"body_counts_before", before["body_counts"]},
+                                {"volume_before_mm3", before["volume_mm3"]}});
+        throw std::runtime_error("FEAT070_EXTRACT_FAILED: ProFeatureElemtreeExtract failed (code " +
+                                 std::to_string((int)ec) + ") for feature " + std::to_string(fid) +
+                                 "; the feature tree cannot be read");
+    }
+
+    int old_query = PRO_TK_NO_ERROR;
+    J old_body = feat070_read_body_reference(tree, old_query);
+    old_body["query_code"] = old_query;
+
+    auto free_tree = [&]() {
+        if (tree) {
+            ProFeatureElemtreeFree(&f, tree);
+            tree = nullptr;
+        }
+    };
+    ProSelection target_sel = nullptr;
+    auto free_sel = [&]() {
+        if (target_sel) {
+            ProSelectionFree(&target_sel);
+            target_sel = nullptr;
+        }
+    };
+    auto fail = [&](const std::string &phase, const std::string &message, const J &extra) {
+        free_sel();
+        free_tree();
+        J receipt = {{"phase", phase},
+                     {"feature_id", fid},
+                     {"feature_name", feature_name},
+                     {"old_body", old_body},
+                     {"feature_incomplete", true},
+                     {"body_counts_before", before["body_counts"]},
+                     {"volume_before_mm3", before["volume_mm3"]}};
+        if (extra.is_object())
+            receipt.update(extra);
+        stage_operation_result(std::move(receipt));
+        throw std::runtime_error(message);
+    };
+
+    ProElement body_elem = nullptr;
+    try {
+        body_elem = get_path(tree, {PRO_E_BODY});
+    } catch (ProError missing) {
+        fail("locate_body_branch",
+             "FEAT070_NO_BODY_BRANCH: feature " + std::to_string(fid) +
+                 " has no PRO_E_BODY body-options branch; only solidify/patch features "
+                 "carry one (query_code=" +
+                 std::to_string(missing) + ")",
+             J::object());
+    }
+
+    J new_body = {{"strategy", strategy},    {"use", nullptr},    {"use_name", nullptr},
+                  {"ref_type_int", nullptr}, {"ref_id", nullptr}, {"ref_resolved", false}};
+
+    if (strategy == "new") {
+        new_body["use"] = PRO_BODY_USE_NEW;
+        new_body["use_name"] = "new";
+        ProElement use_elem = nullptr;
+        try {
+            use_elem = get_path(body_elem, {PRO_E_BODY_USE});
+        } catch (ProError) {
+            use_elem = nullptr;
+        }
+        try {
+            if (use_elem)
+                CK(ProElementIntegerSet(use_elem, PRO_BODY_USE_NEW));
+            else
+                integer(body_elem, PRO_E_BODY_USE, PRO_BODY_USE_NEW);
+        } catch (ProError pe) {
+            fail("write_body_use",
+                 "FEAT070_WRITE_USE_FAILED: could not set PRO_E_BODY_USE (code " +
+                     std::to_string(pe) + ")",
+                 {{"new_body", new_body}});
+        }
+    } else {
+        bool has_solid = state.is_object() && state.value("has_solid", false);
+        if (!has_solid)
+            fail("resolve_body",
+                 "FEAT070_NO_SOLID_BODY: strategy '" + strategy +
+                     "' requires a solid body but this part has none; use body_strategy='new'",
+                 {{"new_body", new_body}});
+        try {
+            if (strategy == "existing")
+                target_sel = resolve({{"kind", "body"}});
+            else {
+                int bid = op.value("body_id", -1);
+                if (bid < 0)
+                    fail("resolve_body",
+                         "FEAT070_MISSING_BODY_ID: body_strategy='body_id' requires body_id",
+                         {{"new_body", new_body}});
+                require_scopable_body(bid);
+                target_sel = resolve({{"kind", "body"}, {"id", bid}});
+            }
+        } catch (ProError pe) {
+            fail("resolve_body",
+                 "FEAT070_RESOLVE_BODY_FAILED: could not resolve target body (code " +
+                     std::to_string(pe) + ")",
+                 {{"new_body", new_body}});
+        } catch (const std::runtime_error &) {
+            throw; // require_scopable_body already carries a clear message
+        }
+        // NOTE: local is named body_ref (not ref) to avoid shadowing the
+        // geometry.cpp helper ref(ProElement, int, ProSelection) used below.
+        ProReference body_ref = nullptr;
+        ProError rc = ProSelectionToReference(target_sel, &body_ref);
+        if (rc != PRO_TK_NO_ERROR || !body_ref) {
+            fail("resolve_body",
+                 "FEAT070_BODY_REF_FAILED: resolved body selection is not a usable reference "
+                 "(code " +
+                     std::to_string((int)rc) + ")",
+                 {{"new_body", new_body}});
+        }
+        ProType rtype = PRO_TYPE_UNUSED;
+        int rid = -1;
+        ProError tc = ProReferenceTypeGet(body_ref, &rtype);
+        ProError ic = ProReferenceIdGet(body_ref, &rid);
+        if (tc != PRO_TK_NO_ERROR || rtype != PRO_BODY) {
+            ProReferenceFree(&body_ref);
+            fail("resolve_body",
+                 "FEAT070_BODY_NOT_BODY: resolved reference is not a body (type=" +
+                     std::to_string(tc == PRO_TK_NO_ERROR ? (int)rtype : -1) + ")",
+                 {{"new_body", new_body}});
+        }
+        new_body["use"] = PRO_BODY_USE_SELECTED;
+        new_body["use_name"] = "selected";
+        new_body["ref_type_int"] = (int)rtype;
+        new_body["ref_id"] = rid;
+        new_body["ref_resolved"] = true;
+
+        try {
+            ProElement use_elem = nullptr;
+            try {
+                use_elem = get_path(body_elem, {PRO_E_BODY_USE});
+            } catch (ProError) {
+                use_elem = nullptr;
+            }
+            if (use_elem)
+                CK(ProElementIntegerSet(use_elem, PRO_BODY_USE_SELECTED));
+            else
+                integer(body_elem, PRO_E_BODY_USE, PRO_BODY_USE_SELECTED);
+            ProElement select_elem = nullptr;
+            try {
+                select_elem = get_path(body_elem, {PRO_E_BODY_SELECT});
+            } catch (ProError) {
+                select_elem = nullptr;
+            }
+            if (select_elem)
+                CK(ProElementReferenceSet(select_elem, body_ref));
+            else
+                ref(body_elem, PRO_E_BODY_SELECT, target_sel);
+        } catch (ProError pe) {
+            ProReferenceFree(&body_ref);
+            fail("write_body_ref",
+                 "FEAT070_WRITE_REF_FAILED: could not rewrite PRO_E_BODY_SELECT (code " +
+                     std::to_string(pe) + ")",
+                 {{"new_body", new_body}});
+        }
+        ProReferenceFree(&body_ref);
+    }
+
+    // Mirror the repo's redefine() helper: ProFeatureWithoptionsRedefine must
+    // receive an allocated options array (PRO_FEAT_CR_NO_OPTS) and a real
+    // ProErrorlist; passing nullptr for either dereferences null in the SDK
+    // and crashes the worker (observed 2026-11-20 on Creo 10 / release 42).
+    ProFeatureCreateOptions *rd_opts = nullptr;
+    CK(ProArrayAlloc(1, sizeof(ProFeatureCreateOptions), 1, (ProArray *)&rd_opts));
+    rd_opts[0] = PRO_FEAT_CR_NO_OPTS;
+    ProErrorlist rd_errors = {};
+    log("FEAT070 redefine feature=%d strategy=%s\n", fid, strategy.c_str());
+    ProError redefine_code =
+        ProFeatureWithoptionsRedefine(nullptr, &f, tree, rd_opts, PRO_REGEN_NO_FLAGS, &rd_errors);
+    errors(rd_errors);
+    ProArrayFree((ProArray *)&rd_opts);
+    free_tree();
+    free_sel();
+    log("FEAT070 redefine_code=%d\n", (int)redefine_code);
+    if (redefine_code != PRO_TK_NO_ERROR) {
+        stage_operation_result({{"phase", "redefine"},
+                                {"feature_id", fid},
+                                {"feature_name", feature_name},
+                                {"old_body", old_body},
+                                {"new_body", new_body},
+                                {"redefine_code", (int)redefine_code},
+                                {"feature_incomplete", true},
+                                {"body_counts_before", before["body_counts"]},
+                                {"volume_before_mm3", before["volume_mm3"]}});
+        throw std::runtime_error(
+            "FEAT070_REDEFINE_FAILED: ProFeatureWithoptionsRedefine returned code " +
+            std::to_string((int)redefine_code) + " for feature " + std::to_string(fid) +
+            "; the model has been rolled back");
+    }
+
+    log("FEAT070 regenerate feature=%d\n", fid);
+    ProError regenerate_code = ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS);
+    log("FEAT070 regenerate_code=%d\n", (int)regenerate_code);
+    ProBoolean incomplete = PRO_B_TRUE;
+    ProFeatureIsIncomplete(&f, &incomplete);
+    bool feature_incomplete = (incomplete == PRO_B_TRUE);
+    if (regenerate_code != PRO_TK_NO_ERROR || feature_incomplete) {
+        J after = feat070_snapshot();
+        stage_operation_result({{"phase", "regenerate"},
+                                {"feature_id", fid},
+                                {"feature_name", feature_name},
+                                {"old_body", old_body},
+                                {"new_body", new_body},
+                                {"redefine_code", (int)redefine_code},
+                                {"regenerate_code", (int)regenerate_code},
+                                {"feature_incomplete", feature_incomplete},
+                                {"body_counts_before", before["body_counts"]},
+                                {"body_counts_after", after["body_counts"]},
+                                {"volume_before_mm3", before["volume_mm3"]},
+                                {"volume_after_mm3", after["volume_mm3"]}});
+        throw std::runtime_error("FEAT070_REGENERATE_FAILED: ProSolidRegenerate returned code " +
+                                 std::to_string((int)regenerate_code) +
+                                 (feature_incomplete ? " and the feature remains incomplete" : "") +
+                                 "; the model has been rolled back");
+    }
+
+    J after = feat070_snapshot();
+    return {
+        {"feature_id", fid},
+        {"feature_name", feature_name},
+        {"old_body", old_body},
+        {"new_body", new_body},
+        {"redefine_code", (int)redefine_code},
+        {"regenerate_code", (int)regenerate_code},
+        {"feature_incomplete", feature_incomplete},
+        {"body_counts_before", before["body_counts"]},
+        {"body_counts_after", after["body_counts"]},
+        {"volume_before_mm3", before["volume_mm3"]},
+        {"volume_after_mm3", after["volume_mm3"]},
+    };
+}
 static J extrude_or_revolve(const J &op, bool revolve) {
     if (revolve)
         validate_revolve_axis(op);
@@ -5294,6 +5722,10 @@ static void execute_operation_body(const J &op) {
         generic_fill(op);
     else if (kind == "thicken" || kind == "solidify")
         generic_surface_solid(op);
+    else if (kind == "redefine_solidify_body")
+        // FEAT-070: rebuild an invalid body reference on an existing
+        // solidify/patch feature; returns a repair receipt as details.
+        details = generic_redefine_solidify_body(op);
     else if (kind == "surface_offset")
         generic_surface_offset(op);
     else if (kind == "surface_trim")

@@ -155,6 +155,14 @@ class DevelopmentWorkflow(unittest.TestCase):
                     patch.object(dev_check, "git_state", return_value={}),
                     patch.object(dev_check, "collect_styles", return_value=current),
                     patch.object(
+                        dev_check,
+                        "run_offline_acceptance",
+                        return_value={
+                            name: {"status": "passed"}
+                            for name, _ in dev_check.OFFLINE_ACCEPTANCE_SCRIPTS
+                        },
+                    ),
+                    patch.object(
                         dev_check.subprocess, "run", return_value=result, side_effect=error
                     ),
                     contextlib.redirect_stdout(io.StringIO()),

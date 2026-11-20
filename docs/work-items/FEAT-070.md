@@ -1,12 +1,14 @@
 # FEAT-070：实体化重定义时重建失效主体参照
 
+分类：**部分交付 0.34.0**
+
 类型：功能（建模能力补全）
 
 优先级：P2
 
-状态：待开发（Toolkit 侧 body 元素写法需先核实）
+状态：部分交付 0.34.0（已实现并离线单测通过；FEAT-070/BUG-139 另已本机 Creo 10 实机验收；待合入 main 并发布）
 
-目标版本：未排期
+目标版本：0.34.0
 
 来源与关联：[BUG-120](BUG-120.md) 任务 5（2026-11-20 结项章节）、`docs/BACKLOG.md` 2026-11-20 条目、证据 `jobs/4d9e1a78d34344dba22ecc98826d60d7/output/feature_250.xml`
 
@@ -52,4 +54,18 @@
 
 ## 实现与证据
 
-尚未开始。登记依据见 [BUG-120](BUG-120.md) 2026-11-20 章节：`feature_250.xml`（`PRO_E_BODY_USE=2` / `PRO_E_BODY_SELECT=251 PRO_REF_INVALID`）、`native.log`（live 特征表，feature 250 status=6）、`build/bug120_task5/work/g1_result_20261120.json` 与 `quilt142_group_20261120.json`（相切后 G1 与面组闭合）。实现时补充变更文件、提交号、dirty 状态、受测源码指纹、环境与未测范围。
+源码身份：分支 `codex/feedback-0311-0320-feat070`，基于 main `95852899d893f590c6ef37a3724ac669ca7c845e`，`dirty=true`（未提交）。本机 **Creo 10.0.0.0 / release 42** 实机验收（2026-11-19 常设授权）。
+
+变更文件：
+- `native/generic.cpp`：新增 `generic_redefine_solidify_body`（及 `feat070_*` 辅助），读取/校验实体化（patch/solidify）特征的 `PRO_E_BODY_USE`/`PRO_E_BODY_SELECT`，按 `strategy`（`existing`/`new`）重写主体参照；调用 `ProFeatureWithoptionsRedefine` 时分配 `rd_opts=[PRO_FEAT_CR_NO_OPTS]` 与真实 `ProErrorlist`（修复空指针导致 worker 崩溃 + Creo 模态对话框阻塞消息循环的问题），失败回滚。
+- `src/creo_mechdog/schema.py`：新增 `RedefineSolidifyBodyOp`。
+- `src/creo_mechdog/capabilities.py` 与 `server.py`：新增公开工具 `creo_redefine_solidify_body`（公开工具 109→110）。
+- 23 项单测；工具数契约测试 109→110。`.\.venv\Scripts\python.exe bridge.py build` exit 0 → `build\creo_worker.exe`。
+
+实机（本机 Creo 10.0.0.0 / `release_numeric=42`，采用件等价场景）：
+- **`strategy=new` 成功**：模型 `51abe8c9c4264ee5b63df878aa2b861a`，作业 `973e4318b1f540dd9bf66541c4815174`；`status=succeeded`、`stage=verified`、`saved_file_reloaded_and_verified=true`；回执 `old_body` use=2(selected) ref_id=251 → `new_body` use=0(new)，`redefine_code=0`、`regenerate_code=0`、`feature_incomplete=false`；`body_counts_before objects=2 → after objects=3`（新主体实体化）；`volume_before = volume_after = 55087038135.823044 mm³`，与 BUG-120 基线完全一致；`native.log` 跑到 `BUILD_SUCCESS=1`/`DISCONNECT=0`/`result_delivery_complete`，无崩溃、无模态。该路径打破 BUG-120 的自锁（`BOW_BULB_SOLID` feature 250 在失败态把主体 251 选作自身参照，`PRO_REF_INVALID`，GUI 也无法重建；`strategy=new` 不依赖预存主体 251）。
+- **失败路径**：模型 `1c1099e76241489c86db3313e2f8aef1`，作业 `f05c076d9b564c4f903f3d2371142fd6`，瞄准非实体化特征 1（基准 RIGHT）→ `status=failed`、`phase="locate_body_branch"`、`feature_incomplete=true`、`effect_status="rolled_back"`，消息 `FEAT070_NO_BODY_BRANCH: ... query_code=-4`；无崩溃、模型干净。
+
+已知限制（如实记录，不掩盖）：`strategy=existing` 在该几何上触发 Creo 10 / release 42 内核 `dig_err`——经 `resolve({"kind":"body"})` 取默认主体再 `ProSelectionToReference` 时 Creo 内部回溯弹出模态对话框，worker 阻塞，看门狗在 `native_timeout_seconds=180` 后结束进程。`strategy=new` 是可靠的自锁解除路径；`strategy=existing` 的该几何不稳定记入本卡与发布记录，待后续抑制 UI 或换用其他主体解析方式时再跟进。
+
+未测范围：Creo 12.4 / Creo 9、真实船体非圆剖面、WorkBuddy 黑盒；quilt 142 接缝 G1（本轮未重新测量，沿用 BUG-120 任务 5 记录的 0.00749°≤0.5°）。

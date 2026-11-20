@@ -366,7 +366,7 @@ class UpdateCacheTests(unittest.IsolatedAsyncioTestCase):
             # creo_surface_boundary_fill is gated (DEV-074/H09).
             # 105 = 104 that carry creo_surface_trim (live P3),
             # creo_project_curve (live S04) and creo_surface_offset (live S07, 2026-11-05).
-            self.assertEqual(len(tools), 109)
+            self.assertEqual(len(tools), 110)
             self.assertTrue(tool.annotations.read_only_hint)
             self.assertTrue(tool.annotations.open_world_hint)
             self.assertFalse(tool.annotations.destructive_hint)

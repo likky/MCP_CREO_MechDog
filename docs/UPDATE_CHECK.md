@@ -1,6 +1,6 @@
 # 版本检查与手动升级（FEAT-020）
 
-0.3.0 已加入只读工具 `creo_check_update(force=false)`，工具总数为 82。0.2.6 不包含此功能，需先手动升级一次。本项开发及 WorkBuddy 实测的范围与未测场景见 [本次证据](validation/FEAT-020.md)，发布检查见 [0.3.0 验收](validation/RELEASE-0.3.0.md)。
+0.3.0 已加入只读工具 `creo_check_update(force=false)`；工具总数以运行时 `creo_capabilities` 返回的实际工具列表为准（`tool_count` 与 `list_tools` 长度一致），不在文档或断言中写死数字。0.2.6 不包含此功能，需先手动升级一次。本项开发及 WorkBuddy 实测的范围与未测场景见 [本次证据](validation/FEAT-020.md)，发布检查见 [0.3.0 验收](validation/RELEASE-0.3.0.md)。
 
 服务启动时在独立异步任务中查询 `wudahua/MCP_CREO_MechDog` 的公开 GitHub Release 列表，包含正式版和 Pre-release，排除草稿与未发布内容。分页结果按 SemVer 比较，接受 `v` 前缀和 `0.3.0-rc.1` 等候选格式；数字候选序号按数值排序，正式版高于同版本候选，构建元数据不改变优先级。历史 `v0.22` 和日期后缀等不规范标签不参与比较。当前版本高于公开版本时无需降级；没有有效候选时返回无法确认。
 

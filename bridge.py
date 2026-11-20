@@ -1054,7 +1054,7 @@ def channel_health() -> dict:
         return {}
 
 
-_WORKER_IDENTITY_CACHE: dict[tuple[str, int, int], dict] = {}
+_WORKER_IDENTITY_CACHE: dict[tuple[str, int, int, str], dict] = {}
 _SOURCE_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 
 
@@ -1110,6 +1110,19 @@ def _parse_worker_build_info(payload: object, worker_sha256: str) -> dict | None
     }
 
 
+def _env_fingerprint(env: object) -> str:
+    """Stable short hash of the probe environment for attribution (BUG-139)."""
+    if not isinstance(env, dict):
+        env = {}
+    material = json.dumps({key: env.get(key) for key in sorted(env)}, sort_keys=True, default=str)
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
+
+
+# Failure-only fields that must never survive a transition to a verified
+# identity, so a healed build does not keep advertising an old exit code.
+_IDENTITY_FAILURE_FIELDS = ("worker_exit_code", "message", "budget_seconds")
+
+
 def worker_build_identity(*, refresh: bool = False) -> dict:
     """Read build facts from the built executor itself; never infer its SDK.
 
@@ -1119,19 +1132,32 @@ def worker_build_identity(*, refresh: bool = False) -> dict:
     cannot be mistaken for the current Python environment. A missing or
     unverifiable identity stays explicit; callers must not turn it into an
     availability claim.
+
+    BUG-139: every observation carries ``observed_at`` and ``env_fingerprint``
+    so a cached failure can be attributed to the machine/environment that
+    produced it. The cache key includes the environment fingerprint, so fixing a
+    broken PATH/Creo environment invalidates a stale ``invalid_build_info`` and
+    re-probes. A verified identity never carries stale failure fields.
     """
     exe = ROOT / "build/creo_worker.exe"
-    try:
-        info = exe.stat()
-    except OSError:
-        return {"identity_status": "worker_missing", "identity_source": "worker_self_report"}
-    key = (str(exe), info.st_mtime_ns, info.st_size)
-    if not refresh and key in _WORKER_IDENTITY_CACHE:
-        return _WORKER_IDENTITY_CACHE[key]
+    observed_at = now()
     try:
         env = native_environment()
     except (OSError, ValueError, KeyError):
         env = None
+    env_fingerprint = _env_fingerprint(env)
+    try:
+        info = exe.stat()
+    except OSError:
+        return {
+            "identity_status": "worker_missing",
+            "identity_source": "worker_self_report",
+            "observed_at": observed_at,
+            "env_fingerprint": env_fingerprint,
+        }
+    key = (str(exe), info.st_mtime_ns, info.st_size, env_fingerprint)
+    if not refresh and key in _WORKER_IDENTITY_CACHE:
+        return dict(_WORKER_IDENTITY_CACHE[key])
     try:
         result = subprocess.run(
             [str(exe), "build-info"],
@@ -1167,8 +1193,13 @@ def worker_build_identity(*, refresh: bool = False) -> dict:
             }
         else:
             identity = parsed
+    identity["observed_at"] = observed_at
+    identity["env_fingerprint"] = env_fingerprint
+    if identity.get("identity_status") == "verified":
+        for stale_key in _IDENTITY_FAILURE_FIELDS:
+            identity.pop(stale_key, None)
     _WORKER_IDENTITY_CACHE[key] = identity
-    return identity
+    return dict(identity)
 
 
 def record_channel_health(connected: bool, **fields) -> dict:
@@ -1489,9 +1520,9 @@ def session_status(connect_timeout_seconds: int = 30, *, build_worker: bool = Tr
     if (
         isinstance(connect_timeout_seconds, bool)
         or not isinstance(connect_timeout_seconds, int)
-        or not 1 <= connect_timeout_seconds <= 30
+        or not 1 <= connect_timeout_seconds <= 60
     ):
-        raise ValueError("connect_timeout_seconds must be 1–30")
+        raise ValueError("connect_timeout_seconds must be 1–60")
     mode = worker_launch_mode()
     with toolkit_lock(operation="session_status"):
         exe = build_native() if build_worker else ROOT / "build/creo_worker.exe"

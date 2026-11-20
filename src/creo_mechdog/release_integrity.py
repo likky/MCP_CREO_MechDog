@@ -14,6 +14,7 @@ import hashlib
 import json
 import re
 import subprocess
+import sys
 import zipfile
 from pathlib import Path, PurePosixPath
 
@@ -33,6 +34,12 @@ TEMPLATE_MANIFEST = "templates/elemtree/manifest.json"
 # carried a placeholder. The record gate starts with 0.23.1 and refuses to
 # produce or verify such a package.
 RECORDS_ENFORCED_FROM = (0, 23, 1)
+# DEV-097: 0.32.0 and 0.33.0 published a Release body that listed neither the
+# four asset names nor the sidecar guidance, so the digests were only
+# discoverable from the in-package record. The body self-proof gate starts with
+# the first release that ships with this fix; older published bodies are
+# grandfathered and not backfilled (their records stay byte-for-byte).
+BODY_CHECK_ENFORCED_FROM = (0, 34, 0)
 _PLACEHOLDERS = ("待回填", "待发布后回填", "发布后在此段回填", "PENDING", "准备态")
 
 # DEV-083 (0.25.0 feedback): the per-ID gate only checked the rows that were
@@ -63,6 +70,7 @@ _HEX = set("0123456789abcdefABCDEF")
 SEED_FILE_PATTERN = r"[A-Za-z0-9_]{1,31}\.prt\.\d+"
 SEED_TEXT_SUFFIXES = {".md", ".json", ".py"}
 _DIGEST_PATTERN = re.compile(r"[a-f0-9]{64}")
+_SIDECAR_GUIDANCE_PATTERN = re.compile(r"摘要[^\n]{0,24}sidecar|sidecar[^\n]{0,24}摘要")
 _LINK_PATTERN = re.compile(r"!?\[[^\]]*\]\(([^)\s]+)\)")
 _README_TITLE_PATTERN = re.compile(r"^#\s+MCP_CREO_MechDog\s+(\S+)", re.MULTILINE)
 _README_CURRENT_PATTERN = re.compile(r"当前正式版\s*\*\*([^*]+)\*\*")
@@ -157,6 +165,41 @@ def validate_directory(directory: Path, version: str) -> list[str]:
     directory = Path(directory)
     paths = list(directory.iterdir()) if directory.is_dir() else []
     return validate_asset_paths(paths, version)
+
+
+def body_check_enforced(version: str) -> bool:
+    """Whether the Release body self-proof gate applies to ``version``.
+
+    See :data:`BODY_CHECK_ENFORCED_FROM`. Releases published before the gate
+    existed keep their historical bodies; the gate only refuses new releases.
+    """
+    try:
+        return _release_version_tuple(version) >= BODY_CHECK_ENFORCED_FROM
+    except ValueError:
+        return False
+
+
+def validate_release_body(body: str, version: str, sidecar_digests: dict[str, str]) -> list[str]:
+    """Problems that keep a GitHub Release body from proving its own digests.
+
+    The body must name all four shipped assets and tell the reader that the
+    source digest is recorded in its sidecar (DEV-097: 0.32.0/0.33.0 dropped
+    both, leaving the digests discoverable only from the in-package record).
+    ``sidecar_digests`` maps each shipped ZIP name to the lowercase SHA256 its
+    sidecar actually records; every 64-hex value the body states must be one of
+    those real digests, and a value that disagrees is a mismatch.
+    """
+    problems = []
+    for name in expected_assets(version):
+        if name not in body:
+            problems.append(f"release body is missing asset name: {name}")
+    if _SIDECAR_GUIDANCE_PATTERN.search(body) is None:
+        problems.append("release body must state that the source digest is recorded in its sidecar")
+    actual = {digest.lower() for digest in sidecar_digests.values()}
+    for match in _DIGEST_PATTERN.findall(body):
+        if match.lower() not in actual:
+            problems.append(f"release body states SHA256 {match} which does not match any sidecar")
+    return problems
 
 
 def seed_library_files(root: Path) -> list[Path]:
@@ -1391,6 +1434,96 @@ def _records_problems(version: str, read, exists, origin: str) -> list[str]:
     return problems
 
 
+_UNIT_TEST_REPORT = "build/unit_test_report.json"
+# A positive claim that the full unittest suite passed. Lines that negate the
+# claim ("不宣称全量通过", "未跑全量") are not claims and must not require a
+# success report; otherwise a record that honestly says it did not run would be
+# forced to invent passing numbers (BUG-137).
+_FULL_UNIT_PASS_PATTERN = re.compile(
+    r"全量[^\n。；;]{0,40}(?:unittest|单测)[^\n。；;]{0,40}通过"
+    r"|全量[^\n。；;]{0,12}通过"
+)
+_UNIT_PASS_NEGATION = (
+    "不宣称",
+    "不声称",
+    "不能声称",
+    "不能算",
+    "不算",
+    "未跑",
+    "未复现",
+    "未测",
+    "冒充",
+)
+
+
+def _read_text_optional(path: Path) -> str | None:
+    try:
+        return Path(path).read_text(encoding="utf-8-sig")
+    except OSError:
+        return None
+
+
+def _has_full_unit_pass_claim(text: str) -> bool:
+    for line in text.splitlines():
+        if any(marker in line for marker in _UNIT_PASS_NEGATION):
+            continue
+        if _FULL_UNIT_PASS_PATTERN.search(line):
+            return True
+    return False
+
+
+def _load_unit_report(base: Path) -> dict | None:
+    text = _read_text_optional(Path(base) / _UNIT_TEST_REPORT)
+    if text is None:
+        return None
+    try:
+        document = json.loads(text)
+    except ValueError:
+        return None
+    return document if isinstance(document, dict) else None
+
+
+def _unit_report_summary(report: dict | None) -> str:
+    if not isinstance(report, dict):
+        return "report unavailable"
+    return (
+        f"success={report.get('success')!r}, tests_run={report.get('tests_run')!r}, "
+        f"failures={report.get('failures')!r}, errors={report.get('errors')!r}, "
+        f"skipped={report.get('skipped')!r}"
+    )
+
+
+def _unit_test_claim_problems(version: str, base: Path) -> list[str]:
+    """A "全量通过" release claim must be backed by a success=true unit report.
+
+    The real failures/errors/skipped counts are printed so the operator sees
+    them instead of trusting the record's prose; a claim without a passing
+    report is refused (BUG-137).
+    """
+    record = _read_text_optional(Path(base) / f"docs/validation/RELEASE-{version}.md")
+    notes = _read_text_optional(Path(base) / f"docs/RELEASE_NOTES_{version}.md")
+    if not (_has_full_unit_pass_claim(record or "") or _has_full_unit_pass_claim(notes or "")):
+        return []
+    report = _load_unit_report(base)
+    print(
+        f"[release-gate] {version} unit test report: {_unit_report_summary(report)}",
+        file=sys.stderr,
+    )
+    if report is None:
+        return [
+            f"source tree: release record claims 全量 unittest 通过 but "
+            f"{_UNIT_TEST_REPORT} is missing or unreadable; run tools/test_unit.py "
+            "and confirm success=true before writing 全量通过"
+        ]
+    if report.get("success") is not True:
+        return [
+            f"source tree: release record claims 全量 unittest 通过 but "
+            f"{_UNIT_TEST_REPORT} reports {_unit_report_summary(report)}; "
+            "do not write 全量通过 until tools/test_unit.py reports success=true"
+        ]
+    return []
+
+
 def validate_release_records(
     version: str,
     source_zip: Path | None = None,
@@ -1436,6 +1569,10 @@ def validate_release_records(
         # is the only independent proof that the recorded commit is the release
         # point rather than a backfill or an arbitrary 40-hex value.
         problems.extend(_tag_commit_problems(version, base))
+        # BUG-137: a "全量通过" release claim must be backed by a success=true
+        # tools/test_unit.py report; build/ is not packaged, so this only runs
+        # against the source tree.
+        problems.extend(_unit_test_claim_problems(version, base))
     if base is not None and (base / DELIVERY_SNAPSHOT_DIR / f"{version}.json").is_file():
         # Byte-exact TXT distribution: a changed or missing approved file is a
         # packaging error, not a documentation note. Versions without a delivery

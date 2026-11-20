@@ -175,3 +175,52 @@ def download(tag: str, directory: Path, repo: str = REPOSITORY) -> None:
                 _copy_verified_assets(stage, directory, version)
             return
         _copy_verified_assets(stage, directory, version)
+
+
+def fetch_release_body(tag: str, repo: str = REPOSITORY) -> str:
+    """Return the GitHub Release body text for ``tag`` (gh, then the API).
+
+    The body is the ``--notes-file`` content shown on the Release page. DEV-097
+    checks that it names the four assets and points readers to the sidecar; this
+    helper keeps that read on the same safe repository and timeout as the asset
+    download.
+    """
+    _version(tag)  # validates tag shape before issuing any network request
+    if repo != REPOSITORY:
+        raise RuntimeError(f"unsupported release repository: {repo}")
+    try:
+        result = subprocess.run(
+            ["gh", "release", "view", tag, "--repo", repo, "--json", "body"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=TIMEOUT_SECONDS,
+        )
+        if result.returncode == 0:
+            try:
+                document = json.loads(result.stdout)
+            except ValueError:
+                document = None
+            if isinstance(document, dict) and isinstance(document.get("body"), str):
+                return document["body"]
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        pass
+    api_url = f"https://api.github.com/repos/{repo}/releases/tags/{quote(tag, safe='')}"
+    request = Request(
+        api_url,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "MCP_CREO_MechDog-release-check",
+        },
+    )
+    try:
+        with urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+            release = json.load(response)
+    except (OSError, http.client.HTTPException, ValueError) as error:
+        raise RuntimeError(f"could not fetch release body for {tag}: {error}") from None
+    if not isinstance(release, dict) or release.get("tag_name") != tag:
+        raise RuntimeError(f"could not fetch release body for {tag}: unexpected release object")
+    body = release.get("body")
+    if not isinstance(body, str):
+        return ""
+    return body

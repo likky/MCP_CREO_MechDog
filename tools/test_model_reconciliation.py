@@ -12,6 +12,7 @@ import platform
 import subprocess
 import sys
 import time
+import traceback
 from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
@@ -28,6 +29,26 @@ import bridge
 import generic_bridge as general
 from creo_mechdog import reconciliation as rec
 from tools.dev_check import git_state, source_hash
+
+
+def assert_tool_count_consistency(capability: dict, tools: list) -> None:
+    """Fail loudly if creo_capabilities.tool_count drifts from the listed tools.
+
+    The mismatch is printed before raising so the real expected-vs-actual values
+    are never masked by the MCP client's TaskGroup exception wrapping on context
+    exit (BUG-138). The check is intentionally decoupled from any fixed number:
+    only the runtime consistency between capabilities and the actual tool list
+    matters.
+    """
+    listed = len(tools)
+    reported = capability.get("tool_count")
+    if reported != listed:
+        message = (
+            f"creo_capabilities tool_count ({reported}) does not match the listed "
+            f"tool count ({listed})"
+        )
+        print(f"tool-count assertion failed: {message}", file=sys.stderr, flush=True)
+        raise AssertionError(message)
 
 
 def box(pads: int = 0, base: bool = True) -> list[dict]:
@@ -327,8 +348,10 @@ async def mcp_acceptance(directory: Path, metadata_only: bool = False) -> None:
             assert bool(reply.is_error) == error, report["calls"][-1]
             return value
 
+        tools = (await client.list_tools()).tools
         capability = await call("creo_capabilities", {})
-        assert capability["tool_count"] == 84
+        report["tool_count"] = len(tools)
+        assert_tool_count_consistency(capability, tools)
         assert Path(capability["runtime"]["job_root"]) == bridge.JOBS
         # Public diagnostic remains accessible while the actual shared OS lock is busy.
         first = fixtures["items"][0]
@@ -388,6 +411,54 @@ async def mcp_acceptance(directory: Path, metadata_only: bool = False) -> None:
         bridge.write_json(directory / "mcp-evidence.json", report)
 
 
+async def offline_acceptance(directory: Path) -> None:
+    """Offline stdio smoke check: capabilities tool_count matches the listed tools.
+
+    No Creo session, no network and no fixtures are required: the metadata-only
+    server patches startup so it never launches Creo, and this client only calls
+    read-only capability queries. Used by the tools/dev_check.py offline gate
+    (BUG-138) so the formerly hard-coded tool-count assertion is exercised on
+    every style/unit run and cannot silently rot across versions.
+    """
+    from mcp import Client
+    from mcp.client.stdio import StdioServerParameters
+
+    report = {
+        "client": "offline developer smoke (no Creo/network/fixtures)",
+        "started_at": bridge.now(),
+        "scope": "tool-count consistency only",
+    }
+    try:
+        async with Client(
+            StdioServerParameters(
+                command=sys.executable,
+                args=[
+                    "-m",
+                    "tools.test_model_reconciliation",
+                    "--serve",
+                    "--data-root",
+                    str(directory),
+                    "--metadata-only",
+                ],
+                cwd=ROOT,
+            ),
+            read_timeout_seconds=150,
+        ) as client:
+            tools = (await client.list_tools()).tools
+            reply = await client.call_tool("creo_capabilities", {})
+            assert not reply.is_error, reply
+            capability = reply.structured_content
+            report["tool_count"] = len(tools)
+            assert_tool_count_consistency(capability, tools)
+            report.update(success=True, finished_at=bridge.now())
+    except BaseException:
+        report.update(success=False, finished_at=bridge.now())
+        traceback.print_exc()
+        raise
+    finally:
+        bridge.write_json(directory / "offline-evidence.json", report)
+
+
 def controlled_deadline(directory: Path) -> dict:
     """Exercise the production phase watchdog with a short test-only constructor budget."""
     directory.mkdir(parents=True, exist_ok=True)
@@ -443,6 +514,11 @@ def main():
     parser.add_argument("--mcp", action="store_true")
     parser.add_argument("--metadata-only", action="store_true")
     parser.add_argument("--controlled", action="store_true")
+    parser.add_argument(
+        "--offline",
+        action="store_true",
+        help="Offline tool-count consistency smoke check; no Creo, network or fixtures",
+    )
     parser.add_argument("--fault", choices=("none", "timeout", "lost_delivery"), default="none")
     args = parser.parse_args()
     directory = (
@@ -458,6 +534,9 @@ def main():
     general.MODELS = directory / "models"
     if args.controlled:
         controlled_deadline(directory)
+        return
+    if args.offline:
+        asyncio.run(offline_acceptance(directory))
         return
     if args.serve:
         serve(directory, args.metadata_only)

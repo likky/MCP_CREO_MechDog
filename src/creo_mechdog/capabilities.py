@@ -66,6 +66,7 @@ REGISTERED_OPERATIONS = (
     "thicken",
     "surface_offset",
     "solidify",
+    "redefine_solidify_body",
     "surface_trim",
     "surface_loft",
     "surface_boundary_fill",

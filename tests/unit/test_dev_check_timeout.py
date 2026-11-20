@@ -58,6 +58,17 @@ def never_run(command, **kwargs):
     raise AssertionError(f"subprocess.run must not be called: {command!r} {kwargs}")
 
 
+def _passing_offline_results() -> dict:
+    """Offline gate result that lets dev_check proceed to the unit stage.
+
+    These meta-tests isolate the unit-stage timeout behavior (DEV-050); the
+    BUG-138 offline-acceptance gate is covered separately and must keep running
+    in production, so it is stubbed out here instead of sharing the unit-stage
+    subprocess.run stub.
+    """
+    return {name: {"status": "passed"} for name, _ in dev_check.OFFLINE_ACCEPTANCE_SCRIPTS}
+
+
 class DevCheckTimeout(unittest.TestCase):
     def run_dev_check(self, argv, unit_stage=accept):
         """Run dev_check.main against an isolated root and a stubbed unit stage."""
@@ -72,6 +83,9 @@ class DevCheckTimeout(unittest.TestCase):
                 patch.object(dev_check, "ROOT", root),
                 patch.object(dev_check, "git_state", return_value={}),
                 patch.object(dev_check, "collect_styles", collect),
+                patch.object(
+                    dev_check, "run_offline_acceptance", return_value=_passing_offline_results()
+                ),
                 patch.object(dev_check.subprocess, "run", run),
                 contextlib.redirect_stdout(out),
                 contextlib.redirect_stderr(err),

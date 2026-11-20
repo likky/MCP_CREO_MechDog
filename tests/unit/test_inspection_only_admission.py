@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import subprocess
 import unittest
-from unittest.mock import patch
+from unittest.mock import NonCallableMock, patch
 
 import bridge
 import generic_bridge as general
@@ -19,10 +19,33 @@ from tests.unit import test_toolkit_channel as channel_tests
 
 
 class InspectionOnlyAdmission(unittest.TestCase):
-    setUp = channel_tests.ToolkitChannel.setUp
+    def setUp(self):
+        channel_tests.ToolkitChannel.setUp(self)
+        # BUG-137: general.submit launches the runner with subprocess.Popen and
+        # passes runner.log to the child as stdout/stderr. Tests in this class
+        # call general.submit directly (not only through self.submit), which
+        # used to start a real child that kept runner.log open past teardown,
+        # raising WinError 32 and ResourceWarning. Keep Popen mocked for the
+        # whole test so only the in-process bridge.run_job executes.
+        self.enterContext(patch.object(bridge.subprocess, "Popen"))
+
     submit = channel_tests.ToolkitChannel.submit
     worker = channel_tests.ToolkitChannel.worker
     run_job = channel_tests.ToolkitChannel.run_job
+
+    def test_no_real_worker_is_launched_so_teardown_cleans_runner_log(self):
+        # BUG-137 regression: setUp must keep subprocess.Popen mocked, or a
+        # direct general.submit inherits this test's TemporaryDirectory
+        # runner.log handle in a real child and teardown fails (WinError 32).
+        popen = bridge.subprocess.Popen
+        self.assertIsInstance(popen, NonCallableMock)
+        created = general.submit([{"op": "export", "format": "step"}])
+        self.run_job(created)
+        # The runner launch was intercepted by the mock rather than delegated
+        # to a real child process; the mock records the worker argv it would run.
+        self.assertTrue(popen.called)
+        args, _ = popen.call_args
+        self.assertIn("run-job", args[0])
 
     def ready_without_baseline(self) -> str:
         """A ready model whose checkpoint was never verified (no saved baseline)."""

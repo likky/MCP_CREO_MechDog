@@ -93,7 +93,7 @@ class CallbackAdmission(unittest.TestCase):
         # creo_sheetmetal_base_flange (DEV-089 T3, live 2026-11-15) and
         # creo_cancel_job (BUG-131, job control);
         # creo_surface_boundary_fill is gated (DEV-074/H09 live refutation).
-        self.assertEqual(len(tools), 109)
+        self.assertEqual(len(tools), 110)
         self.assertIn("creo_reconcile_model", tools)
         self.assertTrue(tools["creo_callback_status"].annotations.read_only_hint)
         with (

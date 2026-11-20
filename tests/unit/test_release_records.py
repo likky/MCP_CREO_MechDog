@@ -543,5 +543,70 @@ class DeliverySnapshotGateTest(unittest.TestCase):
         self.assertTrue(any("frozen delivery" in problem for problem in problems))
 
 
+class UnitReportGateTest(unittest.TestCase):
+    """BUG-137: a 全量通过 release claim requires a success=true unit report."""
+
+    def _write_report(self, root: Path, **fields) -> None:
+        report = {
+            "version": VERSION,
+            "tests_run": 10,
+            "success": True,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0,
+        }
+        report.update(fields)
+        build = root / "build"
+        build.mkdir(exist_ok=True)
+        (build / "unit_test_report.json").write_text(json.dumps(report), encoding="utf-8")
+
+    def _tree_with_claim(self, claim: str) -> dict[str, str]:
+        files = _fixture_files()
+        files[RECORD] = files[RECORD].rstrip() + f"\n\n## 离线结果\n\n- {claim}\n"
+        return files
+
+    def test_full_pass_claim_with_success_report_is_accepted(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            _write_tree(root, self._tree_with_claim("全量 unittest 10 项通过（0 跳过）"))
+            self._write_report(root, success=True, tests_run=10)
+            self.assertEqual(validate_release_records(VERSION, root=root), [])
+
+    def test_full_pass_claim_with_failing_report_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            _write_tree(root, self._tree_with_claim("全量 unittest 4078 项通过（6 跳过）"))
+            self._write_report(root, success=False, failures=0, errors=3, skipped=4)
+            problems = validate_release_records(VERSION, root=root)
+        self.assertTrue(
+            any("全量 unittest 通过" in p and "success=False" in p for p in problems), problems
+        )
+        self.assertTrue(any("errors=3" in p and "skipped=4" in p for p in problems), problems)
+
+    def test_full_pass_claim_without_report_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            _write_tree(root, self._tree_with_claim("全量 unittest 通过"))
+            problems = validate_release_records(VERSION, root=root)
+        self.assertTrue(any("missing or unreadable" in p for p in problems), problems)
+
+    def test_record_without_a_pass_claim_does_not_require_a_report(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            _write_tree(root, _fixture_files())
+            self.assertEqual(validate_release_records(VERSION, root=root), [])
+
+    def test_negated_pass_claim_is_not_treated_as_a_claim(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            files = _fixture_files()
+            files[RECORD] = files[RECORD].rstrip() + (
+                "\n\n## 离线结果\n\n- 本机全量单测未跑，不宣称全量通过。\n"
+            )
+            _write_tree(root, files)
+            problems = validate_release_records(VERSION, root=root)
+        self.assertFalse(any("全量 unittest 通过" in p for p in problems), problems)
+
+
 if __name__ == "__main__":
     unittest.main()

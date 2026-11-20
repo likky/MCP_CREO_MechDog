@@ -178,7 +178,9 @@ def main():
             print(f"  - {problem}", file=sys.stderr)
         return 1
     print("Release asset gate: four assets present; both sidecars match their ZIP digests")
-    problems = validate_release_records(VERSION, archive)
+    # root=ROOT lets the source-tree gate (including the BUG-137 unit-report
+    # success check) run against the tree that built this archive.
+    problems = validate_release_records(VERSION, archive, root=ROOT)
     if problems:
         print("Release record gate rejected this package:", file=sys.stderr)
         for problem in problems:

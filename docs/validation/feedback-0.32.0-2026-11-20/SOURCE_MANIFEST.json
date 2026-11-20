@@ -1,0 +1,17 @@
+{
+  "work_item": "DEV-097",
+  "archived_on": "2026-11-20",
+  "source_directory": "C:\\Users\\Administrator\\Desktop\\0.32.0",
+  "source_baseline": "95852899d893f590c6ef37a3724ac669ca7c845e",
+  "source_version": "0.32.0",
+  "file_count": 1,
+  "total_bytes": 9264,
+  "files": [
+    {
+      "id": "F01",
+      "file": "originals/2026-11-20CREO10.0.0.0-0.32.0-上一版提交号门禁盲点四版未修复.md",
+      "bytes": 9264,
+      "sha256": "c36481484980a53e72bb86af1c43feceaf1ec156cfb89b1b476de06734c7d990"
+    }
+  ]
+}

@@ -1,12 +1,12 @@
-# MCP_CREO_MechDog 0.33.0
+# MCP_CREO_MechDog 0.34.0
 
-![version](https://img.shields.io/badge/version-0.33.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.34.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.33.0**（MINOR——0.31.1 反馈批：[BUG-134](docs/work-items/BUG-134.md) `resident_panel` 在 `ProMdlCurrentGet` 返回 -8 时改用 `ProMdlInit` 的 board 并在开面板前显示模型；[BUG-135](docs/work-items/BUG-135.md) 新增公开参数 `accept_unverified_completion`，element_tree 提取失败时可保留特征并如实报告；[BUG-136](docs/work-items/BUG-136.md) `mate`/`align` 按实际约束类型要求平面或圆柱面；[DEV-095](docs/work-items/DEV-095.md) 面板块 `model_name`、`host_release` 探针与 `payload_sha256` 披露；[DEV-096](docs/work-items/DEV-096.md) 发布记录门禁交叉核对上一版本提交与标签。承接 0.32.0（0.27.0 反馈批）。实机为本机 Creo 10.0.0.0（release 42）；未验：Creo 12.4、`PANEL_MODEL_UNAVAILABLE` 失败路径、WorkBuddy 黑盒） · [版本说明](docs/RELEASE_NOTES_0.33.0.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
+当前正式版 **0.34.0**（MINOR——0.31.1/0.32.0 反馈剩余项 + BUG-120 实体化链路收官：[FEAT-070](docs/work-items/FEAT-070.md) 新增公开工具 `creo_redefine_solidify_body`，以 `strategy=new` 重建失效主体参照、解除 `BOW_BULB_SOLID` 自锁，公开工具 109→110，本机 Creo 10/release 42 实机体积 55087038135.823044 mm³ 与基线一致、保存重载通过；[BUG-137](docs/work-items/BUG-137.md) 隔离 `subprocess.Popen` 消除全量单测 teardown WinError 32，并加“全量通过”口径须 `success=true` 报告的发布门禁；[BUG-138](docs/work-items/BUG-138.md) 去除验收脚本硬编码工具数 82/84、改以 `creo_capabilities` 为准，`dev_check` 新增离线验收门禁；[BUG-139](docs/work-items/BUG-139.md) 启动协调器探测超时可配/循环外成功落地/相位/预算分段/准入降级/身份归因/文案修复，本机冷启动走到 `ready`；[DEV-097](docs/work-items/DEV-097.md) Release 正文自证门禁（四附件名 + sidecar 指引 + 摘要比对，≥0.34.0 强制执行，历史版本祖父化）。承接 0.33.0。实机为本机 Creo 10.0.0.0（release 42）；未验：Creo 12.4/9、WorkBuddy 黑盒、FEAT-070 `strategy=existing` 在该几何的 Creo 10 不稳定） · [版本说明](docs/RELEASE_NOTES_0.34.0.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 
-MCP_CREO_MechDog 是运行在你自己 Windows 电脑上的本地 MCP 服务（stdio）。它把 Creo 官方 C/C++ Toolkit 封装成 109 个公开工具（以 `creo_capabilities` 的 `tool_count` 为准；`creo_surface_boundary_fill` 已定义但门禁隐藏），供 WorkBuddy、Claude Desktop、Cursor 等支持 MCP 的 AI 客户端调用：从一句需求出发，生成带草图、尺寸、约束与特征树的 `.prt` / `.asm`，并保存到磁盘。
+MCP_CREO_MechDog 是运行在你自己 Windows 电脑上的本地 MCP 服务（stdio）。它把 Creo 官方 C/C++ Toolkit 封装成 110 个公开工具（以 `creo_capabilities` 的 `tool_count` 为准；`creo_surface_boundary_fill` 已定义但门禁隐藏），供 WorkBuddy、Claude Desktop、Cursor 等支持 MCP 的 AI 客户端调用：从一句需求出发，生成带草图、尺寸、约束与特征树的 `.prt` / `.asm`，并保存到磁盘。
 
 **适合**：重复性参数化建模、批量零件、AI 驱动的草图→拉伸→孔→装配流程、接管已有模型继续修改。
 **不适合**：任意复杂自由曲面、专业模块的完整封装、没有真实 Creo 与许可的「云端建模」。

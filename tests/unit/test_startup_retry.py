@@ -94,7 +94,7 @@ class StartupRetry(unittest.TestCase):
         self.assertTrue(state["launch_reserved"])
         self.assertFalse(state["automatic_launch_allowed"])
         self.assertEqual(path.read_bytes(), b"")
-        self.fixture.probe.assert_called_once_with(connect_timeout_seconds=2, build_worker=False)
+        self.fixture.probe.assert_called_once_with(connect_timeout_seconds=7, build_worker=False)
         self.fixture.launch.assert_not_called()
 
     def test_invalid_schema_is_actionable_and_not_a_new_reservation(self):
@@ -167,7 +167,7 @@ class StartupRetry(unittest.TestCase):
         self.assertEqual(state["launch_attempt"], 17)
         self.assertEqual(state["phase"], "ready")
         self.fixture.launch.assert_not_called()
-        self.fixture.probe.assert_called_once_with(connect_timeout_seconds=2, build_worker=False)
+        self.fixture.probe.assert_called_once_with(connect_timeout_seconds=7, build_worker=False)
 
     def test_polling_keeps_the_retry_id_and_a_new_retry_gets_a_new_one(self):
         self.fixture.inventory.return_value = self.fixture.existing()

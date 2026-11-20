@@ -169,12 +169,13 @@ class BoundaryFillCapabilityTests(unittest.TestCase):
 
         tools = {tool.name for tool in asyncio.run(server.mcp.list_tools())}
         self.assertNotIn("creo_surface_boundary_fill", tools)
-        # 109 = 110 minus the gated creo_surface_boundary_fill; the read-only
+        # 110 = 111 minus the gated creo_surface_boundary_fill (FEAT-070's
+        # creo_redefine_solidify_body is public); the read-only
         # creo_measure_surface_curvature (DEV-074/H08), creo_quilt_merge
         # (FEAT-039/H03, live 2026-11-08), creo_sheetmetal_base_flange
         # (DEV-089 T3, live 2026-11-15) and creo_cancel_job (BUG-131) stay
         # published.
-        self.assertEqual(len(tools), 109)
+        self.assertEqual(len(tools), 110)
 
     def test_require_available_refuses_the_gated_operation(self):
         from creo_mechdog.capabilities import require_available

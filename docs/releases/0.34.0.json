@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "version": "0.34.0",
+  "previous_version": "0.33.0",
+  "previous_release_tag": "v0.33.0",
+  "previous_release_commit": "613cc4bc3424ce066fb255d5781aa157b23f35a3",
+  "remote_verification": "pending",
+  "delivery_ids": [
+    "BUG-137",
+    "BUG-138",
+    "BUG-139",
+    "DEV-097",
+    "FEAT-070"
+  ],
+  "frozen_on": "2026-11-21",
+  "note": "Frozen from this batch's actual changes, the main ledger and the work cards. This batch follows the published 0.33.0 and closes the 0.31.1/0.32.0 feedback leftovers plus the BUG-120 solidify chain: FEAT-070 (new public tool creo_redefine_solidify_body; strategy=new rematerializes the failed body reference and breaks the BOW_BULB_SOLID self-lock, 109->110 tools), BUG-137 (isolate subprocess.Popen in inspection-only admission teardown + release claim gate requiring success=true), BUG-138 (drop hardcoded tool counts 82/84, dev_check offline acceptance gate), BUG-139 (startup coordinator resilience: configurable probe timeout/budget, out-of-loop success landing, connecting phase, recent-connected or force_ready downgrade, attributable worker_build_identity, error context with toolkit_code) and DEV-097 (Release body self-proof gate enforcing four asset names + sidecar guidance + digest match for >=0.34.0, historical releases grandfathered). Update only before packaging a new candidate, never to make a failing table pass."
+}

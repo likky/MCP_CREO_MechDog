@@ -351,5 +351,133 @@ class SourcePackageAssetGateTests(unittest.TestCase):
         self.assertIn("differs from", error)
 
 
+class ReleaseBodySelfProofTests(unittest.TestCase):
+    """DEV-097: the Release body must name the four assets and cite the sidecar."""
+
+    def setUp(self):
+        self.directory = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        # >= BODY_CHECK_ENFORCED_FROM so the body gate is active in CLI paths.
+        self.version = "0.34.0"
+        (
+            self.source,
+            self.source_sidecar,
+            self.seed,
+            self.seed_sidecar,
+        ) = release_integrity.expected_assets(self.version)
+        self.source_payload = b"source"
+        self.seed_payload = b"seed"
+        self.source_digest = hashlib.sha256(self.source_payload).hexdigest()
+        self.seed_digest = hashlib.sha256(self.seed_payload).hexdigest()
+        self.digests = {self.source: self.source_digest, self.seed: self.seed_digest}
+
+    def publish_complete_assets(self) -> None:
+        for name, payload in (
+            (self.source, self.source_payload),
+            (self.seed, self.seed_payload),
+        ):
+            (self.directory / name).write_bytes(payload)
+            digest = hashlib.sha256(payload).hexdigest()
+            (self.directory / f"{name}.sha256").write_text(f"{digest}  {name}\n", encoding="ascii")
+
+    def complete_body(self) -> str:
+        return (
+            "## 源码包与校验\n\n"
+            "本版发布四个附件（逐个列出，不使用通配）：\n\n"
+            f"- `{self.source}`\n"
+            f"- `{self.source_sidecar}`（源码包摘要记录在同名 sidecar 中，一行 `<64 位 SHA256>  文件名`）\n"
+            f"- `{self.seed}`\n"
+            f"- `{self.seed_sidecar}`（种子包摘要同样在 sidecar 中）\n\n"
+            f"- 种子包 SHA256：`{self.seed_digest}`。\n"
+        )
+
+    def test_complete_body_passes(self):
+        self.assertEqual(
+            release_integrity.validate_release_body(
+                self.complete_body(), self.version, self.digests
+            ),
+            [],
+        )
+
+    def test_missing_asset_name_fails(self):
+        body = (
+            "## 源码包与校验\n\n"
+            f"- `{self.source}`\n"
+            f"- `{self.source_sidecar}`（源码包摘要记录在同名 sidecar 中）\n"
+        )
+        problems = release_integrity.validate_release_body(body, self.version, self.digests)
+        self.assertIn(f"release body is missing asset name: {self.seed}", problems)
+        self.assertIn(f"release body is missing asset name: {self.seed_sidecar}", problems)
+
+    def test_missing_sidecar_guidance_fails(self):
+        body = self.complete_body().replace("源码包摘要记录在同名 sidecar 中", "源码包摘要见附件")
+        body = body.replace("种子包摘要同样在 sidecar 中", "种子包摘要见附件")
+        problems = release_integrity.validate_release_body(body, self.version, self.digests)
+        self.assertTrue(any("sidecar" in problem for problem in problems), problems)
+
+    def test_mismatched_digest_fails(self):
+        wrong = "c" * 64
+        body = self.complete_body().replace(self.seed_digest, wrong)
+        problems = release_integrity.validate_release_body(body, self.version, self.digests)
+        self.assertTrue(any(wrong in problem for problem in problems), problems)
+
+    def test_body_without_a_digest_still_passes(self):
+        body = self.complete_body().replace(f"`{self.seed_digest}`。", "见 sidecar。")
+        self.assertEqual(
+            release_integrity.validate_release_body(body, self.version, self.digests),
+            [],
+        )
+
+    def test_body_check_grandfathers_releases_before_threshold(self):
+        self.assertFalse(release_integrity.body_check_enforced("0.33.0"))
+        self.assertTrue(release_integrity.body_check_enforced("0.34.0"))
+        self.assertTrue(release_integrity.body_check_enforced("1.0.0"))
+        self.assertFalse(release_integrity.body_check_enforced("not-a-version"))
+
+    def test_cli_body_file_complete_passes_for_enforced_version(self):
+        self.publish_complete_assets()
+        body_file = Path(self.enterContext(tempfile.TemporaryDirectory())) / "body.md"
+        body_file.write_text(self.complete_body(), encoding="utf-8")
+        output = io.StringIO()
+        with (
+            patch.object(check_release_assets, "validate_release_records", return_value=[]),
+            contextlib.redirect_stdout(output),
+        ):
+            code = check_release_assets.main(
+                [
+                    "--tag",
+                    f"v{self.version}",
+                    "--version",
+                    self.version,
+                    "--dir",
+                    str(self.directory),
+                    "--body-file",
+                    str(body_file),
+                ]
+            )
+        self.assertEqual(code, 0)
+        self.assertIn("release body self-proof verified", output.getvalue())
+
+    def test_cli_body_file_incomplete_fails_for_enforced_version(self):
+        self.publish_complete_assets()
+        body_file = Path(self.enterContext(tempfile.TemporaryDirectory())) / "body.md"
+        body_file.write_text(
+            "just release notes, no asset list or sidecar guidance\n", encoding="utf-8"
+        )
+        with patch.object(check_release_assets, "validate_release_records", return_value=[]):
+            code = check_release_assets.main(
+                [
+                    "--tag",
+                    f"v{self.version}",
+                    "--version",
+                    self.version,
+                    "--dir",
+                    str(self.directory),
+                    "--body-file",
+                    str(body_file),
+                ]
+            )
+        self.assertEqual(code, 1)
+
+
 if __name__ == "__main__":
     unittest.main()
