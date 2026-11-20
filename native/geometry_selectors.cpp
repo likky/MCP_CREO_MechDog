@@ -80,7 +80,7 @@ static V selector_cross(const V &first, const V &second) {
 }
 
 static std::string selector_edge_error(const std::string &form, const std::vector<int> &matches,
-                                       int candidates, double tolerance) {
+                                       int candidates, double tolerance, bool same_circle = false) {
     if (matches.empty()) {
         std::string text = "geometry_selector edge " + form + " matched none of the " +
                            std::to_string(candidates) +
@@ -96,6 +96,17 @@ static std::string selector_edge_error(const std::string &form, const std::vecto
                     "coordinates, or use {kind:'edge',id:N}";
         }
         return text;
+    }
+    if (same_circle) {
+        // FEAT-068 A0 / 0.27.0 feedback: one physical rim is reported as several
+        // arcs of the same circle. Every one of them passes the centre + radius
+        // filter by construction, so "use a smaller tolerance_mm" can never pick
+        // one; the caller must narrow by a point on the span or by edge id.
+        return "geometry_selector edge " + form + " matched " + std::to_string(matches.size()) +
+               " arcs of one circle (ids " + selector_id_list(matches) +
+               "); the rim is reported as several arcs with the same centre and radius, so a "
+               "smaller tolerance_mm cannot separate them - add point_mm on the span you want, "
+               "or select one arc with {kind:'edge',id:N}";
     }
     return "geometry_selector edge " + form + " matched " + std::to_string(matches.size()) +
            " edges (ids " + selector_id_list(matches) +
@@ -113,6 +124,10 @@ static GeometrySelectorOutcome match_geometry_edge_selector(const J &selector, c
     std::vector<int> matches;
     J matched = J::array();
     int candidates = 0;
+    // Every matched arc keeps its measured circle: the refusal text has to tell
+    // "one rim split into arcs" apart from "the tolerance let two circles in".
+    std::vector<V> matched_centers;
+    std::vector<double> matched_radii;
     if (circular) {
         V center = vec(selector["center_mm"]);
         const double radius = selector["radius_mm"].get<double>();
@@ -176,6 +191,8 @@ static GeometrySelectorOutcome match_geometry_edge_selector(const J &selector, c
                 }
             }
             matches.push_back(edge["id"].get<int>());
+            matched_centers.push_back(arc_center);
+            matched_radii.push_back(arc_radius);
             matched.push_back({{"id", edge["id"]},
                                {"radius_mm", arc_radius},
                                {"center_error_mm", selector_component_error(arc_center, center)}});
@@ -235,7 +252,17 @@ static GeometrySelectorOutcome match_geometry_edge_selector(const J &selector, c
                           {"tolerance_mm", tolerance},
                           {"candidate_count", candidates},
                           {"matched_ids", J(matches)}};
-    outcome.error = selector_edge_error(form, matches, candidates, tolerance);
+    // Only arcs sitting on one and the same circle prove that a tighter
+    // tolerance cannot separate them: they pass the centre + radius filter by
+    // construction. Two distinct circles that both fit inside the tolerance are
+    // still separable, so they keep the generic advice.
+    const double same_circle_epsilon = 1e-6;
+    bool same_circle = matched_centers.size() > 1;
+    for (size_t i = 1; same_circle && i < matched_centers.size(); ++i)
+        same_circle =
+            fabs(matched_radii[i] - matched_radii[0]) <= same_circle_epsilon &&
+            selector_component_error(matched_centers[i], matched_centers[0]) <= same_circle_epsilon;
+    outcome.error = selector_edge_error(form, matches, candidates, tolerance, same_circle);
     return outcome;
 }
 
