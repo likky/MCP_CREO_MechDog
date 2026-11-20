@@ -740,7 +740,22 @@ def validate_solid_profile(
         f"{report['entity_count']} curve entities; "
         + "; ".join(details)
         + ". Supply disjoint or nested closed loops; the native solver remains authoritative "
-        "for anything this check cannot confirm. Remediation: set closure_tolerance_mm, "
-        "merge the arcs into one polyline, or use snap_endpoints / endpoint_policy=weld; "
-        "weld is applied at submission time, not during plan validation."
+        "for anything this check cannot confirm. Remediation: set closure_tolerance_mm or "
+        "merge the arcs into one polyline; snap_endpoints / endpoint_policy=weld only helps "
+        "when the joins named below are actually weldable, and welding is applied at "
+        "submission time, not during plan validation. " + _weld_verdict(entities)
     )
+
+
+def _weld_verdict(entities: list) -> str:
+    """Quote what welding can actually do, so the advice is not self-contradictory.
+
+    ``endpoint_welding`` imports this module, so the qualification is imported
+    lazily here; the function only formats text and never changes the decision.
+    """
+    try:
+        from creo_mechdog import endpoint_welding
+    except ImportError:  # pragma: no cover - defensive, the module is a sibling
+        return ""
+    eligibility = endpoint_welding.weld_eligibility(entities)
+    return "For this profile: " + endpoint_welding.eligibility_summary(eligibility)

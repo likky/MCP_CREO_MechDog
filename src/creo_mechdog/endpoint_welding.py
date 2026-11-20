@@ -184,6 +184,153 @@ def _entity_named(entities: list[dict[str, Any]], name: str) -> dict[str, Any] |
     return None
 
 
+#: Reasons the policy layer can prove it cannot deliver: moving the endpoint
+#: would change the geometry the caller described, or the caller's own bound
+#: forbids the move. These refuse the plan instead of being reported as advice.
+BLOCKING_REASONS = (
+    "arc_inconsistent",
+    "max_move_exceeded",
+    "unsupported_entity",
+    "would_merge_closed_contours",
+)
+#: Reasons only the kernel can settle: a join wider than the exact chain union
+#: between two *open* chains is a closure the native solver may or may not make.
+UNRESOLVED_REASONS = ("separate_loops",)
+
+
+def _closed_chains(ends: list[dict], chain_of: dict[int, int]) -> dict[int, bool]:
+    """Which chains already close on themselves (every endpoint is shared)."""
+    points: dict[int, list[tuple[float, float]]] = {}
+    for entry in ends:
+        points.setdefault(chain_of[entry["curve"]], []).append(entry["point"])
+    closed: dict[int, bool] = {}
+    for chain, positions in points.items():
+        open_ends = 0
+        for index, point in enumerate(positions):
+            shared = any(
+                index != other and _distance(point, neighbour) <= EXACT_TOLERANCE_MM
+                for other, neighbour in enumerate(positions)
+            )
+            if not shared:
+                open_ends += 1
+        closed[chain] = open_ends == 0 and len(positions) >= 2
+    return closed
+
+
+def weld_eligibility(
+    entities: list[dict[str, Any]], max_move_mm: float | None = None
+) -> dict[str, Any]:
+    """Whether the policy layer can actually deliver what weld/snap promise.
+
+    This is the single qualification shared by the admission message
+    (``profile_diagnostics.validate_solid_profile``) and the submission gate
+    (``prepare_operations``). Being inside ``CLUSTER_TOLERANCE_MM`` only makes a
+    pair a *candidate*; a pair is blocked when welding it would move an arc off
+    its circle, exceed the caller's bound, or bridge an already closed contour.
+    A join between two open chains stays ``unresolved``: the exact chain union
+    cannot prove it, so the kernel owns the answer.
+    """
+    curves, _candidates, accepted, refused = _plan(entities, max_move_mm)
+    ends = _endpoints(curves)
+    chain_of = _chains(curves, ends, EXACT_TOLERANCE_MM)
+    closed = _closed_chains(ends, chain_of)
+    blocking: list[dict] = []
+    unresolved: list[dict] = []
+    resolved_by_nearest: list[dict] = []
+    for pair in refused:
+        reason = pair["reason"]
+        if not pair.get("arc_consistent", True):
+            # Two arcs that are not on one circle cannot be welded without
+            # moving an endpoint off its circle, whatever the chain topology
+            # says; the pair is refused for geometry, not for topology.
+            blocking.append({**pair, "reason": "arc_inconsistent"})
+        elif reason == "separate_loops":
+            if closed.get(chain_of[pair["curve_a"]], False) or closed.get(
+                chain_of[pair["curve_b"]], False
+            ):
+                blocking.append(
+                    {
+                        **pair,
+                        "reason": "would_merge_closed_contours",
+                        "reason_detail": (
+                            "welding would bridge a contour that is already closed; the two "
+                            "rings must stay separate"
+                        ),
+                    }
+                )
+            else:
+                unresolved.append(pair)
+        elif reason == "ambiguous_pair":
+            # The endpoint is welded, just to the closer partner; not a refusal.
+            resolved_by_nearest.append(pair)
+        elif reason in BLOCKING_REASONS:
+            blocking.append(pair)
+        else:
+            unresolved.append(pair)
+    if blocking:
+        verdict = "blocked"
+    elif unresolved:
+        verdict = "unresolved"
+    elif accepted:
+        verdict = "weldable"
+    else:
+        verdict = "not_needed"
+    moves = [pair["required_move_mm"] for pair in accepted]
+    return {
+        "verdict": verdict,
+        "candidate_pairs": len(accepted) + len(refused),
+        "accepted_pairs": len(accepted),
+        "blocking_pairs": len(blocking),
+        "unresolved_pairs": len(unresolved),
+        "resolved_by_nearest_pairs": len(resolved_by_nearest),
+        "max_required_move_mm": max(moves) if moves else None,
+        "max_move_mm": max_move_mm,
+        "blocking": blocking[:SAMPLE_LIMIT],
+        "unresolved": unresolved[:SAMPLE_LIMIT],
+    }
+
+
+def _pair_line(pair: dict) -> str:
+    return (
+        f"{pair.get('entity_a')}/{pair.get('entity_b')} gap {pair.get('gap_mm'):.3e} mm "
+        f"({pair.get('reason')})"
+    )
+
+
+def eligibility_summary(eligibility: dict[str, Any]) -> str:
+    """One sentence the caller can act on, derived from ``weld_eligibility``."""
+    verdict = eligibility.get("verdict")
+    if verdict == "blocked":
+        reasons = sorted({pair["reason"] for pair in eligibility["blocking"]})
+        sample = "; ".join(_pair_line(pair) for pair in eligibility["blocking"][:3])
+        return (
+            "Weld/snap cannot fix this profile: "
+            f"{eligibility['blocking_pairs']} join(s) are refused for {reasons} ({sample}). "
+            "Correct the geometry - both arcs on one circle, a bound that allows the move, or "
+            "separate contours - instead of relying on endpoint welding."
+        )
+    if verdict == "unresolved":
+        widest = max(pair["gap_mm"] for pair in eligibility["unresolved"])
+        return (
+            f"{eligibility['unresolved_pairs']} join(s) up to {widest:.3e} mm sit between two "
+            f"open chains; the {EXACT_TOLERANCE_MM:.0e} mm chain union cannot prove the weld, so "
+            "only endpoint_policy='weld' plus the kernel can settle it - check the job result "
+            "before treating the contour as closed."
+        )
+    if verdict == "weldable":
+        move = eligibility["max_required_move_mm"]
+        return (
+            f"All {eligibility['accepted_pairs']} near join(s) are weldable (largest move "
+            f"{move:.3e} mm per endpoint); endpoint_policy='weld' or snap_endpoints=true can "
+            "close them at submission."
+        )
+    return (
+        f"No candidate join exists inside the {CLUSTER_TOLERANCE_MM:.0e} mm diagnostic scale, so "
+        "welding cannot close this profile: the contour is structurally open (missing edge) or "
+        "the seam is wider than the diagnostic scale."
+    )
+
+
 def _snap_entities(
     entities: list[dict[str, Any]],
     curves: list,
@@ -410,17 +557,44 @@ def prepare_operations(operations: list[dict[str, Any]]) -> list[dict[str, Any]]
             snap=snap,
         )
         snapped = receipt.pop("_snapped_entities", None)
+        # FEAT-039: the same qualification the admission message quotes decides
+        # whether the requested policy can be delivered at all.
+        eligibility = weld_eligibility(
+            operation.get("entities", []), operation.get("max_endpoint_move_mm")
+        )
+        snap_failure = (receipt.get("snap") or {}).get("failure_reason")
+        if snap and snap_failure:
+            # snap_endpoints promised geometry movement the policy layer cannot
+            # perform (two arcs, or a rectangle/polyline segment). Publishing an
+            # "applied" receipt after a silent no-op is what the feedback saw.
+            raise ValueError(
+                "snap_endpoints asked the policy layer to snap the profile, but the rewrite was "
+                f"refused ({snap_failure}) so no geometry moved. "
+                + eligibility_summary(eligibility)
+            )
         if snap:
             # The rewrite replaces the request geometry; the receipt keeps the
             # before/after evidence and is published with the job result.
             if snapped is not None:
                 operation["entities"] = snapped
             operation["snap_endpoint_receipt"] = receipt
+            operation["endpoint_weld_eligibility"] = eligibility
         if policy == "weld":
+            if eligibility["verdict"] == "blocked":
+                # A pair the policy layer proves it cannot weld is refused here;
+                # handing the kernel a pair Python already rejected used to make
+                # the job fail after the channel was taken.
+                sample = "; ".join(_pair_line(pair) for pair in eligibility["blocking"][:3])
+                raise ValueError(
+                    "endpoint policy weld: "
+                    f"{eligibility['blocking_pairs']} endpoint join(s) cannot be welded by the "
+                    f"policy layer ({sample}). " + eligibility_summary(eligibility)
+                )
             # The weld policy hands the native side the pairs to regularise.
             # Python still decides and still reports; the native side owns the
             # coordinates it writes.
             operation["weld_pairs"] = receipt.get("weld_plan") or []
+            operation["endpoint_weld_eligibility"] = eligibility
         if receipt["would_reject"]:
             pairs = receipt["pairs"][:SAMPLE_LIMIT]
             raise ValueError(
