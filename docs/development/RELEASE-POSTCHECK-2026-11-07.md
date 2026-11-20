@@ -9,7 +9,17 @@
 - 种子包 SHA256 `9d41be87b9501d402faa0e3de5b7dfc92def2a31c57e47fe301b2cf94983c922`（24 个文件、9 个种子，两次构建摘要一致；包内 `seed_manifest.json` 声明 `compatible_server_version=0.32.0`）。
 - 源码包由发布提交源码构建，字节数与 SHA256 见同名 sidecar，不写入包内文件。
 - Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.32.0`；四附件为 `MCP_CREO_MechDog-0.32.0-source.zip`、`MCP_CREO_MechDog-0.32.0-source.zip.sha256`、`MCP_CREO_MechDog-0.32.0-seed-library.zip` 与 `MCP_CREO_MechDog-0.32.0-seed-library.zip.sha256`。
-- 发布后核对：发布后执行，当前未验证；实际列表、标签指向、附件摘要与 `exit 0` 结果在本入口追加。
+- 发布后核对（2026-11-20 16:11 +08:00 / 08:11Z）：`tools\check_release_assets.py --tag v0.32.0` → exit 0，「v0.32.0: four assets downloaded and verified; both sidecars match」。远端 API digest、本地重算与 sidecar 内容逐一致：
+
+| 附件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.32.0-source.zip` | 11 271 060 | `2996d340c60e118b86fdb9db31b68780907f2d938ff7269609ca16c00af78025` |
+| `MCP_CREO_MechDog-0.32.0-source.zip.sha256` | 101 | `87da005f6e15209a2a99822e822ed153c11134f53432d37a026950c7c5747599` |
+| `MCP_CREO_MechDog-0.32.0-seed-library.zip` | 493 442 | `9d41be87b9501d402faa0e3de5b7dfc92def2a31c57e47fe301b2cf94983c922` |
+| `MCP_CREO_MechDog-0.32.0-seed-library.zip.sha256` | 107 | `15cf53cc4fa0912f0b3b0f5deacb2ec63d9e6dc723e25e30135350a649ae4ede` |
+
+- Release 元数据：id `RE_kwDOU_ueTM4a92Te`，非 draft、非 prerelease，`created_at=2026-11-20T08:11:19Z`，`published_at=2026-11-20T08:11:47Z`，tag `v0.32.0`，target `main`（提交 `539a6b0145d84a9c15e538df6601d9538ecfd035`）。
+- 包内快照与 `main` 的差异：已冻结源码包内的 POSTCHECK/发布记录仍是打包时点措辞（`remote_verification=pending`），本段实际结果与 `docs/releases/0.32.0.json` 的 `verified` 只存在于 `main`，不改写、不重发已发布附件。
 
 ## v0.31.1（2026-11-19，发布前快照）
 

@@ -66,4 +66,4 @@
 
 - 种子包 SHA256：`9d41be87b9501d402faa0e3de5b7dfc92def2a31c57e47fe301b2cf94983c922`（24 个文件、9 个种子，与 `docs/seed_package.json` 一致）。
 - 源码包：由本版合入 `main` 的提交源码构建；字节数与 SHA256 见同名 sidecar，不写入包内。
-- Release：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.32.0`（发布后执行，当前未验证；发布状态与实际附件核对结果记入 `main` 的 POSTCHECK `## v0.32.0` 段）。
+- Release：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.32.0`（2026-11-20 08:11Z 发布，非 draft、非 prerelease；`tools\check_release_assets.py --tag v0.32.0` → exit 0，四附件齐全且两个 sidecar 与对应 ZIP 摘要一致，逐项摘要见 `main` 的 POSTCHECK `## v0.32.0` 段）。
