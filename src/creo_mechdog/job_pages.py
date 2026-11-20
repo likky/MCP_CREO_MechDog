@@ -213,14 +213,25 @@ def job_page(
                 )
             break
         end += 1
-    response["next_cursor"] = (
-        encode_cursor({**identity, "offset": end}) if end < len(records) else None
-    )
-    response["complete"] = end == len(records)
-    response["returned_count"] = end - start
-    if serialized_size(response) > RESPONSE_BUDGET:
-        raise ValueError("Query metadata exceeds response budget")
-    return response
+    while True:
+        response["next_cursor"] = (
+            encode_cursor({**identity, "offset": end}) if end < len(records) else None
+        )
+        response["complete"] = end == len(records)
+        response["returned_count"] = end - start
+        if serialized_size(response) <= RESPONSE_BUDGET:
+            return response
+        # FEAT-023: the cursor and the counters belong to the page, so when they
+        # no longer fit beside the last record, that record moves to the next
+        # page. Raising here used to hide the terminal status of a large job from
+        # the only tool that can poll it.
+        if end - start <= 0:
+            raise ValueError(
+                "Query metadata exceeds response budget even with an empty page; "
+                "request a narrower section"
+            )
+        end -= 1
+        response["data"][records[end][0]].pop()
 
 
 def _record_path(record: Any, index: int) -> Any:
