@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-19（DEV-093 六份反馈规划）：阅读用户指定 `Downloads/0.27.0` 的五份 0.26.0 与一份 0.27.0 反馈，对照本地 0.30.0；登记 [DEV-093](work-items/DEV-093.md) 与[开发完善计划](superpowers/plans/2026-11-19-feedback-0270-development.md)。建议先做坐标保形/端点准入/装配引用复现和修复，再补 Arm7 选区/G2 几何证据，最后独立扩展实体边链与嵌套。圆边轴向不可达、排队 revision 错误、所有旋转不可用等报告结论已收窄；既有卡状态与负责范围不变。本轮37项离线回归通过，未改产品代码、未编译或连接 Creo、未提交/合并/发布。新增 DEV 1 项，当前195项。
+
 2026-11-19（0.30.0 候选，DEV-092/BUG-133/FEAT-012 软件层）：0.28.0 与 0.29.0 已由 BUG-120 发布，本批升版到 **0.30.0** 并补齐版本入口、README、两处种子清单、种子包快照与三份发布资料（`remote_verification=pending`，本分支尚未合入 main、未打包、未发布）。内容：[BUG-133](work-items/BUG-133.md) 显式 `rotation_tolerance` 两层同一有效值、上限 `1e-3`、默认 `1e-6`；[FEAT-012](work-items/FEAT-012.md) `rotation_convention="column"` 只转置一次并按规范行矩阵准入；[DEV-092](work-items/DEV-092.md) 约束整组替换边界与 `failed_constraint_index`/`constraint_stage`/`constraint_reason` 诊断。合并 origin/main 0.29.0 后 `bridge.py build` 与 `dev_check` 通过；Creo 实机与 WorkBuddy 黑盒未验。台账仍194项。
 
 2026-11-19（BUG-120 candidate-3 认证与准入前置拒绝，Creo 10 / release 42 / 载荷 `3c80bf15`，0.28.0 之后）：新增认证记录 `templates/panel/certifications/creo10-bbl-2026-11-19.json`（digest `bb554b2a…`），绑定 profile digest `bc3bfefb…`、release 42、载荷 `3c80bf15…`、loader `edceae2e…`/指纹 `83ad907d…`，收录 2+2 导线 `ce906e56…`、2+3 导线 `72aa7604…`、2+末端点 `0bbcdae1…`、7+3 导线 `38cac400…`、两段式球鼻艏实体 `1292c88b…`/`7a032a4e…`（体积 167543.67 mm³）五组案例。manifest 把 candidate-3 改为 `certified` 并排在最前（candidate-2 的超集），candidate-2 保留独立认证，candidate-1 仍为开发驱动专用 candidate；`certified_profile()` 对 release 42 返回 candidate-3。`creo_capabilities.surface_loft.routes.resident_panel.limits` 更新为“2—8 曲线或首/末单点 + 可选 2—8 导线、最多 11 位置；点与导线不能同特征，点收敛段用共享末截面的第二个放样”。修复准入缺口：新增 `capabilities.require_panel_directions()`，profile 无 `second_direction_macro` 时带导线的请求在 `generic_bridge.submit()` 取锁前拒绝；此前这类请求会在原生 worker 内 `PANEL_COMMAND_MISSING`，被投影为 `unknown_outcome` 并留下 guard（WorkBuddy 作业 `f6e1a29c…`、模型 `27ab4cb4…`）。该 guard 已按 `native.log` 无 `PANEL_MACRO` 的证据用 `confirm_panel_closed` 退役，模型状态与 `prt.2` 未改。离线：全量 **4045 项通过（6 跳过）**、`ruff check` 与 `ruff format --check` 通过。未认证：单特征“点+导线”、真实船体非圆剖面；`geometry_check.verified=false` 缺口不变。
@@ -173,7 +175,7 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 
 诊断交付不等于根因修复；部分交付不关整卡；缺其他版本证据不自动判未修。观察项等自然新现场，不制造故障。已完成且无保留范围的行移入 [完成档案](BACKLOG_COMPLETED.md#2026-11-07dev-073-归档与历史进展)。原进展/证据保留日期，不再回填第二份待办。小修复沿用卡与证据，复杂跨模块任务才另建完整计划。
 
-当前唯一 ID **194**（BUG **87**、FEAT **66**、DEV **41**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
+当前唯一 ID **195**（BUG **87**、FEAT **66**、DEV **42**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
@@ -185,7 +187,7 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 | 开发中 | 7 |
 | 部分交付，剩余待验收 | 42 |
 | 部分交付，剩余待规划 | 7 |
-| 待规划 | 45 |
+| 待规划 | 46 |
 
 BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与真实缺口，勿重复派工。
 
@@ -387,6 +389,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
+| [DEV-093](work-items/DEV-093.md) | P1 | 待规划（审阅与建议计划已完成） | 未排期 | 六份0.26/0.27反馈已对照0.30.0；先做保形、焊接和装配引用，再补区域/G2证据与边链/嵌套。原例完整输入、现有负责范围及各批实施须核对；没有本次 Creo 实机授权。 |
 | [DEV-092](work-items/DEV-092.md) | P1 | 部分交付 0.30.0（T0/T1/T2/T4 软件层完成；T3 查证；T5 待输入） | 未排期 | Creo 13.4/0.26.0 装配反馈已对照 0.27.0；SDK 原包/433 头文件逐项校验通过。T1 容差贯通（见 BUG-133）、T2 列约定、T4 约束整组替换说明与阶段化诊断已实现并通过离线回归。剩：T3 逐实例 bbox/逐面面积需实现并实机测量；T5 缺说明书 8.2/8.5、9 件模型与 22 条引用；产品执行器构建与 Creo 实机均未授权。 |
 | [DEV-090](work-items/DEV-090.md) | P1 | 部分交付，剩余待验收 | 0.27.0（G2 实机子项）；其余未排期 | 0.25.0 已交付T1/T2/T3组合首壁/T4/T5/T6a/T6b/T8与T7诊断措辞；新反馈的方向偏差、锚点与选区分别归BUG-129、FEAT-068/069（签名已补，完整草图/API未核）。本卡续多约束求解/保存重载、parallel/distance、T7实测及黑盒，见DEV-091计划；G2 已实机验证（2026-11-17 本机 Creo 12.4：R5 圆弧 `107.3015`→G2 `80.0793 mm³`，R30 `3862.8331`→`2883.2442 mm³`，四条均 `committed` 且保存重载通过，G2 表面非圆柱、相对圆弧少 25.37%，排除静默退化），`RoundOp` 增可选 `curvature_continuous`；曲率连续性未测，Arm7 实体边与 Creo10/9 未验，Creo10不外推。 |
 | [FEAT-068](work-items/FEAT-068.md) | P1 | 部分交付，剩余待验收 | 未排期 | 已接通单点直边、圆边（含角度过滤）、装配选择器与解析后平面/圆柱校验；实机直边/圆边圆角、coincident+concentric 与保存重载通过。倒角邻面、61条可解性与多约束组合仍待验收。 |
