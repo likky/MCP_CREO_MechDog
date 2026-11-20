@@ -21,9 +21,184 @@
 
 #include <ProUICmd.h>
 
+#include <algorithm>
+#include <map>
+#include <set>
 #include <thread>
 
+#include "panel_fit.h"
 #include "panel_protocol.h"
+
+//: BUG-120 task 3: which features and quilts existed before the dialog opened.
+//: The panel run must identify its own new quilt instead of taking the first one
+//: or trusting the requested labels. Reset at every panel operation.
+static J panel_pre_feature_ids = J(nullptr);
+static J panel_pre_quilt_ids = J(nullptr);
+
+static J panel_id_array(const std::set<int> &ids) {
+    J values = J::array();
+    for (int id : ids)
+        values.push_back(id);
+    return values;
+}
+
+static std::set<int> panel_id_set(const J &values) {
+    std::set<int> ids;
+    if (values.is_array())
+        for (const auto &value : values)
+            if (value.is_number_integer())
+                ids.insert(value.get<int>());
+    return ids;
+}
+
+struct PanelFeatureIdScan {
+    std::set<int> ids;
+};
+static ProError panel_feature_id_cb(ProFeature *feature, ProError status, ProAppData data) {
+    if (!status && feature && data)
+        static_cast<PanelFeatureIdScan *>(data)->ids.insert(feature->id);
+    return PRO_TK_NO_ERROR;
+}
+static J panel_feature_ids(ProSolid solid) {
+    PanelFeatureIdScan scan;
+    ProSolidFeatVisit(solid, panel_feature_id_cb, nullptr, &scan);
+    return panel_id_array(scan.ids);
+}
+
+struct PanelQuiltIdScan {
+    std::set<int> ids;
+};
+static ProError panel_quilt_id_cb(ProGeomitem *item, ProError status, ProAppData data) {
+    if (!status && item && item->type == PRO_QUILT && data)
+        static_cast<PanelQuiltIdScan *>(data)->ids.insert(item->id);
+    return PRO_TK_NO_ERROR;
+}
+static ProError panel_feature_quilt_id_cb(ProFeature *feature, ProError status, ProAppData data) {
+    if (!status && feature && data)
+        ProFeatureGeomitemVisit(feature, PRO_QUILT, panel_quilt_id_cb, nullptr, data);
+    return PRO_TK_NO_ERROR;
+}
+static J panel_quilt_ids(ProSolid solid) {
+    PanelQuiltIdScan scan;
+    ProSolidFeatVisit(solid, panel_feature_quilt_id_cb, nullptr, &scan);
+    return panel_id_array(scan.ids);
+}
+
+//: BUG-120 task 3: after the operation regenerated, name its own new feature and
+//: the one new quilt that feature owns. Uniqueness is the proof; an ambiguous
+//: result keeps quilt_id null so the receipt says unverified instead of guessing.
+static void panel_attach_post_operation_geometry(J &staged, const J &post_state) {
+    if (staged.value("creation_route", std::string()) != "resident_panel")
+        return;
+    const std::set<int> before_features = panel_id_set(panel_pre_feature_ids);
+    const std::set<int> before_quilts = panel_id_set(panel_pre_quilt_ids);
+    panel_pre_feature_ids = J(nullptr);
+    panel_pre_quilt_ids = J(nullptr);
+    J new_features = J::array(), new_quilts = J::array();
+    if (post_state.contains("features") && post_state["features"].is_array())
+        for (const auto &feature : post_state["features"])
+            if (feature.contains("id") && feature["id"].is_number_integer() &&
+                !before_features.count(feature["id"].get<int>()))
+                new_features.push_back(feature["id"].get<int>());
+    J candidates = J::array();
+    if (post_state.contains("quilts") && post_state["quilts"].is_array())
+        for (const auto &quilt : post_state["quilts"]) {
+            if (!quilt.contains("quilt_id") || !quilt["quilt_id"].is_number_integer())
+                continue;
+            const int quilt_id = quilt["quilt_id"].get<int>();
+            if (before_quilts.count(quilt_id))
+                continue;
+            new_quilts.push_back(quilt_id);
+            candidates.push_back(quilt);
+        }
+    J detail = {{"new_feature_ids", new_features},
+                {"new_quilt_ids", new_quilts},
+                {"unique_new_quilt", candidates.size() == 1},
+                {"associated", false},
+                {"quilt_id", nullptr},
+                {"feature_id", nullptr},
+                {"feature_quilt", nullptr}};
+    if (candidates.size() == 1) {
+        const J &quilt = candidates[0];
+        const int quilt_id = quilt["quilt_id"].get<int>();
+        J owners = J::array();
+        if (quilt.contains("feature_ids") && quilt["feature_ids"].is_array())
+            for (const auto &owner : quilt["feature_ids"])
+                if (owner.is_number_integer() && new_features.is_array() &&
+                    std::find(new_features.begin(), new_features.end(), owner) !=
+                        new_features.end())
+                    owners.push_back(owner);
+        detail["quilt_id"] = quilt_id;
+        if (owners.size() == 1) {
+            detail["associated"] = true;
+            detail["feature_id"] = owners[0];
+            detail["feature_quilt"] = quilt_id;
+            staged["quilt_id"] = quilt_id;
+            staged["feature_id"] = owners[0];
+            staged["feature_quilt"] = quilt_id;
+            if (quilt.contains("feature_ids"))
+                staged["feature_quilt_feature_ids"] = quilt["feature_ids"];
+        }
+    }
+    staged["panel_geometry_postop"] = detail;
+}
+
+//: BUG-120 task 3: measure the created quilt on the saved, reloaded model. This is
+//: best-effort evidence: a measurement failure is reported on the receipt and never
+//: rewrites the save/reload outcome the job already earned.
+static void panel_finalize_reloaded_geometry() {
+    for (auto &record : operation_results) {
+        if (!record.is_object() ||
+            record.value("creation_route", std::string()) != "resident_panel")
+            continue;
+        if (!record.contains("quilt_id") || !record["quilt_id"].is_number_integer())
+            continue;
+        const int quilt_id = record["quilt_id"].get<int>();
+        J check = {
+            {"verified", false},
+            {"quilt_id", quilt_id},
+            {"feature_id", record.value("feature_id", J(nullptr))},
+            {"feature_quilt", record.value("feature_quilt", J(nullptr))},
+            {"quilt_is_new", record.contains("panel_geometry_postop")
+                                 ? record["panel_geometry_postop"].value("unique_new_quilt", false)
+                                 : false},
+            {"measured_after_reload", true},
+            {"inspection_source", "saved_reloaded"},
+            {"samples", nullptr}};
+        try {
+            const InspectionLengthUnits units = inspect_length_units(board);
+            const MillimeterScale scale = length_scale_to_mm(board, units);
+            const J feature_ids = record.contains("feature_quilt_feature_ids")
+                                      ? record["feature_quilt_feature_ids"]
+                                      : J::array();
+            const J quilt = quilt_record((ProSolid)board, quilt_id, feature_ids, units, scale);
+            const J group = surface_group_receipt({quilt_id}, 0.01, 1.0, true);
+            J face_groups = J::array();
+            if (quilt.contains("surface_ids"))
+                face_groups.push_back(quilt["surface_ids"]);
+            check["face_groups"] = face_groups;
+            check["face_count"] = quilt.value("face_count", J(nullptr));
+            check["area_mm2"] = quilt.value("area_mm2", J(nullptr));
+            check["area_status"] = quilt.value("area_status", J(nullptr));
+            check["closed"] = quilt.value("closed", J(nullptr));
+            check["closed_status"] = quilt.value("closed_status", J(nullptr));
+            check["boundary"] = group["group"];
+            if (quilt.contains("bbox_mm") && quilt["bbox_mm"].is_array() &&
+                quilt["bbox_mm"].size() == 2)
+                check["bbox"] = {{"xyz_min", quilt["bbox_mm"][0]},
+                                 {"xyz_max", quilt["bbox_mm"][1]},
+                                 {"source", "surface_data"}};
+            check["method"] =
+                "quilt_record(area/closed/bbox) + surface_group_receipt(open edges) on the "
+                "saved and reloaded model";
+        } catch (const std::exception &error) {
+            check["error"] = error.what();
+        } catch (...) {
+            check["error"] = "geometry measurement raised an unknown exception";
+        }
+        record["geometry_check"] = check;
+    }
+}
 
 inline std::string panel_required_string(const J &panel, const char *key) {
     if (!panel.contains(key) || !panel[key].is_string())
@@ -37,6 +212,18 @@ inline std::string panel_required_string(const J &panel, const char *key) {
 }
 
 inline void generic_surface_loft_panel(const J &op) {
+    // BUG-120 task 2: a refusal inside the worker before the dialog exists is not a
+    // panel run whose exit is unknown. The attestation is staged before anything
+    // else can fail and is cleared only once a macro is actually submitted, so the
+    // receipt can tell "never opened" from "opened, outcome unconfirmed".
+    J panel_preopen = {
+        {"no_dialog_opened", true}, {"macro_submitted", false}, {"phase", "panel_block"}};
+    auto stage_preopen = [&]() {
+        stage_operation_result({{"op", "surface_loft"},
+                                {"creation_route", "resident_panel"},
+                                {"panel_preopen", panel_preopen}});
+    };
+    stage_preopen();
     if (!op.contains("panel") || !op["panel"].is_object())
         throw std::runtime_error(
             "PANEL_ADMISSION_INCOMPLETE: creation_route=resident_panel requires the panel block "
@@ -47,6 +234,12 @@ inline void generic_surface_loft_panel(const J &op) {
     const std::string request_id = panel_required_string(panel, "request_id");
     const std::string nonce = panel_required_string(panel, "nonce");
     const std::string profile_id = panel_required_string(panel, "profile_id");
+    panel_preopen.update({{"job_id", job_id},
+                          {"request_id", request_id},
+                          {"nonce", nonce},
+                          {"profile_id", profile_id},
+                          {"phase", "reading_references"}});
+    stage_preopen();
     // The name is optional: when the request names a model, the live model must match
     // it; when it does not, the live model is the one this run selects in.
     const std::string wanted_model = panel.value("model_name", "");
@@ -89,12 +282,18 @@ inline void generic_surface_loft_panel(const J &op) {
     }
 
     // D2: resolve every position against the live model before anything is selected.
-    // A section names its sketch by label (public clients may pass the plain string)
-    // or by {label, open_confirmed}; the sketch feature id is resolved here through
-    // the same alias table the element-tree route uses, because this backend would
-    // otherwise hand feature id 0 to ProFeatureInit and refuse a valid request.
+    // A section names its sketch by {label, open_confirmed}; Python refuses a bare
+    // label before a job exists, and this backend repeats the refusal because a
+    // hand-written plan can skip the model. The sketch feature id is resolved here
+    // through the same alias table the element-tree route uses, because this backend
+    // would otherwise hand feature id 0 to ProFeatureInit and refuse a valid request.
     std::vector<mechdog_panel_ref::PanelCurveRequest> wants;
     J intent_labels = J::array();
+    // BUG-120 task 2/3: filled for this run; the fit block is carried by the
+    // terminal panel record, the snapshots feed the new-quilt association.
+    J fit_json = J(nullptr);
+    panel_pre_feature_ids = J(nullptr);
+    panel_pre_quilt_ids = J(nullptr);
     auto read_position = [&](const J &entry, const char *role, size_t index) {
         mechdog_panel_ref::PanelCurveRequest want;
         bool open_confirmed = false;
@@ -236,6 +435,159 @@ inline void generic_surface_loft_panel(const J &op) {
                 break;
             }
         throw std::runtime_error(resolution.code + ": " + detail);
+    }
+    panel_preopen["phase"] = "fit_diagnostics";
+    stage_preopen();
+    // BUG-120 task 2: report what the live curves do before the dialog opens. This
+    // is evidence, not an admission gate: a failed evaluation or a sampled minimum
+    // farther than the tolerance is reported as unverified, never as "no crossing"
+    // and never as a zero gap.
+    {
+        const InspectionLengthUnits fit_units = inspect_length_units(board);
+        const MillimeterScale fit_scale = length_scale_to_mm(board, fit_units);
+        const double tolerance_mm = mechdog_panel_fit::DEFAULT_TOLERANCE_MM;
+        const double tolerance_native =
+            fit_scale.known ? tolerance_mm / fit_scale.scale : tolerance_mm;
+        std::vector<mechdog_panel_fit::FitCurve> fit_sections, fit_guides;
+        std::vector<std::size_t> section_positions, guide_positions;
+        std::map<int, ProCurve> handles;
+        std::map<int, int> eval_errors;
+        for (std::size_t index = 0; index < resolution.table.refs.size(); ++index) {
+            const auto &ref = resolution.table.refs[index];
+            if (ref.point)
+                continue;
+            ProCurve curve = nullptr;
+            if (ProCurveInit((ProSolid)model, ref.curve_id, &curve) != PRO_TK_NO_ERROR)
+                continue;
+            handles[ref.curve_id] = curve;
+            mechdog_panel_fit::FitCurve entry;
+            entry.label = ref.label;
+            entry.feature_id = ref.feature_id;
+            entry.curve_id = ref.curve_id;
+            if (index < section_count) {
+                entry.role = "section";
+                fit_sections.push_back(entry);
+                section_positions.push_back(index);
+            } else {
+                entry.role = "guide";
+                fit_guides.push_back(entry);
+                guide_positions.push_back(index);
+            }
+        }
+        auto eval = [&](const mechdog_panel_fit::FitCurve &curve, double t,
+                        std::array<double, 3> &point) -> bool {
+            const auto handle = handles.find(curve.curve_id);
+            if (handle == handles.end())
+                return false;
+            ProVector xyz{};
+            const ProError code = ProCurveXyzdataEval(handle->second, t, xyz, nullptr, nullptr);
+            if (code != PRO_TK_NO_ERROR) {
+                eval_errors[curve.curve_id] = (int)code;
+                return false;
+            }
+            point = {xyz[0], xyz[1], xyz[2]};
+            return true;
+        };
+        const std::vector<int> section_codes(fit_sections.size(), 0);
+        const std::vector<int> guide_codes(fit_guides.size(), 0);
+        const mechdog_panel_fit::FitReport report = mechdog_panel_fit::analyse(
+            fit_sections, fit_guides, eval, tolerance_native, section_codes, guide_codes);
+        auto mm = [&](double native) -> J {
+            return fit_scale.known ? J(native * fit_scale.scale) : J(nullptr);
+        };
+        auto point_mm = [&](const std::array<double, 3> &point) -> J {
+            if (!fit_scale.known)
+                return nullptr;
+            return J::array({point[0] * fit_scale.scale, point[1] * fit_scale.scale,
+                             point[2] * fit_scale.scale});
+        };
+        J pairs = J::array();
+        for (const auto &pair : report.pairs) {
+            const auto &section = fit_sections[pair.section_index];
+            const auto &guide = fit_guides[pair.guide_index];
+            J endpoints = {{"measured", pair.endpoints_measured},
+                           {"status", pair.endpoints_measured ? J("measured") : J("unverified")}};
+            if (pair.endpoints_measured) {
+                endpoints["min_gap_mm"] = mm(pair.endpoint_min_distance);
+                endpoints["case"] = pair.endpoint_case;
+                endpoints["section_point_mm"] = point_mm(pair.endpoint_section);
+                endpoints["guide_point_mm"] = point_mm(pair.endpoint_guide);
+            }
+            int raw_code = pair.raw_code;
+            if (pair.state == "unverified") {
+                const auto section_error = eval_errors.find(section.curve_id);
+                const auto guide_error = eval_errors.find(guide.curve_id);
+                if (section_error != eval_errors.end())
+                    raw_code = section_error->second;
+                else if (guide_error != eval_errors.end())
+                    raw_code = guide_error->second;
+            }
+            J record = {
+                {"section_index", (int)section_positions[pair.section_index]},
+                {"guide_index", (int)guide_positions[pair.guide_index]},
+                {"section",
+                 {{"role", "section"},
+                  {"label", section.label},
+                  {"feature_id", section.feature_id},
+                  {"curve_id", section.curve_id}}},
+                {"guide",
+                 {{"role", "guide"},
+                  {"label", guide.label},
+                  {"feature_id", guide.feature_id},
+                  {"curve_id", guide.curve_id}}},
+                {"state", pair.state},
+                {"measurement", pair.state == "unverified" ? J("unverified") : J("measured")},
+                {"reason", pair.reason.empty() ? J(nullptr) : J(pair.reason)},
+                {"raw_code", raw_code},
+                {"method", "ProCurveXyzdataEval coarse grid plus local alternating refinement"},
+                {"min_gap_mm", pair.measured ? mm(pair.min_distance) : J(nullptr)},
+                {"min_gap_native", pair.measured ? J(pair.min_distance) : J(nullptr)},
+                {"section_t", pair.measured ? J(pair.section_t) : J(nullptr)},
+                {"guide_t", pair.measured ? J(pair.guide_t) : J(nullptr)},
+                {"section_point_mm", pair.measured ? point_mm(pair.section_point) : J(nullptr)},
+                {"guide_point_mm", pair.measured ? point_mm(pair.guide_point) : J(nullptr)},
+                {"endpoints", endpoints}};
+            pairs.push_back(record);
+        }
+        J orders = J::array();
+        for (const auto &order : report.orders) {
+            J parameters = J::array();
+            for (double value : order.guide_parameters)
+                parameters.push_back(value);
+            J crossings = J::array();
+            for (bool value : order.crossing)
+                crossings.push_back(value);
+            orders.push_back({{"guide_index", (int)guide_positions[order.guide_index]},
+                              {"label", fit_guides[order.guide_index].label},
+                              {"available", order.available},
+                              {"consistent", order.consistent},
+                              {"direction", order.direction},
+                              {"guide_parameters", parameters},
+                              {"crossing", crossings},
+                              {"reason", order.reason.empty() ? J(nullptr) : J(order.reason)}});
+        }
+        fit_json = {{"contract", "panel-curve-fit-v1"},
+                    {"method", "ProCurveXyzdataEval; exact endpoints; sampled interior minimum"},
+                    {"tolerance_mm", fit_scale.known ? J(tolerance_mm) : J(nullptr)},
+                    {"tolerance_native", tolerance_native},
+                    {"unit_scale_to_mm", fit_scale.known ? J(fit_scale.scale) : J(nullptr)},
+                    {"pairs", pairs},
+                    {"orders", orders},
+                    {"summary",
+                     {{"sections", (int)fit_sections.size()},
+                      {"guides", (int)fit_guides.size()},
+                      {"pairs", (int)report.pairs.size()},
+                      {"measured_pairs", (int)report.measured_pairs},
+                      {"crossing_pairs", (int)report.crossing_pairs},
+                      {"unverified_pairs", (int)report.unverified_pairs}}},
+                    {"blocking", false},
+                    {"blocking_reason",
+                     "diagnostic only in this version: a pair is never refused on the sampled "
+                     "minimum; the route's hard reference rules still refuse a missing feature, "
+                     "a composite or closed curve and a zero/unknown length before the dialog"}};
+        log("PANEL_FIT_SUMMARY=%s\n", fit_json["summary"].dump().c_str());
+        panel_preopen["phase"] = "references_resolved";
+        stage_preopen();
     }
 
     wchar_t executable[MAX_PATH];
@@ -438,17 +790,29 @@ inline void generic_surface_loft_panel(const J &op) {
         return observation;
     };
     auto stage_panel = [&](int selected) {
-        stage_operation_result({{"op", "surface_loft"},
-                                {"creation_route", "resident_panel"},
-                                {"panel",
-                                 {{"profile_id", profile_id},
-                                  {"selected", selected},
-                                  {"slots", static_cast<int>(sections.size())}}},
-                                {"selection_intent", {{"labels", intent_labels}}},
-                                {"exit_observation", read_panel_exit()}});
+        J detail = {{"op", "surface_loft"},
+                    {"creation_route", "resident_panel"},
+                    {"panel",
+                     {{"profile_id", profile_id},
+                      {"selected", selected},
+                      {"slots", static_cast<int>(sections.size())}}},
+                    {"selection_intent", {{"labels", intent_labels}}},
+                    {"exit_observation", read_panel_exit()}};
+        if (!fit_json.is_null())
+            detail["curve_fit_check"] = fit_json;
+        stage_operation_result(detail);
     };
+    panel_preopen["phase"] = "preparing_dialog";
+    stage_preopen();
     resident_blend_task(module, "MechDogPanelPrepare",
                         (callback_dir / L"callback_request.json").wstring());
+    // BUG-120 task 3: snapshot what exists before the dialog can create anything.
+    // The post-operation comparison uses these sets; a quilt that already existed
+    // can never be mistaken for this run's product.
+    panel_pre_feature_ids = panel_feature_ids((ProSolid)model);
+    panel_pre_quilt_ids = panel_quilt_ids((ProSolid)model);
+    panel_preopen["phase"] = "submitting_macro";
+    stage_preopen();
     // The recorded sequence opens the dialog. The recording's screen-pick pauses are
     // replaced by one invocation of the resident command per position, and the
     // restricted Done is appended to the same macro: T1-B proved this order on
@@ -479,6 +843,12 @@ inline void generic_surface_loft_panel(const J &op) {
         log("PANEL_MACRO=%s\n", shown.c_str());
     }
     CK(trace_blend_call("panel_macro_submit", [&] { return ProMacroLoad(wide(sequence).data()); }));
+    // The macro was accepted. From here on a failure can no longer claim the dialog
+    // never opened, so the attestation flips before the wait starts.
+    panel_preopen["macro_submitted"] = true;
+    panel_preopen["no_dialog_opened"] = false;
+    panel_preopen["phase"] = "macro_submitted";
+    stage_preopen();
     // Bounded wait for the payload to record one ticket per position. Only the file
     // is polled: a Toolkit task here is exactly what blocked the 2026-11-18 run.
     int selected = panel_selected(read_panel_state());

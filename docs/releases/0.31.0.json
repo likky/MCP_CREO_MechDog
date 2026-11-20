@@ -4,17 +4,10 @@
   "previous_version": "0.30.0",
   "previous_release_tag": "v0.30.0",
   "previous_release_commit": "1c20f550571f15820dba6816f4efbab060197a4d",
-  "remote_verification": "pending",
+  "remote_verification": "verified",
   "delivery_ids": [
-    "DEV-093",
-    "FEAT-068",
-    "FEAT-023",
-    "BUG-076",
-    "BUG-019",
-    "FEAT-008",
-    "FEAT-051",
-    "FEAT-039"
+    "BUG-120"
   ],
-  "frozen_on": "2026-11-20",
-  "note": "Frozen from this batch's actual changes, the main ledger and the work cards. Not derived from the per-ID table it checks. Update only before packaging a new candidate, never to make a failing table pass."
+  "frozen_on": "2026-11-19",
+  "note": "Frozen from this batch's actual changes, the main ledger and the work card. Not derived from the per-ID table it checks. Update only before packaging a new candidate, never to make a failing table pass."
 }

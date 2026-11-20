@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "version": "0.32.0",
+  "previous_version": "0.31.1",
+  "previous_release_tag": "v0.31.1",
+  "previous_release_commit": "665e5860ea5314197b77410769460db4338935c9",
+  "remote_verification": "pending",
+  "delivery_ids": [
+    "DEV-094",
+    "FEAT-068",
+    "FEAT-023",
+    "BUG-076",
+    "BUG-019",
+    "FEAT-008",
+    "FEAT-051",
+    "FEAT-039"
+  ],
+  "frozen_on": "2026-11-20",
+  "note": "Frozen from this batch's actual changes, the main ledger and the work cards. This batch follows the published 0.31.0 and 0.31.1; its DEV entry is numbered DEV-094 because DEV-093 was already published as a different engineering-rule item. Update only before packaging a new candidate, never to make a failing table pass."
+}

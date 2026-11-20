@@ -5564,6 +5564,9 @@ static void execute_operation_body(const J &op) {
         kind != "mass_properties" && kind != "surface_group_measure" && kind != "surface_curvature")
         CK(ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS));
     J post_state = inspection();
+    // BUG-120 task 3: a panel loft names the feature and quilt it just created by
+    // comparing this model before the dialog with the model after the operation.
+    panel_attach_post_operation_geometry(staged_operation_result, post_state);
     // One terminal record for this input. Branch details and the staged detail
     // are merged here; effect_status stays unknown until the job-level
     // finalizer knows whether the save committed or the rollback restored the
@@ -8806,6 +8809,10 @@ static int run_generic(const std::wstring &job) {
                         throw std::runtime_error(
                             "Saved model suppression set does not match the recorded registry");
                 }
+                // BUG-120 task 3: measure the panel loft's own quilt on the saved,
+                // reloaded model. Best effort: a measurement failure is receipt
+                // evidence and never rewrites the save/reload outcome.
+                panel_finalize_reloaded_geometry();
                 generic_substage("verify_model_after_reload");
                 generic_stage("after_reload_blend_validation");
                 report["loft_checks"]["after_reload"] = verify_loft_settings(L"after_reload");

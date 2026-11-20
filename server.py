@@ -3141,13 +3141,18 @@ async def creo_surface_loft(
 
     creation_route (BUG-120/D1) chooses the creation path. Omitted or
     'element_tree' keeps everything above. 'resident_panel' replays recorded Creo UI
-    commands through the resident callback instead of building an element tree, and
-    in this version publishes 2-8 MCP-owned sketch labels only: each label must own
-    one open non-composite curve, and guides, points, boundary_conditions and
-    template are refused. It is refused before a job unless the loaded worker
-    declares a panel backend and a certified UI profile for this release exists;
-    read creo_capabilities.routes.resident_panel for both facts. It never falls back
-    to the element tree.
+    commands through the resident callback instead of building an element tree. In
+    this version each first-direction position is 2-8 MCP-owned sketches written as
+    {label:'...', open_confirmed:true}: a bare label is refused before a job exists,
+    because this build cannot read whether a standalone curve is closed and must not
+    assume it. Up to 8 guides ({label, open_confirmed} too) may follow as the second
+    direction, and one end may be a convergence point
+    {kind:'datum_point_feature',label:'...'} (a point needs no openness proof). At
+    most 11 positions are selected per run. boundary_conditions and template stay on
+    the element_tree route. A request is refused before a job unless the loaded
+    worker declares a panel backend and a certified UI profile for this release
+    exists; read creo_capabilities.routes.resident_panel for both facts. It never
+    falls back to the element tree.
     """
     operation: dict[str, Any] = dict(
         op="surface_loft", label=label, sections=sections, interpolation=interpolation

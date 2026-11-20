@@ -820,6 +820,10 @@ def build_native() -> Path:
         # position bound) kept the cached DLL and silently ran the previous rules.
         "native/panel_protocol.h",
         "native/panel_selection_state.h",
+        # BUG-120 tasks 2-3: panel_run.h includes the fit diagnostics header.
+        # Without this entry a pure panel_fit.h change would reuse the cached
+        # callback DLL.
+        "native/panel_fit.h",
         "native/panel_run.h",
         "native/panel_references.h",
         "native/panel_references_sdk.h",

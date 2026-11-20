@@ -1,59 +1,66 @@
 # MCP_CREO_MechDog 0.31.0
 
-一句话：把 0.27.0 反馈批的六项离线修复与两条诊断接通——提交回执和组件列表有了有界分页，坏引用在派发前就拒绝，切除与焊接给出分型判据，同一圆边被拆成多段时不再建议“缩小公差”，回转轴与草图平面的关系也能在失败回执里读到实测数字。
+一句话：放样前先量导线，建成后按实际新增面组回读——缺参数在建作业前说清楚，三导线曲面和完整实体链都能带回面积、边界与保存重载证据。
 
-- 类型：MINOR（新增可选入参 `response_detail`、`fields`/`limit`/`cursor`，新增回执与诊断字段）
-- 日期：2026-11-20
-- 公开工具：**109 个**（不变；能力通过既有工具的参数与回执扩展）
+- 类型：MINOR（`resident_panel` 输入契约收紧、回执新增字段；无新增公开工具）
+- 日期：2026-11-19
+- 公开工具：**109 个**（不变）
 - 上一版本：0.30.0
-- 主台账：[BACKLOG](BACKLOG.md) · 发布记录：[RELEASE-0.31.0](validation/RELEASE-0.31.0.md) · 工作卡：[DEV-093](work-items/DEV-093.md) · [FEAT-068](work-items/FEAT-068.md) · [FEAT-023](work-items/FEAT-023.md) · [BUG-076](work-items/BUG-076.md) · [BUG-019](work-items/BUG-019.md) · [FEAT-008](work-items/FEAT-008.md) · [FEAT-051](work-items/FEAT-051.md) · [FEAT-039](work-items/FEAT-039.md)
+- 主台账：[BACKLOG](BACKLOG.md) · 发布记录：[RELEASE-0.31.0](validation/RELEASE-0.31.0.md) · 工作卡：[BUG-120](work-items/BUG-120.md)
 
 ## 对外可见变化
 
-### 1. 提交回执与组件列表有界（FEAT-023 / BUG-076）
+### 1. 裸标签在建作业前被拒（任务 1）
 
-- `creo_execute_plan` 新增可选 `response_detail: "full" | "compact"`，缺省仍是 `full`。`compact` 只在 MCP 回执里省略 `operations` 数组，保留 `job_id`/`status`/`revision`/`message` 等标量与文件摘要；`jobs/<id>/job.json` 仍写完整内容，轮询 `creo_get_job` 不受影响。非法取值的拒绝发生在取 Toolkit 通道之前。
-- `creo_list_components` 新增 `fields`、`limit`、`cursor`：32 KiB 以内保持旧形状，超出后按 `model_id`+`revision`+`fields`+记录快照指纹绑定游标分页；单条自身超预算时返回超限标记而不是截断记录。分页原语与 `creo_get_job` 共用同一预算实现，不再各写一套。
+- `creation_route="resident_panel"` 的 `sections`/`guides` 现在必须在 Python 校验阶段写成 `{label, open_confirmed:true}`。裸标签字符串在 `validate_operations` 时被拒绝，错误信息给出可操作的写法，并说明“未建作业、未触碰 Toolkit 通道”。
+- `creo_surface_loft` 与 `creo_execute_plan` 共用同一校验；`element_tree` 路线的裸标签行为不变；首/末截面为收敛点 `{kind:'datum_point_feature',label:...}` 时仍按点处理。
+- 工具说明与 `creo_capabilities.routes.resident_panel.limits` 同步说明该写法。
 
-### 2. 请求形态在派发前拒绝（BUG-019 / FEAT-008）
+### 2. 开面板前的曲线配合诊断（任务 2）
 
-- 顶层裸引用、`edge` 与 `surfaces` 混用、两者皆缺、`surfaces` 不是两项、槽位与操作不匹配、空 `edge` 槽，现在都在提交阶段给出具名错误，不再进 worker 才失败。
+- 新增纯 C++ 的 `native/panel_fit.h`，在引用解析完成、`MechDogPanelPrepare`/宏提交之前，用 `ProCurveXyzdataEval` 采样并做局部交替细化，输出 7×3=21 对截面×导线记录：角色、标签、实际 feature/curve ID、测量状态、方法、`section_t`/`guide_t`、位置、间隙 mm/native、原始码、端点闭合与穿过顺序。
+- 采样失败或局部最小超容差记 `unverified`/`no_sample_intersection`，不写零、不宣称“不相交”。本版只报告、不新增拒绝规则；缺特征、复合/闭合曲线、零/未知长度仍由既有硬规则拒绝。
+- 新增 `panel_preopen` 未开面板正向证据：worker 在宏提交前失败时携带 job/nonce/profile/phase，Python 可退本任务 guard，不再把这类前置拒绝投影成 `unknown_outcome`。
 
-### 3. 模型名拒绝按原因分类（DEV-093 任务 1）
+### 3. 成功回执关联实际面组（任务 3）
 
-- 长度、字符、首字符与大小写提示分开：只有请求里真的出现大写时才提示“已转小写”，字符错误会指出具体字符，长度错误带实际字符数，命名词前缀不再无条件附加。
+- 面板作业前快照 feature/quilt ID，作业后按“唯一新增 quilt + 其新增 owner feature”关联；保存重载后在重载模型上用 `quilt_record` 与 `surface_group_receipt` 读取面积、开闭、面组和边界记录。
+- `panel_receipt.geometry_check.verified` 改为由 Python 依据“正面积 + 唯一目标面组关联 + 重载后读数 + 保存重载证明”计算，缺项保留 `unverified` 并列出原因；测量失败不回写事务结论。
 
-### 4. 切除体积变化分型（FEAT-051）
+### 4. B/C 实机回归（任务 4）
 
-- 体积变化回执新增 `material_increased` / `material_removed` / `no_material_removed` / `unmeasurable` 四态，原始 `before`/`after`/`removed` 与原生 `status` 原样保留；本层只分类，不重写原生状态、不自行判成功。
-
-### 5. 焊接资格判据共用（FEAT-039）
-
-- 端点焊接的资格从“间隙 ≤ 阈值”改为几何与拓扑分类（圆弧不一致、位移超限、合并会闭合轮廓、歧义配对、两开链接缝未解决），准入与提交调用同一个函数；诊断文案统一带 “For this profile:”。
-
-### 6. 同圆多弧段拒绝改为可行路径（FEAT-068）
-
-- 一条物理圆边被 Creo 报告为多段同圆心、同半径圆弧时，圆心+半径过滤会全部命中，任何更小的 `tolerance_mm` 都无法收敛。拒绝文案现在列出命中的弧段 id，并给出 `point_mm`（指定目标跨度上的点）或 `{kind:'edge',id:N}` 两条可行路径。
-- 判据按**实测**圆心与半径比较（分量差与半径差均 `≤ 1e-6 mm`）。两个不同圆恰好都落进较宽公差时仍保留“缩小公差”的原建议，不会被误报成同圆。
-
-### 7. 回转轴与草图平面的实测关系（DEV-093 任务 4）
-
-- 显式轴回转在创建特征前暂存 `revolve_axis_plane_relation`：实测轴原点/方向、草图平面原点/法向、有符号距离、出平面角、到法向角与 `axis_lies_in_plane`，并附 `thresholds`（`1e-6 mm` / `1e-3 deg`）。
-- 再生失败时同一组数字会重复在失败消息里，不必打开操作记录。**该关系只分类、不设闸门**：Creo 允许绕空间任意直线回转，非共面轴本身不是错误，文案明确写“这些实测数字本身不说明 Creo 为何拒绝”。
+- B（三导线曲面）：新模型 `ceda66c1…`，作业 `01` `9d854dd0…` → `09` `66a65ab2…` → 面板放样 `744abfff…`，rev 3，面组 **142** / 特征 **136**，单面、开放、面积 **46,555,189.24528535 mm²**；`curve_fit_check` 21/21 对 `crossing`、0 `unverified`，导线穿过顺序 upper=forward、side/lower=reverse 且均 monotone；独立 `creo_measure_surface_group` 4 条开放边 **11916.01893 / 11924.14083 / 4612.01158 / 2126.66969 mm**；`geometry_check.verified=true`，保存重载 true；PRT SHA256 `d186b587…`。
+- C（完整实体链，在 B 的 PRT 副本上）：采用作业 `3dbf8e89…`，艏段几何 `9a3b1f50…`、艏段放样 `61f1430f…`（quilt 172）、缝合 `660a10ee…`（142）、镜像 `48d9e87c…`（新 quilt 194）、左右缝合 `a2888e30…`（142）、后盖 `e228c80f…`（新 quilt 241）、封盖缝合 `2a987299…`（142）、实体化 `c41a497d…` 全部成功，rev 9。最终一个活动含材料实体、体积 **55,087,038,135.823044 mm³**、质心 `(69198.6544,0,-5595.6546)`、5 面/14 边/58 特征；独立闭合测量为 5 面、14 条共享边、**0 开放边**、`state=closed`；保存重载 true；PRT SHA256 `22223de9…`。
 
 ## 行为变化与升级注意
 
-1. `response_detail`、`fields`/`limit`/`cursor` 都是可选参数，旧调用行为不变；`compact` 只影响 MCP 回执，不影响落盘作业记录。
-2. 本版**有原生改动**（`native/geometry_selectors.cpp`、`native/generic.cpp`）：升级后需重新编译 worker（`bridge.py build`），不能沿用 0.30.0 的构建。
-3. 种子库 `compatible_server_version=0.31.0`，与 0.30.x 的种子包不通用。
-4. 同圆多弧段场景下，`radius_mm`+`center_mm` 单独使用仍会被判为多命中（这是事实，不是缺陷）；请改用 `point_mm` 或按 id 选择。
+1. `resident_panel` 的 `sections`/`guides` 裸字符串现在是输入错误；请改用 `{label, open_confirmed:true}`。`element_tree` 路线不受影响。
+2. 成功回执新增 `curve_fit_check` 与更严格的 `geometry_check` 判定；`selection_record` 仍为 null（本版载荷不写），几何证据由新增字段与保存重载后的测量提供。
+3. 本版**有原生改动**（`native/panel_fit.h`、`native/panel_run.h`、`native/generic.cpp`）：升级后需重新编译 worker（`bridge.py build`）并在 Creo 辅助应用程序中重新加载回调。
+4. 种子库 `compatible_server_version=0.31.0`，与 0.30.x 的种子包不通用。
 
 ## 验证
 
-- 离线：`tools/dev_check.py` 全量单测通过、lint 0、未格式化 0；`python bridge.py build` exit 0。
-- 实机（Creo 12.4.0.0，经用户确认后执行）：
-  - 同圆多弧段四算例（圆管夹具）：只给圆心+半径时回执列出 `ids 72, 90` 并给 `point_mm`/id 指引，`point_mm` 与 `{kind:'edge',id:90}` 各自圆角成功、保存重载通过、体积 2304.668647961009 mm³。
-  - 容差对照（实心圆柱，两圆同心距 10 mm）：`tolerance_mm=20` 命中 4 条边仍给“缩小公差”，收紧到 `0.01` 切到同圆专用文案。
-  - 双 R20 凸台（异圆心同半径）：`centre+radius+point_mm` 两次圆角均 `committed`，体积 121132.74122871833 → 120921.81921275367 mm³。
-  - 回转轴四档：共面（距离 ≈0、`lies_in_plane=true`、成功）、50 mm 离面、0.00039 mm 偏移、倾斜 60°，后三档失败回执均带实测数字。
-- 未验：六项离线子项（FEAT-023/BUG-076/BUG-069 文案、BUG-019/FEAT-008、FEAT-051、FEAT-039）没有实机回归；Creo 9/10 运行期；WorkBuddy 黑盒；`revolve_axis_plane_relation` 的阈值是否等于 Creo 的准入边界（可能不存在）。
+- 离线：全量 unittest **4078 项通过（6 跳过）**；`tools/test_panel_fit.py` 通过；`tools/dev_check.py --skip-unit`（Ruff + clang-format）通过；`bridge.py build` exit 0。
+- 实机：Creo 10.0.0.0 / release 42，B/C 均 `saved_file_reloaded_and_verified=true`，几何与保存重载结果见上节；证据目录 `build/bug120_task4/`（`B_report.json`、`C_report.json` 与两份 PRT 副本）。
+- 实机跑在 worker `9d353a47…` / source digest `058e8cdb…` / 面板载荷 `eba1b25b…`；收尾把 `panel_fit.h` 加入 `bridge.callback_relatives` 后同源重建为 worker `39fafb98…` / 载荷 `5dc6b5a4…`（仅构建依赖清单变化，运行代码未变，未重跑 B/C）。
+- 发布资料：`tools/check_release_records.py --version 0.31.0` 与 `tools/package.py` 的四附件/发布记录门禁。
+
+## 仍未验（本版不声称）
+
+- 任务 5 接缝 G1：历史失败基线最大 **6.28°**（判据 0.5°），本版未重测，按用户要求单独排期。
+- WorkBuddy 黑盒本轮未重跑。
+- 真实船体非圆剖面、STL 导出与自动加载回调不在本批。
+- Creo 10 release 42 之外的版本；本机结果不外推。
+
+## 源码包与校验
+
+本版发布四个附件（逐个列出，不使用通配）：
+
+- `MCP_CREO_MechDog-0.31.0-source.zip`
+- `MCP_CREO_MechDog-0.31.0-source.zip.sha256`（源码包摘要记录在同名 sidecar 中，一行 `<64 位 SHA256>  文件名`）
+- `MCP_CREO_MechDog-0.31.0-seed-library.zip`
+- `MCP_CREO_MechDog-0.31.0-seed-library.zip.sha256`（种子包摘要同样在 sidecar 中）
+
+- 种子包：24 个文件、9 个种子，SHA256 `fef385db303722c3279b9fc6525dc8fd06717b6d67f99d6128c587d04a2e8356`，与 `docs/seed_package.json` 一致。
+- Release：发布后执行，当前未验证；当前 `docs/releases/0.31.0.json` 的 `remote_verification` 为 `pending`。

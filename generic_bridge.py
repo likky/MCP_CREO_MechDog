@@ -774,6 +774,22 @@ def _panel_exit_evidence(result: object) -> dict | None:
                 "method": observation.get("method"),
                 "job_id": result.get("job_id"),
             }
+        preopen = entry.get("panel_preopen")
+        if (
+            isinstance(preopen, dict)
+            and preopen.get("no_dialog_opened") is True
+            and preopen.get("macro_submitted") is False
+        ):
+            # BUG-120 task 2: the worker refused before it submitted a macro. The
+            # attestation names this job, nonce and profile, so it proves the
+            # dialog never existed without inferring it from a silent log.
+            return {
+                "no_ui_started_confirmed": True,
+                "source": "native_preopen_refusal",
+                "phase": preopen.get("phase"),
+                "job_id": preopen.get("job_id"),
+                "nonce": preopen.get("nonce"),
+            }
     return None
 
 
@@ -790,10 +806,19 @@ def _retire_panel_guard_after_result(job_id: str, result: object) -> None:
     evidence = _panel_exit_evidence(result)
     if evidence is None:
         return
+    if evidence.get("source") == "native_preopen_refusal":
+        # The attestation must name this guard's job and nonce; anything else is
+        # not evidence about this session.
+        if evidence.get("job_id") != job_id or evidence.get("nonce") != guard.get("nonce"):
+            return
     try:
         panel_session_guard.retire(
             job_id,
-            reason="native panel exit observed",
+            reason=(
+                "native panel never opened"
+                if evidence.get("source") == "native_preopen_refusal"
+                else "native panel exit observed"
+            ),
             evidence=evidence,
             root=bridge.ROOT,
         )

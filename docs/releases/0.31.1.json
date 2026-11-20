@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "version": "0.31.1",
+  "previous_version": "0.31.0",
+  "previous_release_tag": "v0.31.0",
+  "previous_release_commit": "daadbe71869ae4b394a9298970a8d9ec6608bc91",
+  "remote_verification": "verified",
+  "delivery_ids": [
+    "DEV-093"
+  ],
+  "frozen_on": "2026-11-19",
+  "note": "Engineering-rule patch: standing authorization for local Creo operations. Frozen from this batch's actual change and the main ledger; delivered item is archived in BACKLOG_COMPLETED.md."
+}
