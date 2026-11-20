@@ -21,6 +21,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 #include <memory>
 #include <map>
 #include <set>
@@ -2915,6 +2916,133 @@ static std::string classify_axis_provenance(int axis_id, ProError &surface_code)
         return "datum_axis";
     return "unknown";
 }
+// DEV-093 / 0.27.0 feedback (T4): report how the explicit revolve axis sits
+// with respect to the sketch plane it is paired with. Creo revolves about any
+// line in space, so a non-coplanar axis is not an error by itself - the numbers
+// exist because a regeneration refusal is otherwise a bare kernel sentence and
+// the caller cannot tell an axis/plane mismatch from a bad profile. These
+// thresholds only classify the report; they never admit or refuse a feature.
+static constexpr double REVOLVE_AXIS_PLANE_DISTANCE_MM = 1e-6;
+static constexpr double REVOLVE_AXIS_PLANE_ANGLE_DEG = 1e-3;
+
+static J revolve_axis_plane_relation(const J &op, int axis_id, ProError axis_code) {
+    J relation = {{"available", false},
+                  {"source", "unavailable"},
+                  {"reason", nullptr},
+                  {"query_code", nullptr},
+                  {"axis_origin_mm", nullptr},
+                  {"axis_direction", nullptr},
+                  {"plane_origin_mm", nullptr},
+                  {"plane_normal", nullptr},
+                  {"signed_distance_mm", nullptr},
+                  {"origin_distance_mm", nullptr},
+                  {"direction_angle_to_plane_deg", nullptr},
+                  {"direction_angle_to_normal_deg", nullptr},
+                  {"axis_lies_in_plane", nullptr},
+                  {"thresholds",
+                   {{"distance_mm", REVOLVE_AXIS_PLANE_DISTANCE_MM},
+                    {"angle_deg", REVOLVE_AXIS_PLANE_ANGLE_DEG}}},
+                  {"note",
+                   "Measured axis geometry against the sketch alias frame. A non-coplanar axis "
+                   "is not an error by itself and these numbers do not on their own show why "
+                   "Creo refused the feature."}};
+    if (axis_code || axis_id < 0) {
+        relation["reason"] = "axis_unresolved";
+        relation["query_code"] = axis_code;
+        return relation;
+    }
+    ProGeomitem item = {};
+    ProError item_code = ProModelitemInit(board, axis_id, PRO_AXIS, &item);
+    if (item_code) {
+        relation["reason"] = "axis_item_unavailable";
+        relation["query_code"] = item_code;
+        return relation;
+    }
+    AxisGeometry geometry = inspect_axis_geometry(&item);
+    if (!geometry.known) {
+        relation["reason"] = "axis_geometry_unreadable";
+        relation["query_code"] = geometry.data_code;
+        return relation;
+    }
+    const J *entry = op.contains("sketch") && op["sketch"].is_string()
+                         ? alias_entry(op["sketch"].get<std::string>())
+                         : nullptr;
+    // A malformed alias degrades to "unavailable": this report is a diagnosis,
+    // never a precondition of the feature.
+    auto frame_vector = [](const J &value) {
+        return value.is_array() && value.size() == 3 && value[0].is_number() &&
+               value[1].is_number() && value[2].is_number();
+    };
+    if (!entry || !entry->contains("origin") || !entry->contains("normal") ||
+        !frame_vector((*entry)["origin"]) || !frame_vector((*entry)["normal"])) {
+        relation["reason"] = "sketch_alias_frame_unavailable";
+        return relation;
+    }
+    const V plane_origin = vec((*entry)["origin"]);
+    const V plane_normal = normalized(vec((*entry)["normal"]));
+    const V axis_origin = {geometry.origin[0], geometry.origin[1], geometry.origin[2]};
+    const V axis_direction = {geometry.direction[0], geometry.direction[1], geometry.direction[2]};
+    const double signed_distance = dot(plane_normal, add(axis_origin, scale(plane_origin, -1.0)));
+    const double along_normal = std::fabs(dot(axis_direction, plane_normal));
+    const double half_pi = 3.14159265358979323846;
+    const double angle_to_plane = std::asin(std::min(1.0, along_normal)) * 180.0 / half_pi;
+    const double angle_to_normal = std::acos(std::min(1.0, along_normal)) * 180.0 / half_pi;
+    relation.update(
+        {{"available", true},
+         {"source", "measured_axis_and_sketch_alias"},
+         {"reason", nullptr},
+         {"query_code", geometry.line_code ? J(*geometry.line_code) : J(geometry.data_code)},
+         {"axis_origin_mm", J::array({axis_origin[0], axis_origin[1], axis_origin[2]})},
+         {"axis_direction", J::array({axis_direction[0], axis_direction[1], axis_direction[2]})},
+         {"plane_origin_mm", J::array({plane_origin[0], plane_origin[1], plane_origin[2]})},
+         {"plane_normal", J::array({plane_normal[0], plane_normal[1], plane_normal[2]})},
+         {"signed_distance_mm", signed_distance},
+         {"origin_distance_mm", std::fabs(signed_distance)},
+         {"direction_angle_to_plane_deg", angle_to_plane},
+         {"direction_angle_to_normal_deg", angle_to_normal},
+         {"axis_lies_in_plane", std::fabs(signed_distance) <= REVOLVE_AXIS_PLANE_DISTANCE_MM &&
+                                    angle_to_plane <= REVOLVE_AXIS_PLANE_ANGLE_DEG}});
+    return relation;
+}
+
+// The same numbers as one sentence, so a failed revolve does not require opening
+// the operation record. Empty when the relation could not be measured.
+static std::string revolve_axis_plane_relation_text(const J &relation) {
+    if (!relation.is_object() || !relation.value("available", false))
+        return "";
+    const J &ao = relation["axis_origin_mm"], &ad = relation["axis_direction"];
+    const J &po = relation["plane_origin_mm"], &pn = relation["plane_normal"];
+    char numbers[640];
+    std::snprintf(
+        numbers, sizeof(numbers),
+        " Revolve axis (mm): origin (%.9g, %.9g, %.9g), direction (%.9g, %.9g, %.9g). Sketch "
+        "plane (mm): origin (%.9g, %.9g, %.9g), normal (%.9g, %.9g, %.9g). The axis origin is "
+        "%.9g mm from the plane, and the axis is %.9g deg out of the plane (%.9g deg from its "
+        "normal). See revolve_axis_plane_relation in the operation result; these measured "
+        "numbers do not on their own show why Creo refused the feature.",
+        ao[0].get<double>(), ao[1].get<double>(), ao[2].get<double>(), ad[0].get<double>(),
+        ad[1].get<double>(), ad[2].get<double>(), po[0].get<double>(), po[1].get<double>(),
+        po[2].get<double>(), pn[0].get<double>(), pn[1].get<double>(), pn[2].get<double>(),
+        relation["origin_distance_mm"].get<double>(),
+        relation["direction_angle_to_plane_deg"].get<double>(),
+        relation["direction_angle_to_normal_deg"].get<double>());
+    return numbers;
+}
+
+// Preserve the original refusal text when a diagnosis has to be appended: a
+// Toolkit code is thrown as an int, so a std::exception-only catch would lose it.
+static std::string native_exception_text(const std::exception_ptr &error) {
+    try {
+        std::rethrow_exception(error);
+    } catch (const std::exception &typed) {
+        return typed.what();
+    } catch (ProError code) {
+        return "native Toolkit error code " + std::to_string(code);
+    } catch (...) {
+        return "unrecognized native error";
+    }
+}
+
 // FEAT-008/T09B: report the axis a revolve actually resolved to. Values come
 // only from the executor's own queries (the created feature's axis geomitem,
 // the explicit axis geomitem, ProAxisSurfaceGet provenance or the sketch
@@ -3334,6 +3462,13 @@ static J extrude_or_revolve(const J &op, bool revolve) {
                 revolve_axis_id = axis_item.id;
             ref(root, PRO_E_REVOLVE_AXIS, a);
             ProSelectionFree(&a);
+            // DEV-093 T4: stage the measured axis/plane relation before the
+            // kernel sees the feature, so a regeneration refusal still carries
+            // the numbers in its operation record.
+            J staged = has_staged_operation_result ? staged_operation_result : J::object();
+            staged["revolve_axis_plane_relation"] =
+                revolve_axis_plane_relation(op, revolve_axis_id, revolve_axis_code);
+            stage_operation_result(staged);
         } else
             integer(root, PRO_E_REVOLVE_AXIS_OPT, PRO_REV_AXIS_INT_REF);
         ProElement angles = node(root, PRO_E_REV_ANGLE), from = node(angles, PRO_E_REV_ANGLE_FROM),
@@ -5461,6 +5596,7 @@ static void execute_operation(const J &op) {
     try {
         execute_operation_body(op);
     } catch (...) {
+        std::exception_ptr error = std::current_exception();
         std::string kind = op.at("op");
         J failure = has_staged_operation_result ? staged_operation_result : J::object();
         // FEAT-051: a failed round/chamfer/draft keeps its real before-side
@@ -5477,8 +5613,18 @@ static void execute_operation(const J &op) {
                         {"succeeded", false},
                         {"execution_status", "failed"},
                         {"effect_status", "unknown"}});
+        // DEV-093 T4: repeat the measured axis/plane numbers in the message so a
+        // revolve refusal is diagnosable without opening the operation record.
+        // Nothing is appended when the relation could not be measured.
+        const std::string plane_relation =
+            has_staged_operation_result
+                ? revolve_axis_plane_relation_text(
+                      staged_operation_result.value("revolve_axis_plane_relation", J::object()))
+                : std::string();
         append_operation_result(std::move(failure));
-        throw;
+        if (plane_relation.empty())
+            std::rethrow_exception(error);
+        throw std::runtime_error(native_exception_text(error) + plane_relation);
     }
 }
 // Close the per-operation records against the request. Success marks the

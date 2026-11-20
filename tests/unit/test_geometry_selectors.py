@@ -295,5 +295,130 @@ class BUG132NativeDiagnosisSourceTests(unittest.TestCase):
         self.assertIn("coaxial:'any'", source)
 
 
+class FEAT068SameCircleRemedySourceTests(unittest.TestCase):
+    """FEAT-068: a rim split into several arcs is not a tolerance problem.
+
+    Every arc of one rim shares the centre and the radius, so they all pass the
+    circular filter by construction; telling the caller to shrink ``tolerance_mm``
+    sends them into an endless loop. The native refusal must point at the two
+    remedies that can actually converge.
+    """
+
+    @staticmethod
+    def source():
+        return (ROOT / "native" / "geometry_selectors.cpp").read_text(encoding="utf-8")
+
+    def test_same_circle_refusal_offers_point_and_id_not_a_smaller_tolerance(self):
+        source = self.source()
+        self.assertIn("same_circle", source)
+        self.assertIn("arcs of one circle", source)
+        self.assertIn("cannot separate them", source)
+        self.assertIn("add point_mm on the span you want", source)
+        self.assertIn("{kind:'edge',id:N}", source)
+
+    def test_same_circle_decision_uses_the_measured_circles(self):
+        source = self.source()
+        # The ``circular`` flag only says a centre/radius filter was requested. It
+        # cannot tell one rim from two distinct circles that both fit inside the
+        # tolerance, so the decision has to compare the matched measurements.
+        self.assertIn("matched_centers", source)
+        self.assertIn("matched_radii", source)
+        self.assertIn("same_circle_epsilon", source)
+        self.assertIn(
+            "selector_edge_error(form, matches, candidates, tolerance, same_circle)", source
+        )
+
+
+class RoundReferenceStructureTests(unittest.TestCase):
+    """BUG-019/FEAT-008: a malformed reference must fail before dispatch.
+
+    The executor reads ``refs.at("edge")`` or ``refs["surfaces"][0]/[1]``, so a
+    bare selector or a three-face set used to reach the feature tree and fail
+    there (or drop an entry) instead of naming the offending field.
+    """
+
+    @staticmethod
+    def round_op(references):
+        return RoundOp.model_validate(
+            {"op": "round", "label": "r1", "size": 1, "references": references}
+        )
+
+    def test_bare_selector_is_refused_with_the_field_path_and_wrapper_example(self):
+        for references in ([edge_selector()], [surface_selector()]):
+            with self.subTest(references=references), self.assertRaises(ValueError) as caught:
+                self.round_op(references)
+            message = str(caught.exception)
+            self.assertIn("round.references[0]", message)
+            self.assertIn("bare geometry selector", message)
+            self.assertIn('{"edge": <edge selector>}', message)
+            self.assertIn('{"surfaces": [<surface selector>, <surface selector>]}', message)
+
+    def test_edge_and_surfaces_in_one_reference_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            self.round_op(
+                [{"edge": edge_selector(), "surfaces": [surface_selector(), surface_selector()]}]
+            )
+        message = str(caught.exception)
+        self.assertIn("round.references[0]", message)
+        self.assertIn("both", message)
+
+    def test_reference_without_edge_or_surfaces_names_the_expected_keys(self):
+        with self.assertRaises(ValueError) as caught:
+            self.round_op([{"label": "rim"}])
+        message = str(caught.exception)
+        self.assertIn("names no reference", message)
+        self.assertIn("edge", message)
+        self.assertIn("surfaces", message)
+
+    def test_surface_set_must_hold_exactly_two_faces(self):
+        for count in (1, 3):
+            surfaces = [surface_selector() for _ in range(count)]
+            with self.subTest(count=count), self.assertRaises(ValueError) as caught:
+                self.round_op([{"surfaces": surfaces}])
+            message = str(caught.exception)
+            self.assertIn("round.references[0].surfaces", message)
+            self.assertIn("exactly 2", message)
+        with self.assertRaises(ValueError) as caught:
+            self.round_op([{"surfaces": surface_selector()}])
+        self.assertIn("must be a list", str(caught.exception))
+
+    def test_selector_target_must_match_its_slot(self):
+        with self.assertRaises(ValueError) as caught:
+            self.round_op([{"edge": surface_selector()}])
+        self.assertIn("round.references[0].edge.target", str(caught.exception))
+        with self.assertRaises(ValueError) as caught:
+            self.round_op([{"surfaces": [edge_selector(), surface_selector()]}])
+        self.assertIn("round.references[0].surfaces[0]", str(caught.exception))
+
+    def test_empty_edge_slot_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            self.round_op([{"edge": {}}])
+        self.assertIn("round.references[0].edge is empty", str(caught.exception))
+
+    def test_legacy_and_selector_wrappers_still_validate(self):
+        accepted = self.round_op(
+            [
+                {"edge": {"kind": "edge", "id": 7}},
+                {"edge": edge_selector()},
+                {"surfaces": [surface_selector(), surface_selector(axis=[0, 1, 0])]},
+            ]
+        )
+        self.assertEqual(len(accepted.references), 3)
+        self.assertEqual(accepted.references[1]["edge"]["target"], "edge")
+        self.assertEqual(accepted.references[2]["surfaces"][1]["axis"], [0.0, 1.0, 0.0])
+
+    def test_chamfer_shares_the_same_structure_gate(self):
+        with self.assertRaises(ValueError) as caught:
+            ChamferOp.model_validate(
+                {
+                    "op": "chamfer",
+                    "label": "c1",
+                    "size": 1,
+                    "references": [edge_selector()],
+                }
+            )
+        self.assertIn("chamfer.references[0]", str(caught.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

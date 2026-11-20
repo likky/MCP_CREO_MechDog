@@ -26,13 +26,35 @@ class NormalizeModelName(unittest.TestCase):
             with self.subTest(value=value):
                 self.assertEqual(bridge.normalize_model_name(value), expected)
 
-    def test_rejected_names_carry_the_full_rule(self):
-        for value in ("", "A B", "a-b", "a.b", "_lead", "a" * 32, None, 7):
+    def test_rejected_names_name_the_specific_cause(self):
+        cases = {
+            "": "it is empty",
+            "A B": "cannot be used",
+            "a-b": "'-'",
+            "a.b": "'.'",
+            "_lead": "cannot start a model name",
+            "a" * 32: "32 characters were given",
+            None: "not a string",
+            7: "not a string",
+        }
+        for value, expected in cases.items():
             with self.subTest(value=value):
                 with self.assertRaises(ValueError) as refused:
                     bridge.normalize_model_name(value)
-                self.assertIn("model_name must be 1-31 characters", str(refused.exception))
-                self.assertIn("uppercase input is normalized", str(refused.exception))
+                message = str(refused.exception)
+                self.assertIn("model_name must be 1-31 characters", message)
+                self.assertIn(expected, message)
+                # The uppercase note is only relevant when uppercase was given.
+                if not (isinstance(value, str) and value != value.lower()):
+                    self.assertNotIn("uppercase is lowercased", message)
+
+    def test_uppercase_is_reported_as_lowercased_not_as_the_cause(self):
+        with self.assertRaises(ValueError) as refused:
+            bridge.normalize_model_name("PRT 001")
+        message = str(refused.exception)
+        self.assertIn("' '", message)
+        self.assertIn("uppercase is lowercased", message)
+        self.assertNotIn("model_name must be 1-31 characters; 7 characters", message)
 
     def test_plate_spec_normalizes_before_use(self):
         spec = bridge.validate_spec(80, 60, 10, 0, [], model_name="PRT001")
@@ -53,7 +75,7 @@ class SubmitAdmissionNameRule(unittest.TestCase):
             patch("pathlib.Path.mkdir") as mkdir,
             patch("subprocess.Popen") as start,
         ):
-            with self.assertRaisesRegex(ValueError, "uppercase input is normalized"):
+            with self.assertRaisesRegex(ValueError, "model_name must be 1-31 characters"):
                 general.submit([], None, "PRT 001")
             holder.assert_not_called()
             mkdir.assert_not_called()

@@ -41,3 +41,8 @@ examples/*.prt.*
 .codebuddy/
 .workbuddy/
 .zcode/
+.trae/
+# Runtime leftovers that sat next to the ignored lock and a one-off local plan
+# input: neither is source, and neither is caught by the *.lock rule above.
+toolkit-owner.lock.*.tmp
+/underwater_plan.json

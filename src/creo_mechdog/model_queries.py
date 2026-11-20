@@ -359,14 +359,24 @@ def inspect_page(
                 )
             break
         end += 1
-    response["next_cursor"] = (
-        encode_cursor({**identity, "offset": end}) if end < len(records) else None
-    )
-    response["complete"] = end == len(records)
-    response["returned_count"] = end - start
-    if serialized_size(response) > RESPONSE_BUDGET:
-        raise ValueError("Query metadata exceeds response budget")
-    return response
+    while True:
+        response["next_cursor"] = (
+            encode_cursor({**identity, "offset": end}) if end < len(records) else None
+        )
+        response["complete"] = end == len(records)
+        response["returned_count"] = end - start
+        if serialized_size(response) <= RESPONSE_BUDGET:
+            return response
+        # FEAT-023: the cursor belongs to the page; when it no longer fits beside
+        # the last record, that record moves to the next page instead of the whole
+        # query failing with a budget error.
+        if end - start <= 0:
+            raise ValueError(
+                "Query metadata exceeds response budget even with an empty page; "
+                "request a narrower section"
+            )
+        end -= 1
+        response["data"][records[end][0]].pop()
 
 
 def list_page(

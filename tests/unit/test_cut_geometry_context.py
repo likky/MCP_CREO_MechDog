@@ -242,6 +242,136 @@ class CutGeometryProjectionTests(unittest.TestCase):
         self.assertIn("cut_geometry_context", trimmed["result"]["operations"][0])
 
 
+class CutVolumeChangeTests(unittest.TestCase):
+    """FEAT-051: the signed volume delta is named, not left to the caller."""
+
+    @staticmethod
+    def increased_context():
+        """The reported 0.27.0 case: the 'cut' added material and failed."""
+        before = 12514487.330518638715
+        after = 12514490.389585861936
+        return context(
+            volume_mm3={
+                "before": before,
+                "after": after,
+                "removed": before - after,
+                "zero_material_threshold": abs(before) * 1e-12,
+            }
+        )
+
+    def test_reported_negative_removal_is_named_material_increased(self):
+        entry = normalize_cut_geometry_context(self.increased_context())
+        change = entry["volume_change"]
+        self.assertEqual(change["kind"], "material_increased")
+        self.assertAlmostEqual(change["magnitude_mm3"], 3.059067223221, places=6)
+        self.assertLess(change["signed_delta_mm3"], 0)
+        self.assertFalse(change["within_zero_material_threshold"])
+        self.assertIsNone(change["reason"])
+        self.assertIn("3.059067", entry["diagnosis"])
+        self.assertIn("increased", entry["diagnosis"])
+        # The executor's own wording is preserved for compatibility.
+        self.assertEqual(entry["status"], "no_material_removed")
+
+    def test_negative_removal_is_never_reported_as_a_zero_material_no_op(self):
+        entry = normalize_cut_geometry_context(self.increased_context())
+        self.assertNotEqual(entry["volume_change"]["kind"], "no_material_removed")
+        self.assertAlmostEqual(entry["volume_change"]["magnitude_mm3"], 3.059067223221, places=9)
+        self.assertGreater(entry["volume_mm3"]["after"], entry["volume_mm3"]["before"])
+
+    def test_normal_removal_is_named_material_removed_without_rewriting_status(self):
+        receipt = context(
+            volume_mm3={
+                "before": 1000.0,
+                "after": 812.5,
+                "removed": 187.5,
+                "zero_material_threshold": 1e-9,
+            }
+        )
+        entry = normalize_cut_geometry_context(receipt)
+        change = entry["volume_change"]
+        self.assertEqual(change["kind"], "material_removed")
+        self.assertEqual(change["magnitude_mm3"], 187.5)
+        self.assertEqual(change["signed_delta_mm3"], 187.5)
+        self.assertFalse(change["within_zero_material_threshold"])
+        self.assertEqual(entry["status"], "no_material_removed")
+        self.assertIsNone(entry["diagnosis"])
+
+    def test_zero_delta_stays_inside_the_zero_material_band(self):
+        entry = normalize_cut_geometry_context(context())
+        change = entry["volume_change"]
+        self.assertEqual(change["kind"], "no_material_removed")
+        self.assertEqual(change["magnitude_mm3"], 0.0)
+        self.assertTrue(change["within_zero_material_threshold"])
+        self.assertIsNone(entry["diagnosis"])
+
+    def test_tiny_removal_below_the_threshold_is_not_a_success(self):
+        receipt = context(
+            volume_mm3={
+                "before": 1000.0,
+                "after": 1000.0 - 1e-6,
+                "removed": 1e-6,
+                "zero_material_threshold": 1e-5,
+            }
+        )
+        change = normalize_cut_geometry_context(receipt)["volume_change"]
+        self.assertEqual(change["kind"], "no_material_removed")
+        self.assertTrue(change["within_zero_material_threshold"])
+
+    def test_missing_volume_reading_is_unmeasurable_and_not_a_success(self):
+        for removed in (None, "3.05", True):
+            with self.subTest(removed=removed):
+                receipt = context(
+                    volume_mm3={
+                        "before": 1000.0,
+                        "after": None,
+                        "removed": removed,
+                        "zero_material_threshold": 1e-9,
+                    }
+                )
+                change = normalize_cut_geometry_context(receipt)["volume_change"]
+                self.assertEqual(change["kind"], "unmeasurable")
+                self.assertEqual(change["reason"], "volume_reading_unavailable")
+                self.assertIsNone(change["signed_delta_mm3"])
+                self.assertIsNone(change["magnitude_mm3"])
+
+    def test_missing_receipt_always_carries_an_unmeasurable_classification(self):
+        for block in (None, {}, "no_material_removed", 17):
+            with self.subTest(block=block):
+                change = normalize_cut_geometry_context(block)["volume_change"]
+                self.assertEqual(change["kind"], "unmeasurable")
+                self.assertEqual(change["reason"], "cut_geometry_context_missing")
+                self.assertIsNone(change["within_zero_material_threshold"])
+
+    def test_material_increase_survives_compact_polling_and_budget_trim(self):
+        from creo_mechdog import job_projection
+        from creo_mechdog.operation_results import enforce_compact_budget
+
+        record = {
+            "op": "extrude",
+            "index": 1,
+            "label": "deck_cut",
+            "succeeded": False,
+            "execution_status": "failed",
+            "effect_status": "rolled_back",
+            "cut_geometry_context": normalize_cut_geometry_context(self.increased_context()),
+        }
+        compact = job_projection.compact_operation(record)
+        self.assertEqual(
+            compact["cut_geometry_context"]["volume_change"]["kind"], "material_increased"
+        )
+        summary = {
+            "status": "failed",
+            "message": "Extrude cut removes no material",
+            "result": {"operations": [compact]},
+        }
+        trimmed = enforce_compact_budget(summary, budget=1)
+        operation = trimmed["result"]["operations"][0]
+        self.assertEqual(
+            operation["cut_geometry_context"]["volume_change"]["kind"], "material_increased"
+        )
+        self.assertEqual(operation["effect_status"], "rolled_back")
+
+
 class NativeCutContextContractTests(unittest.TestCase):
     """The C++ failure path must publish, not merely describe, the geometry."""
 

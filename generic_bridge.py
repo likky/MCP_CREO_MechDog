@@ -936,7 +936,13 @@ def submit(
     loft_seed: dict | None = None,
     template_name: str | None = None,
     timeout_seconds: int | None = None,
+    response_detail: str = "full",
 ) -> dict:
+    # FEAT-023: the detail level is validated before any job exists, so a
+    # malformed value can never reserve a model or a Toolkit channel.
+    from creo_mechdog import submission_receipts
+
+    detail = submission_receipts.normalize_detail(response_detail)
     timeout_seconds = validate_executor_timeout(timeout_seconds)
     # FEAT-069/P1: an extrude.region is resolved against the plan's own sketch
     # and replaced by a derived single-loop sketch before admission, so the
@@ -1338,7 +1344,11 @@ def submit(
             # against a real number instead of a guess.
             "timeout_seconds": effective_timeout,
             "timeout_source": timeout_source,
-            "message": "Poll creo_get_job with this job_id; do not resubmit the operation",
+            "message": (
+                "Poll creo_get_job with this job_id; do not resubmit the operation. This "
+                "receipt is the queue state: its revision is the value at submission (0 for "
+                "a newly created model), so read the terminal revision from the job"
+            ),
         }
         if loft_seed:
             manifest["construction"] = "native_multisection_blend_seed_rebinding"
@@ -1445,7 +1455,10 @@ def submit(
             operation="execute_plan",
             runner_pid=getattr(proc, "pid", None),
         )
-        return {**manifest, "model_name": model["model_name"], "revision": model["revision"]}
+        # FEAT-023: job.json above keeps the normalized operations; only the
+        # returned receipt depends on response_detail.
+        accepted = {**manifest, "model_name": model["model_name"], "revision": model["revision"]}
+        return submission_receipts.project_receipt(accepted, detail)
 
 
 def failed_model_status(request: dict, result: dict, model: dict) -> str:
