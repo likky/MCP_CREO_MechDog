@@ -103,6 +103,12 @@ class BlendCallbackSetupTests(unittest.TestCase):
         deployment = json.loads((Path(panel["loader_file"]).parent / "deployment.json").read_text())
         self.assertEqual(deployment["loader_abi"], 2)
         self.assertEqual(deployment["protocol"], 4)
+        # DEV-095: the selection record names its own contract, command slot,
+        # loader generation and resource root instead of borrowing them from setup.
+        self.assertEqual(deployment["contract"], panel["contract"])
+        self.assertEqual(deployment["command"], panel["command"])
+        self.assertEqual(deployment["loader_fingerprint"], panel["loader_fingerprint"])
+        self.assertEqual(deployment["resource_root"], panel["resource_root"])
 
     def test_the_blend_deployment_shape_is_unchanged(self):
         blend = self.prepare(self.build, self.digest)

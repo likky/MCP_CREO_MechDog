@@ -2143,11 +2143,14 @@ static ProSelection component_reference(ProAsmcomp *component, const J &referenc
     return contextual;
 }
 // FEAT-068 A1: a geometric selector resolves to a surface id, but a constraint
-// is only legal on a real plane (mate) or a real cylinder (insert). The Python
-// layer can only filter by shape, so the measured type is re-checked here after
-// resolution instead of trusting the selector.
+// is only legal on a real plane (mate/align families) or a real cylinder (insert).
+// The Python layer can only filter by shape, so the measured type is re-checked
+// here after resolution instead of trusting the selector. BUG-136: the message
+// names the constraint type that actually failed; the old text always said
+// "concentric/insert" even when the rejected slot was a mate_offset.
 static void require_constraint_surface_type(ProSelection selection, const char *role,
-                                            bool plane_required, const J &reference) {
+                                            bool plane_required, const J &reference,
+                                            const std::string &constraint_type) {
     ProModelitem mi;
     CK(ProSelectionModelitemGet(selection, &mi));
     if (mi.type != PRO_SURFACE)
@@ -2161,12 +2164,13 @@ static void require_constraint_surface_type(ProSelection selection, const char *
     int actual = data && data->data.p_surface_data ? data->data.p_surface_data->type : -1;
     if (data)
         ProGeomitemdataFree(&data);
+    const std::string relation = constraint_type.empty() ? "constraint" : constraint_type;
     if (plane_required && actual != PRO_SRF_PLANE)
         throw std::runtime_error(
             std::string(role) + " selector resolved to surface type " + std::to_string(actual) +
-            " (" + selector_surface_type_name(actual) +
-            "), but coincident/mate needs a real plane (PRO_SRF_PLANE); a cylindrical or "
-            "free-form surface is not silently accepted as a plane");
+            " (" + selector_surface_type_name(actual) + "), but " + relation +
+            " needs a real plane (PRO_SRF_PLANE); a cylindrical or free-form surface is not "
+            "silently accepted as a plane");
     if (!plane_required && actual != PRO_SRF_CYL) {
         // BUG-132: the old text always said "add radius_mm", even when the
         // caller had already supplied it. The real cause there was a points_mm
@@ -2175,7 +2179,7 @@ static void require_constraint_surface_type(ProSelection selection, const char *
         const bool has_radius = reference.is_object() && reference.contains("radius_mm");
         std::string text = std::string(role) + " selector resolved to surface type " +
                            std::to_string(actual) + " (" + selector_surface_type_name(actual) +
-                           "), but concentric/insert needs a real cylinder (PRO_SRF_CYL). ";
+                           "), but " + relation + " needs a real cylinder (PRO_SRF_CYL). ";
         if (has_radius)
             text +=
                 "radius_mm was supplied, so the radius was not the problem: radius_mm filters a "
@@ -2324,13 +2328,21 @@ static void component_constraints(ProAsmcomp *c, const J &constraints) {
         // their relationship requires, not merely something the selector shape
         // allowed.
         last_constraint_failure.stage = "surface_type";
-        const bool plane_required = spec.value("type", std::string()) == "mate";
-        if (spec["assembly_reference"].value("kind", std::string()) == "geometry_selector")
-            require_constraint_surface_type(a, "assembly_reference", plane_required,
-                                            spec["assembly_reference"]);
-        if (spec["component_reference"].value("kind", std::string()) == "geometry_selector")
-            require_constraint_surface_type(b, "component_reference", plane_required,
-                                            spec["component_reference"]);
+        // BUG-136: the mate/align families are planar relations; only insert is
+        // coaxial. The old code checked "type == mate" here, so every mate_offset
+        // was validated as if it needed a cylinder and a rejected mate_offset was
+        // reported with the concentric/insert wording.
+        const bool plane_required =
+            type == "mate" || type == "mate_offset" || type == "align" || type == "align_offset";
+        const bool cylinder_required = type == "insert";
+        if (plane_required || cylinder_required) {
+            if (spec["assembly_reference"].value("kind", std::string()) == "geometry_selector")
+                require_constraint_surface_type(a, "assembly_reference", plane_required,
+                                                spec["assembly_reference"], type);
+            if (spec["component_reference"].value("kind", std::string()) == "geometry_selector")
+                require_constraint_surface_type(b, "component_reference", plane_required,
+                                                spec["component_reference"], type);
+        }
         last_constraint_failure.stage = "side";
         CK(ProAsmcompconstraintAsmreferenceSet(list[i], a, constraint_side(spec, "assembly_side")));
         CK(ProAsmcompconstraintCompreferenceSet(list[i], b,

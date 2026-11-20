@@ -1374,6 +1374,10 @@ def submit(
                     "job_id": job_id,
                     "request_id": str(request.get("request_id") or job_id),
                     "nonce": request["panel_nonce"],
+                    # BUG-134: the native guard compares the live model with this
+                    # name; without it the same name check never ran, so a panel
+                    # could select curves in whatever model happened to be live.
+                    "model_name": str(model.get("model_name") or ""),
                     "profile_id": str(panel_admission.get("profile_id") or ""),
                     "open_macro": str(panel_admission.get("open_macro") or ""),
                     "second_direction_macro": str(

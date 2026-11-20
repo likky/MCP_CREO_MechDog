@@ -40,6 +40,10 @@ LIBRARY = "templates/panel"
 MANIFEST = "templates/panel/manifest.json"
 CERTIFICATIONS = "templates/panel/certifications"
 CANDIDATE_ENV = "CREO_MECHDOG_PANEL_CANDIDATE"
+#: The setup metadata the resident callback registration points at. It names the
+#: payload digest the host currently deploys, which admission compares with the
+#: payload the certification record was measured with.
+DEPLOYMENT_RECORD = "build/blend_callback_setup.json"
 
 #: Keys a profile entry may carry. Anything else is a schema change, not a note.
 PROFILE_KEYS = frozenset(
@@ -352,6 +356,26 @@ def host_release(identity: object) -> int | None:
     return release if type(release) is int else None
 
 
+def deployment_payload_digest(root: Path | None = None) -> str | None:
+    """The payload digest the setup record currently deploys, or None when unreadable.
+
+    Admission only needs to know whether the host still deploys the payload the
+    certification measured; the running module itself cannot be observed from
+    Python, so the setup metadata is the record of record.
+    """
+    path = _library(root) / DEPLOYMENT_RECORD
+    try:
+        record = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(record, dict):
+        return None
+    digest = record.get("dll_sha256")
+    if not isinstance(digest, str) or not digest.strip():
+        return None
+    return digest.strip().lower()
+
+
 def certified_profile(root: Path | None = None, release_numeric: int | None = None) -> PanelProfile:
     """The profile normal clients may use, or a refusal that names why there is none.
 
@@ -457,8 +481,9 @@ def admit(
                 f"panel profile {profile.profile_id!r} was measured on Creo "
                 f"release_numeric={profile.release_numeric} ({profile.creo_release}), but this "
                 "worker has no recorded host release, so the profile cannot be matched to it. "
-                "No native job was queued. A certified profile is bound to one release; run a "
-                "recorded job on this host first, or use the element_tree route."
+                "No native job was queued. A certified profile is bound to one release; read "
+                "creo_session_status once (the probe records the release for this worker), or "
+                "run a recorded job on this host first, or use the element_tree route."
             )
         unverified.append("host_release_numeric")
     elif release != profile.release_numeric:
@@ -481,6 +506,15 @@ def admit(
                 f"but this host reports {release}; no native job was queued"
             )
     if profile.status == "certified":
+        # The certification record names the payload the acceptance run measured.
+        # A host that now deploys another payload still runs the certified profile,
+        # but the receipt must say the measured payload no longer matches instead of
+        # presenting the certification as covering the deployed DLL.
+        measured_payload = (profile.certification or {}).get("environment", {})
+        measured_payload = measured_payload.get("payload_sha256")
+        if isinstance(measured_payload, str) and measured_payload.strip():
+            if deployment_payload_digest(root) != measured_payload.strip().lower():
+                unverified.append("payload_sha256")
         return {
             "profile_id": profile.profile_id,
             "mode": "certified",

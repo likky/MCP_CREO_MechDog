@@ -413,15 +413,59 @@ inline void generic_surface_loft_panel(const J &op) {
             " second-direction guides but the profile freezes no second_direction_macro; the "
             "dialog was not opened and no position was selected.");
 
-    ProMdl model = nullptr;
-    CK(ProMdlCurrentGet(&model));
+    // BUG-134: this worker is an asynchronous Toolkit connection
+    // (ProEngineerConnect), so the session has no "current window model" to ask
+    // for: ProMdlCurrentGet returns PRO_TK_BAD_CONTEXT (-8) and the panel was
+    // refused before it opened. The job's own model is already resolved into
+    // `board` by ProMdlInit; use it and only fall back to the current model when
+    // no board exists.
+    ProMdl model = board;
+    int current_model_code = PRO_TK_NO_ERROR;
+    std::string model_source = "job_model";
+    if (model == nullptr) {
+        model_source = "current_model";
+        current_model_code = (int)ProMdlCurrentGet(&model);
+        if (current_model_code != PRO_TK_NO_ERROR)
+            throw std::runtime_error(
+                "PANEL_MODEL_UNAVAILABLE: the job has no resolved model and this session "
+                "reports no current model (ProMdlCurrentGet(&model) returned " +
+                std::to_string(current_model_code) +
+                "); nothing was selected and the dialog was not opened");
+    }
     ProMdlName live_name;
     CK(ProMdlMdlnameGet(model, live_name));
     const std::string model_name_utf8 = utf8(live_name);
-    if (!wanted_model.empty() && model_name_utf8 != wanted_model)
+    // Creo stores native part names in upper case, while the request carries the
+    // lower-case name it created, so the guard compares ASCII-folded names.
+    auto folded_name = [](std::string value) {
+        for (char &c : value)
+            if (c >= 'a' && c <= 'z')
+                c = (char)(c - 'a' + 'A');
+        return value;
+    };
+    if (!wanted_model.empty() && folded_name(model_name_utf8) != folded_name(wanted_model))
         throw std::runtime_error("PANEL_MODEL_CHANGED: the request names model " + wanted_model +
                                  " but the session holds " + model_name_utf8 +
                                  "; no selection was attempted and the ids were not reused");
+    // The dialog selects curves from the model in the active window, so display
+    // the target one first. A display failure is recorded, not thrown: the
+    // resolution receipt still proves which model every curve came from.
+    int display_code = (int)ProMdlDisplay(model);
+    int window_query_code = -1;
+    int window = -1;
+    int current_window_code = -1;
+    if (!display_code) {
+        window_query_code = (int)ProMdlWindowGet(model, &window);
+        if (!window_query_code)
+            current_window_code = (int)ProWindowCurrentSet(window);
+    }
+    panel_preopen.update({{"model_source", model_source},
+                          {"current_model_code", current_model_code},
+                          {"display_code", display_code},
+                          {"window_query_code", window_query_code},
+                          {"window", window >= 0 ? J(window) : J(nullptr)},
+                          {"current_window_code", current_window_code}});
+    stage_preopen();
     int model_id = 0;
     CK(ProMdlIdGet(model, &model_id));
     const mechdog_panel_ref::PanelResolution resolution = mechdog_panel_ref::resolve_panel_sections(

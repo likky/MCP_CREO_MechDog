@@ -2,6 +2,15 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
+## v0.33.0（2026-11-20，发布前快照）
+
+- 版本与范围：`0.33.0` MINOR 部分交付，公开工具仍 109；交付 0.31.1 反馈批——[BUG-134](../work-items/BUG-134.md) `resident_panel` 在 `ProMdlCurrentGet` 为 -8 时改用 `ProMdlInit` 的 board 并先显示模型、面板块补 `model_name`；[BUG-135](../work-items/BUG-135.md) 显式 `accept_unverified_completion` 旁路；[BUG-136](../work-items/BUG-136.md) 装配约束按实际类型要求平面或圆柱面；[DEV-095](../work-items/DEV-095.md) `host_release` 探针与 `unverified_bindings=["payload_sha256"]` 披露；[DEV-096](../work-items/DEV-096.md) `previous_release_commit` 与“上一版本”行及标签三方交叉校验。发布记录见 [RELEASE-0.33.0](../validation/RELEASE-0.33.0.md)。
+- 打包顺序：`tools\package_seeds.py` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools\package.py` → 标签/发布 → `tools\check_release_assets.py` 远端复核。
+- 种子包 SHA256 `d53682cc02d3089490977fcac06afea65113e9369b72f7df4c26bd756215cda7`（24 个文件、9 个种子，两次构建摘要一致；包内 `seed_manifest.json` 声明 `compatible_server_version=0.33.0`）。
+- 源码包由发布提交源码构建，字节数与 SHA256 见同名 sidecar，不写入包内文件。
+- Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.33.0`；四附件为 `MCP_CREO_MechDog-0.33.0-source.zip`、`MCP_CREO_MechDog-0.33.0-source.zip.sha256`、`MCP_CREO_MechDog-0.33.0-seed-library.zip` 与 `MCP_CREO_MechDog-0.33.0-seed-library.zip.sha256`。
+- 远程核对：发布后执行，当前未验证；结果与逐项摘要在本段发布后回填。
+
 ## v0.32.0（2026-11-20，发布前快照）
 
 - 版本与范围：`0.32.0` MINOR 部分交付，公开工具仍 109；交付 [DEV-094](../work-items/DEV-094.md) 的 0.27.0 反馈批（反馈原件逐字节归档、回转轴-草图平面关系）、[FEAT-068](../work-items/FEAT-068.md)、[FEAT-023](../work-items/FEAT-023.md)、[BUG-076](../work-items/BUG-076.md)、[BUG-019](../work-items/BUG-019.md)、[FEAT-008](../work-items/FEAT-008.md)、[FEAT-051](../work-items/FEAT-051.md) 与 [FEAT-039](../work-items/FEAT-039.md) 的子项；发布记录见 [RELEASE-0.32.0](../validation/RELEASE-0.32.0.md)。

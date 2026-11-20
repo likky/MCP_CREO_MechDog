@@ -29,10 +29,35 @@
 - **已认证的扩展范围（candidate-3）**：2 截面 + 2/3 导线、2 截面 + 末端点、7 曲线 + 点、7 曲线 + 3 导线（10 位置）均已实机通过；两段式球鼻艏演示体完成镜像/合并/后盖/实体化（体积 167543.67 mm³）。**11 位置“7 曲线 + 点 + 3 导线”与 10 位置“7 曲线 + 点 + 2 导线”单特征仍在 Creo 10 再生失败**，边界是“末端基准点 + 任意第二方向导线”同时存在；认证记录明确不覆盖该单特征组合，点收敛段应作为共享末截面的第二个放样。真实船体非圆剖面与真实导线拼合未验证。
 - **与元素树路线区分**：下方 2026-11-13 的 `ProFeatureElemtreeExtract=-18` 结论仍适用于 `creation_route="element_tree"`；resident_panel 不依赖 Extract，是独立的 Creo 10 路线。Creo 9 仍只有编译探测，无运行期证据；其他 Creo 版本未因本轮结果改变支持声明。
 
+## 2026-11-20：本机实为 Creo 10.0.0.0（release 42）的实机验收
+
+- **环境更正**：本机安装为 `D:\Program Files\PTC\Creo 10.0.0.0`，
+  `creo_release_numeric=42`，与 0.31.1 反馈环境一致；此前文档写的“本机 Creo 12.4”
+  是旧描述，Creo 12.4 未在本轮复测。执行器由本机 Creo 10 SDK 编译。
+- **element_tree 路线仍不可用**：`ProFeatureWithoptionsCreate` 返回 0 后
+  `ProFeatureElemtreeExtract` 返回 `-18`（`PRO_TK_INVALID_TYPE`，文档写明该特征
+  类型不支持提取）；补 `ProFeatureElemtreeCreate` 回退同样 -18。显式
+  `accept_unverified_completion=true` 时会再尝试用创建树 `ProFeatureWithoptionsRedefine`
+  （返回 -1）与 `ProSolidRegenerate`（返回 0），`ProFeatureIsIncomplete` 仍为 true、
+  quilt 0，作业以 `SURFACE_LOFT_ACCEPT_INCOMPLETE` 失败并清理新模型，不再把空特征
+  当成功。见 [BUG-135](work-items/BUG-135.md)。
+- **resident_panel 路线可用**：同一宿主上真实界面回放成功（作业
+  `7bb73fa98a764818843e85c2e9220b3a`，模型 `acc_panel_20261120g`，rev 1，quilt 60 /
+  feature 54，面积 1052.4223235864151 mm²，单面，`saved_file_reloaded_and_verified=true`，
+  `exit_observation.closed=true`）；`blend_model_display`/`blend_window_get`/
+  `blend_window_current_set`/`blend_window_activate` 与 `ProMdlCurrentGet` 均为 0，
+  不再出现 -8。见 [BUG-134](work-items/BUG-134.md)。
+- **装配约束文案**：`mate_offset` 用圆柱面被拒且文案写 `mate_offset needs a real
+  plane`；`insert` 用平面仍被拒并要求 `PRO_SRF_CYL`；`csys` 不受该检查影响。见
+  [BUG-136](work-items/BUG-136.md)。
+- **未验证**：Creo 12.4 复测、Creo 9 运行期、element_tree 成功路径（任何宿主）、
+  Arm7 原模型。
+
 ## 2026-11-13：Creo 10 运行期边界混合不可提取（随 0.23.2 披露）
 
 - **编译证据**：0.21.0—0.23.1 四份报告均记录 Creo 10.0.0.0 + 匹配 Toolkit SDK
-  零补丁整包编译通过；本机无 Creo 10 SDK，未复现。
+  零补丁整包编译通过；本节写于当时“本机为 Creo 12.4”的认识下，2026-11-20 已更正
+  本机就是 Creo 10.0.0.0（见上节）。
 - **运行期边界**：`surface_loft` 在 Creo 10 上 `ProFeatureWithoptionsCreate`
   返回 0，但 `ProFeatureElemtreeExtract` 返回 `-18`、`feature_incomplete=true`；
   两个提取器均拒绝，`ProElemtreeVerify=-2`，GUI 手工创建同类特征同样失败。

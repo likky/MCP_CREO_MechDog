@@ -94,6 +94,17 @@ class KernelAdmissionRules(unittest.TestCase):
     def test_other_operations_never_consult_the_observation(self):
         capabilities.require_kernel_completion([{"op": "extrude"}], identity())
 
+    def test_explicit_geometry_only_completion_bypasses_the_refusal(self):
+        capabilities.require_kernel_completion(
+            [{**loft(), "accept_unverified_completion": True}], identity()
+        )
+
+    def test_an_unflagged_operation_in_the_same_plan_keeps_the_refusal(self):
+        with self.assertRaisesRegex(ValueError, "refused before a job"):
+            capabilities.require_kernel_completion(
+                [{**loft(), "accept_unverified_completion": True}, loft()], identity()
+            )
+
 
 class ProjectionAdmitsTheRefusal(unittest.TestCase):
     def test_runtime_admission_is_published_when_the_signature_matches(self):

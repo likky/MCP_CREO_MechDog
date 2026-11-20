@@ -41,6 +41,29 @@ class SurfaceLoftSchemaTests(unittest.TestCase):
         self.assertEqual(validated[0]["sections"], ["loft_a", "loft_b"])
         self.assertEqual(validated[0]["interpolation"], "straight")
 
+    def test_accept_unverified_completion_is_absent_when_unset(self):
+        validated = validate_operations([loft_operation()])
+        self.assertNotIn("accept_unverified_completion", validated[0])
+
+    def test_accept_unverified_completion_is_kept_on_the_tree_route(self):
+        validated = validate_operations([loft_operation(accept_unverified_completion=True)])
+        self.assertTrue(validated[0]["accept_unverified_completion"])
+
+    def test_accept_unverified_completion_is_refused_on_the_panel_route(self):
+        with self.assertRaisesRegex(ValueError, "element_tree route only"):
+            validate_operations(
+                [
+                    loft_operation(
+                        accept_unverified_completion=True,
+                        creation_route="resident_panel",
+                        sections=[
+                            {"label": "sec_a", "open_confirmed": True},
+                            {"label": "sec_b", "open_confirmed": True},
+                        ],
+                    )
+                ]
+            )
+
     def test_accepts_integer_section_ids(self):
         validated = validate_operations([loft_operation(sections=[12, 19])])
         self.assertEqual(validated[0]["sections"], [12, 19])

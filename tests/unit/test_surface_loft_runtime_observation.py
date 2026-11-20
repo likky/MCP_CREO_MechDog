@@ -100,6 +100,13 @@ class HostReleaseObservationTests(unittest.TestCase):
         self.assertEqual(health["host_release"]["release_numeric"], 42)
         self.assertEqual(health["surface_loft_runtime"]["kernel_completion"], "unsupported")
 
+    def test_a_status_probe_keeps_the_recorded_release(self):
+        bridge.record_host_release(_job())
+        bridge.record_channel_health(True, connection_state="ready")
+        health = self._health()
+        self.assertEqual(health["host_release"]["release_numeric"], 42)
+        self.assertEqual(health["connection_state"], "ready")
+
 
 class SurfaceLoftRuntimeObservationTests(unittest.TestCase):
     def setUp(self):

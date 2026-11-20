@@ -3092,6 +3092,7 @@ async def creo_surface_loft(
     guides: Annotated[list[str | int | dict[str, Any]], Field(max_length=8)] | None = None,
     boundary_conditions: Annotated[list[dict[str, str]], Field(max_length=4)] | None = None,
     creation_route: Literal["element_tree", "resident_panel"] | None = None,
+    accept_unverified_completion: bool = False,
 ) -> dict[str, Any]:
     """Create a native boundary-blend surface quilt through section sketches.
 
@@ -3151,8 +3152,24 @@ async def creo_surface_loft(
     most 11 positions are selected per run. boundary_conditions and template stay on
     the element_tree route. A request is refused before a job unless the loaded
     worker declares a panel backend and a certified UI profile for this release
-    exists; read creo_capabilities.routes.resident_panel for both facts. It never
-    falls back to the element tree.
+    exists; read creo_capabilities(detail="full", section="runtime") for the
+    surface_loft_panel block and both facts. The worker displays the requested model
+    before the dialog opens, so the caller does not have to switch the Creo window
+    first. It never falls back to the element tree.
+
+    accept_unverified_completion (element_tree route only) keeps the created quilt
+    when this Creo release creates the blend but refuses ProFeatureElemtreeExtract
+    with -18. Nothing is silently upgraded: the receipt reports
+    kernel_completion="unsupported", completion_verified_by="geometry" and the
+    measured feature_incomplete value, and the remaining verdict still comes from
+    the feature status, quilt count, area and openness. Because that readback is
+    refused, the worker also tries the deprecated ProFeatureElemtreeCreate, a
+    redefine with the creation tree and ProSolidRegenerate; on a release where the
+    kernel leaves the feature incomplete after all three, the job fails with
+    SURFACE_LOFT_ACCEPT_INCOMPLETE instead of calling an empty feature a success
+    (measured on Creo 10.0.0.0; use the resident_panel route there). Refused
+    together with boundary_conditions or a template, because those are written
+    through the tree.
     """
     operation: dict[str, Any] = dict(
         op="surface_loft", label=label, sections=sections, interpolation=interpolation
@@ -3163,6 +3180,8 @@ async def creo_surface_loft(
         operation["boundary_conditions"] = boundary_conditions
     if creation_route is not None:
         operation["creation_route"] = creation_route
+    if accept_unverified_completion:
+        operation["accept_unverified_completion"] = True
     return await invoke(
         general.submit,
         [operation],

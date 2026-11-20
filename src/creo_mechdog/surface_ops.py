@@ -418,6 +418,13 @@ class SurfaceLoftOp(StrictModel):
     # own narrower input subset (see the validator below) and never falls back to
     # the tree.
     creation_route: Literal["element_tree", "resident_panel"] | None = None
+    # BUG-135: Creo 10 creates the blend but refuses ProFeatureElemtreeExtract
+    # (-18). A caller that explicitly accepts geometry-only verification keeps
+    # the created quilt instead of the whole job rolling it back; the receipt
+    # still reports kernel_completion="unsupported" and the measured
+    # feature_incomplete value, so "kept" never reads as "verified". None keeps
+    # the dumped plan of every earlier request byte-identical.
+    accept_unverified_completion: bool | None = None
 
     @model_validator(mode="after")
     def resident_panel_is_a_curve_subset(self):
@@ -556,6 +563,23 @@ class SurfaceLoftOp(StrictModel):
                 "template trees keep the exporting run's TAN_COND subtree, so "
                 "boundary_conditions cannot be applied on the template route; remove the "
                 "template to use tangent boundaries"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def unverified_completion_needs_no_tree_consumers(self):
+        if not self.accept_unverified_completion:
+            return self
+        if self.creation_route == "resident_panel":
+            raise ValueError(
+                "accept_unverified_completion applies to the element_tree route only; the panel "
+                "route reports its own completion evidence"
+            )
+        if self.boundary_conditions or self.template is not None:
+            raise ValueError(
+                "accept_unverified_completion only skips the element-tree readback; boundary "
+                "conditions and a template tree are written through that tree, so remove them "
+                "or drop the flag"
             )
         return self
 

@@ -284,6 +284,11 @@ def require_kernel_completion(operations: list[dict], identity: object) -> None:
     """
     if not _tree_route_operations(operations):
         return
+    # BUG-135: a request that explicitly accepts geometry-only verification is
+    # not blocked by the host's earlier extract refusal; the receipt still reports
+    # kernel_completion="unsupported" so the kept feature is never read as proven.
+    if all(op.get("accept_unverified_completion") for op in _tree_route_operations(operations)):
+        return
     feature = _verified_worker_feature(identity, "surface_loft")
     if feature is None or feature.get("kernel_completion") != "unsupported":
         return

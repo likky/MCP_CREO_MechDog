@@ -1174,13 +1174,17 @@ def worker_build_identity(*, refresh: bool = False) -> dict:
 def record_channel_health(connected: bool, **fields) -> dict:
     path = ROOT / "build/toolkit_health.json"
     value = {"connected": connected, "checked_at": now(), **fields}
-    if "surface_loft_runtime" not in value:
-        try:
-            previous = read_json(path)
-        except (OSError, ValueError):
-            previous = {}
-        if isinstance(previous, dict) and previous.get("surface_loft_runtime"):
-            value["surface_loft_runtime"] = previous["surface_loft_runtime"]
+    try:
+        previous = read_json(path)
+    except (OSError, ValueError):
+        previous = {}
+    if isinstance(previous, dict):
+        # A probe rewrites the channel status. The observations these writers keep
+        # are keyed by worker SHA and own their own records, so a status refresh
+        # must not erase them.
+        for key in ("surface_loft_runtime", "host_release"):
+            if key not in value and isinstance(previous.get(key), dict):
+                value[key] = previous[key]
     (ROOT / "build").mkdir(exist_ok=True)
     write_json(path, value)
     return value
@@ -1291,6 +1295,46 @@ def record_host_release(manifest: dict) -> None:
         write_json(path, health)
     except Exception:
         # A disclosure record must never change the task's terminal outcome.
+        return
+
+
+def record_probe_host_release(identity: dict, value: dict) -> None:
+    """Persist the Creo release a connected read-only probe reported.
+
+    A certified panel profile is matched to the host release before any job
+    exists. A status probe already connects and reads that number, so recording
+    it here lets a client make the panel route usable by reading status once,
+    instead of running a job that the old refusal told it to expect to fail.
+    Keyed by the worker SHA like ``record_host_release``: a rebuild invalidates
+    the record instead of lending it a new build.
+    """
+    try:
+        if not value.get("connected"):
+            return
+        release = value.get("release_numeric")
+        if type(release) is not int:
+            return
+        worker_sha = identity.get("worker_sha256") if isinstance(identity, dict) else None
+        if not worker_sha:
+            return
+        path = ROOT / "build/toolkit_health.json"
+        try:
+            health = read_json(path)
+        except (OSError, ValueError):
+            health = {}
+        if not isinstance(health, dict):
+            health = {}
+        health["host_release"] = {
+            "worker_sha256": worker_sha,
+            "release_numeric": release,
+            "job_id": None,
+            "source": "session_probe",
+            "observed_at": now(),
+        }
+        (ROOT / "build").mkdir(exist_ok=True)
+        write_json(path, health)
+    except Exception:
+        # A disclosure record must never change the probe outcome.
         return
 
 
@@ -1543,6 +1587,7 @@ def _record_probe_result(
                 },
             }
         value["worker_build_identity"] = identity
+        record_probe_host_release(identity, value)
     record_channel_health(
         bool(value.get("connected")), **{k: v for k, v in value.items() if k != "connected"}
     )

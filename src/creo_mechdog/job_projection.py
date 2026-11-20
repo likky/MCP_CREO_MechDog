@@ -150,6 +150,11 @@ SURFACE_LOFT_KEYS = (
     "create_code",
     "create_element_errors",
     "extract_code",
+    # BUG-135: a kept feature verified by geometry instead of the element tree
+    # must say so in a compact poll, or "job succeeded" would read as a
+    # tree-verified completion.
+    "completion_verified_by",
+    "completion_unverified_reason",
     "extracted_tree",
     "feature_id",
     "feature_type",

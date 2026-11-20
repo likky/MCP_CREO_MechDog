@@ -173,7 +173,18 @@ def prepare_callback(
     _publish(build / "blend_callback.config.pro", f"protkdat {metadata['registry_file']}\n")
     # Publish the selection only after every immutable artifact is complete. Old
     # payloads/loader generations remain available for an explicit rollback.
-    deployment = {"loader_abi": loader_abi, "dll_sha256": dll_sha256}
+    # A deployment record has to answer "which contract, which command slot, which
+    # loader generation and which resource root" on its own; reviewers previously
+    # had to reconstruct those from the setup file. The loader reads only the keys
+    # it needs, so the added fields are documentation for both generations.
+    deployment = {
+        "loader_abi": loader_abi,
+        "dll_sha256": dll_sha256,
+        "contract": contract,
+        "command": command,
+        "loader_fingerprint": loader_fingerprint,
+        "resource_root": str(root),
+    }
     if generation == "panel":
         # Named explicitly for the panel generation; the blend deployment keeps its
         # historical shape, where the missing key means protocol 3.
@@ -445,6 +456,18 @@ def generation_inventory(build: Path, *, probe_readiness: str | None = None) -> 
     }
 
 
+def _deployment_declares(deployment: object, expected: dict) -> bool:
+    """The selection record must declare every expected key/value.
+
+    Extra keys are documentation (``contract``/``command``/loader generation/
+    resource root); refusing them would make a complete deployment read as
+    "not prepared" while the loader itself reads only the keys it needs.
+    """
+    return isinstance(deployment, dict) and all(
+        deployment.get(key) == value for key, value in expected.items()
+    )
+
+
 def callback_setup_status(build: Path) -> dict:
     """Artifact inspection is separate from a live, nonce-verified session probe."""
     base = {
@@ -482,10 +505,14 @@ def callback_setup_status(build: Path) -> dict:
             or _digest(Path(data["module_file"])) != data["dll_sha256"]
             or _digest(Path(data["loader_file"])) != data["loader_sha256"]
             or Path(data["resource_root"]).resolve() != build.parent.resolve()
-            or json.loads(
-                (Path(data["loader_file"]).parent / "deployment.json").read_text(encoding="utf-8")
+            or not _deployment_declares(
+                json.loads(
+                    (Path(data["loader_file"]).parent / "deployment.json").read_text(
+                        encoding="utf-8"
+                    )
+                ),
+                deployment_expected,
             )
-            != deployment_expected
             or not Path(data["registry_file"]).is_file()
         ):
             raise ValueError("Invalid callback setup")

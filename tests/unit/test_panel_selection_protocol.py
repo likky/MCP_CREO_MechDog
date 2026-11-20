@@ -275,6 +275,12 @@ class PanelProfileToBackend(unittest.TestCase):
         for key in ("open_macro", "select_command", "done_macro", "done_command"):
             self.assertIn(f'"{key}": str(panel_admission.get("{key}") or "")', text)
 
+    def test_the_panel_block_names_the_model(self):
+        # BUG-134: without this key the native PANEL_MODEL_CHANGED guard compares
+        # against an empty name and never fires.
+        text = self.SUBMIT.read_text(encoding="utf-8")
+        self.assertIn('"model_name": str(model.get("model_name") or "")', text)
+
     def test_the_second_direction_slot_reaches_the_job_and_the_macro(self):
         submit = self.SUBMIT.read_text(encoding="utf-8")
         self.assertIn('"second_direction_macro":', submit)

@@ -472,5 +472,45 @@ class CertifiedAdmission(Library):
             )
 
 
+class CertifiedPayloadDisclosure(Library):
+    """The receipt discloses a deployed payload that is not the measured one."""
+
+    MEASURED = "3c80bf15" + "0" * 56
+
+    def setUp(self):
+        super().setUp()
+        certification = self.write_certification(
+            environment={"release_numeric": 42, "payload_sha256": self.MEASURED}
+        )
+        self.write_manifest(manifest([profile(status="certified", certification=certification)]))
+
+    def write_deployment(self, value):
+        path = self.root / "build/blend_callback_setup.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"dll_sha256": value}), encoding="utf-8")
+
+    def admit(self):
+        return panel_profiles.admit_for_request(identity(), root=self.root, environ={})
+
+    def test_the_measured_payload_is_verified_when_it_is_the_deployed_one(self):
+        self.write_deployment(self.MEASURED.upper())
+        self.assertEqual(self.admit()["unverified_bindings"], [])
+
+    def test_another_deployed_payload_is_disclosed_not_refused(self):
+        self.write_deployment("b" * 64)
+        admission = self.admit()
+        self.assertEqual(admission["mode"], "certified")
+        self.assertEqual(admission["unverified_bindings"], ["payload_sha256"])
+
+    def test_an_unreadable_setup_record_is_disclosed(self):
+        admission = self.admit()
+        self.assertEqual(admission["unverified_bindings"], ["payload_sha256"])
+
+    def test_a_certification_without_a_payload_digest_is_not_compared(self):
+        certification = self.write_certification()
+        self.write_manifest(manifest([profile(status="certified", certification=certification)]))
+        self.assertEqual(self.admit()["unverified_bindings"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

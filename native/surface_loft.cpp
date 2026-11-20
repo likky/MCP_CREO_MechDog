@@ -1127,6 +1127,14 @@ static void generic_surface_loft(const J &op) {
         }
     }
 
+    // BUG-135: decided before the create so the later -18 branch can use it; the
+    // create stays INCOMPLETE on both paths because a completed create of this
+    // skeleton fails (PRO_TK_GENERAL_ERROR) and the kernel fills the element tree
+    // during the extraction/redefine round trip. Boundary conditions and a
+    // template are tree consumers, so they never accept geometry-only completion.
+    const bool accept_unverified =
+        op.value("accept_unverified_completion", false) && conditions.empty() && !template_tree;
+
     // INCOMPLETE lets the kernel fill the defaults it owns; the extracted tree
     // is then the completed tree for ProFeatureWithoptionsRedefine. A failed
     // create keeps its element-error list in the receipt instead of only in
@@ -1167,7 +1175,9 @@ static void generic_surface_loft(const J &op) {
                                  ", sections=" + std::to_string((int)curve_ids.size()) +
                                  ", section_curve_ids=[" + listed + "])");
     }
-    ProElementFree(&root);
+    // `root` stays alive until the completion attempt below: when this release
+    // refuses the tree readback, redefining with the creation tree is the last
+    // remaining way to make the kernel regenerate the incomplete feature.
 
     // BUG-120: record whether the kernel completed the feature before trying to
     // read its tree. Creo 10 creates the blend (create_code=0) but leaves it
@@ -1183,7 +1193,32 @@ static void generic_surface_loft(const J &op) {
     ProError extract_code =
         ProFeatureElemtreeExtract(&feature, nullptr, PRO_FEAT_EXTRACT_NO_OPTS, &extracted);
     details["extract_code"] = (int)extract_code;
-    if (extract_code || !extracted) {
+    const char *extract_api = "ProFeatureElemtreeExtract";
+    if (extract_code != PRO_TK_NO_ERROR) {
+        // BUG-135: Creo 10 answers PRO_TK_INVALID_TYPE from Extract for datum
+        // surfaces. The deprecated Create entry point is the same readback on that
+        // release, so try it before falling back to geometry-only verification; the
+        // redefine below is what completes the feature.
+        ProElement legacy = nullptr;
+        ProError legacy_code = ProFeatureElemtreeCreate(&feature, &legacy);
+        details["extract_create_code"] = (int)legacy_code;
+        if (legacy_code == PRO_TK_NO_ERROR && legacy != nullptr) {
+            extracted = legacy;
+            extract_code = legacy_code;
+            extract_api = "ProFeatureElemtreeCreate";
+        }
+    }
+    details["extract_api"] = extract_api;
+    const bool tree_available = extract_code == PRO_TK_NO_ERROR && extracted != nullptr;
+    J tree_json = J(nullptr);
+    J tan_cond_tree = J(nullptr);
+    // BUG-135: Creo 10 creates the blend but refuses to hand back its element
+    // tree (PRO_TK_INVALID_TYPE). A caller that explicitly accepts geometry-only
+    // verification keeps the created quilt; the receipt still reports
+    // kernel_completion="unsupported" and the measured feature_incomplete flag.
+    // Boundary conditions and a template are tree consumers, so they always keep
+    // the refusal; accept_unverified was decided before the create.
+    if (!tree_available) {
         int release_numeric = 0;
         ProError release_code = ProEngineerReleaseNumericversionGet(&release_numeric);
         const bool incomplete = details["feature_incomplete"].get<bool>();
@@ -1194,55 +1229,116 @@ static void generic_surface_loft(const J &op) {
             {"create_code", (int)created},
             {"extract_code", (int)extract_code},
             {"feature_incomplete", incomplete}};
+        if (!accept_unverified) {
+            stage_operation_result(details);
+            ProElementFree(&root);
+            throw std::runtime_error(
+                "surface_loft created the feature (create_code=" + std::to_string((int)created) +
+                ") but this Creo release cannot extract its element tree (code " +
+                std::to_string((int)extract_code) +
+                ", SURFACE_LOFT_EXTRACT_UNSUPPORTED); "
+                "feature_incomplete=" +
+                std::string(incomplete ? "true" : "false") + ", release_numeric=" +
+                (release_code == PRO_TK_NO_ERROR ? std::to_string(release_numeric) : "unknown") +
+                "; the job was rolled back");
+        }
+        // The rest of this function measures the created feature itself (status,
+        // quilt count, area, openness), so the geometry verdict below does not
+        // depend on the tree that this release refuses to return.
+        //
+        // BUG-135: the incomplete create leaves the feature unregenerated, so the
+        // first attempt re-runs the creation tree through the redefine entry point
+        // (what the tree route does with the extracted tree); if the kernel still
+        // reports it incomplete, regenerate the solid. Both outcomes stay in the
+        // receipt and the geometry checks below decide the verdict.
+        ProFeatureCreateOptions *redefine_options = nullptr;
+        CK(ProArrayAlloc(1, sizeof(ProFeatureCreateOptions), 1, (ProArray *)&redefine_options));
+        redefine_options[0] = PRO_FEAT_CR_NO_OPTS;
+        ProErrorlist redefine_errors = {};
+        ProError redefine_code = ProFeatureWithoptionsRedefine(
+            nullptr, &feature, root, redefine_options, PRO_REGEN_NO_FLAGS, &redefine_errors);
+        errors(redefine_errors);
+        ProArrayFree((ProArray *)&redefine_options);
+        ProElementFree(&root);
+        details["accept_redefine_code"] = (int)redefine_code;
+        details["accept_redefine_element_errors"] = (int)redefine_errors.error_number;
+        ProBoolean incomplete_after = PRO_B_FALSE;
+        ProError after_code = ProFeatureIsIncomplete(&feature, &incomplete_after);
+        const bool still_incomplete =
+            after_code != PRO_TK_NO_ERROR || incomplete_after == PRO_B_TRUE;
+        ProError regen_code = PRO_TK_NO_ERROR;
+        if (still_incomplete) {
+            regen_code = ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS);
+            ProBoolean after_regen = PRO_B_FALSE;
+            ProError regen_check = ProFeatureIsIncomplete(&feature, &after_regen);
+            details["accept_regenerate_code"] = (int)regen_code;
+            details["feature_incomplete_after_regenerate"] =
+                regen_check == PRO_TK_NO_ERROR && after_regen == PRO_B_TRUE;
+        } else {
+            details["accept_regenerate_code"] = J(nullptr);
+            details["feature_incomplete_after_regenerate"] = false;
+        }
+        details["completion_verified_by"] = "geometry";
+        details["completion_unverified_reason"] = "element_tree_extract_unsupported";
+        log("SURFACE_LOFT_EXTRACT_UNSUPPORTED_ACCEPTED code=%d regen=%d\n", (int)extract_code,
+            (int)regen_code);
         stage_operation_result(details);
-        throw std::runtime_error(
-            "surface_loft created the feature (create_code=" + std::to_string((int)created) +
-            ") but this Creo release cannot extract its element tree (code " +
-            std::to_string((int)extract_code) +
-            ", SURFACE_LOFT_EXTRACT_UNSUPPORTED); "
-            "feature_incomplete=" +
-            std::string(incomplete ? "true" : "false") + ", release_numeric=" +
-            (release_code == PRO_TK_NO_ERROR ? std::to_string(release_numeric) : "unknown") +
-            "; the job was rolled back");
-    }
-    details["extract_unsupported"] = false;
-    details["kernel_completion"] = "supported";
-    // The tree is logged in full and kept in the receipt only when the
-    // regeneration fails; a successful job must not carry a 30 KB element tree
-    // that inflates every poll of its result.
-    J tree_json = loft_tree_json(extracted);
-    log("SURFACE_LOFT_TREE=%s\n", tree_json.dump().c_str());
-    details["tree_elements_read"] = tree_json["elements_read"];
-    J tan_cond_tree = surface_loft_tan_cond_json(extracted);
-    if (publish_tan_cond)
-        details["tan_cond_tree"] = tan_cond_tree;
+        if (regen_code != PRO_TK_NO_ERROR)
+            throw std::runtime_error(
+                "surface_loft accepted the created feature (create_code=" +
+                std::to_string((int)created) + ") but the regeneration after the incomplete "
+                "create failed (code " + std::to_string((int)regen_code) +
+                ", SURFACE_LOFT_ACCEPT_REGENERATE_FAILED); the job was rolled back");
+        if (details["feature_incomplete_after_regenerate"].get<bool>())
+            throw std::runtime_error(
+                "surface_loft created the blend (create_code=" + std::to_string((int)created) +
+                ") but this Creo release refused its element tree (code " +
+                std::to_string((int)extract_code) + "), the redefine with the creation tree "
+                "failed (code " + std::to_string((int)redefine_code) +
+                ") and regeneration left feature_incomplete=true (SURFACE_LOFT_ACCEPT_INCOMPLETE); "
+                "the retained feature owns no geometry and the job was rolled back; use the "
+                "resident_panel route on this release");
+    } else {
+        details["extract_unsupported"] = false;
+        details["kernel_completion"] = "supported";
+        ProElementFree(&root);
+        // The tree is logged in full and kept in the receipt only when the
+        // regeneration fails; a successful job must not carry a 30 KB element tree
+        // that inflates every poll of its result.
+        tree_json = loft_tree_json(extracted);
+        log("SURFACE_LOFT_TREE=%s\n", tree_json.dump().c_str());
+        details["tree_elements_read"] = tree_json["elements_read"];
+        tan_cond_tree = surface_loft_tan_cond_json(extracted);
+        if (publish_tan_cond)
+            details["tan_cond_tree"] = tan_cond_tree;
 
-    // FEAT-065/M4: written into the extracted tree only, never into the
-    // creation tree (the 2026-11-01 probe stayed UNREGENERATED that way). An
-    // unmapped condition is refused here, before redefine; the job rollback
-    // then discards the incomplete feature like every other failure below.
-    try {
-        surface_loft_apply_conditions(extracted, conditions, details);
-    } catch (...) {
-        details["tan_cond_tree"] = tan_cond_tree;
-        stage_operation_result(details);
-        CK(ProFeatureElemtreeFree(&feature, extracted));
-        throw;
-    }
+        // FEAT-065/M4: written into the extracted tree only, never into the
+        // creation tree (the 2026-11-01 probe stayed UNREGENERATED that way). An
+        // unmapped condition is refused here, before redefine; the job rollback
+        // then discards the incomplete feature like every other failure below.
+        try {
+            surface_loft_apply_conditions(extracted, conditions, details);
+        } catch (...) {
+            details["tan_cond_tree"] = tan_cond_tree;
+            stage_operation_result(details);
+            CK(ProFeatureElemtreeFree(&feature, extracted));
+            throw;
+        }
 
-    // The extracted tree is completed by the kernel's own defaults; redefining
-    // with it is the regeneration the incomplete create skipped. A failure here
-    // keeps the tree sample so the missing element is visible.
-    try {
-        redefine(&feature, extracted);
-    } catch (...) {
-        details["extracted_tree"] = tree_json;
-        details["tan_cond_tree"] = tan_cond_tree;
-        stage_operation_result(details);
+        // The extracted tree is completed by the kernel's own defaults; redefining
+        // with it is the regeneration the incomplete create skipped. A failure here
+        // keeps the tree sample so the missing element is visible.
+        try {
+            redefine(&feature, extracted);
+        } catch (...) {
+            details["extracted_tree"] = tree_json;
+            details["tan_cond_tree"] = tan_cond_tree;
+            stage_operation_result(details);
+            CK(ProFeatureElemtreeFree(&feature, extracted));
+            throw;
+        }
         CK(ProFeatureElemtreeFree(&feature, extracted));
-        throw;
     }
-    CK(ProFeatureElemtreeFree(&feature, extracted));
 
     ProFeatStatus status = PRO_FEAT_ACTIVE;
     CK(ProFeatureStatusGet(&feature, &status));

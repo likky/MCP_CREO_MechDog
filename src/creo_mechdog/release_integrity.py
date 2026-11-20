@@ -13,6 +13,7 @@ import ast
 import hashlib
 import json
 import re
+import subprocess
 import zipfile
 from pathlib import Path, PurePosixPath
 
@@ -797,6 +798,7 @@ def _delivery_snapshot(version: str, read) -> dict | None:
         "path": name,
         "delivery_ids": delivery_ids,
         "previous_version": previous,
+        "previous_release_commit": commit,
         "remote_verification": state,
     }
 
@@ -841,6 +843,68 @@ def _previous_version_problems(text: str, snapshot: dict, origin: str) -> list[s
             f"baseline matches {snapshot['path']}"
         )
     return problems
+
+
+def _previous_commit_problems(text: str, snapshot: dict, origin: str) -> list[str]:
+    """``previous_release_commit`` must match the commit the note itself states.
+
+    A format-only check let a random 40-hex value, or the previous version's
+    post-release backfill commit, pass every gate (0.30.0 feedback P2, still open
+    in 0.31.1). The release note states the previous version and its commit
+    independently, so a value that disagrees with it cannot be the last release
+    point. Notes that state no commit keep their historical shape; the tag check
+    in :func:`_tag_commit_problems` covers a real checkout.
+    """
+    stated: list[str] = []
+    for line in text.splitlines():
+        if "上一版本" in line:
+            stated.extend(_COMMIT_PATTERN.findall(line))
+    if not stated or snapshot["previous_release_commit"] in stated:
+        return []
+    return [
+        f"{origin}: previous_release_commit {snapshot['previous_release_commit']} differs from "
+        f"the commit this note states for the previous version "
+        f"({', '.join(sorted(set(stated)))}); the field must name the previous release commit, "
+        "not a backfill or an arbitrary id"
+    ]
+
+
+def _tag_commit_problems(version: str, root: Path) -> list[str]:
+    """Resolve ``v<previous>`` in this checkout and compare it with the snapshot.
+
+    Only a real checkout can answer this. A missing ``.git``, a missing git
+    executable or an absent tag is not proof that the record is wrong, so those
+    cases add nothing; the cross-file check keeps working there.
+    """
+    if not (Path(root) / ".git").exists():
+        return []
+    name = f"{DELIVERY_SNAPSHOT_DIR}/{version}.json"
+    path = Path(root) / name
+    if not path.is_file():
+        return []
+    try:
+        snapshot = _delivery_snapshot(version, lambda key: (Path(root) / key).read_text("utf-8"))
+    except ValueError:
+        return []
+    tag = f"v{snapshot['previous_version']}"
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", f"{tag}^{{commit}}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if result.returncode != 0:
+        return []
+    actual = result.stdout.strip()
+    if actual == snapshot["previous_release_commit"]:
+        return []
+    return [
+        f"source tree: previous_release_commit {snapshot['previous_release_commit']} is not "
+        f"{tag} ({actual})"
+    ]
 
 
 def approved_evidence_files(root: Path) -> list[Path]:
@@ -1312,6 +1376,9 @@ def _records_problems(version: str, read, exists, origin: str) -> list[str]:
             problems.extend(
                 _previous_version_problems(release, snapshot, f"{origin}:RELEASE-{version}.md")
             )
+            problems.extend(
+                _previous_commit_problems(release, snapshot, f"{origin}:RELEASE-{version}.md")
+            )
             if (
                 snapshot["remote_verification"] == "pending"
                 and _REMOTE_VERIFIED_NOTE not in release
@@ -1364,6 +1431,11 @@ def validate_release_records(
     problems = (
         [] if base is None else _records_problems(version, read_tree, exists_tree, "source tree")
     )
+    if base is not None:
+        # 0.30.0 feedback P2: a real checkout can resolve the previous tag, which
+        # is the only independent proof that the recorded commit is the release
+        # point rather than a backfill or an arbitrary 40-hex value.
+        problems.extend(_tag_commit_problems(version, base))
     if base is not None and (base / DELIVERY_SNAPSHOT_DIR / f"{version}.json").is_file():
         # Byte-exact TXT distribution: a changed or missing approved file is a
         # packaging error, not a documentation note. Versions without a delivery

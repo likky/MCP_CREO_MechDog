@@ -658,5 +658,40 @@ class PanelLibraryRefusalTests(PanelLibraryFixture):
             release_integrity.panel_profile_library_files(self.root)
 
 
+class PreviousReleaseCommitSemanticsTests(unittest.TestCase):
+    """DEV-096: a 40-hex value must also be the commit the note states."""
+
+    STATED = "daadbe71869ae4b394a9298970a8d9ec6608bc91"
+
+    def snapshot(self, commit):
+        return {"previous_release_commit": commit}
+
+    def test_a_commit_that_differs_from_the_note_is_a_problem(self):
+        note = f"- 与上一版本的关系：上一版本 0.31.0（`v0.31.0`，提交 `{self.STATED}`）"
+        problems = release_integrity._previous_commit_problems(
+            note, self.snapshot("0" * 40), "source tree"
+        )
+        self.assertEqual(len(problems), 1)
+        self.assertIn("previous_release_commit", problems[0])
+        self.assertIn(self.STATED, problems[0])
+
+    def test_the_stated_commit_passes(self):
+        note = f"- 与上一版本的关系：上一版本 0.31.0（`v0.31.0`，提交 `{self.STATED}`）"
+        self.assertEqual(
+            release_integrity._previous_commit_problems(note, self.snapshot(self.STATED), "x"),
+            [],
+        )
+
+    def test_a_note_without_a_commit_keeps_its_historical_shape(self):
+        note = "## 相对上一正式包核对（上一版本：0.22.0）"
+        self.assertEqual(
+            release_integrity._previous_commit_problems(note, self.snapshot("0" * 40), "x"), []
+        )
+
+    def test_a_checkout_without_git_adds_no_tag_problem(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(release_integrity._tag_commit_problems("9.9.9", Path(directory)), [])
+
+
 if __name__ == "__main__":
     unittest.main()

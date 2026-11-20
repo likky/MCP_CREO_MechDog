@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "version": "0.33.0",
+  "previous_version": "0.32.0",
+  "previous_release_tag": "v0.32.0",
+  "previous_release_commit": "539a6b0145d84a9c15e538df6601d9538ecfd035",
+  "remote_verification": "pending",
+  "delivery_ids": [
+    "BUG-134",
+    "BUG-135",
+    "BUG-136",
+    "DEV-095",
+    "DEV-096"
+  ],
+  "frozen_on": "2026-11-20",
+  "note": "Frozen from this batch's actual changes, the main ledger and the work cards. This batch follows the published 0.32.0 and carries the 0.31.1 feedback fixes: resident_panel -8 (BUG-134), the explicit element-tree completion bypass (BUG-135), assembly constraint type wording (BUG-136), panel trust disclosure (DEV-095) and the release-record cross-check (DEV-096). Update only before packaging a new candidate, never to make a failing table pass."
+}
