@@ -255,5 +255,64 @@ class RevolveAxisQueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse((self.root / "jobs").exists())
 
 
+class RevolveAxisPlaneRelationSourceTests(unittest.TestCase):
+    """DEV-093 T4: the axis/plane relation is measured, reported and never a gate.
+
+    Creo revolves about any line in space, so an axis outside the sketch plane is
+    not an error by itself. The native side must publish the measured numbers (and
+    repeat them in the refusal) without turning them into admission rules.
+    """
+
+    @staticmethod
+    def source():
+        return (ROOT / "native" / "generic.cpp").read_text(encoding="utf-8")
+
+    def test_relation_reports_the_measured_numbers(self):
+        source = self.source()
+        for key in (
+            '"revolve_axis_plane_relation"',
+            '"axis_origin_mm"',
+            '"axis_direction"',
+            '"plane_origin_mm"',
+            '"plane_normal"',
+            '"signed_distance_mm"',
+            '"origin_distance_mm"',
+            '"direction_angle_to_plane_deg"',
+            '"direction_angle_to_normal_deg"',
+            '"axis_lies_in_plane"',
+            "REVOLVE_AXIS_PLANE_DISTANCE_MM",
+            "REVOLVE_AXIS_PLANE_ANGLE_DEG",
+        ):
+            with self.subTest(key=key):
+                self.assertIn(key, source)
+
+    def test_relation_is_staged_before_the_feature_is_created(self):
+        source = self.source()
+        revolve_branch = source.find("integer(root, PRO_E_REVOLVE_AXIS_OPT, PRO_REV_AXIS_EXT_REF)")
+        self.assertGreater(revolve_branch, 0)
+        staged = source.find('staged["revolve_axis_plane_relation"]', revolve_branch)
+        created = source.find("f = create(root);", revolve_branch)
+        self.assertGreater(staged, 0)
+        self.assertGreater(created, 0)
+        self.assertLess(staged, created, "the relation must survive a create/regeneration failure")
+
+    def test_refusal_repeats_the_numbers_without_inventing_a_cause(self):
+        source = self.source()
+        self.assertIn("revolve_axis_plane_relation_text", source)
+        self.assertIn("do not on their own show why Creo refused the feature", source)
+        self.assertIn("native_exception_text", source)
+        # A Toolkit code is thrown as an int; a std::exception-only rethrow would
+        # replace it with an unrelated message.
+        self.assertIn("catch (ProError code)", source)
+
+    def test_thresholds_classify_only_and_never_refuse(self):
+        source = self.source()
+        self.assertIn("not an error by itself", source)
+        self.assertIn("never admit or refuse a feature", source)
+        relation = source[source.find("static J revolve_axis_plane_relation") :]
+        relation = relation[: relation.find("static std::string revolve_axis_plane_relation_text")]
+        self.assertNotIn("throw", relation)
+
+
 if __name__ == "__main__":
     unittest.main()

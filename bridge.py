@@ -64,15 +64,45 @@ MODEL_NAME_RULE = (
     "underscores, starting with a letter or digit; uppercase input is normalized "
     "to lowercase (BUG-069)"
 )
+#: Prefix every rejection keeps, so a caller can key on one stable sentence.
+MODEL_NAME_PREFIX = "model_name must be 1-31 characters"
+MODEL_NAME_CHARACTERS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789_")
+MODEL_NAME_MAX_LENGTH = 31
 
 
 def normalize_model_name(value: str) -> str:
-    """Validate and normalize a managed model name (see MODEL_NAME_RULE)."""
+    """Validate and normalize a managed model name (see MODEL_NAME_RULE).
+
+    A rejection names the actual cause - type, empty input, length, first
+    character or the illegal characters themselves - instead of repeating the
+    whole rule (which used to mention the uppercase normalization even when the
+    name was refused for its length). Uppercase is still accepted and lowered.
+    """
     if not isinstance(value, str):
-        raise ValueError(MODEL_NAME_RULE)
+        raise ValueError(
+            f"{MODEL_NAME_PREFIX}; got {type(value).__name__}, not a string. Example: 'bracket_01'"
+        )
     normalized = value.lower()
+    if not normalized:
+        raise ValueError(f"{MODEL_NAME_PREFIX}; it is empty. Example: 'bracket_01'")
+    if len(normalized) > MODEL_NAME_MAX_LENGTH:
+        raise ValueError(
+            f"{MODEL_NAME_PREFIX}; {len(normalized)} characters were given, at most "
+            f"{MODEL_NAME_MAX_LENGTH} are allowed"
+        )
+    illegal = sorted({character for character in normalized} - MODEL_NAME_CHARACTERS)
+    if illegal:
+        listed = ", ".join(repr(character) for character in illegal)
+        raise ValueError(
+            f"{MODEL_NAME_PREFIX} of lowercase letters, digits and underscores; "
+            f"{listed} cannot be used"
+            + (" (uppercase is lowercased)" if value != normalized else "")
+        )
     if not MODEL_NAME.fullmatch(normalized):
-        raise ValueError(MODEL_NAME_RULE)
+        raise ValueError(
+            f"{MODEL_NAME_PREFIX} and must start with a letter or digit; "
+            f"{normalized[0]!r} cannot start a model name"
+        )
     return normalized
 
 

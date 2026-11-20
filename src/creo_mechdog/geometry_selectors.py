@@ -300,27 +300,83 @@ def _reject_coaxial_anchor(selector: Any, where: str) -> None:
 
 
 def validate_reference_list(references: list[dict[str, Any]], path: str) -> None:
-    """Validate the geometry selectors inside a reference list before dispatch.
+    """Validate the shape of a round/chamfer reference list before dispatch.
 
-    Round/chamfer references are ``{"edge": selector}`` or
-    ``{"surfaces": [selector, selector]}`` wrappers, so the selector is not
-    always the top-level dictionary.
+    A reference is a wrapper, never a bare selector: the native executor reads
+    ``refs.at("edge")`` or ``refs["surfaces"][0..1]``, so a top-level selector, a
+    mixed wrapper or a two-face set of the wrong length used to pass admission
+    and then fail (or silently drop entries) inside the feature tree. Only the
+    structure is checked here; the selector filters are validated as before.
     """
     for index, reference in enumerate(references):
         where = f"{path}[{index}]"
         if not isinstance(reference, dict):
             continue
         if is_geometry_selector(reference):
-            _reject_coaxial_anchor(reference, where)
-            validate_geometry_selector(reference, where)
+            raise ValueError(
+                f"{where} is a bare geometry selector; a {_op_of(path)} reference is a wrapper: "
+                'use {"edge": <edge selector>} for one edge, or '
+                '{"surfaces": [<surface selector>, <surface selector>]} for a two-face set. '
+                "The wrapper is what tells the executor which element to fill."
+            )
+        has_edge, has_surfaces = "edge" in reference, "surfaces" in reference
+        if has_edge and has_surfaces:
+            raise ValueError(
+                f"{where} carries both 'edge' and 'surfaces'; one reference names either one "
+                'edge ({"edge": <edge selector>}) or exactly two faces '
+                '({"surfaces": [<first>, <second>]}), never both'
+            )
+        if not has_edge and not has_surfaces:
+            raise ValueError(
+                f"{where} names no reference: expected "
+                '{"edge": <edge selector>} or {"surfaces": [<first>, <second>]}; '
+                f"got the keys {sorted(reference)}"
+            )
+        if has_surfaces:
+            _validate_surface_set(reference["surfaces"], f"{where}.surfaces")
             continue
-        edge = reference.get("edge")
-        if is_geometry_selector(edge):
-            _reject_coaxial_anchor(edge, f"{where}.edge")
-            validate_geometry_selector(edge, f"{where}.edge")
-        surfaces = reference.get("surfaces")
-        if isinstance(surfaces, list):
-            for slot, surface in enumerate(surfaces):
-                if is_geometry_selector(surface):
-                    _reject_coaxial_anchor(surface, f"{where}.surfaces[{slot}]")
-                    validate_geometry_selector(surface, f"{where}.surfaces[{slot}]")
+        _validate_edge_reference(reference["edge"], f"{where}.edge")
+
+
+def _op_of(path: str) -> str:
+    return path.split(".", 1)[0] or "feature"
+
+
+def _validate_edge_reference(edge: Any, where: str) -> None:
+    if is_geometry_selector(edge):
+        _reject_coaxial_anchor(edge, where)
+        normalized = validate_geometry_selector(edge, where)
+        if normalized["target"] != "edge":
+            raise ValueError(
+                f"{where}.target is {normalized['target']!r}; the 'edge' slot of a round/chamfer "
+                "reference accepts an edge selector only (use the 'surfaces' slot for faces)"
+            )
+        return
+    if edge is None or (isinstance(edge, dict) and not edge):
+        raise ValueError(
+            f"{where} is empty; name the edge either with an edge selector "
+            "({kind:'geometry_selector',target:'edge',...}) or with an explicit edge reference"
+        )
+
+
+def _validate_surface_set(surfaces: Any, where: str) -> None:
+    if not isinstance(surfaces, (list, tuple)):
+        raise ValueError(
+            f"{where} must be a list of exactly two faces; a round/chamfer set takes "
+            "PRO_E_RNDCH_REFERENCE_SURFACE1 and SURFACE2, so one or three entries are refused"
+        )
+    if len(surfaces) != 2:
+        raise ValueError(
+            f"{where} must contain exactly 2 faces (got {len(surfaces)}); the two-face set is "
+            "the only surface form the executor can fill, and extra entries would be dropped"
+        )
+    for slot, surface in enumerate(surfaces):
+        if not is_geometry_selector(surface):
+            continue
+        _reject_coaxial_anchor(surface, f"{where}[{slot}]")
+        normalized = validate_geometry_selector(surface, f"{where}[{slot}]")
+        if normalized["target"] != "surface":
+            raise ValueError(
+                f"{where}[{slot}].target is {normalized['target']!r}; the 'surfaces' slot accepts "
+                "surface selectors only (use the 'edge' slot for an edge)"
+            )

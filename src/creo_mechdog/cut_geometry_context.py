@@ -5,6 +5,11 @@ and the volume before/after regeneration. This module only validates that
 receipt: it never reads the request, never backfills a missing measurement and
 marks a self-contradictory interval as unavailable instead of publishing it as
 recomputable geometry.
+
+The executor writes one fixed ``status`` for the zero-material branch, so the
+signed volume delta is classified here as ``volume_change``: a cut that increased
+the volume is named ``material_increased`` instead of being read as a harmless
+no-op. ``status`` keeps the executor's own wording and is never rewritten.
 """
 
 from __future__ import annotations
@@ -13,6 +18,14 @@ import math
 from typing import Any
 
 NO_MATERIAL_REMOVED = "no_material_removed"
+#: FEAT-051: what the signed volume delta says about the cut. The executor reports
+#: ``no_material_removed`` for every rejected cut, so the sign of ``removed`` is
+#: named here instead of being left for the caller to interpret.
+MATERIAL_INCREASED = "material_increased"
+MATERIAL_REMOVED = "material_removed"
+NO_MATERIAL_CHANGE = "no_material_removed"
+UNMEASURABLE = "unmeasurable"
+VOLUME_CHANGE_KINDS = (MATERIAL_INCREASED, MATERIAL_REMOVED, NO_MATERIAL_CHANGE, UNMEASURABLE)
 OPERATIONS = ("extrude", "revolve")
 DIRECTIONS = ("positive", "negative", "symmetric")
 DEPTH_TYPES = ("blind", "symmetric", "through_all")
@@ -179,12 +192,70 @@ def _normalize_interval(
     return interval
 
 
+def _empty_volume_change(reason: str | None) -> dict[str, Any]:
+    return {
+        "kind": UNMEASURABLE,
+        "signed_delta_mm3": None,
+        "magnitude_mm3": None,
+        "within_zero_material_threshold": None,
+        "reason": reason,
+    }
+
+
 def _normalize_volume(block: Any) -> dict[str, Any]:
     volume = _empty_volume()
     if isinstance(block, dict):
         for key in _VOLUME_FIELDS:
             volume[key] = _scalar(block.get(key))
     return volume
+
+
+def _classify_volume_change(volume: dict[str, Any]) -> dict[str, Any]:
+    """Name the measured signed delta; never turn it into a success.
+
+    ``removed`` is the executor's own ``before - after`` reading and stays the
+    signed value here. Only the classification is added, so a cut that added
+    material is reported as ``material_increased`` with its magnitude instead of
+    reading like a cut that simply missed the part.
+    """
+    removed = volume["removed"]
+    threshold = volume["zero_material_threshold"]
+    if removed is None:
+        return _empty_volume_change("volume_reading_unavailable")
+    within: bool | None = None
+    if threshold is not None and threshold >= 0:
+        within = abs(removed) <= threshold
+    change = _empty_volume_change(None)
+    change["signed_delta_mm3"] = removed
+    change["within_zero_material_threshold"] = within
+    if removed < 0:
+        change["kind"] = MATERIAL_INCREASED
+        change["magnitude_mm3"] = -removed
+        return change
+    limit = threshold if within is not None else TOLERANCE_MM
+    if removed <= limit:
+        change["kind"] = NO_MATERIAL_CHANGE
+        change["magnitude_mm3"] = 0.0
+        return change
+    change["kind"] = MATERIAL_REMOVED
+    change["magnitude_mm3"] = removed
+    return change
+
+
+def _diagnosis(change: dict[str, Any], volume: dict[str, Any]) -> str | None:
+    if change["kind"] != MATERIAL_INCREASED:
+        return None
+    magnitude = change["magnitude_mm3"]
+    before = volume["before"]
+    after = volume["after"]
+    readings = ""
+    if before is not None and after is not None:
+        readings = f" (volume before {before:.6f} mm3, after {after:.6f} mm3)"
+    return (
+        f"the cut increased the model volume by {magnitude:.6f} mm3{readings}: the "
+        "feature failed and the material change is unexplained, so re-check the sketch "
+        "placement, the direction sign and the depth reading before retrying"
+    )
 
 
 def normalize_cut_geometry_context(block: Any) -> dict[str, Any]:
@@ -200,6 +271,8 @@ def normalize_cut_geometry_context(block: Any) -> dict[str, Any]:
         "sketch_frame": _empty_frame(),
         "depth_interval_mm": _empty_interval(),
         "volume_mm3": _empty_volume(),
+        "volume_change": _empty_volume_change("cut_geometry_context_missing"),
+        "diagnosis": None,
         "note": None,
     }
     if not isinstance(block, dict) or not block:
@@ -215,6 +288,8 @@ def normalize_cut_geometry_context(block: Any) -> dict[str, Any]:
         block.get("depth_interval_mm"), entry["sketch_frame"], entry["direction_sign"]
     )
     entry["volume_mm3"] = _normalize_volume(block.get("volume_mm3"))
+    entry["volume_change"] = _classify_volume_change(entry["volume_mm3"])
+    entry["diagnosis"] = _diagnosis(entry["volume_change"], entry["volume_mm3"])
     if entry["status"] == NO_MATERIAL_REMOVED:
         entry["available"] = True
         entry["reason"] = None

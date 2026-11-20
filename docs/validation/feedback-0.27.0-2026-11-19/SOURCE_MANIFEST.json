@@ -1,0 +1,47 @@
+{
+  "work_item": "DEV-093",
+  "archived_on": "2026-11-19",
+  "source_directory": "C:\\Users\\Administrator\\Downloads\\0.27.0",
+  "source_baseline": "c21651262b8efc442602b50d1d6a09b01abe0b69",
+  "source_version": "0.30.0",
+  "file_count": 6,
+  "total_bytes": 52872,
+  "files": [
+    {
+      "id": "F01",
+      "file": "originals/2026-11-17_CREO_v0.26.0_核心问题：旋转轴偏心0.39微米导致revolve静默失败且weld校验顺序自相矛盾.md",
+      "bytes": 8616,
+      "sha256": "765fb31487c8272b0b1c9da0f14a8d1592819ad034c0407d69f865e47ddca014"
+    },
+    {
+      "id": "F02",
+      "file": "originals/2026-11-17_CREO_v0.26.0_核心问题：coordinates求解器误判同心圆弧圆心为共享顶点导致圆心漂移12.35mm.md",
+      "bytes": 8102,
+      "sha256": "2b00636a96adaf209d09825db03fe6a59c141574c18c0c7ba69614a68c590a50"
+    },
+    {
+      "id": "F03",
+      "file": "originals/2026-11-17_CREO_v0.26.0_核心问题：revolve不接受草图构造中心线且圆边选择器无法区分同轴同半径圆边.md",
+      "bytes": 8945,
+      "sha256": "10b79d13041a2bf1c5802cf796cbc2c2fcb16d46848e4b1ed6494b9f6201ade1"
+    },
+    {
+      "id": "F04",
+      "file": "originals/2026-11-17_CREO_v0.26.0_圆角不支持边链导致闭合顶面边链无法一次生成.md",
+      "bytes": 6426,
+      "sha256": "adacae9fc9bbedeac7303ee41e068a91039cf5af542d99ca3b9c80cfddde1489"
+    },
+    {
+      "id": "F05",
+      "file": "originals/2026-11-18_CREO_v0.26.0_核心问题：装配无法应用旋转位姿且不支持子装配嵌套.md",
+      "bytes": 10889,
+      "sha256": "53f11de51898b5c7d599af38530cc7daa54acdd34c8174714a328b946ff7a3c5"
+    },
+    {
+      "id": "F06",
+      "file": "originals/2026-11-18-CREO-0.27.0-Arm7区域切除零命中_G2只写枚举_coaxialAny仍选平面.md",
+      "bytes": 9894,
+      "sha256": "29d054bad658254f29c95777ad801c0a0a001104533bdd617f98ec162e5cc1d0"
+    }
+  ]
+}

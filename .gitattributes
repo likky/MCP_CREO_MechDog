@@ -105,6 +105,9 @@ docs/PRODUCT_RULES.md text eol=lf
 # DEV-074: preserve the four 0.17.4 feedback originals byte for byte.
 docs/validation/feedback-0.17.4-2026-11-07/originals/** -text
 
+# DEV-093: preserve the six 0.27.0 feedback originals byte for byte.
+docs/validation/feedback-0.27.0-2026-11-19/originals/** -text
+
 docs/validation/feedback-0.18.4-surface-2026-11-08/originals/** -text
 
 # DEV-092: user-requested PTC SDK references stay byte-exact and out of source archives.

@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.30.0
+# MCP_CREO_MechDog 0.31.0
 
-![version](https://img.shields.io/badge/version-0.30.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.31.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.30.0**（MINOR——装配位姿与约束契约补齐：[BUG-133](docs/work-items/BUG-133.md) 让显式 `rotation_tolerance` 在 Python 与原生使用同一有效值，上限收紧到 `1e-3`（默认 `1e-6` 不变）；[FEAT-012](docs/work-items/FEAT-012.md) 新增 `rotation_convention="column"`，原生只转置一次、两层都按规范行矩阵准入；[DEV-092](docs/work-items/DEV-092.md) 明确约束整组替换边界并新增 `failed_constraint_index`/`constraint_stage`/`constraint_reason` 诊断。未验：Creo 实机放置与保存重载、WorkBuddy 黑盒） · [版本说明](docs/RELEASE_NOTES_0.30.0.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
+当前正式版 **0.31.0**（MINOR——0.27.0 反馈批：[FEAT-023](docs/work-items/FEAT-023.md)/[BUG-076](docs/work-items/BUG-076.md) 提交回执 `response_detail="full|compact"` 与组件列表 `fields`/`limit`/`cursor` 有界分页；[BUG-019](docs/work-items/BUG-019.md)/[FEAT-008](docs/work-items/FEAT-008.md) 边与面引用结构在派发前拒绝；[FEAT-051](docs/work-items/FEAT-051.md) 切除体积变化四态分型；[FEAT-039](docs/work-items/FEAT-039.md) 焊接资格准入与提交共用；[FEAT-068](docs/work-items/FEAT-068.md) 同圆多弧段改指 `point_mm`/`{kind:'edge',id:N}`；[DEV-093](docs/work-items/DEV-093.md) 回转轴与草图平面实测关系。未验：六项离线子项实机回归、Creo 9/10、WorkBuddy 黑盒） · [版本说明](docs/RELEASE_NOTES_0.31.0.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 

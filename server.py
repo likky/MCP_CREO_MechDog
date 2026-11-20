@@ -892,6 +892,7 @@ async def creo_execute_plan(
     model_type: Literal["part", "sheetmetal", "assembly", "drawing"] = "part",
     timeout_seconds: int | None = None,
     plan_file: str | None = None,
+    response_detail: Literal["full", "compact"] = "full",
 ) -> dict[str, Any]:
     """Execute an ordered general feature plan. Omit model_id to create a new model of
     model_type ("part" by default).
@@ -947,6 +948,17 @@ async def creo_execute_plan(
     parsed array then passes the same capability, revision, busy and transaction
     admission as an inline plan. Providing both operations and plan_file is
     rejected.
+
+    response_detail="compact" (FEAT-023) returns job_id/model_id/status/revision,
+    operation_count, the file inputs with their paths and already computed
+    sha256, and the job/output directories instead of echoing the normalized
+    operations. job_id, status and revision keep the same meaning and the job
+    record keeps the full operation array, so creo_get_job still returns it.
+    The default "full" is unchanged.
+
+    The accepted receipt is the queue state, not the result: its revision is the
+    value at submission (0 for a newly created model). Read the terminal
+    revision, status and operation results from creo_get_job with this job_id.
     """
     plan_file_record: dict[str, Any] | None = None
     if plan_file is not None:
@@ -967,6 +979,7 @@ async def creo_execute_plan(
         assertions,
         model_type=model_type,
         timeout_seconds=timeout_seconds,
+        response_detail=response_detail,
     )
     if plan_file_record is not None and isinstance(result, dict):
         result["plan_file"] = plan_file_record
@@ -2345,9 +2358,24 @@ async def creo_remove_component(
 
 
 @mcp.tool(annotations=READ)
-async def creo_list_components(model_id: str) -> dict[str, Any]:
-    """Read the last verified assembly component list, native transforms and placement status."""
-    from creo_mechdog import component_identity, model_registry
+async def creo_list_components(
+    model_id: str,
+    fields: list[str] | None = None,
+    limit: int = Field(default=50, ge=1, le=200),
+    cursor: str | None = None,
+) -> dict[str, Any]:
+    """Read the last verified assembly component list, native transforms and placement status.
+
+    A list that fits the 32 KiB response budget is returned whole, in the
+    historical shape. A larger list is returned page by page: every page states
+    total/offset/returned_count/complete and carries next_cursor until the end.
+    The cursor is bound to the model revision, the field projection and a
+    snapshot of the records, so a revision change refuses the old cursor instead
+    of re-slicing a different list. fields selects the record keys to return
+    (omit for every key); a single record above the entry budget is reported as
+    an oversize marker rather than truncated.
+    """
+    from creo_mechdog import component_identity, component_pages, model_registry
 
     model = await invoke(general.model_info, model_id)
     if model.get("model_type") != "assembly":
@@ -2358,14 +2386,17 @@ async def creo_list_components(model_id: str) -> dict[str, Any]:
     projection = component_identity.project_component_identities(
         model, (model_registry.inspection_of(model) or {}).get("components", [])
     )
-    return {
-        "model_id": model_id,
-        "revision": model["revision"],
-        "components": projection["components"],
-        "deleted_identities": projection["deleted_identities"],
-        "identity_key": projection["identity_key"],
-        "aliases": model_registry.aliases_of(model),
-    }
+    return component_pages.component_page(
+        model_id,
+        model["revision"],
+        projection["components"],
+        aliases=model_registry.aliases_of(model),
+        deleted_identities=projection["deleted_identities"],
+        identity_key=projection["identity_key"],
+        fields=fields,
+        limit=limit,
+        cursor=cursor,
+    )
 
 
 @mcp.tool(annotations=CREATE)
