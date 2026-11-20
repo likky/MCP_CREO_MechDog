@@ -4,7 +4,7 @@
 - 日期：2026-11-20
 - 版本说明：[RELEASE_NOTES_0.33.0](../RELEASE_NOTES_0.33.0.md)
 - 主台账：[BACKLOG](../BACKLOG.md) · 工作卡：[BUG-134](../work-items/BUG-134.md) · [BUG-135](../work-items/BUG-135.md) · [BUG-136](../work-items/BUG-136.md) · [DEV-095](../work-items/DEV-095.md) · [DEV-096](../work-items/DEV-096.md) · 交付快照：[0.33.0](../releases/0.33.0.json)
-- 受测提交：本记录所在开发分支的提交（标签 `v0.33.0` 的对象与提交号只在合入 `main` 后登记到 `main` 的[POSTCHECK](../development/RELEASE-POSTCHECK-2026-11-07.md) `## v0.33.0` 段）
+- 受测提交：`613cc4bc3424ce066fb255d5781aa157b23f35a3`（`main`），标签对象 `629f5db8acc9c09bb68f2bd4486d751a1d45cbca` 指向该提交
 - 与上一版本的关系：上一版本：0.32.0（`v0.32.0`，提交 `539a6b0145d84a9c15e538df6601d9538ecfd035`），本版在其之上交付 0.31.1 反馈批的面板 -8 修复、元素树完成旁路、装配约束类型文案、面板可信度披露与发布记录门禁交叉校验
 
 ## 包内容对照（相对 0.32.0）
@@ -64,4 +64,4 @@
 
 - 种子包 SHA256：`d53682cc02d3089490977fcac06afea65113e9369b72f7df4c26bd756215cda7`（24 个文件、9 个种子，两次构建摘要一致，与 `docs/seed_package.json` 一致）。
 - 源码包：由本版合入 `main` 的提交源码构建；字节数与 SHA256 见同名 sidecar，不写入包内。
-- Release：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.33.0`（发布后执行，当前未验证；远端四附件与 sidecar 摘要结果在发布后回填 `main` 的 POSTCHECK `## v0.33.0` 段）。
+- Release：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.33.0`（2026-11-20 12:38Z 发布，非 draft、非 prerelease；`tools\check_release_assets.py --tag v0.33.0` → exit 0，四附件齐全且两个 sidecar 与对应 ZIP 摘要一致，逐项摘要见 `main` 的 POSTCHECK `## v0.33.0` 段）。

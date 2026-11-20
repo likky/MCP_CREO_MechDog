@@ -8,8 +8,12 @@
 - 打包顺序：`tools\package_seeds.py` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools\package.py` → 标签/发布 → `tools\check_release_assets.py` 远端复核。
 - 种子包 SHA256 `d53682cc02d3089490977fcac06afea65113e9369b72f7df4c26bd756215cda7`（24 个文件、9 个种子，两次构建摘要一致；包内 `seed_manifest.json` 声明 `compatible_server_version=0.33.0`）。
 - 源码包由发布提交源码构建，字节数与 SHA256 见同名 sidecar，不写入包内文件。
-- Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.33.0`；四附件为 `MCP_CREO_MechDog-0.33.0-source.zip`、`MCP_CREO_MechDog-0.33.0-source.zip.sha256`、`MCP_CREO_MechDog-0.33.0-seed-library.zip` 与 `MCP_CREO_MechDog-0.33.0-seed-library.zip.sha256`。
-- 远程核对：发布后执行，当前未验证；结果与逐项摘要在本段发布后回填。
+- Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.33.0`；四附件为 `MCP_CREO_MechDog-0.33.0-source.zip`、`MCP_CREO_MechDog-0.33.0-source.zip.sha256`、`MCP_CREO_MechDog-0.33.0-seed-library.zip` 与 `MCP_CREO_MechDog-0.33.0-seed-library.zip.sha256`（2026-11-20 12:38Z 发布，release id `452676477`，非 draft、非 prerelease）。
+- 发布后核对（2026-11-20 12:38Z）：`tools\check_release_assets.py --tag v0.33.0` → exit 0，「v0.33.0: four assets downloaded and verified; both sidecars match」。远端 API digest、本地重算与 sidecar 内容逐一致：
+  - `MCP_CREO_MechDog-0.33.0-source.zip`：11,280,840 字节，`sha256:30c8b1b0bcd4880f2d8a59281b3fa44d15b1c37a3e207735541cdb2ee50a2825`，sidecar 本身 `sha256:6154cc344869b0fc66c0331c9729724efa88b59f0a3fbc2c8f08a76bc3d2b06b`，其内容为同一摘要；
+  - `MCP_CREO_MechDog-0.33.0-seed-library.zip`：493,442 字节，`sha256:d53682cc02d3089490977fcac06afea65113e9369b72f7df4c26bd756215cda7`，sidecar 本身 `sha256:8c067c649ee8baa800b6f7b52cb60bdc0d66ca6e4b120f9b20e8b35298c5fab3`，其内容与 `docs/seed_package.json` 一致。
+- 远端引用：`git ls-remote --tags origin v0.33.0` → `629f5db8acc9c09bb68f2bd4486d751a1d45cbca refs/tags/v0.33.0`（注释标签，指向提交 `613cc4bc3424ce066fb255d5781aa157b23f35a3`）；`git ls-remote origin refs/heads/main` 同为 `613cc4b`。
+- 未验证：发布后未重复执行 Creo 实机与 WorkBuddy 黑盒，实机范围以发布前记录为准。
 
 ## v0.32.0（2026-11-20，发布前快照）
 

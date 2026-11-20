@@ -4,7 +4,7 @@
   "previous_version": "0.32.0",
   "previous_release_tag": "v0.32.0",
   "previous_release_commit": "539a6b0145d84a9c15e538df6601d9538ecfd035",
-  "remote_verification": "pending",
+  "remote_verification": "verified",
   "delivery_ids": [
     "BUG-134",
     "BUG-135",
