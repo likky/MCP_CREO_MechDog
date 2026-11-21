@@ -4,7 +4,7 @@
   "previous_version": "0.35.2",
   "previous_release_tag": "v0.35.2",
   "previous_release_commit": "b90f0eda2a70c1f6ae5e4ae7df56c74be6786b24",
-  "remote_verification": "pending",
+  "remote_verification": "verified",
   "delivery_ids": [
     "BUG-143",
     "BUG-113"

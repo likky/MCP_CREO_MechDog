@@ -2,14 +2,14 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
-## v0.35.3（2026-11-21，准备发布）
+## v0.35.3（2026-11-21，发布后已核对）
 
 - 版本与范围：`0.35.3` PATCH，公开工具仍 110；[BUG-143](../work-items/BUG-143.md) 以开放圆锥套实机跑通非圆柱 mirror → trim → thicken 跨作业标签链与保存重载（quilt 79→99、保留区 687.2181023230302 mm²、加厚 1500.0989754261154 mm³，rev 1→4），并记录闭合锥面 trim 的 `ProContourAreaEval` 面积测量边界；[BUG-113](../work-items/BUG-113.md) 同机受控对照排除外部文件锁，新增 `save_failure.source_checkpoint_readable`/`candidate_readability` 失败瞬间诊断。发布记录见 [RELEASE-0.35.3](../validation/RELEASE-0.35.3.md)。
 - 打包顺序：`tools\package_seeds.py` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools\package.py` → 标签/发布 → `tools\check_release_assets.py` 远端复核。
 - 种子包 SHA256 `182d25706e7868680712c2497148d6287957755554ce7d38fcc4fa6fb33be0f5`（24 个文件、9 个种子，两次构建摘要一致；包内 `seed_manifest.json` 声明 `compatible_server_version=0.35.3`）。
 - 源码包由发布提交源码构建，字节数与 SHA256 见同名 sidecar，不写入包内文件。
 - Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.3`；四个附件为 `MCP_CREO_MechDog-0.35.3-source.zip`、`MCP_CREO_MechDog-0.35.3-source.zip.sha256`、`MCP_CREO_MechDog-0.35.3-seed-library.zip` 与 `MCP_CREO_MechDog-0.35.3-seed-library.zip.sha256`。
-- 发布后核对：发布完成后执行 `tools\check_release_assets.py --tag v0.35.3`，核对四个附件的字节数与摘要、两份 sidecar 与 ZIP 一致性、Release 正文自证，并把结果补入本节。
+- 发布后核对：2026-11-21 执行 `tools\check_release_assets.py --tag v0.35.3`，exit 0，输出“four assets downloaded and verified; both sidecars match; release body self-proof verified”。Release id `453561911`，正文 2975 字符，含四个附件名与“源码包摘要记录在同名 sidecar 中”，种子摘要与 sidecar 一致。远端四个附件——`MCP_CREO_MechDog-0.35.3-source.zip`（11479965 字节，`ffaabb20…`）、`MCP_CREO_MechDog-0.35.3-source.zip.sha256`（101 字节，`cc58a22a…`）、`MCP_CREO_MechDog-0.35.3-seed-library.zip`（493442 字节，`182d2570…`）、`MCP_CREO_MechDog-0.35.3-seed-library.zip.sha256`（107 字节，`5a94e1e1…`）；两份 sidecar 与 ZIP 摘要一致。`v0.35.3` 标签指向提交 `0fa005dc44ac65c9d118e37e1bf9b58b87474486`。
 
 ## v0.35.2（2026-11-21，发布后已核对）
 

@@ -1,13 +1,13 @@
 # 发布记录 v0.35.3（0.35.3，2026-11-21）
 
 - 版本：`0.35.3`（PATCH）。
-- 发布提交：随 `v0.35.3` 标签发布，标签指向的提交即本版源码。
+- 发布提交：`0fa005dc44ac65c9d118e37e1bf9b58b87474486`（`v0.35.3` 标签指向同一提交）。
 - 上一版本：0.35.2（`v0.35.2`，提交 `b90f0eda2a70c1f6ae5e4ae7df56c74be6786b24`）。
 - 交付快照：[releases/0.35.3.json](../releases/0.35.3.json)。
 - 版本说明：[RELEASE_NOTES_0.35.3.md](../RELEASE_NOTES_0.35.3.md)。
 - Release：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.3`。
 - 发布流程：[RELEASING.md](../development/RELEASING.md)；附件核对留存在 [RELEASE-POSTCHECK-2026-11-07.md](../development/RELEASE-POSTCHECK-2026-11-07.md) 的 `## v0.35.3` 段。
-- 远端核对：发布后执行，当前未验证（待 `tools\check_release_assets.py --tag v0.35.3` 回填）。
+- 远端核对：2026-11-21 执行 `tools\check_release_assets.py --tag v0.35.3`，exit 0，输出“four assets downloaded and verified; both sidecars match; release body self-proof verified”。Release id `453561911`，正文 2975 字符。
 
 ## 逐 ID 状态核对
 
@@ -56,6 +56,7 @@
 
 - 种子包 SHA256：`182d25706e7868680712c2497148d6287957755554ce7d38fcc4fa6fb33be0f5`（24 个文件、9 个种子，两次构建摘要一致，与 `docs/seed_package.json` 一致）。
 - 源码包：由本版发布提交的源码构建；字节数与 SHA256 见同名 sidecar，不写入包内文件。
+- 远端四个附件——`MCP_CREO_MechDog-0.35.3-source.zip`（11479965 字节，`ffaabb20…`）、`MCP_CREO_MechDog-0.35.3-source.zip.sha256`（101 字节，`cc58a22a…`）、`MCP_CREO_MechDog-0.35.3-seed-library.zip`（493442 字节，`182d2570…`）、`MCP_CREO_MechDog-0.35.3-seed-library.zip.sha256`（107 字节，`5a94e1e1…`）；两份 sidecar 与 ZIP 摘要一致。
 
 ## 未验
 
