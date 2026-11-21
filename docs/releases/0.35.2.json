@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "version": "0.35.2",
+  "previous_version": "0.35.1",
+  "previous_release_tag": "v0.35.1",
+  "previous_release_commit": "9b933cf5507322f7c8693ea6fd6ae74648866e5b",
+  "remote_verification": "pending",
+  "delivery_ids": [
+    "BUG-143",
+    "DEV-098"
+  ],
+  "frozen_on": "2026-11-21",
+  "note": "PATCH: BUG-143 adds a PRO_QUILT pre-check in generic_mirror so a surface feature passed as references=[{kind:'feature',...}] is refused before ProFeatureCreate instead of crashing the Creo main thread; live Creo 10 runs refused twice with the session alive. The same batch live-verified cross-job mirror label consumed by surface_trim (3141.5926535897934 -> 1570.7963267786718 mm2, kept z 60..79.944), trim label consumed by thicken (1405.1862192991748 mm3) and a single-plan trim that saved and reloaded; the three cross-job saves hit ProMdlnameBackup=-1 and are recorded as not persisted under BUG-113. DEV-098 adds the read-only nearest_surfaces diagnostic (at most five plane/cylinder candidates ordered by error then id) for zero-match surface selectors and keeps requested_coordinate_space='assembly' on assembly-space selector failures; live block candidate_count=6 with ids 65/67/58/53/63. Public tools stay at 110. Not verified: non-cylinder combinations, complete save closure, assembly-space live, Creo 12.4/9 and the WorkBuddy black box."
+}

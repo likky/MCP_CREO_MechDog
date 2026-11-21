@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.35.1
+# MCP_CREO_MechDog 0.35.2
 
-![version](https://img.shields.io/badge/version-0.35.1-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.35.2-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.35.1**（PATCH——[BUG-142](docs/work-items/BUG-142.md) 定位 `0xC0000409` 根因：构建命令缺 `/utf-8` 使 MSVC 按 CP936 解析窄字面量，产生非法 UTF-8 后严格 `dump` 抛异常并 abort；`bridge.py` 三条 `cl` 命令加入 `/utf-8`，并把 `NATIVE_BUILD_FLAGS /utf-8-v1` 纳入构建指纹以拒绝旧缓存。本机复现夹具在严格 `dump` 下退出码 `0xC0000409` 且留下 0 字节文件，改用替换 handler 后正常发布；重建后二进制中弯破折号字节由 `E2 80 3F` 变为合法 `E2 80 94`。[DEV-098](docs/work-items/DEV-098.md) 为通用 `geometry_selector` 零匹配新增只读 `geometry_selector_diagnostic.nearest_edges`（最多 5 条、按误差再按 id 排序），本机 Creo 10 实机 `candidate_count=12`、`matched_ids=[]`、候选 ids 54/55/56/59/60，绝不自动选中。公开工具仍 110。承接 0.35.0；未验：0.32.0 原始模型、真实 disconnect 阻塞路径、Creo 12.4/9 与 WorkBuddy 黑盒） · [版本说明](docs/RELEASE_NOTES_0.35.1.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
+当前正式版 **0.35.2**（PATCH——[BUG-143](docs/work-items/BUG-143.md) 补 mirror 用曲面 `feature` 引用时的崩溃防护：`ProFeatureCreate` 前检查目标特征是否拥有 `PRO_QUILT`，命中即拒绝且会话存活；本机 Creo 10 实机补验 mirror 标签跨作业被 `surface_trim` 消费（3141.59→1570.80 mm²、保留区 z 60…79.944）、trim 标签跨作业被 `thicken` 消费（1405.186 mm³）与单计划 trim 保存重载通过。[DEV-098](docs/work-items/DEV-098.md) 为面选择器零匹配新增只读 `geometry_selector_diagnostic.nearest_surfaces`（≤5 条），并对装配坐标选择器失败回执保留 `requested_coordinate_space="assembly"`；本机 Creo 10 实机方块 6 候选、列出 5 条（ids 65/67/58/53/63）。公开工具仍 110。承接 0.35.1；未验：非圆柱组合、完整保存闭环、Creo 12.4/9 与 WorkBuddy 黑盒） · [版本说明](docs/RELEASE_NOTES_0.35.2.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 

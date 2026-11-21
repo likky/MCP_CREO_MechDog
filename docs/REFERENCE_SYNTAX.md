@@ -430,6 +430,10 @@ executable 仅表示静态能力/schema 准入；native/saved_reload 恒为 not_
 
 最近候选**只是诊断**：匹配器不会自动选中，严格匹配与唯一性判定不变；坐标与 ID 随模型重建变化，重试前应重新 `creo_inspect_model(section="edges")` 或改用当前巡检的 `{kind:"edge",id:N}`。多匹配时仍只给 `matched_ids`，不列最近候选。`sheetmetal_flange` 旧 `edge_geometry` 路径继续使用 `edge_geometry_diagnostic`（字段见上文 DEV-074 增量）。
 
+`{"kind":"geometry_selector","target":"surface",...}` 零匹配时同样给出 `geometry_selector_diagnostic.nearest_surfaces`（最多 5 条，按误差再按 id 升序，只列可命名的 planar/cylindrical 面）：每条含 `id`、`type`（`plane`/`cylinder`）、`origin_mm`、`normal` 或 `axis`、`error_mm`；带 `axis` 过滤时另有 `axis_error_deg`，带 `radius_mm` 时另有 `radius_mm`/`radius_error_mm`，带 `center_mm` 时另有 `center_axis_distance_mm`，带 `points_mm` 时另有 `points_offset_mm`。`radius_mm`/`center_mm` 只适用于圆柱面，方向正确但类型不符的面仍只出现在 `type_rejected_ids`。该列表同样是诊断，不会自动选中。
+
+装配坐标选择器：`coordinate_space="assembly"` 先按 occurrence 放置把端点/点/圆心/轴换算到组件模型坐标系，回执里的测量值都是**模型坐标**；失败回执额外给 `requested_coordinate_space="assembly"`，重试时应使用换算后的模型坐标或直接给当前巡检的 id。
+
 ## quilt closure 的三种含义（DEV-098）
 
 `closure`（`creo_inspect_model(section="quilts")`、`quilt_merge`、`solidify` 回执）

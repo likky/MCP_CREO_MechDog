@@ -657,6 +657,21 @@ KNOWN_LIMITATIONS = (
         "re-read creo_inspect_model edges or pass {kind:'edge',id:N}",
     },
     {
+        "id": "surface_selector_nearest_scope",
+        "condition": "a geometry_selector surface reference matches zero or several faces",
+        "release": "DEV-098 nearest surface list",
+        "evidence": "DEV-098 native/geometry_selectors.cpp zero-match diagnostic",
+        "configurable": False,
+        "effect": "a zero-match geometry_selector surface refuses the job but reports "
+        "geometry_selector_diagnostic.nearest_surfaces (at most 5 planar/cylindrical faces, "
+        "ordered by error then id, with type/origin_mm/normal-or-axis/error_mm and the applied "
+        "axis/radius/center/points errors); wrong-type candidates stay in type_rejected_ids; "
+        "several matches still report only candidate_count and matched_ids; a nearest face is "
+        "never selected automatically, and callers must re-read creo_inspect_model surfaces or "
+        "pass {kind:'surface',id:N}. An assembly-space selector additionally reports "
+        "requested_coordinate_space='assembly' while its measurements stay in the component frame",
+    },
+    {
         "id": "surface_round_scope",
         "condition": "edge-chain, variable radius, full/transition or non-adjacent faces",
         "release": "Creo 12.4",

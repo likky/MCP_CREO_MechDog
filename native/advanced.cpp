@@ -79,8 +79,25 @@ static J generic_mirror(const J &op) {
         std::string kind = r.at("kind");
         if (kind == "part")
             whole = true;
-        if (kind == "feature")
+        if (kind == "feature") {
+            // Live 2026-11-21: a `feature` reference that names a surface
+            // feature reached ProFeatureCreate as PRO_FEAT_SRF_MDL and caused
+            // an EXCEPTION_NONCONTINUABLE_EXCEPTION in Creo's main thread
+            // (traceback.log, 10.0.0.0), killing the session. ProMirror.h lists
+            // PRO_QUILT/PRO_CURVE/PRO_PART items, not PRO_FEATURE, so a feature
+            // that owns a quilt is a surface feature and must be mirrored by
+            // its quilt id instead of being passed as a feature item.
+            ProFeature target = feature(r.at("label"));
+            J owned_quilts = J::array();
+            ProFeatureGeomitemVisit(&target, PRO_QUILT, collect_geom_ids, nullptr, &owned_quilts);
+            // Only a collected quilt proves this is a surface feature; a visit
+            // error alone must not reject solid feature references.
+            if (!owned_quilts.empty())
+                throw std::runtime_error(
+                    "mirror feature references must name a solid feature; this feature owns a "
+                    "surface quilt, so mirror it with a quilt reference instead");
             ++feature_references;
+        }
         bool known = false;
         for (const auto &seen : kinds)
             if (seen == kind)

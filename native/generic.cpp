@@ -1213,6 +1213,11 @@ static ProSelection resolve(const J &r) {
                 "explicit geometry id from creo_inspect_model instead");
         GeometrySelectorOutcome selector_outcome =
             match_geometry_selector(selector, inspection(false), selector_scale.scale);
+        // DEV-098: keep the caller's coordinate space visible. The diagnostic
+        // below carries measurements in the component frame, so without this the
+        // reader cannot tell an assembly-space anchor from a model-space one.
+        if (selector_space == "assembly")
+            selector_outcome.diagnostic["requested_coordinate_space"] = "assembly";
         if (!selector_outcome.matched) {
             stage_operation_result({{"geometry_selector_diagnostic", selector_outcome.diagnostic}});
             throw std::runtime_error(selector_outcome.error);

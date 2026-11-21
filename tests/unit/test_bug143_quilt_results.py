@@ -174,6 +174,18 @@ class QuiltNativeSourceTests(unittest.TestCase):
         self.assertIn('details["result_quilt_id"]', source)
         self.assertIn('remember(op, feature, {{"quilt_id", result_id}})', source)
 
+    def test_mirror_feature_reference_refuses_a_surface_feature(self):
+        # Live 2026-11-21: a surface feature passed as a mirror feature item
+        # killed Creo's main thread (EXCEPTION_NONCONTINUABLE_EXCEPTION). The
+        # guard must resolve the label itself and refuse before create().
+        source = (ROOT / "native" / "advanced.cpp").read_text(encoding="utf-8")
+        guard = source[
+            source.index('if (kind == "feature")') : source.index("++feature_references;")
+        ]
+        self.assertIn('feature(r.at("label"))', guard)
+        self.assertIn("ProFeatureGeomitemVisit(&target, PRO_QUILT", guard)
+        self.assertIn("must name a solid feature", guard)
+
 
 if __name__ == "__main__":
     unittest.main()

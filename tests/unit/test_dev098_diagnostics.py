@@ -200,6 +200,8 @@ class DocumentationContractTests(unittest.TestCase):
             "quilt_volume_eval_failed",
             "creo_mechdog.diagnostic_semantics",
             "外部 Creo 10",
+            "nearest_surfaces",
+            "requested_coordinate_space",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
@@ -212,6 +214,7 @@ class DocumentationContractTests(unittest.TestCase):
             "quilt_closure_not_solidifiable",
             "hidden_hung_window_scope",
             "edge_selector_nearest_scope",
+            "surface_selector_nearest_scope",
             "native_section",
         ):
             with self.subTest(phrase=phrase):
@@ -245,6 +248,35 @@ class NearestEdgeDiagnosticTests(unittest.TestCase):
         self.assertIn("geometry_selector_diagnostic.nearest_edges", caps)
         text = (ROOT / "docs" / "REFERENCE_SYNTAX.md").read_text(encoding="utf-8")
         self.assertIn("geometry_selector_diagnostic.nearest_edges", text)
+        self.assertIn("geometry_selector_diagnostic.nearest_surfaces", text)
+
+
+class NearestSurfaceDiagnosticTests(unittest.TestCase):
+    """DEV-098: a zero-match surface selector lists candidates but never chooses one."""
+
+    def source(self) -> str:
+        return (ROOT / "native" / "geometry_selectors.cpp").read_text(encoding="utf-8")
+
+    def test_zero_match_surface_branch_publishes_a_bounded_list(self):
+        text = " ".join(self.source().split())
+        self.assertIn("selector_nearest_surfaces(selector, state, mm_scale)", text)
+        self.assertIn('outcome.diagnostic["nearest_surfaces"]', text)
+        self.assertIn("if (rows.size() > 5)", text)
+        self.assertIn("never selected automatically", text)
+
+    def test_surface_list_stays_a_diagnostic(self):
+        text = " ".join(self.source().split())
+        self.assertIn("if (matches.empty())", text)
+        self.assertNotIn('nearest_surfaces"]; outcome.id', text)
+        # The list only measures nameable faces; wrong-type ones stay in
+        # type_rejected_ids instead of being repeated as candidates.
+        self.assertIn("cylinder_only && !cylinder", text)
+
+    def test_assembly_space_provenance_is_kept(self):
+        text = " ".join((ROOT / "native" / "generic.cpp").read_text(encoding="utf-8").split())
+        self.assertIn(
+            'selector_outcome.diagnostic["requested_coordinate_space"] = "assembly"', text
+        )
 
 
 if __name__ == "__main__":

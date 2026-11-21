@@ -210,6 +210,111 @@ static J selector_nearest_edges(const J &selector, const J &state, double mm_sca
     return nearest;
 }
 
+// DEV-098: zero-match surface selectors report the closest nameable faces the
+// same way edges do. Only planar and cylindrical faces are listed: they are the
+// only types a surface selector can name, and a wrong-type candidate is already
+// reported in type_rejected_ids. Diagnostic only - never selected.
+static J selector_nearest_surfaces(const J &selector, const J &state, double mm_scale) {
+    const double pi = 3.14159265358979323846;
+    struct Row {
+        double error;
+        int id;
+        J record;
+    };
+    std::vector<Row> rows;
+    const bool filter_axis = selector.contains("axis");
+    const V requested = filter_axis ? normalized(vec(selector["axis"])) : V{0, 0, 0};
+    const bool filter_radius = selector.contains("radius_mm");
+    const double radius = filter_radius ? selector["radius_mm"].get<double>() : 0.0;
+    const bool filter_center = selector.contains("center_mm");
+    const V center = filter_center ? vec(selector["center_mm"]) : V{0, 0, 0};
+    // radius_mm/center_mm only describe cylinders; a plane that carries the
+    // requested direction is a wrong-type candidate reported elsewhere.
+    const bool cylinder_only = filter_radius || filter_center;
+    for (const auto &surface : state.value("surfaces", J::array())) {
+        const int type = surface.value("type", -1);
+        const bool plane = type == PRO_SRF_PLANE;
+        const bool cylinder = type == PRO_SRF_CYL;
+        if (!plane && !cylinder)
+            continue;
+        if (cylinder_only && !cylinder)
+            continue;
+        V axis = {0, 0, 0};
+        bool has_axis = false;
+        if (plane && surface.contains("normal")) {
+            axis = normalized(vec(surface["normal"]));
+            has_axis = true;
+        }
+        if (cylinder && surface.contains("axis")) {
+            axis = normalized(vec(surface["axis"]));
+            has_axis = true;
+        }
+        if (filter_axis && !has_axis)
+            continue;
+        const V origin =
+            surface.contains("origin") ? scale(vec(surface["origin"]), mm_scale) : V{0, 0, 0};
+        J record = {{"id", surface["id"]}, {"type", plane ? "plane" : "cylinder"}};
+        if (surface.contains("origin"))
+            record["origin_mm"] = J::array({origin[0], origin[1], origin[2]});
+        double error = 0;
+        if (filter_axis) {
+            const double cosine = std::max(-1.0, std::min(1.0, fabs(dot(axis, requested))));
+            record["axis_error_deg"] = std::acos(cosine) * 180.0 / pi;
+        }
+        record[plane ? "normal" : "axis"] = J::array({axis[0], axis[1], axis[2]});
+        if (cylinder && surface.contains("radius")) {
+            const double measured = surface["radius"].get<double>() * mm_scale;
+            record["radius_mm"] = measured;
+            if (filter_radius) {
+                const double radius_error = fabs(measured - radius);
+                record["radius_error_mm"] = radius_error;
+                error = std::max(error, radius_error);
+            }
+        }
+        if (filter_center) {
+            const double distance = selector_axis_distance(center, origin, axis);
+            record["center_axis_distance_mm"] = distance;
+            error = std::max(error, distance);
+        }
+        if (selector.contains("points_mm")) {
+            double worst = 0;
+            bool measurable = true;
+            for (const auto &item : selector["points_mm"]) {
+                const V point = vec(item);
+                double offset = 0;
+                if (plane && has_axis)
+                    offset = fabs(dot(
+                        V{point[0] - origin[0], point[1] - origin[1], point[2] - origin[2]}, axis));
+                else if (cylinder && has_axis && surface.contains("radius"))
+                    offset = fabs(selector_axis_distance(point, origin, axis) -
+                                  surface["radius"].get<double>() * mm_scale);
+                else {
+                    measurable = false;
+                    break;
+                }
+                worst = std::max(worst, offset);
+            }
+            if (!measurable)
+                continue;
+            record["points_offset_mm"] = worst;
+            error = std::max(error, worst);
+        }
+        record["error_mm"] = error;
+        rows.push_back({error, surface["id"].get<int>(), record});
+    }
+    std::sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) {
+        if (a.error != b.error)
+            return a.error < b.error;
+        return a.id < b.id;
+    });
+    if (rows.size() > 5)
+        rows.resize(5);
+    J nearest = J::array();
+    for (const auto &row : rows)
+        nearest.push_back(row.record);
+    return nearest;
+}
+
 static GeometrySelectorOutcome match_geometry_edge_selector(const J &selector, const J &state,
                                                             double mm_scale, double tolerance) {
     GeometrySelectorOutcome outcome;
@@ -550,6 +655,9 @@ static GeometrySelectorOutcome match_geometry_surface_selector(const J &selector
                           {"matched_types", J(match_types)},
                           {"type_rejected_ids", J(rejected)},
                           {"type_rejected_types", J(rejected_types)}};
+    if (matches.empty())
+        outcome.diagnostic["nearest_surfaces"] =
+            selector_nearest_surfaces(selector, state, mm_scale);
     if (!matches.empty()) {
         outcome.error =
             "geometry_selector surface filters matched " + std::to_string(matches.size()) +
@@ -570,7 +678,9 @@ static GeometrySelectorOutcome match_geometry_surface_selector(const J &selector
             "); radius_mm/center_mm require a cylinder and radius_mm is not a type filter. A "
             "points_mm anchor that lies on a cylinder's planar end face resolves to that plane; "
             "move it onto the cylindrical wall, pass {kind:'surface',id:N}, or (insert/concentric "
-            "only) set coaxial:'any'.";
+            "only) set coaxial:'any'. The closest nameable faces are listed in "
+            "geometry_selector_diagnostic.nearest_surfaces (diagnostic only, never selected "
+            "automatically).";
         return outcome;
     }
     outcome.error =
@@ -579,7 +689,9 @@ static GeometrySelectorOutcome match_geometry_surface_selector(const J &selector
         ", axis_tolerance_deg=" + std::to_string(axis_tolerance) +
         "); re-read creo_inspect_model surfaces[] and pass current normal/origin/radius, or use "
         "{kind:'surface',id:N}. radius_mm filters a cylinder's radius; it is not a surface-type "
-        "filter.";
+        "filter. The closest nameable faces are listed in "
+        "geometry_selector_diagnostic.nearest_surfaces (diagnostic only, never selected "
+        "automatically).";
     return outcome;
 }
 

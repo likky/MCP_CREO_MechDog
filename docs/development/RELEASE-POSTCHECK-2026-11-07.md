@@ -2,6 +2,15 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
+## v0.35.2（2026-11-21，准备发布）
+
+- 版本与范围：`0.35.2` PATCH，公开工具仍 110；[BUG-143](../work-items/BUG-143.md) 为 mirror 曲面 `feature` 引用增加 `PRO_QUILT` 创建前拒绝（实机拒绝且会话存活），并补验 mirror/trim 标签跨作业消费与单计划 trim 保存重载；[DEV-098](../work-items/DEV-098.md) 为面选择器零匹配新增只读 `nearest_surfaces`（≤5 条）并保留装配坐标 `requested_coordinate_space` 溯源。发布记录见 [RELEASE-0.35.2](../validation/RELEASE-0.35.2.md)。
+- 打包顺序：`tools\package_seeds.py` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools\package.py` → 标签/发布 → `tools\check_release_assets.py` 远端复核。
+- 种子包 SHA256 `094e25eb0d3aaba39d30105eaa7a9a28cb73ebcfc02622a11a792e411ab3d659`（24 个文件、9 个种子，两次构建摘要一致；包内 `seed_manifest.json` 声明 `compatible_server_version=0.35.2`）。
+- 源码包由发布提交源码构建，字节数与 SHA256 见同名 sidecar，不写入包内文件。
+- Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.2`；四个附件为 `MCP_CREO_MechDog-0.35.2-source.zip`、`MCP_CREO_MechDog-0.35.2-source.zip.sha256`、`MCP_CREO_MechDog-0.35.2-seed-library.zip` 与 `MCP_CREO_MechDog-0.35.2-seed-library.zip.sha256`。
+- 发布后核对：发布后执行，当前未验证；应运行 `tools\check_release_assets.py --tag v0.35.2` 并回填四个附件的远端名称、大小、API digest、本地重算 SHA256 与 sidecar 比对结论。
+
 ## v0.35.1（2026-11-21，发布后已核对）
 
 - 版本与范围：`0.35.1` PATCH，公开工具仍 110；[BUG-142](../work-items/BUG-142.md) 定位 `0xC0000409` 根因（原生构建缺 `/utf-8` → MSVC 按 CP936 解析窄字面量 → 非法 UTF-8 → 严格 `dump` 抛异常 → abort），`bridge.py` 三条 `cl` 命令加入 `/utf-8` 并把 `NATIVE_BUILD_FLAGS /utf-8-v1` 纳入构建指纹；[DEV-098](../work-items/DEV-098.md) 为通用 `geometry_selector` 零匹配新增只读 `geometry_selector_diagnostic.nearest_edges`（≤5 条、按误差再按 id 排序），本机 Creo 10 实机 `candidate_count=12`、`matched_ids=[]`、候选 ids 54/55/56/59/60。发布记录见 [RELEASE-0.35.1](../validation/RELEASE-0.35.1.md)。

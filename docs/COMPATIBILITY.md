@@ -49,6 +49,11 @@
   误差，圆给圆心/半径与误差），只作诊断、不自动选中；多匹配仍只给
   `candidate_count`/`matched_ids`。`sheetmetal_flange` 旧 `edge_geometry` 路径继续使用
   `edge_geometry_diagnostic`，两种通道见 REFERENCE_SYNTAX「零匹配边选择器的诊断范围」。
+- **零匹配面选择器与装配坐标**：`target="surface"` 零匹配时
+  `geometry_selector_diagnostic.nearest_surfaces` 列出最多 5 条可命名的平面/圆柱面
+  （方向误差、半径误差、圆心到轴距离等），同样是诊断、不自动选中；
+  `coordinate_space="assembly"` 的选择器换算到组件模型坐标后，失败回执额外保留
+  `requested_coordinate_space="assembly"`，避免把模型坐标读数当成装配坐标。
 - **分步曲面路径**：`surface_boundary_fill` 不可用时的封口绕行（闭合双 `b_spline`
   草图 + `surface_fill` + `quilt_merge` + `solidify`，六步独立作业）已按 0.32.0
   外部 Creo 10 报告写入 REFERENCE_SYNTAX；那是外部历史证据，本机本批未复验。
