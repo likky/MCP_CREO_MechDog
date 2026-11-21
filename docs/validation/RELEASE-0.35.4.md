@@ -1,13 +1,13 @@
 # 发布记录 v0.35.4（0.35.4，2026-11-21）
 
 - 版本：`0.35.4`（PATCH）。
-- 本次发布提交：由本记录所在提交的 `main` 生成（发布后只回填到 `main` 的 POSTCHECK）。
+- 本次发布提交：`29f9ed277d6436d9a0c6de4d4a1168fd51942444`（annotated 标签 `v0.35.4` 指向同一提交）。
 - 上一版本：0.35.3（`v0.35.3`，提交 `0fa005dc44ac65c9d118e37e1bf9b58b87474486`）。
 - 交付快照：[releases/0.35.4.json](../releases/0.35.4.json)。
 - 版本说明：[RELEASE_NOTES_0.35.4.md](../RELEASE_NOTES_0.35.4.md)。
 - Release：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.4`。
 - 发布流程：[RELEASING.md](../development/RELEASING.md)；附件核对留存在 [RELEASE-POSTCHECK-2026-11-07.md](../development/RELEASE-POSTCHECK-2026-11-07.md) 的 `## v0.35.4` 段。
-- 远端核对：发布后执行，当前未验证。
+- 远端核对：2026-11-21 已核对，结果见下方“发布后远端核对”。
 
 ## 逐 ID 状态核对
 
@@ -57,6 +57,21 @@
 
 - 种子包 SHA256：`ba556e79d80f18268c38d9b5044ac15a07afa6cc676153dd8e310cc9c9aec325`（24 个文件、9 个种子，两次构建摘要一致，与 `docs/seed_package.json` 一致）。
 - 源码包：由本版发布提交的源码构建；字节数与 SHA256 见同名 sidecar，不写入包内文件。
+
+## 发布后远端核对（2026-11-21）
+
+- Release id `453623766`，非 draft、非 prerelease，target `main`，`created_at=2026-11-21T10:52:04Z`，`published_at=2026-11-21T10:53:46Z`，正文 2431 字符（含四个附件名与“源码包摘要记录在同名 sidecar 中”）。
+- 远端标签：`v0.35.4` tag object `e6e3c334cf73e8315963f64fb9f7c4c5696cf320`，peeled commit `29f9ed277d6436d9a0c6de4d4a1168fd51942444`；远端 `main` 同为 `29f9ed2`。
+- `gh` 不可用、Python urllib 自动下载被网络重置，改用已认证 GitHub API 下载四附件到本地目录，再执行 `tools\check_release_assets.py --tag v0.35.4 --version 0.35.4 --dir build\release-assets\v0.35.4 --body-file build\release-assets\v0.35.4-body.md`，exit 0，输出“local_verified: four assets present; both sidecars match (version 0.35.4); release body self-proof verified”。远端 API 摘要、本地重算与 sidecar 内容逐一致：
+
+| 附件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.35.4-source.zip` | 11 490 057 | `681f1b1f1c0babb0561225a470d1d4e7a891c9d38d007c2583e6794934fff5e7` |
+| `MCP_CREO_MechDog-0.35.4-source.zip.sha256` | 101 | `35542befea27121dd0ad0bcaa21a382e27a69ade64d84ae8c37ae2ca49b12212` |
+| `MCP_CREO_MechDog-0.35.4-seed-library.zip` | 493 442 | `ba556e79d80f18268c38d9b5044ac15a07afa6cc676153dd8e310cc9c9aec325` |
+| `MCP_CREO_MechDog-0.35.4-seed-library.zip.sha256` | 107 | `59aa5f581ca07e13d4929d1c0477336762d8ba341510d69de98d4e0a3ea144f3` |
+
+- 包内快照与 `main` 的差异：冻结源码包内的 POSTCHECK 与发布记录仍是打包时点措辞（`remote_verification=pending`），本段实际结果与 `docs/releases/0.35.4.json` 的 `verified` 只存在于 `main`，不改写、不重发已发布附件。
 
 ## 未验
 

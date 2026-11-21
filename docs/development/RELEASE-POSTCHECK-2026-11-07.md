@@ -2,14 +2,15 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
-## v0.35.4（2026-11-21，发布前快照）
+## v0.35.4（2026-11-21，发布后已核对）
 
 - 版本与范围：`0.35.4` PATCH，公开工具仍 110；[BUG-133](../work-items/BUG-133.md) 按 Creo 10.0.0.0 / release 42 实机边界把旋转矩阵准入收紧为 `1e-7`：9/8/7 位小数矩阵（残差 `4.5e-10`/`7.664e-9`/`4.755e-8`）可放置并保存重载，`2.241e-7`/`4.890e-7`/`1.129e-6` 均被 `ProAsmcompAssemble`/`ProAsmcompPositionSet` 以 `-2` 拒绝；`rotation_tolerance` 缺省与上限同为 `1e-7`，六位小数矩阵在提交前拒绝并给出残差，矩阵仍不转置、不正交化、不修复。发布记录见 [RELEASE-0.35.4](../validation/RELEASE-0.35.4.md)。
 - 打包顺序：`tools\package_seeds.py` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools\package.py` → 标签/发布 → `tools\check_release_assets.py` 远端复核。
 - 种子包 SHA256 `ba556e79d80f18268c38d9b5044ac15a07afa6cc676153dd8e310cc9c9aec325`（24 个文件、9 个种子，两次构建摘要一致；包内 `seed_manifest.json` 声明 `compatible_server_version=0.35.4`）。
 - 源码包由发布提交源码构建，字节数与 SHA256 见同名 sidecar，不写入包内文件。
 - Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.4`；四个附件为 `MCP_CREO_MechDog-0.35.4-source.zip`、`MCP_CREO_MechDog-0.35.4-source.zip.sha256`、`MCP_CREO_MechDog-0.35.4-seed-library.zip` 与 `MCP_CREO_MechDog-0.35.4-seed-library.zip.sha256`。
-- 发布后核对：发布后执行，当前未验证。
+- 发布后核对（2026-11-21）：Release id `453623766`，非 draft、非 prerelease，target `main`，`created_at=2026-11-21T10:52:04Z`，`published_at=2026-11-21T10:53:46Z`，正文 2431 字符，含四个附件名与“源码包摘要记录在同名 sidecar 中”。`v0.35.4` tag object `e6e3c334cf73e8315963f64fb9f7c4c5696cf320`，peeled commit `29f9ed277d6436d9a0c6de4d4a1168fd51942444`；远端 `main` 同为 `29f9ed2`。`gh` 不可用、Python urllib 自动下载被网络重置，改用已认证 GitHub API 下载四附件后执行 `tools\check_release_assets.py --tag v0.35.4 --version 0.35.4 --dir build\release-assets\v0.35.4 --body-file build\release-assets\v0.35.4-body.md`，exit 0，输出“local_verified: four assets present; both sidecars match (version 0.35.4); release body self-proof verified”。远端 API 摘要、本地重算与 sidecar 内容逐一致：`MCP_CREO_MechDog-0.35.4-source.zip`（11490057 字节，`681f1b1f…`）、`MCP_CREO_MechDog-0.35.4-source.zip.sha256`（101 字节，`35542bef…`）、`MCP_CREO_MechDog-0.35.4-seed-library.zip`（493442 字节，`ba556e79…`）、`MCP_CREO_MechDog-0.35.4-seed-library.zip.sha256`（107 字节，`59aa5f58…`）。
+- 包内快照与 `main` 的差异：冻结源码包内的本段与发布记录仍是打包时点措辞（`remote_verification=pending`），以上实际结果与 `docs/releases/0.35.4.json` 的 `verified` 只存在于 `main`，不改写、不重发已发布附件。
 
 ## v0.35.3（2026-11-21，发布后已核对）
 
