@@ -1,11 +1,11 @@
 # 发布记录 v0.35.0（0.35.0，2026-11-21）
 
 - 版本：`0.35.0`（MINOR 部分交付）。
-- 发布提交：合入 `main` 后由该提交源码构建（提交号发布后回填）。
+- 发布提交：`4e42e1d4b7e801894ab296271398e9bd1bb83012`（`main`），由该提交源码构建并冻结附件。
 - 上一版本：0.34.0（`v0.34.0`，提交 `bbd81cdbaa92f7acdc1988d574dfdab832e01bed`）。
 - 交付快照：[releases/0.35.0.json](../releases/0.35.0.json)。
 - 版本说明：[RELEASE_NOTES_0.35.0.md](../RELEASE_NOTES_0.35.0.md)。
-- Release：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.0`（发布后执行，当前未验证）。
+- Release：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.0`。
 - 发布流程：[RELEASING.md](../development/RELEASING.md)；附件核对留存在 [RELEASE-POSTCHECK-2026-11-07.md](../development/RELEASE-POSTCHECK-2026-11-07.md) 的 `## v0.35.0` 段。
 
 ## 逐 ID 状态核对
@@ -60,4 +60,8 @@
 
 ## 发布后核对
 
-- 发布后执行，当前未验证；结果追加到 [POSTCHECK `## v0.35.0`](../development/RELEASE-POSTCHECK-2026-11-07.md) 段，不重打已冻结附件。
+- Release：id `453417481`，非 draft、非 prerelease，`created_at=2026-11-21T03:40:21Z`，`published_at=2026-11-21T03:41:33Z`，target `main`。
+- 远端命令：`.\.venv\Scripts\python.exe tools\check_release_assets.py --tag v0.35.0` → exit 0，「v0.35.0: four assets downloaded and verified; both sidecars match; release body self-proof verified」。
+- 远端引用：注释标签对象 `56a02b71c03c147bcaab28ae624a31dbb8f7fd48` 指向发布提交 `4e42e1d4b7e801894ab296271398e9bd1bb83012`；发布时远端 `main` 为同一提交。
+- 四附件的逐件字节数与 SHA256 已回填 [POSTCHECK `## v0.35.0`](../development/RELEASE-POSTCHECK-2026-11-07.md)；两个 ZIP 与各自 sidecar、API digest 及 Release 正文自证一致。
+- 本段与交付快照的 `remote_verification=verified` 只回填到 `main`；冻结源码包仍保留发布前的 `pending` 快照，不重打、不覆盖已发布标签或附件。

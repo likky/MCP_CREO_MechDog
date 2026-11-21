@@ -2,14 +2,25 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
-## v0.35.0（2026-11-21，发布前快照）
+## v0.35.0（2026-11-21，发布后已核对）
 
 - 版本与范围：`0.35.0` MINOR 部分交付，公开工具仍 110；交付桌面 `0.33.0` 三份反馈首批——[BUG-143](../work-items/BUG-143.md) 曲面结果回执给实测 `quilt_id` 且同计划 merge/fill 标签可被 `solidify` 消费；[FEAT-071](../work-items/FEAT-071.md) `d1_d2` 两距离倒角；[BUG-142](../work-items/BUG-142.md) 断连前结果预发布与非 UTF-8 容错；[BUG-140](../work-items/BUG-140.md)/[BUG-141](../work-items/BUG-141.md) 启动链修复；[DEV-098](../work-items/DEV-098.md) 诊断语义与文档契约。发布记录见 [RELEASE-0.35.0](../validation/RELEASE-0.35.0.md)。
 - 打包顺序：`tools\package_seeds.py` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools\package.py` → 标签/发布 → `tools\check_release_assets.py` 远端复核。
 - 种子包 SHA256 `8f7c1645d7a324f674de6f486bd83aca0f4ad99e5abd50177843fedc6352f02d`（24 个文件、9 个种子，两次构建摘要一致；包内 `seed_manifest.json` 声明 `compatible_server_version=0.35.0`）。
 - 源码包由发布提交源码构建，字节数与 SHA256 见同名 sidecar，不写入包内文件。
-- Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.0`（发布后执行，当前未验证）；四附件为 `MCP_CREO_MechDog-0.35.0-source.zip`、`MCP_CREO_MechDog-0.35.0-source.zip.sha256`、`MCP_CREO_MechDog-0.35.0-seed-library.zip` 与 `MCP_CREO_MechDog-0.35.0-seed-library.zip.sha256`。
-- 发布后核对结果与附件摘要追加在本段；冻结源码包内保持本快照措辞，不回写已发布附件。
+- Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.0`；四附件为 `MCP_CREO_MechDog-0.35.0-source.zip`、`MCP_CREO_MechDog-0.35.0-source.zip.sha256`、`MCP_CREO_MechDog-0.35.0-seed-library.zip` 与 `MCP_CREO_MechDog-0.35.0-seed-library.zip.sha256`。Release id `453417481`，非 draft、非 prerelease，`created_at=2026-11-21T03:40:21Z`，`published_at=2026-11-21T03:41:33Z`，target `main`。
+- 发布后核对（2026-11-21）：`tools\check_release_assets.py --tag v0.35.0` → exit 0，「v0.35.0: four assets downloaded and verified; both sidecars match; release body self-proof verified」。远端 API digest、本地重算与 sidecar 内容逐一致：
+
+| 附件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.35.0-source.zip` | 11 439 818 | `45ee6b1c230d32ac44a5f168e0e652d41e66d9408846421db8cd09797072c1fc` |
+| `MCP_CREO_MechDog-0.35.0-source.zip.sha256` | 101 | `960a5722e63793e7f9a8a429b42eac65783194b8fc6f3a004fd6a9a003d74d85` |
+| `MCP_CREO_MechDog-0.35.0-seed-library.zip` | 493 442 | `8f7c1645d7a324f674de6f486bd83aca0f4ad99e5abd50177843fedc6352f02d` |
+| `MCP_CREO_MechDog-0.35.0-seed-library.zip.sha256` | 107 | `e5770a1ee63451015de836442c85a06cbe3aaac94d63b10c6ac64952d8ead32b` |
+
+- 远端引用：`git ls-remote --tags origin v0.35.0` → `56a02b71c03c147bcaab28ae624a31dbb8f7fd48 refs/tags/v0.35.0`（注释标签，指向发布提交 `4e42e1d4b7e801894ab296271398e9bd1bb83012`）；发布时远端 `main` 为同一提交。
+- 包内快照与 `main` 的差异：已冻结源码包内的 POSTCHECK/发布记录仍是打包时点措辞（`remote_verification=pending`），本段实际结果与 `docs/releases/0.35.0.json` 的 `verified` 只存在于 `main`，不改写、不重发已发布附件。
+- 未验证：发布后未重复执行 Creo 实机与 WorkBuddy 黑盒，实机范围以发布前记录为准。
 
 ## v0.34.0（2026-11-21，发布后已核对）
 
