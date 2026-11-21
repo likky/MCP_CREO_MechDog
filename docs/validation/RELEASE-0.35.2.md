@@ -1,13 +1,13 @@
 # 发布记录 v0.35.2（0.35.2，2026-11-21）
 
 - 版本：`0.35.2`（PATCH）。
-- 发布提交：`HEAD`（打标签后在本段回填 40 位哈希；`v0.35.2` 标签指向同一提交）。
+- 发布提交：`b90f0eda2a70c1f6ae5e4ae7df56c74be6786b24`（`v0.35.2` 标签指向同一提交）。
 - 上一版本：0.35.1（`v0.35.1`，提交 `9b933cf5507322f7c8693ea6fd6ae74648866e5b`）。
 - 交付快照：[releases/0.35.2.json](../releases/0.35.2.json)。
 - 版本说明：[RELEASE_NOTES_0.35.2.md](../RELEASE_NOTES_0.35.2.md)。
 - Release：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.2`。
 - 发布流程：[RELEASING.md](../development/RELEASING.md)；附件核对留存在 [RELEASE-POSTCHECK-2026-11-07.md](../development/RELEASE-POSTCHECK-2026-11-07.md) 的 `## v0.35.2` 段。
-- 远端核对：发布后执行，当前未验证。
+- 远端核对：`tools\check_release_assets.py --tag v0.35.2` exit 0（四个附件已下载校验、两份 sidecar 与 ZIP 摘要一致、Release 正文自证通过）。
 
 ## 逐 ID 状态核对
 
@@ -65,4 +65,13 @@
 
 ## 发布后核对
 
-发布后执行，当前未验证。发布后应运行 `tools\check_release_assets.py --tag v0.35.2` 并在此记录四个附件的远端名称、大小、API digest、本地重算 SHA256 与 sidecar 比对结论。
+2026-11-21 执行 `tools\check_release_assets.py --tag v0.35.2`，exit 0，输出“four assets downloaded and verified; both sidecars match; release body self-proof verified”。
+
+| 附件 | 大小（字节） | 远端 API digest | 本地重算 / sidecar |
+| --- | --- | --- | --- |
+| `MCP_CREO_MechDog-0.35.2-source.zip` | 11468150 | `sha256:9ce2ff6b9cba0fd0bc8c273565cc466be25f015ebcff7093cc8e31fb9a19d22d` | 与 sidecar 一致 |
+| `MCP_CREO_MechDog-0.35.2-source.zip.sha256` | 101 | `sha256:44863018f82add3de76c4ca535622543378520457ae744ad01fce800ca8c8460` | 一行 SHA256 + 文件名 |
+| `MCP_CREO_MechDog-0.35.2-seed-library.zip` | 493442 | `sha256:094e25eb0d3aaba39d30105eaa7a9a28cb73ebcfc02622a11a792e411ab3d659` | 与 sidecar 一致 |
+| `MCP_CREO_MechDog-0.35.2-seed-library.zip.sha256` | 107 | `sha256:25162479b6cc34a40ac5b0766978049bfc8b09aa8bb7daadcaa6e04bd7f28255` | 一行 SHA256 + 文件名 |
+
+Release 正文（3317 字符）包含四个附件名与“源码包摘要记录在同名 sidecar 中”的说明，正文中的种子摘要与 sidecar 一致。

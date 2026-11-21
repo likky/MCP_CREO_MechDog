@@ -9,7 +9,7 @@
 - 种子包 SHA256 `094e25eb0d3aaba39d30105eaa7a9a28cb73ebcfc02622a11a792e411ab3d659`（24 个文件、9 个种子，两次构建摘要一致；包内 `seed_manifest.json` 声明 `compatible_server_version=0.35.2`）。
 - 源码包由发布提交源码构建，字节数与 SHA256 见同名 sidecar，不写入包内文件。
 - Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.2`；四个附件为 `MCP_CREO_MechDog-0.35.2-source.zip`、`MCP_CREO_MechDog-0.35.2-source.zip.sha256`、`MCP_CREO_MechDog-0.35.2-seed-library.zip` 与 `MCP_CREO_MechDog-0.35.2-seed-library.zip.sha256`。
-- 发布后核对：发布后执行，当前未验证；应运行 `tools\check_release_assets.py --tag v0.35.2` 并回填四个附件的远端名称、大小、API digest、本地重算 SHA256 与 sidecar 比对结论。
+- 发布后核对：2026-11-21 执行 `tools\check_release_assets.py --tag v0.35.2`，exit 0，输出“four assets downloaded and verified; both sidecars match; release body self-proof verified”。远端四个附件——`MCP_CREO_MechDog-0.35.2-source.zip`（11468150 字节，`9ce2ff6b…`）、`MCP_CREO_MechDog-0.35.2-source.zip.sha256`（101 字节，`44863018…`）、`MCP_CREO_MechDog-0.35.2-seed-library.zip`（493442 字节，`094e25eb…`）、`MCP_CREO_MechDog-0.35.2-seed-library.zip.sha256`（107 字节，`25162479…`）；两份 sidecar 与 ZIP 摘要一致。Release 正文 3317 字符，含四个附件名与“源码包摘要记录在同名 sidecar 中”，种子摘要与 sidecar 一致。
 
 ## v0.35.1（2026-11-21，发布后已核对）
 
