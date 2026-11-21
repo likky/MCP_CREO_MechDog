@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-21（DEV-098 收口：装配坐标零匹配候选选择本机 Creo 10 实机通过；台账 208→207 项，仅文档/证据收口，未升版、未发布）：`build/probe_dev098_assembly_space.py` 在 Creo 10.0.0.0 / release 42 上把 60×40×10 基板固定于装配 `x=100`，再用 `coordinate_space="assembly"`、`points_mm=[[1000,1000,1000]]` 的面选择器约束销；作业 `6eae1dd56414441a904fa5b6ce431681` 按预期失败，`failed_operation.constraint_stage="reference"`，诊断块保留 `requested_coordinate_space="assembly"`、`candidate_count=6`、`matched_ids=[]`，`nearest_surfaces` 5 条（ids 65/69/67/58/53）。面 `origin_mm` 的 x 为 `0`/`60` 而非装配坐标 `100`/`160`（纯平移不改变点面距离，帧别以原点判定；最近 `points_offset_mm=840` 与换算后的组件坐标 `(900,1000,1000)` 到 x=60 面一致），证明候选按 occurrence 放置换到组件帧测量且不自动选中。DEV-098 剩余实机项闭环并移入完成档案；未验：Creo 12.4/9 同一诊断、圆边轴与其他选择器组合、WorkBuddy 黑盒。证据 `build/dev098_assembly_space.json`。
+
 2026-11-21（BUG-133 旋转矩阵准入收紧随 **0.35.4** 发布）：PATCH，公开工具仍 110。按 Creo 10.0.0.0 / release 42 实机边界把 `rotation_matrix` 准入从 `1e-6` 收紧为 `1e-7`：残差 `4.5e-10`、`7.664e-9`、`4.7552320081578614e-8` 的 9/8/7 位小数矩阵可放置并保存重载，而 `2.241e-7`、`4.890e-7`、`1.1294880000178864e-6` 均被 `ProAsmcompAssemble` 与 `ProAsmcompPositionSet` 以 `-2` 拒绝；`rotation_tolerance` 缺省与上限同为 `1e-7`，显式值只能收紧，六位小数矩阵在 `validate_operations`/原生入口即被拒绝并给出残差，不再承诺用更大容差救回。矩阵仍原值回显，不转置、不正交化、不修复；`1e-9` 继续只用于 `strict`/`near_orthonormal` 分类。同步范围：`src/creo_mechdog/rotation_admission.py`、`native/assembly_pose.h`、`schema.py`、`capabilities.py`、`server.py` 与六份回归。验证：`bridge.py build` 通过、`tools/test_assembly_pose.py` `success=true`、`tools/dev_check.py` 全量 4299 项通过（6 跳过）、Ruff/clang-format 通过。种子包 SHA256 `ba556e79d80f18268c38d9b5044ac15a07afa6cc676153dd8e310cc9c9aec325`（24 个文件、9 个种子，两次构建一致）。未验：其他 Creo 版本与 WorkBuddy 黑盒。发布提交 `29f9ed2`，annotated 标签 `v0.35.4` 已推送（peeled commit `29f9ed277d6436d9a0c6de4d4a1168fd51942444`）；Release id `453623766`，四附件上传后因 `gh`/urllib 网络失败改用已认证 API 下载并执行 `tools/check_release_assets.py --tag v0.35.4 --version 0.35.4 --dir … --body-file …`，exit 0（四附件、两份 sidecar 与正文自证通过）。发布记录见 [RELEASE-0.35.4](validation/RELEASE-0.35.4.md)。
 
 2026-11-21（BUG-143 非圆柱链路与 BUG-113 受控诊断随 **0.35.3** 发布）：PATCH，公开工具仍 110。BUG-143 用开放圆锥套（XZ 开放直线 `[[-25,5],[-5,20]]` 绕 X 轴 360°，quilt 79、面积 1963.4907316790584 mm²）实机跑通三步跨作业链路：mirror（`{kind:"quilt",id:79}` → quilt 99）、trim 消费 mirror 标签（保留区 x 15…25、687.2181023230302 mm²）、thicken 消费 trim 标签（1500.0989754261154 mm³），rev 1→4，每步保存重载 true 且无 `save_failure`；闭合梯形圆锥环的 trim 因 `ProContourAreaEval` 对锥面返回 -1 按“无可测保留区”回滚，属面积测量边界而非标签问题。BUG-113 在同一 Creo 10 上受控对照：干净会话连续 10 次保存成功（rev 1→11）、30 s 延迟后第二次保存仍失败、Restart Manager 无持有者、锁 latest/next/verify 均未复现 -1，判定与前一会话状态相关、外部文件锁假设不成立，仍不自动重试；新增 `save_failure.source_checkpoint_readable` 与 `candidate_readability`（≤20 条、不可读不伪造）供下一次现场取证，原生已在本机 `bridge.py build` 编译通过，投影与单测同批发布。证据 `build/live_probe_bug143_cone.json`、`build/probe_backup_lock_*.json`；`tools/dev_check.py` 全量 4298 项通过（6 跳过）、`success=true`。发布提交 `0fa005d`，annotated 标签 `v0.35.3` 已推送；Release id `453561911`，四个附件上传后 `tools/check_release_assets.py --tag v0.35.3` exit 0（四附件下载校验、两份 sidecar 与 ZIP 摘要一致、正文自证通过）。发布记录见 [RELEASE-0.35.3](validation/RELEASE-0.35.3.md)。
@@ -201,7 +203,7 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 
 诊断交付不等于根因修复；部分交付不关整卡；缺其他版本证据不自动判未修。观察项等自然新现场，不制造故障。已完成且无保留范围的行移入 [完成档案](BACKLOG_COMPLETED.md#2026-11-07dev-073-归档与历史进展)。原进展/证据保留日期，不再回填第二份待办。小修复沿用卡与证据，复杂跨模块任务才另建完整计划。
 
-当前唯一 ID **208**（BUG **95**、FEAT **68**、DEV **45**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
+当前唯一 ID **207**（BUG **95**、FEAT **68**、DEV **44**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
@@ -211,7 +213,7 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
 | 开发中 | 7 |
-| 部分交付，剩余待验收 | 50 |
+| 部分交付，剩余待验收 | 49 |
 | 部分交付，剩余待规划 | 7 |
 | 待规划 | 46 |
 
@@ -363,7 +365,6 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [BUG-142](work-items/BUG-142.md) | P1 | 部分交付 0.35.1，剩余待验收 | 0.35.0（子项已交付）；0.35.1（根因修复已交付）；剩余未排期 | 断连前预发布执行/回滚事实并对非 UTF-8 文本容错，已随 v0.35.0 发布；0.35.1 定位 `0xC0000409` 根因为原生构建缺 `/utf-8`（MSVC 按 CP936 解析窄字面量产生非法 UTF-8，严格 `dump` 抛异常致 abort），已为三条 `cl` 命令加入 `/utf-8` 并把 `NATIVE_BUILD_FLAGS /utf-8-v1` 纳入构建指纹，受控夹具复现退出码与 0 字节文件、替换 handler 后正常发布（已随 v0.35.1 发布）。0.35.1 之后（未发布）以等价 fill→merge→solidify(标签) 链实机复演：标签解析成功、无 -4、UTF-8 合法、失败结果正常发布；0.32.0 原模型目录已不存在，无法逐字复演。剩：真实 disconnect 阻塞夹具与其他环境。 |
 | [BUG-140](work-items/BUG-140.md) | P1 | 部分交付 0.35.0，剩余待验收 | 0.35.0（子项已交付）；剩余未排期 | legacy 候选惰性求值并设 8 依赖上限（10 依赖 0.415647 s/1024 → 1.8 µs/0），已随 v0.35.0 发布。剩：真实构建缓存端到端启动计时。 |
 | [BUG-141](work-items/BUG-141.md) | P1 | 部分交付 0.35.0，剩余待验收 | 0.35.0（子项已交付）；剩余未排期 | 仅忽略可确认退出的进程，`selection_required` 不再被 `force_ready` 绕过，已随 v0.35.0 发布。剩：真实僵尸进程现场。 |
-| [DEV-098](work-items/DEV-098.md) | P2 | 部分交付 0.35.2，剩余待验收 | 0.35.0（子项已交付）；0.35.1（零候选最近边已交付）；0.35.2（面选择器最近候选与装配坐标溯源已交付）；剩余未排期 | 诊断语义模块、b_spline/closure/窗口/选择器文档与 4 条限制已随 v0.35.0 发布；0.35.1 接入通用 `geometry_selector` 零候选最近边诊断（`geometry_selector_diagnostic.nearest_edges`，≤5 条、按误差再按 id 排序、只读诊断、绝不自动选中），本机 Creo 10 实机 `candidate_count=12`、`matched_ids=[]`、候选 ids 54/55/56/59/60（已随 v0.35.1 发布）。0.35.2 补 `target="surface"` 零匹配 `nearest_surfaces`（≤5 条）与装配坐标 `requested_coordinate_space` 溯源，单测 22 项通过；实机方块 6 候选、列出 5 条（ids 65/67/58/53/63）。剩：Creo 12.4/9、装配坐标实机与其他选择器形态。 |
 | [BUG-139](work-items/BUG-139.md) | P1 | 部分交付 0.34.0，剩余待验收 | 0.34.0（子项已交付）；剩余未排期 | 启动协调器探测超时可配、成功探测循环外落地、`connecting` 相位、预算分段、recent-connected/`force_ready` 降级、身份归因与错误上下文已交付；26 项定向单测通过，本机 Creo 10 冷启动→ready→FEAT-070 建模及保存重载通过，已随 v0.34.0 发布。剩：`force_ready` 与失败路径文案的实机夹具，其他环境按反馈补录。 |
 | [FEAT-070](work-items/FEAT-070.md) | P2 | 部分交付 0.34.0，剩余待验收 | 0.34.0（子项已交付）；剩余未排期 | `creo_redefine_solidify_body` 已公开（109→110），`strategy=new` 在本机 Creo 10 解除实体化主体自锁，redefine/regenerate=0、体积 55087038135.823044 mm³ 不变、保存重载 true；非实体化目标按 phase/原始码失败并回滚，已随 v0.34.0 发布。剩：`strategy=existing` 在该几何的 Creo 模态稳定性、本轮 quilt 142 G1 复测、真实船体非圆剖面与其他环境。 |
 | [BUG-121](work-items/BUG-121.md) | P2 | 部分交付，剩余待验收 | 0.24.0（子项）；剩余未排期 | 只读型计划（`export`/`dump_tree`/`mass_properties`/`surface_group_measure`/`surface_curvature`/`udf_inspect`）在 Python 侧自动按只读准入并记 `readonly_source`，不再被 GUI 保存造成的基线漂移挡住；写计划的 `model_reconciliation_required` 失败消息追加 `creo_reconcile_model` 动作指引，原生原文保留在 `native_message`。离线 11 项单测通过；Creo 12.4 实机多轮导出均成功（最新 `...T160310` 作业 `7b7ec1450490427598a2dbe72b99941c`，`...T150422`/`...T145133` 同结论），`job.json` 记 `readonly=true`/`readonly_source=inspection_only_plan`；GUI 保存造成的漂移与 Creo 10 未验。 |

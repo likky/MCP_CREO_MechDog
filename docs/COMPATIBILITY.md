@@ -53,7 +53,11 @@
   `geometry_selector_diagnostic.nearest_surfaces` 列出最多 5 条可命名的平面/圆柱面
   （方向误差、半径误差、圆心到轴距离等），同样是诊断、不自动选中；
   `coordinate_space="assembly"` 的选择器换算到组件模型坐标后，失败回执额外保留
-  `requested_coordinate_space="assembly"`，避免把模型坐标读数当成装配坐标。
+  `requested_coordinate_space="assembly"`，避免把模型坐标读数当成装配坐标。2026-11-21
+  本机 Creo 10 装配实机（基板固定于装配 x=100，装配锚点 `(1000,1000,1000)` 零匹配）：
+  最近面 `origin_mm` 的 x 为 `0`/`60` 而非 `100`/`160`，最近 `points_offset_mm=840`
+  与换算后的 `(900,1000,1000)` 到 x=60 面一致（平移不改变距离，帧别以 `origin_mm`
+  判定），证明候选在组件帧测量；其他版本与其他选择器形态未复测。
 - **分步曲面路径**：`surface_boundary_fill` 不可用时的封口绕行（闭合双 `b_spline`
   草图 + `surface_fill` + `quilt_merge` + `solidify`，六步独立作业）已按 0.32.0
   外部 Creo 10 报告写入 REFERENCE_SYNTAX；那是外部历史证据，本机本批未复验。
