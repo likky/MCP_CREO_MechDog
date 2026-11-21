@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-21（BUG-144 / DEV-099 / BUG-142 随 **0.35.5** 发布；台账 209→206 项）：PATCH，公开工具仍 110。**BUG-144** 修复打包测试跨轮次污染：新增 `src/creo_mechdog/unit_evidence.py`，`tools/test_unit.py` 运行前原子写 `build/unit_test_run.json`（`running`/`completed`/`interrupted`、`run_id`、PID、源码身份，`O_EXCL` 锁仅在死 PID 时接管），报告带 `run_id` 并用 `.tmp`+`os.replace` 发布；`release_integrity` 自 0.35.5 起要求状态与报告共同支撑“全量通过”声明（`completed`、版本、`run_id`、两侧指纹等于当前受测源、`tests_run>0`），更早版本保持仅 `success=true`；`tools/package.py` 新增 `--source-root`/`--unit-report`，门禁移到写 ZIP、sidecar、stage 之前；`SeedPackagingGateTests` 在临时 checkout 副本上覆盖显式/默认/stage 三条路径。修复前在 `5b32ef7` 临时 worktree 用陈旧失败报告复现 exit 1 与 `release record gate rejected ... success=False`（`build/bug144_repro_old_failure.txt`）。**DEV-099** 把 README 特性段固定“109 个公开工具”改为引用 `creo_capabilities.tool_count`；`tools/test_update_check.py --network-failure` 与 `tools/test_model_reconciliation.py --offline` 均 exit 0，实测 `tool_count=110`。**BUG-142** 新增默认关闭的 `MECHDOG_TEST_DISCONNECT_DELAY_MS` 钩子撑开预断开窗口；本机 Creo 10.0.0.0 / release 42 作业 `9a73ad5e…` 在延迟中完成保存重载并写出预发布 `native_result.json`（`delivery_complete=false`、`before_disconnect`），`SIGTERM` 结束 worker 后转 `unknown_outcome`（模型 `revision=0`、`pending_job` 保留、无残留 `.tmp`），对照作业 `8d84a225…` `succeeded` 证明会话仍可用。三项移入完成档案。未验：外部反馈环境（Windows 10/Python 3.13/Creo 9 SDK）、Creo 12.4/9 与 WorkBuddy 黑盒。发布记录见 [RELEASE-0.35.5](validation/RELEASE-0.35.5.md)。
+
 2026-11-21（DEV-098 收口：装配坐标零匹配候选选择本机 Creo 10 实机通过；台账 208→207 项，仅文档/证据收口，未升版、未发布）：`build/probe_dev098_assembly_space.py` 在 Creo 10.0.0.0 / release 42 上把 60×40×10 基板固定于装配 `x=100`，再用 `coordinate_space="assembly"`、`points_mm=[[1000,1000,1000]]` 的面选择器约束销；作业 `6eae1dd56414441a904fa5b6ce431681` 按预期失败，`failed_operation.constraint_stage="reference"`，诊断块保留 `requested_coordinate_space="assembly"`、`candidate_count=6`、`matched_ids=[]`，`nearest_surfaces` 5 条（ids 65/69/67/58/53）。面 `origin_mm` 的 x 为 `0`/`60` 而非装配坐标 `100`/`160`（纯平移不改变点面距离，帧别以原点判定；最近 `points_offset_mm=840` 与换算后的组件坐标 `(900,1000,1000)` 到 x=60 面一致），证明候选按 occurrence 放置换到组件帧测量且不自动选中。DEV-098 剩余实机项闭环并移入完成档案；未验：Creo 12.4/9 同一诊断、圆边轴与其他选择器组合、WorkBuddy 黑盒。证据 `build/dev098_assembly_space.json`。
 
 2026-11-21（BUG-133 旋转矩阵准入收紧随 **0.35.4** 发布）：PATCH，公开工具仍 110。按 Creo 10.0.0.0 / release 42 实机边界把 `rotation_matrix` 准入从 `1e-6` 收紧为 `1e-7`：残差 `4.5e-10`、`7.664e-9`、`4.7552320081578614e-8` 的 9/8/7 位小数矩阵可放置并保存重载，而 `2.241e-7`、`4.890e-7`、`1.1294880000178864e-6` 均被 `ProAsmcompAssemble` 与 `ProAsmcompPositionSet` 以 `-2` 拒绝；`rotation_tolerance` 缺省与上限同为 `1e-7`，显式值只能收紧，六位小数矩阵在 `validate_operations`/原生入口即被拒绝并给出残差，不再承诺用更大容差救回。矩阵仍原值回显，不转置、不正交化、不修复；`1e-9` 继续只用于 `strict`/`near_orthonormal` 分类。同步范围：`src/creo_mechdog/rotation_admission.py`、`native/assembly_pose.h`、`schema.py`、`capabilities.py`、`server.py` 与六份回归。验证：`bridge.py build` 通过、`tools/test_assembly_pose.py` `success=true`、`tools/dev_check.py` 全量 4299 项通过（6 跳过）、Ruff/clang-format 通过。种子包 SHA256 `ba556e79d80f18268c38d9b5044ac15a07afa6cc676153dd8e310cc9c9aec325`（24 个文件、9 个种子，两次构建一致）。未验：其他 Creo 版本与 WorkBuddy 黑盒。发布提交 `29f9ed2`，annotated 标签 `v0.35.4` 已推送（peeled commit `29f9ed277d6436d9a0c6de4d4a1168fd51942444`）；Release id `453623766`，四附件上传后因 `gh`/urllib 网络失败改用已认证 API 下载并执行 `tools/check_release_assets.py --tag v0.35.4 --version 0.35.4 --dir … --body-file …`，exit 0（四附件、两份 sidecar 与正文自证通过）。发布记录见 [RELEASE-0.35.4](validation/RELEASE-0.35.4.md)。
@@ -203,7 +205,7 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 
 诊断交付不等于根因修复；部分交付不关整卡；缺其他版本证据不自动判未修。观察项等自然新现场，不制造故障。已完成且无保留范围的行移入 [完成档案](BACKLOG_COMPLETED.md#2026-11-07dev-073-归档与历史进展)。原进展/证据保留日期，不再回填第二份待办。小修复沿用卡与证据，复杂跨模块任务才另建完整计划。
 
-当前唯一 ID **207**（BUG **95**、FEAT **68**、DEV **44**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
+当前唯一 ID **206**（BUG **94**、FEAT **68**、DEV **44**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
@@ -213,7 +215,7 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
 | 开发中 | 7 |
-| 部分交付，剩余待验收 | 49 |
+| 部分交付，剩余待验收 | 48 |
 | 部分交付，剩余待规划 | 7 |
 | 待规划 | 46 |
 
@@ -362,7 +364,6 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | --- | --- | --- | --- | --- |
 | [BUG-143](work-items/BUG-143.md) | P1 | 部分交付 0.35.3，剩余待验收 | 0.35.0（子项已交付）；0.35.2（镜像防护与标签实机已交付）；0.35.3（非圆柱链路与保存闭环证据已交付）；剩余未排期 | fill/mirror/merge/trim 回执给实测 `quilt_id`，同计划 merge/fill 标签可被 `solidify` 消费（本机 Creo 10 实机 785.3981633974481 mm³、保存重载 true），已随 v0.35.0 发布。0.35.2 实机补验：mirror 标签跨作业被 trim 消费（3141.59→1570.80 mm²、保留区 z 60…79.944）、trim 标签跨作业被 thicken 消费（1405.186 mm³）、单计划 trim 保存重载 true；另加 mirror 用 `feature` 引用曲面特征的崩溃防护（实机拒绝且会话存活）。保存阶段 `ProMdlnameBackup=-1` 见 BUG-113 同日观测。0.35.3 以开放圆锥套补齐非圆柱跨作业链路：mirror quilt 79→99、trim 消费 mirror 标签（保留区 687.218 mm²）、thicken 消费 trim 标签（1500.099 mm³），三步保存重载 true；闭合锥面 trim 受 `ProContourAreaEval` 对锥面 -1 限制仍不可行。剩：闭合锥面/其他非圆柱形态、外部报告环境。 |
 | [FEAT-071](work-items/FEAT-071.md) | P2 | 部分交付 0.35.0，剩余待验收 | 0.35.0（子项已交付）；剩余未排期 | `d1_d2` 与独立 `creo_chamfer` 契约已落地；Creo 10 实机 2/5 与 5/2 各去除 250 mm³，D1 落在非 `reference_surface` 相邻面，已随 v0.35.0 发布。剩：其他参考面组合、曲面边与其他 Creo 版本。 |
-| [BUG-142](work-items/BUG-142.md) | P1 | 部分交付 0.35.1，剩余待验收 | 0.35.0（子项已交付）；0.35.1（根因修复已交付）；剩余未排期 | 断连前预发布执行/回滚事实并对非 UTF-8 文本容错，已随 v0.35.0 发布；0.35.1 定位 `0xC0000409` 根因为原生构建缺 `/utf-8`（MSVC 按 CP936 解析窄字面量产生非法 UTF-8，严格 `dump` 抛异常致 abort），已为三条 `cl` 命令加入 `/utf-8` 并把 `NATIVE_BUILD_FLAGS /utf-8-v1` 纳入构建指纹，受控夹具复现退出码与 0 字节文件、替换 handler 后正常发布（已随 v0.35.1 发布）。0.35.1 之后（未发布）以等价 fill→merge→solidify(标签) 链实机复演：标签解析成功、无 -4、UTF-8 合法、失败结果正常发布；0.32.0 原模型目录已不存在，无法逐字复演。剩：真实 disconnect 阻塞夹具与其他环境。 |
 | [BUG-140](work-items/BUG-140.md) | P1 | 部分交付 0.35.0，剩余待验收 | 0.35.0（子项已交付）；剩余未排期 | legacy 候选惰性求值并设 8 依赖上限（10 依赖 0.415647 s/1024 → 1.8 µs/0），已随 v0.35.0 发布。剩：真实构建缓存端到端启动计时。 |
 | [BUG-141](work-items/BUG-141.md) | P1 | 部分交付 0.35.0，剩余待验收 | 0.35.0（子项已交付）；剩余未排期 | 仅忽略可确认退出的进程，`selection_required` 不再被 `force_ready` 绕过，已随 v0.35.0 发布。剩：真实僵尸进程现场。 |
 | [BUG-139](work-items/BUG-139.md) | P1 | 部分交付 0.34.0，剩余待验收 | 0.34.0（子项已交付）；剩余未排期 | 启动协调器探测超时可配、成功探测循环外落地、`connecting` 相位、预算分段、recent-connected/`force_ready` 降级、身份归因与错误上下文已交付；26 项定向单测通过，本机 Creo 10 冷启动→ready→FEAT-070 建模及保存重载通过，已随 v0.34.0 发布。剩：`force_ready` 与失败路径文案的实机夹具，其他环境按反馈补录。 |

@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 import unittest
 from contextlib import ExitStack
 from pathlib import Path
@@ -80,13 +81,41 @@ class NativeResultDeliveryFixture(unittest.TestCase):
         directory = self.directory / mode
         directory.mkdir()
         (directory / "scenario.txt").write_text(mode, encoding="utf-8")
-        process = subprocess.run(
+        process = subprocess.Popen(
             [str(self.exe), "generic", str(directory)],
-            capture_output=True,
-            timeout=5,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
-        return process, directory
+        try:
+            stdout, stderr = process.communicate(timeout=20)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate()
+            raise
+        return (
+            subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr),
+            directory,
+        )
+
+    def test_disconnect_delay_holds_the_pre_result_before_disconnect(self):
+        # BUG-142: the test-only delay widens the real window between the
+        # persisted checkpoint and ProEngineerDisconnect so an interrupted
+        # disconnect can be exercised on a live session.
+        started = time.monotonic()
+        process, directory = self.run_case("delay")
+        elapsed = time.monotonic() - started
+        self.assertEqual(process.returncode, 0)
+        self.assertGreaterEqual(elapsed, 0.04)
+        self.assertIn(b"TEST_DISCONNECT_DELAY_MS=40", process.stderr)
+        observed = json.loads((directory / "disconnect_observed.json").read_text())
+        self.assertTrue(observed["native_checkpoint_exists"])
+        self.assertTrue(observed["native_result_exists"])
+        self.assertFalse(observed["delivery_complete"])
+        self.assertEqual(observed["completion_stage"], "before_disconnect")
+        result = json.loads((directory / "native_result.json").read_text())
+        self.assertTrue(result["delivery_complete"])
+        self.assertEqual(result["completion_stage"], "result_delivery")
 
     def test_legacy_order_reproduces_missing_result(self):
         process, directory = self.run_case("legacy_crash")
