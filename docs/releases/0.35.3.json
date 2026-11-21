@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "version": "0.35.3",
+  "previous_version": "0.35.2",
+  "previous_release_tag": "v0.35.2",
+  "previous_release_commit": "b90f0eda2a70c1f6ae5e4ae7df56c74be6786b24",
+  "remote_verification": "pending",
+  "delivery_ids": [
+    "BUG-143",
+    "BUG-113"
+  ],
+  "frozen_on": "2026-11-21",
+  "note": "PATCH: BUG-143 adds live non-cylinder evidence - an open conical sleeve (revolve of an open XZ line, quilt 79, 1963.4907316790584 mm2) mirrored by quilt id 79 into quilt 99, then trimmed in a later job through the c_mirrored label (kept x 15..25, 687.2181023230302 mm2) and thickened through the c_trimmed label (1500.0989754261154 mm3); revisions 1..4, every step saved_file_reloaded_and_verified=true with no save_failure. Trim of a closed trapezoidal conical ring still rolls back because ProContourAreaEval returns -1 for conical faces (contour_area_eval_failed), recorded as a measurement boundary rather than a label failure. BUG-113 adds a controlled same-install comparison - a clean session saved ten times in a row, a 30 s delay still failed on the second save, Restart Manager showed no holders, and locks on the latest version, the next version and during verify did not reproduce -1 - so the failure correlates with the previous session state, not with an external file lock; the native save_failure receipt now carries source_checkpoint_readable and candidate_readability (bounded, never fabricated) for the next field capture, with matching projection and unit coverage. Public tools stay at 110. Not verified: closed-cone trim, the -1 root cause in the field, Creo 12.4/9 and the WorkBuddy black box."
+}

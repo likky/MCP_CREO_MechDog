@@ -2,7 +2,16 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
-## v0.35.2（2026-11-21，准备发布）
+## v0.35.3（2026-11-21，准备发布）
+
+- 版本与范围：`0.35.3` PATCH，公开工具仍 110；[BUG-143](../work-items/BUG-143.md) 以开放圆锥套实机跑通非圆柱 mirror → trim → thicken 跨作业标签链与保存重载（quilt 79→99、保留区 687.2181023230302 mm²、加厚 1500.0989754261154 mm³，rev 1→4），并记录闭合锥面 trim 的 `ProContourAreaEval` 面积测量边界；[BUG-113](../work-items/BUG-113.md) 同机受控对照排除外部文件锁，新增 `save_failure.source_checkpoint_readable`/`candidate_readability` 失败瞬间诊断。发布记录见 [RELEASE-0.35.3](../validation/RELEASE-0.35.3.md)。
+- 打包顺序：`tools\package_seeds.py` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools\package.py` → 标签/发布 → `tools\check_release_assets.py` 远端复核。
+- 种子包 SHA256 `182d25706e7868680712c2497148d6287957755554ce7d38fcc4fa6fb33be0f5`（24 个文件、9 个种子，两次构建摘要一致；包内 `seed_manifest.json` 声明 `compatible_server_version=0.35.3`）。
+- 源码包由发布提交源码构建，字节数与 SHA256 见同名 sidecar，不写入包内文件。
+- Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.3`；四个附件为 `MCP_CREO_MechDog-0.35.3-source.zip`、`MCP_CREO_MechDog-0.35.3-source.zip.sha256`、`MCP_CREO_MechDog-0.35.3-seed-library.zip` 与 `MCP_CREO_MechDog-0.35.3-seed-library.zip.sha256`。
+- 发布后核对：发布完成后执行 `tools\check_release_assets.py --tag v0.35.3`，核对四个附件的字节数与摘要、两份 sidecar 与 ZIP 一致性、Release 正文自证，并把结果补入本节。
+
+## v0.35.2（2026-11-21，发布后已核对）
 
 - 版本与范围：`0.35.2` PATCH，公开工具仍 110；[BUG-143](../work-items/BUG-143.md) 为 mirror 曲面 `feature` 引用增加 `PRO_QUILT` 创建前拒绝（实机拒绝且会话存活），并补验 mirror/trim 标签跨作业消费与单计划 trim 保存重载；[DEV-098](../work-items/DEV-098.md) 为面选择器零匹配新增只读 `nearest_surfaces`（≤5 条）并保留装配坐标 `requested_coordinate_space` 溯源。发布记录见 [RELEASE-0.35.2](../validation/RELEASE-0.35.2.md)。
 - 打包顺序：`tools\package_seeds.py` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools\package.py` → 标签/发布 → `tools\check_release_assets.py` 远端复核。

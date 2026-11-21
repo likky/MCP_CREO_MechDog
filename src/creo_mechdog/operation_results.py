@@ -199,14 +199,33 @@ def normalize_save_failure(block: Any) -> dict[str, Any] | None:
     files = block.get("candidate_files")
     if isinstance(files, list):
         files = {"total": len(files), "truncated": len(files) > SAMPLE_LIMIT, "sample": files}
+    readable = block.get("source_checkpoint_readable")
     return {
         "call": _text_or_none(block.get("call")),
         "code": code if type(code) is int else None,
         "stage": _text_or_none(block.get("stage")),
         "destination": _text_or_none(block.get("destination")),
         "source_checkpoint": _text_or_none(block.get("source_checkpoint")),
+        "source_checkpoint_readable": readable if type(readable) is bool else None,
         "candidate_files": _bounded_generic_block(files),
+        "candidate_readability": _normalize_readability(block.get("candidate_readability")),
     }
+
+
+def _normalize_readability(value: Any) -> list[dict[str, Any]]:
+    """Bounded read probes taken at the failure instant (BUG-113)."""
+    if not isinstance(value, list):
+        return []
+    items: list[dict[str, Any]] = []
+    for entry in value[:SAMPLE_LIMIT]:
+        if not isinstance(entry, dict):
+            continue
+        name = _text_or_none(entry.get("name"))
+        if name is None:
+            continue
+        readable = entry.get("readable")
+        items.append({"name": name, "readable": readable if type(readable) is bool else None})
+    return items
 
 
 def _normalize_id_block(value: Any) -> dict[str, Any] | None:

@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.35.2
+# MCP_CREO_MechDog 0.35.3
 
-![version](https://img.shields.io/badge/version-0.35.2-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.35.3-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.35.2**（PATCH——[BUG-143](docs/work-items/BUG-143.md) 补 mirror 用曲面 `feature` 引用时的崩溃防护：`ProFeatureCreate` 前检查目标特征是否拥有 `PRO_QUILT`，命中即拒绝且会话存活；本机 Creo 10 实机补验 mirror 标签跨作业被 `surface_trim` 消费（3141.59→1570.80 mm²、保留区 z 60…79.944）、trim 标签跨作业被 `thicken` 消费（1405.186 mm³）与单计划 trim 保存重载通过。[DEV-098](docs/work-items/DEV-098.md) 为面选择器零匹配新增只读 `geometry_selector_diagnostic.nearest_surfaces`（≤5 条），并对装配坐标选择器失败回执保留 `requested_coordinate_space="assembly"`；本机 Creo 10 实机方块 6 候选、列出 5 条（ids 65/67/58/53/63）。公开工具仍 110。承接 0.35.1；未验：非圆柱组合、完整保存闭环、Creo 12.4/9 与 WorkBuddy 黑盒） · [版本说明](docs/RELEASE_NOTES_0.35.2.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
+当前正式版 **0.35.3**（PATCH——[BUG-143](docs/work-items/BUG-143.md) 用开放圆锥套（非圆柱）实机跑通 mirror（`{kind:"quilt",id:79}` → quilt 99）→ trim（跨作业消费 mirror 标签，保留区 687.2181023230302 mm²）→ thicken（跨作业消费 trim 标签，1500.0989754261154 mm³）三个作业，rev 1→4、每步保存重载 true；闭合梯形圆锥环的 trim 因 `ProContourAreaEval` 对锥面返回 -1 按“无可测保留区”回滚，记为面积测量边界。[BUG-113](docs/work-items/BUG-113.md) 以同机受控对照排除外部文件锁：干净会话连续 10 次保存成功、30 s 延迟仍失败、Restart Manager 无持有者、锁 latest/next/verify 均未复现 -1，判定与前一会话状态相关并新增失败瞬间可读性诊断 `save_failure.source_checkpoint_readable`/`candidate_readability`（≤20 条、不可读不伪造）。公开工具仍 110。承接 0.35.2；未验：闭合锥面 trim、-1 根因、Creo 12.4/9 与 WorkBuddy 黑盒） · [版本说明](docs/RELEASE_NOTES_0.35.3.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 

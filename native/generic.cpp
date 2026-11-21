@@ -22,6 +22,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <fstream>
 #include <memory>
 #include <map>
 #include <set>
@@ -8660,6 +8661,26 @@ static J bounded_directory_names(const std::wstring &directory) {
             {"reason", nullptr}};
 }
 
+// BUG-113: a Backup failure leaves the managed files behind unchecked. Probe
+// readability at the failure instant (bounded to the published sample) so a
+// transient exclusive handle is distinguishable from a pure Toolkit error.
+static bool readable_file(const std::wstring &path) {
+    if (path.empty())
+        return false;
+    std::ifstream stream(std::filesystem::path(path), std::ios::binary);
+    return stream.good();
+}
+
+static J candidate_readability(const std::wstring &directory, const J &sample) {
+    J items = J::array();
+    for (auto &name : sample) {
+        std::filesystem::path path =
+            std::filesystem::path(directory) / std::filesystem::path(wide(name.get<std::string>()));
+        items.push_back({{"name", name}, {"readable", readable_file(path.wstring())}});
+    }
+    return items;
+}
+
 // Only a name inside the managed output directory may be published; anything
 // outside it (or any absolute path) stays null instead of leaking a host path.
 static J managed_relative_name(const std::wstring &value, const std::wstring &directory) {
@@ -8679,12 +8700,20 @@ static J save_failure_report(ProError code, const char *stage, const std::wstrin
                              const std::wstring &directory, const std::wstring &model_name,
                              bool assembly) {
     const std::wstring extension = assembly ? L".asm" : L".prt";
+    J candidates = bounded_directory_names(directory);
+    J readability = J::array();
+    if (candidates.value("available", false) && candidates.contains("sample") &&
+        candidates["sample"].is_array())
+        readability = candidate_readability(directory, candidates["sample"]);
     return {{"call", "ProMdlnameBackup"},
             {"code", code},
             {"stage", stage},
             {"destination", utf8(model_name + extension)},
             {"source_checkpoint", managed_relative_name(checkpoint, directory)},
-            {"candidate_files", bounded_directory_names(directory)}};
+            {"source_checkpoint_readable",
+             checkpoint.empty() ? J(nullptr) : J(readable_file(checkpoint))},
+            {"candidate_files", candidates},
+            {"candidate_readability", readability}};
 }
 
 static bool collect_ids(const J &state, const char *key, std::set<int> &ids) {

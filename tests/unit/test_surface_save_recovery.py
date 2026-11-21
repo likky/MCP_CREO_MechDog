@@ -136,7 +136,9 @@ class SaveFailureReceiptTests(unittest.TestCase):
             '"stage", stage',
             '"destination"',
             '"source_checkpoint"',
+            '"source_checkpoint_readable"',
             '"candidate_files"',
+            '"candidate_readability"',
         ):
             self.assertIn(expected, body)
         self.assertIn("managed_relative_name(checkpoint, directory)", body)
@@ -163,6 +165,20 @@ class SaveFailureReceiptTests(unittest.TestCase):
         self.assertEqual(len(files["sample"]), SAMPLE_LIMIT)
         self.assertEqual(files["total"], 25)
         self.assertTrue(files["truncated"])
+
+    def test_readability_probes_stay_bounded_and_unfabricated(self):
+        probes = [
+            {"name": f"wb_srf.prt.{index}", "readable": index % 2 == 0} for index in range(25)
+        ]
+        probes.append({"readable": True})
+        normalized = operation_results.normalize_save_failure(
+            save_failure_block(source_checkpoint_readable=False, candidate_readability=probes)
+        )
+        self.assertFalse(normalized["source_checkpoint_readable"])
+        items = normalized["candidate_readability"]
+        self.assertEqual(len(items), SAMPLE_LIMIT)
+        self.assertTrue(all(set(item) == {"name", "readable"} for item in items))
+        self.assertEqual(items[0], {"name": "wb_srf.prt.0", "readable": True})
 
     def test_new_block_does_not_override_the_failure_message(self):
         result = failed_result(save_failure=save_failure_block())
