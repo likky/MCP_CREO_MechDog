@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "version": "0.35.1",
+  "previous_version": "0.35.0",
+  "previous_release_tag": "v0.35.0",
+  "previous_release_commit": "4e42e1d4b7e801894ab296271398e9bd1bb83012",
+  "remote_verification": "pending",
+  "delivery_ids": [
+    "BUG-142",
+    "DEV-098"
+  ],
+  "frozen_on": "2026-11-21",
+  "note": "Frozen from this batch's actual changes, the main ledger and the work cards. PATCH: BUG-142 root cause located - the native build lacked /utf-8, so MSVC parsed narrow literals with CP936, produced invalid UTF-8, and the strict dump aborted publication (0xC0000409); bridge.py now passes /utf-8 to the three cl commands and folds NATIVE_BUILD_FLAGS /utf-8-v1 into the build fingerprint, and the controlled fixture reproduces the exit code plus the zero-byte result file while the replacement handler publishes normally (rebuilt binary changed E2 80 3F to E2 80 94). DEV-098 adds a read-only geometry_selector_diagnostic.nearest_edges list (at most five eligible edges, ordered by error then id) for zero-match generic geometry_selector rejections; live Creo 10 probe reported candidate_count=12, matched_ids=[], ids 54/55/56/59/60, and nothing is selected automatically. Public tools stay at 110. Update only before packaging a new candidate, never to make a failing table pass."
+}
