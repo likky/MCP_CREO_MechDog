@@ -1660,7 +1660,7 @@ def families() -> dict:
             "orientation_input": (
                 "XYZ Euler degrees (X then Y then Z), or exclusive nested 3x3 rotation_matrix; "
                 "row vectors local to parent, translation separately in mm; finite real numbers, "
-                "orthogonality and determinant +1 within rotation_tolerance (default 1e-6), "
+                "orthogonality and determinant +1 within rotation_tolerance (default 1e-7), "
                 "without repair or transpose. rotation_convention='column' declares "
                 "p_parent(column) = R * p_local(column) + T and is transposed exactly once by the "
                 "native entry; the gate always measures the canonical row form, and both the "
@@ -1668,10 +1668,10 @@ def families() -> dict:
             ),
             "rotation_tolerance": (
                 "optional positive linear tolerance on rotation_matrix orthogonality and "
-                "determinant, at most 1e-3; it admits a documented rounded matrix unchanged and "
-                "never repairs or orthonormalizes the input. Python and the native helper apply "
-                "the same effective value; a larger tolerance would admit a reflection or a "
-                "scaled basis and is refused"
+                "determinant, at most 1e-7 (the measured Creo 10 boundary); a tighter value is "
+                "honoured and the input is never repaired or orthonormalized. Python and the "
+                "native helper apply the same effective value; a larger tolerance would admit a "
+                "pose the kernel rejects with code -2 and is refused"
             ),
             "matrix_validation": "offline production helper and MCP/schema regression; live placement/save-reload unverified",
             "native_test": "part snapshots, rigid placement, removal, 3 datum-plane align constraints and 20 mm offset",

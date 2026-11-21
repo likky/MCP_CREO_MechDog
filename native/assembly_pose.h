@@ -15,10 +15,11 @@ inline const char *assembly_rotation_convention() {
     return "row_vectors_local_to_parent";
 }
 
-// BUG-045/FEAT-012: the published admission tolerance. Python mirrors this in
-// ``creo_mechdog/rotation_admission.py``; both layers use the same numbers.
+// BUG-045/FEAT-012/BUG-133: the published admission tolerance, set by the
+// measured kernel boundary (2026-11-21 sweep: 4.76e-8 placed, 2.24e-7 rejected
+// with -2). Python mirrors this in ``creo_mechdog/rotation_admission.py``.
 inline constexpr double assembly_admission_tolerance() {
-    return 1e-6;
+    return 1e-7;
 }
 
 // Classification only: at or below this residual the matrix is "strict". It is
@@ -27,11 +28,12 @@ inline constexpr double assembly_near_orthonormal_tolerance() {
     return 1e-9;
 }
 
-// BUG-133: the ceiling for an explicit rotation_tolerance. Beyond it the number
-// no longer describes rounding and would admit a reflection (|det-1| = 2) or a
-// scaled basis through the gate. Python mirrors this in rotation_admission.py.
+// BUG-133: the ceiling for an explicit rotation_tolerance. It equals the
+// published default because the kernel rejected every measured residual above
+// it; a larger value would admit a pose Creo cannot place. Python mirrors this
+// in rotation_admission.py.
 inline constexpr double assembly_max_admission_tolerance() {
-    return 1e-3;
+    return 1e-7;
 }
 
 inline std::string assembly_number_text(double value) {
@@ -42,7 +44,7 @@ inline std::string assembly_number_text(double value) {
 
 inline std::string assembly_tolerance_text(double tolerance) {
     if (tolerance == assembly_admission_tolerance())
-        return "1e-6";
+        return "1e-7";
     char buffer[32] = {};
     std::snprintf(buffer, sizeof buffer, "%g", tolerance);
     return buffer;
@@ -64,8 +66,9 @@ template <typename Json> inline double assembly_tolerance_from_json(const Json &
         throw std::runtime_error(
             "rotation_tolerance must be at most " +
             assembly_tolerance_text(assembly_max_admission_tolerance()) +
-            "; a larger value stops describing a rounded matrix and would admit a reflection "
-            "or a scaled basis");
+            "; Creo 10 rejected every measured residual above this bound (code -2 at "
+            "ProAsmcompAssemble and ProAsmcompPositionSet), so a larger value would admit a "
+            "pose the kernel cannot place");
     return tolerance;
 }
 
@@ -98,7 +101,7 @@ struct AssemblyRotationAdmission {
 // Never repairs the input. A rejected matrix keeps its numbers so the caller
 // can see the residual and the determinant instead of only the tolerance.
 // BUG-133: the caller supplies the effective tolerance it already validated;
-// the default stays the published 1e-6 for every existing call site.
+// the default stays the measured 1e-7 boundary for every existing call site.
 template <typename Matrix>
 inline AssemblyRotationAdmission assembly_rotation_admission(
     const Matrix &rotation, double tolerance = assembly_admission_tolerance()) {
@@ -174,8 +177,9 @@ template <typename Json> inline void assembly_rigid_transform(const Json &op, do
             throw std::runtime_error(
                 "rotation_matrix must be orthogonal within " + within +
                 " (max |R*R^T-I| = " + assembly_number_text(admission.orthogonality_residual) +
-                "); the input is echoed and never repaired, so supply exact orthonormal values, "
-                "or pass an explicit rotation_tolerance to admit a documented rounded matrix");
+                "); the input is echoed and never repaired, so supply exact orthonormal values. "
+                "Creo 10 rejected every measured residual above 1e-7, so a larger "
+                "rotation_tolerance cannot admit this pose");
         if (!std::isfinite(admission.determinant) ||
             std::abs(admission.determinant - 1) > tolerance)
             throw std::runtime_error(
@@ -187,7 +191,7 @@ template <typename Json> inline void assembly_rigid_transform(const Json &op, do
         if (has_tolerance)
             throw std::runtime_error(
                 "rotation_tolerance only applies to an explicit rotation_matrix; the Euler "
-                "expansion is always admitted at the published 1e-6");
+                "expansion is always admitted at the published 1e-7");
         if (has_convention)
             throw std::runtime_error(
                 "rotation_convention only applies to an explicit rotation_matrix; the Euler "

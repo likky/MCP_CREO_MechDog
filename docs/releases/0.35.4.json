@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "version": "0.35.4",
+  "previous_version": "0.35.3",
+  "previous_release_tag": "v0.35.3",
+  "previous_release_commit": "0fa005dc44ac65c9d118e37e1bf9b58b87474486",
+  "remote_verification": "pending",
+  "delivery_ids": [
+    "BUG-133"
+  ],
+  "frozen_on": "2026-11-21",
+  "note": "PATCH: BUG-133 tightens rotation-matrix admission to the measured Creo 10 kernel boundary. A live sweep placed 9/8/7-decimal 28-degree matrices with residuals 4.5e-10, 7.664e-9 and 4.7552320081578614e-8, while 2.241e-7, 4.890e-7 and 1.1294880000178864e-6 were rejected by both ProAsmcompAssemble and ProAsmcompPositionSet with code -2. ADMISSION_TOLERANCE and MAX_ADMISSION_TOLERANCE are both 1e-7 in Python and the native helper, so an explicit rotation_tolerance can only tighten; six-decimal matrices now fail before a job exists with the residual quoted, and seven-decimal or exact matrices are echoed verbatim without repair, transpose or reorthogonalization. 1e-9 remains a classification-only threshold for strict/near_orthonormal. Public tools stay at 110. Not verified: other Creo versions and the WorkBuddy black box."
+}

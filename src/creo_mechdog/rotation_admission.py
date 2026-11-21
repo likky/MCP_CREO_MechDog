@@ -1,18 +1,23 @@
-"""BUG-045/FEAT-012: one admissions rule for caller-supplied rotation matrices.
+"""BUG-045/FEAT-012/BUG-133: one admissions rule for caller-supplied rotation matrices.
 
 Row-vector local-to-parent poses are accepted only when the 3x3 block is
-orthonormal and has determinant +1 within the **published** ``1e-6`` tolerance.
+orthonormal and has determinant +1 within the **published** ``1e-7`` tolerance.
 The numbers are computed here (and mirrored by ``native/assembly_pose.h``) so a
 rejection can quote the caller's own matrix, its orthogonality residual and its
 determinant instead of only naming a tolerance.
 
-``NEAR_ORTHONORMAL_TOLERANCE`` is not an admission limit and not a known Creo
-threshold. It only classifies an accepted matrix as ``strict`` or as
-``near_orthonormal`` (a truncated decimal literal, for example). A
-near-orthonormal pose is sent verbatim — never repaired, Gram-Schmidt'd or
-transposed — and its class is echoed in the failure context so a kernel
-placement rejection stays actionable. Tightening the admission limit itself
-requires the live perturbation sweep (1e-12 … 1e-7) recorded in the plan.
+The 2026-11-21 live perturbation sweep on Creo 10.0.0.0 / release 42 pinned the
+kernel boundary: residuals 4.5e-10, 7.7e-9 and 4.76e-8 placed; 2.24e-7, 4.89e-7
+and 1.13e-6 were rejected by both ``ProAsmcompAssemble`` and
+``ProAsmcompPositionSet`` with code -2. ``1e-7`` therefore sits between the
+largest accepted and the smallest rejected matrix. Passing a larger explicit
+``rotation_tolerance`` used to admit poses the kernel cannot place; it is now
+refused so the failure happens before a job exists.
+
+``NEAR_ORTHONORMAL_TOLERANCE`` only classifies an accepted matrix as ``strict``
+or ``near_orthonormal``. A near-orthonormal pose is sent verbatim — never
+repaired, Gram-Schmidt'd or transposed — and its class is echoed in the failure
+context so a kernel placement rejection stays actionable.
 """
 
 from __future__ import annotations
@@ -20,14 +25,15 @@ from __future__ import annotations
 import math
 from typing import Any
 
-#: The published admission tolerance. Both layers use this exact value.
-ADMISSION_TOLERANCE = 1e-6
+#: The published admission tolerance, set by the measured kernel boundary. Both
+#: layers use this exact value.
+ADMISSION_TOLERANCE = 1e-7
 
-#: BUG-133: ceiling for a caller-supplied ``rotation_tolerance``. Beyond it the
-#: number stops describing rounding and would admit a reflection
-#: (``|det-1| = 2``) or a scaled basis through the gate. ``native/assembly_pose.h``
+#: BUG-133: ceiling for a caller-supplied ``rotation_tolerance``. It equals the
+#: published default because the kernel rejected every tested residual above it;
+#: a larger value would admit a pose Creo cannot place. ``native/assembly_pose.h``
 #: mirrors this as ``assembly_max_admission_tolerance``.
-MAX_ADMISSION_TOLERANCE = 1e-3
+MAX_ADMISSION_TOLERANCE = 1e-7
 
 #: Classification only: at or below this residual the matrix is ``strict``.
 NEAR_ORTHONORMAL_TOLERANCE = 1e-9
@@ -36,16 +42,16 @@ PRECISION_CLASSES = ("strict", "near_orthonormal", "invalid")
 
 PRECISION_ADVICE = (
     "The pose passed admission within {tolerance} but is not strictly orthonormal "
-    "(max |R*R^T-I| = {residual:.3g}). It was sent verbatim, not repaired. If the "
-    "kernel rejected the placement, rebuild the matrix from exact orthonormal values "
-    "(for example rotation angles in degrees); near-orthonormality alone is not a "
-    "confirmed cause."
+    "(max |R*R^T-I| = {residual:.3g}). It was sent verbatim, not repaired. Creo 10 "
+    "rejected every measured residual above 1e-7, so this pose is at the edge of "
+    "what the kernel places; if it fails, rebuild the matrix from exact orthonormal "
+    "values (for example rotation angles in degrees)."
 )
 
 
 def tolerance_text(tolerance: float) -> str:
     """Format a tolerance the way both layers quote it."""
-    return "1e-6" if tolerance == ADMISSION_TOLERANCE else f"{tolerance:g}"
+    return "1e-7" if tolerance == ADMISSION_TOLERANCE else f"{tolerance:g}"
 
 
 def validate_tolerance(tolerance: float | None) -> float:
@@ -59,8 +65,10 @@ def validate_tolerance(tolerance: float | None) -> float:
         raise ValueError("rotation_tolerance must be a positive finite number")
     if value > MAX_ADMISSION_TOLERANCE:
         raise ValueError(
-            f"rotation_tolerance must be at most {MAX_ADMISSION_TOLERANCE:g}; a larger value "
-            "stops describing a rounded matrix and would admit a reflection or a scaled basis"
+            f"rotation_tolerance must be at most "
+            f"{tolerance_text(MAX_ADMISSION_TOLERANCE)}; Creo 10 rejected every measured "
+            "residual above this bound (code -2 at ProAsmcompAssemble and "
+            "ProAsmcompPositionSet), so a larger value would admit a pose the kernel cannot place"
         )
     return value
 

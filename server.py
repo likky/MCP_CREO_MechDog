@@ -2296,7 +2296,7 @@ async def creo_assemble_component(
     Translation is XYZ mm; rotation is XYZ Euler degrees, applied X then Y then Z.
     Alternatively use a nested 3x3 rotation_matrix: row vectors, local to parent,
     p_parent = p_local * rotation_matrix + translation. Matrix and explicit Euler
-    are mutually exclusive; matrix must be finite, orthogonal and det +1 within 1e-6.
+    are mutually exclusive; matrix must be finite, orthogonal and det +1 within 1e-7.
     Sources must be ready and saved; later source edits do not update the component snapshot.
     Native placement can be fixed, default or mate/align/insert/csys constraints. Nested subassemblies are not supported yet.
     """
@@ -2333,7 +2333,7 @@ async def creo_component_placement(
 
     Use XYZ Euler rotation degrees (X then Y then Z), or a nested 3x3 rotation_matrix,
     never both. Row-vector mapping: p_parent = p_local * rotation_matrix + translation.
-    Matrix requires finite real numbers, orthogonality and det +1 within 1e-6.
+    Matrix requires finite real numbers, orthogonality and det +1 within 1e-7.
     """
     return await invoke(
         general.submit,

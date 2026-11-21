@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.35.3
+# MCP_CREO_MechDog 0.35.4
 
-![version](https://img.shields.io/badge/version-0.35.3-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.35.4-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.35.3**（PATCH——[BUG-143](docs/work-items/BUG-143.md) 用开放圆锥套（非圆柱）实机跑通 mirror（`{kind:"quilt",id:79}` → quilt 99）→ trim（跨作业消费 mirror 标签，保留区 687.2181023230302 mm²）→ thicken（跨作业消费 trim 标签，1500.0989754261154 mm³）三个作业，rev 1→4、每步保存重载 true；闭合梯形圆锥环的 trim 因 `ProContourAreaEval` 对锥面返回 -1 按“无可测保留区”回滚，记为面积测量边界。[BUG-113](docs/work-items/BUG-113.md) 以同机受控对照排除外部文件锁：干净会话连续 10 次保存成功、30 s 延迟仍失败、Restart Manager 无持有者、锁 latest/next/verify 均未复现 -1，判定与前一会话状态相关并新增失败瞬间可读性诊断 `save_failure.source_checkpoint_readable`/`candidate_readability`（≤20 条、不可读不伪造）。公开工具仍 110。承接 0.35.2；未验：闭合锥面 trim、-1 根因、Creo 12.4/9 与 WorkBuddy 黑盒） · [版本说明](docs/RELEASE_NOTES_0.35.3.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
+当前正式版 **0.35.4**（PATCH——[BUG-133](docs/work-items/BUG-133.md) 按 2026-11-21 Creo 10.0.0.0 / release 42 的实机边界把旋转矩阵准入从 `1e-6` 收紧到 `1e-7`：残差 `4.5e-10`/`7.664e-9`/`4.755e-8` 可放置，`2.241e-7`/`4.890e-7`/`1.129e-6` 均被 `ProAsmcompAssemble`/`ProAsmcompPositionSet` 以 `-2` 拒绝。`rotation_tolerance` 的缺省值与上限同为 `1e-7`，显式容差只能收紧；六位小数矩阵在提交前被拒绝并给出残差，不再承诺用更大容差救回。矩阵仍原样回显，不转置、不正交化、不修复。公开工具仍 110。承接 0.35.3；未验：其他 Creo 版本与 WorkBuddy 黑盒） · [版本说明](docs/RELEASE_NOTES_0.35.4.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 

@@ -1,10 +1,11 @@
-"""BUG-045/FEAT-012: exact admission numbers for the reported I032 pose.
+"""BUG-045/FEAT-012/BUG-133: exact admission numbers for the reported I032 pose.
 
-The published contract is ``1e-6`` on both layers. That tolerance still admits
-the truncated I032 matrix (residual 2.2408500011117383e-07), so the offline
-delivery here freezes the numbers and makes the result actionable instead of
-silently tightening the limit. Changing the limit needs the live perturbation
-sweep (1e-12 … 1e-7) described in the repair plan.
+The published contract is ``1e-7`` on both layers. That boundary comes from the
+2026-11-21 live sweep on Creo 10.0.0.0 / release 42: residuals 4.5e-10, 7.7e-9
+and 4.76e-8 placed, while 2.24e-7, 4.89e-7 and 1.13e-6 were rejected by both
+``ProAsmcompAssemble`` and ``ProAsmcompPositionSet`` with code -2. The truncated
+I032 matrix (residual 2.2408500011117383e-07) is therefore refused before a job
+exists, and its numbers stay available for the caller to act on.
 """
 
 import math
@@ -31,21 +32,20 @@ IDENTITY = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
 
 
 class RotationAdmissionTests(unittest.TestCase):
-    def test_truncated_i032_has_actionable_admission_result(self):
+    def test_truncated_i032_is_refused_at_the_measured_boundary(self):
         status = admission_status(I032)
         self.assertEqual(status["orthogonality_residual"], 2.2408500011117383e-07)
         self.assertEqual(status["determinant_error"], 2.2408500011117383e-07)
         self.assertEqual(status["determinant"], 1.0000002240850001)
-        self.assertTrue(status["accepted"])
-        self.assertEqual(status["precision"], "near_orthonormal")
-        self.assertIn("2.24e-07", status["advice"])
-        self.assertIn("not repaired", status["advice"])
-        self.assertIn("not a confirmed cause", status["advice"])
-        # The schema admits it under the published tolerance, unchanged.
-        operation = ComponentPlacementOp(
-            op="component_placement", component="comp_a", rotation_matrix=I032
-        )
-        self.assertEqual(operation.rotation_matrix, I032)
+        self.assertFalse(status["accepted"])
+        self.assertEqual(status["tolerance"], 1e-7)
+        self.assertEqual(status["precision"], "invalid")
+        self.assertIsNone(status["advice"])
+        # The schema refuses it before a job exists, quoting the caller's numbers.
+        with self.assertRaises(ValueError) as raised:
+            ComponentPlacementOp(op="component_placement", component="comp_a", rotation_matrix=I032)
+        self.assertIn("2.24085e-07", str(raised.exception))
+        self.assertIn("never repaired", str(raised.exception))
 
     def test_precise_30_degree_pose_stays_valid(self):
         status = admission_status(THIRTY_DEGREES)
@@ -62,11 +62,11 @@ class RotationAdmissionTests(unittest.TestCase):
     def test_the_two_layers_share_the_published_numbers(self):
         header = (ROOT / "native" / "assembly_pose.h").read_text(encoding="utf-8")
         self.assertIn("assembly_rotation_admission", header)
-        self.assertIn("return 1e-6;", header)
+        self.assertIn("return 1e-7;", header)
         self.assertIn("return 1e-9;", header)
         self.assertIn("never repaired", header)
         self.assertIn(
-            "ADMISSION_TOLERANCE = 1e-6",
+            "ADMISSION_TOLERANCE = 1e-7",
             (ROOT / "src/creo_mechdog/rotation_admission.py").read_text(encoding="utf-8"),
         )
         self.assertEqual(NEAR_ORTHONORMAL_TOLERANCE, 1e-9)
@@ -90,7 +90,7 @@ class RotationAdmissionTests(unittest.TestCase):
 
         scaled = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
         for index in range(3):
-            scaled[index][index] = 1 + 4e-7
+            scaled[index][index] = 1 + 4e-8
         with self.assertRaises(ValueError) as raised:
             validate_operations(
                 [
@@ -102,8 +102,8 @@ class RotationAdmissionTests(unittest.TestCase):
                 ]
             )
         message = str(raised.exception)
-        self.assertIn("determinant must be +1 within 1e-6", message)
-        self.assertIn("det = 1.0000012", message)
+        self.assertIn("determinant must be +1 within 1e-7", message)
+        self.assertIn("det = 1.00000012", message)
 
     def test_a_rejected_pose_creates_no_job_directory(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -124,24 +124,31 @@ class RotationAdmissionTests(unittest.TestCase):
 
     def test_admission_does_not_repair_the_matrix(self):
         near = [row[:] for row in IDENTITY]
-        near[0][0] = 1 + 1e-7
+        near[0][0] = 1 + 4e-8
         status = admission_status(near)
         self.assertTrue(status["accepted"])
         self.assertEqual(status["precision"], "near_orthonormal")
-        self.assertEqual(near[0][0], 1 + 1e-7)
+        self.assertEqual(near[0][0], 1 + 4e-8)
         self.assertFalse(math.isclose(near[0][0], 1.0, rel_tol=0, abs_tol=1e-8))
         operation = ComponentPlacementOp(
             op="component_placement", component="comp_a", rotation_matrix=near
         )
-        self.assertEqual(operation.rotation_matrix[0][0], 1 + 1e-7)
+        self.assertEqual(operation.rotation_matrix[0][0], 1 + 4e-8)
 
 
 #: BUG-133 synthetic case: a 28-degree Z rotation rounded to six decimals.
-#: max |R R^T - I| = 1.1294880000178864e-06, so it misses the 1e-6 gate while
-#: still describing a proper rotation.
+#: max |R R^T - I| = 1.1294880000178864e-06, above the measured 1e-7 boundary,
+#: so it is refused even though it still describes a proper rotation.
 ROUNDED_28 = [
     [0.882948, 0.469472, 0.0],
     [-0.469472, 0.882948, 0.0],
+    [0.0, 0.0, 1.0],
+]
+#: The same pose rounded to seven decimals: max |R R^T - I| = 4.755232e-08,
+#: below the boundary, so it is admitted verbatim.
+ROUNDED_28_7 = [
+    [0.8829476, 0.4694716, 0.0],
+    [-0.4694716, 0.8829476, 0.0],
     [0.0, 0.0, 1.0],
 ]
 SOURCE_ID = "a" * 32
@@ -173,23 +180,34 @@ class ExplicitToleranceTests(unittest.TestCase):
         status = admission_status(ROUNDED_28)
         self.assertAlmostEqual(status["orthogonality_residual"], 1.1294880000178864e-06, places=18)
         self.assertFalse(status["accepted"])
-        self.assertEqual(status["tolerance"], 1e-6)
+        self.assertEqual(status["tolerance"], 1e-7)
         for operation in (assemble_operation(), placement_operation()):
             with self.assertRaises(ValueError):
                 validate_operations([operation])
 
-    def test_explicit_tolerance_admits_the_same_matrix_unchanged(self):
+    def test_explicit_tolerance_at_the_ceiling_admits_a_seven_decimal_pose(self):
         for operation in (
-            assemble_operation(rotation_tolerance=1e-5),
-            placement_operation(rotation_tolerance=1e-5),
+            assemble_operation(
+                rotation_matrix=[row[:] for row in ROUNDED_28_7], rotation_tolerance=1e-7
+            ),
+            placement_operation(
+                rotation_matrix=[row[:] for row in ROUNDED_28_7], rotation_tolerance=1e-7
+            ),
         ):
             admitted = validate_operations([operation])[0]
             # The echo is the caller's matrix: no repair, no transpose.
-            self.assertEqual(admitted["rotation_matrix"], ROUNDED_28)
-            self.assertEqual(admitted["rotation_tolerance"], 1e-5)
-        status = admission_status(ROUNDED_28, 1e-5)
+            self.assertEqual(admitted["rotation_matrix"], ROUNDED_28_7)
+            self.assertEqual(admitted["rotation_tolerance"], 1e-7)
+        status = admission_status(ROUNDED_28_7, 1e-7)
         self.assertTrue(status["accepted"])
-        self.assertEqual(status["tolerance"], 1e-5)
+        self.assertEqual(status["precision"], "near_orthonormal")
+        self.assertEqual(status["tolerance"], 1e-7)
+
+    def test_a_tolerance_above_the_measured_boundary_is_refused(self):
+        for tolerance in (1e-6, 1e-5, 1e-3):
+            with self.assertRaises(ValueError) as raised:
+                validate_operations([placement_operation(rotation_tolerance=tolerance)])
+            self.assertIn("at most 1e-7", str(raised.exception))
 
     def test_tolerance_below_the_residual_still_refuses(self):
         with self.assertRaises(ValueError):
@@ -221,9 +239,11 @@ class ExplicitToleranceTests(unittest.TestCase):
                     }
                 ]
             )
-        # The frozen ceiling admits the reported rounding case.
-        validate_operations([placement_operation(rotation_tolerance=1e-3)])
-        self.assertEqual(rotation_admission.MAX_ADMISSION_TOLERANCE, 1e-3)
+        # The ceiling equals the measured boundary: it cannot be raised.
+        self.assertEqual(rotation_admission.MAX_ADMISSION_TOLERANCE, 1e-7)
+        with self.assertRaises(ValueError) as raised:
+            validate_operations([placement_operation(rotation_tolerance=1e-3)])
+        self.assertIn("at most 1e-7", str(raised.exception))
 
     def test_invalid_tolerances_are_refused_before_any_job(self):
         for tolerance in (True, "1e-5", 0, -1e-5, math.inf, math.nan):
@@ -234,7 +254,7 @@ class ExplicitToleranceTests(unittest.TestCase):
         header = (ROOT / "native" / "assembly_pose.h").read_text(encoding="utf-8")
         for phrase in (
             "assembly_max_admission_tolerance",
-            "return 1e-3;",
+            "return 1e-7;",
             "rotation_tolerance",
             "assembly_rotation_admission(rotation, tolerance)",
         ):

@@ -19,8 +19,11 @@ from creo_mechdog.failure_context import (
 )
 from creo_mechdog.operation_results import annotate_native_result
 
-# The F01 report's failing placement: orthonormal within 1e-6, det +1, but the
-# kernel still returned -2. Rows are local axes in the parent (row vectors).
+# The F01 report's failing placement: measured orthonormal within the earlier
+# 1e-6 gate (residual 2.24e-7), det +1, but the kernel still returned -2. The
+# 2026-11-21 kernel sweep narrowed admission to 1e-7, so this pose is now
+# refused before submission; the echo here still reports its real numbers.
+# Rows are local axes in the parent (row vectors).
 F01_ROTATION = [
     [0.0, 0.307383, -0.951586],
     [0.0, 0.951586, 0.307383],
@@ -201,7 +204,7 @@ class PlacementMatrixTest(unittest.TestCase):
         self.assertEqual(matrix["input_matrix"][3], F01_TRANSLATION + [1.0])
         self.assertAlmostEqual(matrix["determinant"], 1.0, delta=1e-6)
         residual = matrix["orthogonality_residual"]
-        # Small but real: the F01 matrix passed the 1e-6 admission gate.
+        # Small but real: this pose was admitted under the earlier 1e-6 gate.
         self.assertGreater(residual, 0.0)
         self.assertLess(residual, 1e-6)
 
@@ -213,11 +216,11 @@ class PlacementMatrixTest(unittest.TestCase):
         self.assertEqual(echoed[2][:3], F01_ROTATION[2])
 
     def test_a_near_orthonormal_pose_gets_a_precision_note_in_the_failure_context(self):
-        i032 = [[0, 0.307383, -0.951586], [0, 0.951586, 0.307383], [1, 0, 0]]
-        matrix = placement_matrix({"op": "assemble_component", "rotation_matrix": i032})
+        near = [[1.0, 4e-8, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+        matrix = placement_matrix({"op": "assemble_component", "rotation_matrix": near})
         self.assertEqual(matrix["precision_class"], "near_orthonormal")
-        self.assertIn("2.24e-07", matrix["precision_advice"])
-        self.assertIn("not a confirmed cause", matrix["precision_advice"])
+        self.assertIn("4e-08", matrix["precision_advice"])
+        self.assertIn("above 1e-7", matrix["precision_advice"])
 
     def test_a_strict_pose_has_no_precision_advice(self):
         matrix = placement_matrix(

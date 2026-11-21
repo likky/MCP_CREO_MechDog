@@ -495,14 +495,18 @@ executable 仅表示静态能力/schema 准入；native/saved_reload 恒为 not_
 | --- | --- |
 | `rotation_matrix` | 3×3 有限实数；与 `rotation`（XYZ Euler 度）互斥；原样写入，不转置、不重正交 |
 | `rotation_convention` | `row`（缺省）或 `column`。`column` 表示 `p_parent(column) = R * p_local(column) + T`，原生入口只转置一次 |
-| `rotation_tolerance` | 可选，`0 < t ≤ 1e-3`，缺省 `1e-6`。Python 与原生读取同一有效值 |
+| `rotation_tolerance` | 可选，`0 < t ≤ 1e-7`，缺省 `1e-7`。Python 与原生读取同一有效值 |
 
 - 准入始终按**规范行向量矩阵**计算 `max |R*Rᵀ−I|` 与 `det`：`column` 输入先转置再判定，
   所以同一姿态无论用行还是列写法都得到相同结论。请求数组、`rotation_convention`
   与容差都按原值回显。
-- 上限 `1e-3` 是前置保护：反射的 `|det−1| = 2`，缩放基的偏差也远超该值，因此放宽到
-  1e-3 以上不再描述“四舍五入”，会被两层同时拒绝。规则收紧后，此前传入更大值的调用
-  现在是明确的输入错误（不会静默降级）。
+- 上限 `1e-7` 是 2026-11-21 在 Creo 10.0.0.0 / release 42 实测的内核边界：残差
+  `4.5e-10`、`7.664e-9`、`4.755e-8` 可放置，`2.241e-7`、`4.890e-7`、`1.129e-6`
+  都被 `ProAsmcompAssemble` 与 `ProAsmcompPositionSet` 以 `-2` 拒绝。更大的容差
+  只会放行内核必拒的位姿，因此两层同时拒绝；此前传入更大值的调用现在是明确的输入
+  错误（不会静默降级）。
+- 上限与缺省值相同，所以显式容差只能严格收紧，不能“救回”六位小数矩阵；这类矩阵
+  应改为精确正交值或从角度重建。
 - 只有显式 `rotation_matrix` 能带 `rotation_convention` / `rotation_tolerance`；Euler
   输入带任一字段即拒绝，避免无效字段悄悄生效。
 - 成功回执的 `rotation_convention` 仍描述解算变换（行向量），另加

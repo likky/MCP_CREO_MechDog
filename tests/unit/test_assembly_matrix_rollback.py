@@ -24,11 +24,12 @@ from tools.test_assembly_matrix import verify_rolled_back_failure
 
 ASSEMBLY_REVISION = 34
 
-# R05: the 17.9-degree row-vector pose rounded to six decimals (still inside the
-# 1e-6 orthogonality/determinant gate, so it must never be "fixed" by the caller).
+# R05: the 17.9-degree row-vector pose rounded to seven decimals (inside the
+# measured 1e-7 orthogonality/determinant boundary, so it must never be "fixed"
+# by the caller).
 ROTATION_17_9 = [
-    [0.951594, 0.307357, 0.0],
-    [-0.307357, 0.951594, 0.0],
+    [0.9515944, 0.3073566, 0.0],
+    [-0.3073566, 0.9515944, 0.0],
     [0.0, 0.0, 1.0],
 ]
 
@@ -131,7 +132,7 @@ def matrix_failed_manifest():
                 "input_matrix": [row + [0.0] for row in ROTATION_17_9] + [[0.0, 0.0, 0.0, 1.0]],
                 "matrix_source": "rotation_matrix",
                 "determinant": 1.0,
-                "orthogonality_residual": 5.4e-7,
+                "orthogonality_residual": 1.832508e-8,
                 "message": "Toolkit call ProAsmcompPositionSet failed with code -2",
                 "message_truncated": False,
             },
@@ -152,7 +153,7 @@ class MatrixFailureRollback(unittest.TestCase):
         # The caller's matrix is echoed untouched, with its measured arithmetic.
         self.assertEqual(block["input_matrix"][:3], [row + [0.0] for row in ROTATION_17_9])
         self.assertAlmostEqual(block["determinant"], 1.0, delta=1e-6)
-        self.assertLess(block["orthogonality_residual"], 1e-6)
+        self.assertLess(block["orthogonality_residual"], 1e-7)
         self.assertNotIn("revision", failed)
 
     def test_a_trailing_operation_is_rolled_back_or_not_executed(self):

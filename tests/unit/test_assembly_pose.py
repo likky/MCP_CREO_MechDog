@@ -50,7 +50,7 @@ class AssemblyPoseValidation(unittest.TestCase):
                 self.assertNotIn("rotation_matrix", checked)
 
     def test_matrix_round_trip_without_euler_or_repair(self):
-        near_identity = [[1 + 1e-7, 0, 0], [0, 1, 0], [0, 0, 1]]
+        near_identity = [[1 + 4e-8, 0, 0], [0, 1, 0], [0, 0, 1]]
         for action in ("assemble_component", "component_placement"):
             for matrix in (IDENTITY, Y90, near_identity):
                 checked = validate_operations(

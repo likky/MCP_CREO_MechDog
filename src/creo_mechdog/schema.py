@@ -80,8 +80,8 @@ def _rotation_matrix(value: Any, tolerance: float = ADMISSION_TOLERANCE) -> Any:
         raise ValueError(
             f"rotation_matrix must be orthogonal within {within} "
             f"(max |R*R^T-I| = {residual:.9g}); the input is echoed and never repaired, "
-            "so supply exact orthonormal values, or pass an explicit rotation_tolerance to "
-            "admit a documented rounded matrix"
+            "so supply exact orthonormal values. Creo 10 rejected every measured residual above "
+            "1e-7, so a larger rotation_tolerance cannot admit this pose"
         )
     determinant = status["determinant"]
     if abs(determinant - 1) > tolerance:
@@ -128,7 +128,7 @@ class AssemblyPose(StrictModel):
             "(p_local is a row vector; the matrix is not a column-vector transpose). "
             "It is a 3x3 matrix whose rows are the local X/Y/Z axes in the parent frame, "
             "must be orthogonal (R*R^T = I) with determinant +1 within rotation_tolerance "
-            "(default 1e-6), and is mutually exclusive with rotation (Euler). The values are "
+            "(default 1e-7), and is mutually exclusive with rotation (Euler). The values are "
             "applied exactly as given: never transposed, orthonormalized or repaired."
         ),
     )
@@ -146,10 +146,10 @@ class AssemblyPose(StrictModel):
         default=None,
         description=(
             "Optional admission tolerance for rotation_matrix orthogonality and determinant "
-            "(default 1e-6, at most 1e-3). It admits a documented rounded matrix without "
-            "repairing it; the echoed values remain exactly the caller's input. A larger value "
-            "would admit a reflection or a scaled basis and is refused, and the native helper "
-            "applies the same effective tolerance."
+            "(default 1e-7, at most 1e-7). A tighter value is honoured without repairing the "
+            "input; the echoed values remain exactly the caller's input. The ceiling equals the "
+            "measured Creo 10 boundary, so a larger value would admit a pose the kernel rejects "
+            "with code -2 and is refused. The native helper applies the same effective value."
         ),
     )
 
@@ -164,7 +164,7 @@ class AssemblyPose(StrictModel):
             if data.get("rotation_tolerance") is not None:
                 raise ValueError(
                     "rotation_tolerance only applies to an explicit rotation_matrix; the Euler "
-                    "expansion is always admitted at the published 1e-6"
+                    "expansion is always admitted at the published 1e-7"
                 )
             if convention is not None:
                 raise ValueError(

@@ -171,7 +171,7 @@ class RotationContractTest(unittest.TestCase):
         for phrase in (
             "3x3",
             "orthogonal",
-            "1e-6",
+            "1e-7",
             "determinant +1",
             "mutually exclusive",
             "never transposed",
@@ -212,8 +212,8 @@ class RowVectorPoseTest(unittest.TestCase):
         self.assertGreater(abs(mapped[0] - transposed[0]), 1.0)
         self.assertGreater(abs(mapped[1] - transposed[1]), 1.0)
 
-    def test_full_precision_and_six_decimal_poses_are_admitted_unchanged(self):
-        for digits in (None, 6):
+    def test_full_precision_and_seven_decimal_poses_are_admitted_unchanged(self):
+        for digits in (None, 7):
             rotation = z_rotation(digits=digits)
             for operation, model in (
                 (assemble_operation(rotation), AssembleOp),
@@ -238,16 +238,16 @@ class RowVectorPoseTest(unittest.TestCase):
             validate_operations([assemble_operation(rotation)])
 
     def test_explicit_tolerance_admits_a_documented_rounded_pose_unchanged(self):
-        rotation = z_rotation(digits=4)
+        rotation = z_rotation(digits=7)
         for operation, model in (
             (assemble_operation(rotation), AssembleOp),
             (placement_operation(rotation), ComponentPlacementOp),
         ):
-            operation["rotation_tolerance"] = 1e-3
+            operation["rotation_tolerance"] = 1e-7
             admitted = model(**operation)
             # The echo is still the caller's rounded matrix; no repair.
             self.assertEqual(admitted.rotation_matrix, rotation)
-            self.assertEqual(admitted.rotation_tolerance, 1e-3)
+            self.assertEqual(admitted.rotation_tolerance, 1e-7)
             validate_operations([operation])
 
     def test_tolerance_must_be_positive_and_cannot_admit_a_reflection(self):
@@ -366,14 +366,14 @@ class ExplicitConventionTest(unittest.TestCase):
         row_operation = placement_operation(canonical)
         with self.assertRaises(ValueError):
             validate_operations([row_operation])
+        # The ceiling is the measured 1e-7 boundary, so no permitted explicit
+        # tolerance can rescue a 1.023309e-6 residual.
         for tolerant in (
-            {**operation, "rotation_tolerance": 1e-5},
-            {**row_operation, "rotation_tolerance": 1e-5},
+            {**operation, "rotation_tolerance": 1e-7},
+            {**row_operation, "rotation_tolerance": 1e-7},
         ):
-            admitted = validate_operations([tolerant])[0]
-            self.assertEqual(
-                admitted.get("rotation_convention"), tolerant.get("rotation_convention")
-            )
+            with self.assertRaises(ValueError):
+                validate_operations([tolerant])
 
     def test_convention_is_refused_where_it_cannot_apply(self):
         euler = {"op": "component_placement", "component": "probe", "rotation": [0, 0, 90]}
@@ -404,13 +404,25 @@ class FailureContextConventionTest(unittest.TestCase):
         # The echo is the caller's own array, not the transposed measurement form.
         self.assertEqual([row[:3] for row in block["input_matrix"][:3]], MARGINAL_COLUMN)
         self.assertEqual(block["matrix_convention"], "column")
-        self.assertEqual(block["admission_tolerance"], 1e-6)
+        self.assertEqual(block["admission_tolerance"], 1e-7)
         self.assertAlmostEqual(block["orthogonality_residual"], 1.023309e-6, places=13)
         self.assertEqual(block["precision_class"], "invalid")
-        tolerant = placement_matrix({**operation, "rotation_tolerance": 1e-5})
-        self.assertEqual(tolerant["admission_tolerance"], 1e-5)
-        self.assertEqual(tolerant["precision_class"], "near_orthonormal")
-        self.assertIn("not repaired", tolerant["precision_advice"])
+        # The ceiling equals the published default, so an explicit 1e-7 cannot
+        # rescue it; a rejected echo keeps precision_advice null.
+        tolerant = placement_matrix({**operation, "rotation_tolerance": 1e-7})
+        self.assertEqual(tolerant["admission_tolerance"], 1e-7)
+        self.assertEqual(tolerant["precision_class"], "invalid")
+        self.assertIsNone(tolerant["precision_advice"])
+        # A near-orthonormal pose stays actionable instead of being repaired.
+        near = {
+            "op": "component_placement",
+            "component": "probe",
+            "rotation_matrix": [[1.0, 4e-8, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        }
+        near_block = placement_matrix(near)
+        self.assertEqual(near_block["precision_class"], "near_orthonormal")
+        self.assertIn("not repaired", near_block["precision_advice"])
+        self.assertIn("1e-7", near_block["precision_advice"])
 
 
 if __name__ == "__main__":
