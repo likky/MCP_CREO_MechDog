@@ -218,5 +218,34 @@ class DocumentationContractTests(unittest.TestCase):
                 self.assertIn(phrase, text)
 
 
+class NearestEdgeDiagnosticTests(unittest.TestCase):
+    """DEV-098: a zero-match edge selector lists candidates but never chooses one."""
+
+    def source(self) -> str:
+        return (ROOT / "native" / "geometry_selectors.cpp").read_text(encoding="utf-8")
+
+    def test_zero_match_branch_publishes_a_bounded_nearest_list(self):
+        text = " ".join(self.source().split())
+        self.assertIn("selector_nearest_edges(selector, state, mm_scale, form)", text)
+        self.assertIn('outcome.diagnostic["nearest_edges"]', text)
+        self.assertIn("if (rows.size() > 5)", text)
+        self.assertIn("never selected automatically", text)
+
+    def test_nearest_list_never_becomes_the_match(self):
+        text = " ".join(self.source().split())
+        # edge once, surface twice (chosen face and unique match)
+        self.assertEqual(text.count("outcome.matched = true"), 3)
+        self.assertNotIn('nearest_edges"]; outcome.id', text)
+
+    def test_compact_projection_keeps_the_diagnostic_block(self):
+        from creo_mechdog.compact_sections import OPERATION_KEYS
+
+        self.assertIn("geometry_selector_diagnostic", OPERATION_KEYS)
+        caps = CAPABILITIES.read_text(encoding="utf-8")
+        self.assertIn("geometry_selector_diagnostic.nearest_edges", caps)
+        text = (ROOT / "docs" / "REFERENCE_SYNTAX.md").read_text(encoding="utf-8")
+        self.assertIn("geometry_selector_diagnostic.nearest_edges", text)
+
+
 if __name__ == "__main__":
     unittest.main()

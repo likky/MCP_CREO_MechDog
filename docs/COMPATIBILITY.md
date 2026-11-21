@@ -44,10 +44,11 @@
   卡死、不证明 Creo 不可用，也不构成结束进程的理由；同一次快照里 `xtop.exe` 可能
   仍是 `visible`。`hung_implies_modal` 恒为 false：hung 窗口与 Dashboard/模态对话框
   是不同条件，`connection_guidance()` 已按可见/隐藏分别解释。
-- **零匹配边选择器**：只有 `sheetmetal_flange` 旧 `edge_geometry` 提供
-  `edge_geometry_diagnostic.nearest_edges`；通用 `geometry_selector` 零匹配仍只有
-  `candidate_count`/`matched_ids`，最近候选诊断尚未接入 native，见
-  REFERENCE_SYNTAX「零匹配边选择器的诊断范围」。
+- **零匹配边选择器**：通用 `geometry_selector` 零匹配时，失败回执的
+  `geometry_selector_diagnostic.nearest_edges` 列出最多 5 条最近的可匹配边（直线给端点与
+  误差，圆给圆心/半径与误差），只作诊断、不自动选中；多匹配仍只给
+  `candidate_count`/`matched_ids`。`sheetmetal_flange` 旧 `edge_geometry` 路径继续使用
+  `edge_geometry_diagnostic`，两种通道见 REFERENCE_SYNTAX「零匹配边选择器的诊断范围」。
 - **分步曲面路径**：`surface_boundary_fill` 不可用时的封口绕行（闭合双 `b_spline`
   草图 + `surface_fill` + `quilt_merge` + `solidify`，六步独立作业）已按 0.32.0
   外部 Creo 10 报告写入 REFERENCE_SYNTAX；那是外部历史证据，本机本批未复验。

@@ -22,6 +22,13 @@ CRASH = 0xC0000409
 
 
 class WorkerWiring(unittest.TestCase):
+    def test_worker_sources_compile_as_utf8(self):
+        # BUG-142 root cause: without /utf-8 MSVC reads the UTF-8 em dash under
+        # the system code page, turning it into an invalid byte in the receipt
+        # message; nlohmann's strict dump then threw and the worker aborted.
+        bridge = (ROOT / "bridge.py").read_text(encoding="utf-8")
+        self.assertEqual(bridge.count("/std:c++17 /utf-8"), 3)
+
     def test_modeling_exits_use_pre_disconnect_publication(self):
         worker = (ROOT / "native/worker.cpp").read_text(encoding="utf-8")
         include = worker.index('#include "worker_result_delivery.h"')
@@ -130,6 +137,35 @@ class NativeResultDeliveryFixture(unittest.TestCase):
                 self.assertEqual(result["disconnect_code"], 0)
                 if not expected_success:
                     self.assertTrue(result["rollback_succeeded"])
+
+    def test_strict_dump_on_invalid_utf8_reproduces_the_crash_signature(self):
+        # BUG-142 root-cause reproduction: dump(2) with the strict handler throws
+        # on a Toolkit-shaped invalid byte after the output file was created, and
+        # the uncaught exception exits 0xC0000409. The live failure left exactly
+        # this artifact: a 0-byte temporary result.
+        process, directory = self.run_case("strict_dump_crash")
+        self.assertEqual(process.returncode & 0xFFFFFFFF, CRASH)
+        target = directory / "strict_result.json"
+        self.assertTrue(target.is_file())
+        self.assertEqual(target.stat().st_size, 0)
+        self.assertFalse((directory / "native_result.json").exists())
+
+    def test_invalid_utf8_failure_is_published_with_replacement(self):
+        process, directory = self.run_case("invalid_utf8")
+        self.assertEqual(process.returncode, 30)
+        result = json.loads((directory / "native_result.json").read_text(encoding="utf-8"))
+        self.assertFalse(result["success"])
+        self.assertTrue(result["delivery_complete"])
+        self.assertTrue(result["rollback_succeeded"])
+        self.assertIn("toolkit text with invalid", result["message"])
+        self.assertFalse((directory / "native_result.json.tmp").exists())
+
+    def test_invalid_utf8_success_keeps_the_success_projection(self):
+        process, directory = self.run_case("invalid_utf8_complete")
+        self.assertEqual(process.returncode, 0)
+        result = json.loads((directory / "native_result.json").read_text(encoding="utf-8"))
+        self.assertTrue(result["success"])
+        self.assertTrue(result["delivery_complete"])
 
 
 class MissingFactProtection(unittest.TestCase):

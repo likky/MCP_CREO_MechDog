@@ -113,10 +113,106 @@ static std::string selector_edge_error(const std::string &form, const std::vecto
            "); use a smaller tolerance_mm or an anchor that belongs to exactly one edge";
 }
 
+// DEV-098: zero-match edge selectors report the closest eligible edges so the
+// caller can re-read the measurements instead of retrying the same anchor. This
+// is diagnostic only - the matcher never selects one of these edges.
+static J selector_nearest_edges(const J &selector, const J &state, double mm_scale,
+                                const std::string &form) {
+    const double pi = 3.14159265358979323846;
+    struct Row {
+        double error;
+        int id;
+        J record;
+    };
+    std::vector<Row> rows;
+    if (form == "circular") {
+        const V center = vec(selector["center_mm"]);
+        const double radius = selector["radius_mm"].get<double>();
+        const bool filter_axis = selector.contains("axis");
+        const V requested = filter_axis ? normalized(vec(selector["axis"])) : V{0, 0, 0};
+        for (const auto &edge : state.value("edges", J::array())) {
+            if (!edge.contains("arc"))
+                continue;
+            const J &arc = edge["arc"];
+            const V arc_center = scale(vec(arc["origin"]), mm_scale);
+            const double arc_radius = arc["radius"].get<double>() * mm_scale;
+            const double radius_error = fabs(arc_radius - radius);
+            const double center_error = selector_component_error(arc_center, center);
+            J record = {{"id", edge["id"]},
+                        {"center_mm", J::array({arc_center[0], arc_center[1], arc_center[2]})},
+                        {"radius_mm", arc_radius},
+                        {"radius_error_mm", radius_error},
+                        {"center_error_mm", center_error}};
+            double error = std::max(radius_error, center_error);
+            if (filter_axis) {
+                V arc_axis = selector_cross(vec(arc["v1"]), vec(arc["v2"]));
+                const double axis_length = selector_vector_norm(arc_axis);
+                if (axis_length > 1e-9) {
+                    arc_axis = scale(arc_axis, 1.0 / axis_length);
+                    const double cosine =
+                        std::max(-1.0, std::min(1.0, fabs(dot(arc_axis, requested))));
+                    const double axis_error = std::acos(cosine) * 180.0 / pi;
+                    record["axis_error_deg"] = axis_error;
+                }
+            }
+            record["error_mm"] = error;
+            rows.push_back({error, edge["id"].get<int>(), record});
+        }
+    } else {
+        const bool endpoints_form = form == "endpoints";
+        const V wanted[2] = {vec(selector.contains("endpoints_mm")
+                                     ? selector.at("endpoints_mm").at(0)
+                                     : selector.at("point_mm")),
+                             endpoints_form ? vec(selector.at("endpoints_mm").at(1)) : V{0, 0, 0}};
+        const bool filter_point = selector.contains("point_mm");
+        const V point = filter_point ? vec(selector["point_mm"]) : V{0, 0, 0};
+        for (const auto &edge : state.value("edges", J::array())) {
+            if (!edge.contains("start") || !edge.contains("end"))
+                continue;
+            const V first = scale(vec(edge["start"]), mm_scale);
+            const V second = scale(vec(edge["end"]), mm_scale);
+            double endpoint_error = 0;
+            J record = {{"id", edge["id"]},
+                        {"endpoints_mm", J::array({J::array({first[0], first[1], first[2]}),
+                                                   J::array({second[0], second[1], second[2]})})}};
+            if (endpoints_form) {
+                const double direct[2] = {selector_component_error(first, wanted[0]),
+                                          selector_component_error(second, wanted[1])};
+                const double reverse[2] = {selector_component_error(second, wanted[0]),
+                                           selector_component_error(first, wanted[1])};
+                const bool use_reverse =
+                    std::max(reverse[0], reverse[1]) < std::max(direct[0], direct[1]);
+                record["endpoint_errors_mm"] = J::array(
+                    {use_reverse ? reverse[0] : direct[0], use_reverse ? reverse[1] : direct[1]});
+                endpoint_error =
+                    use_reverse ? std::max(reverse[0], reverse[1]) : std::max(direct[0], direct[1]);
+            }
+            double error = endpoint_error;
+            if (filter_point) {
+                const double point_error = selector_segment_distance(point, first, second);
+                record["point_error_mm"] = point_error;
+                error = std::max(error, point_error);
+            }
+            record["error_mm"] = error;
+            rows.push_back({error, edge["id"].get<int>(), record});
+        }
+    }
+    std::sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) {
+        if (a.error != b.error)
+            return a.error < b.error;
+        return a.id < b.id;
+    });
+    if (rows.size() > 5)
+        rows.resize(5);
+    J nearest = J::array();
+    for (const auto &row : rows)
+        nearest.push_back(row.record);
+    return nearest;
+}
+
 static GeometrySelectorOutcome match_geometry_edge_selector(const J &selector, const J &state,
                                                             double mm_scale, double tolerance) {
     GeometrySelectorOutcome outcome;
-    outcome.target = "edge";
     const bool circular = selector.contains("center_mm") || selector.contains("radius_mm");
     std::string form = circular                            ? "circular"
                        : selector.contains("endpoints_mm") ? "endpoints"
@@ -263,6 +359,13 @@ static GeometrySelectorOutcome match_geometry_edge_selector(const J &selector, c
             fabs(matched_radii[i] - matched_radii[0]) <= same_circle_epsilon &&
             selector_component_error(matched_centers[i], matched_centers[0]) <= same_circle_epsilon;
     outcome.error = selector_edge_error(form, matches, candidates, tolerance, same_circle);
+    if (matches.empty()) {
+        outcome.diagnostic["nearest_edges"] =
+            selector_nearest_edges(selector, state, mm_scale, form);
+        outcome.error +=
+            "; nearest eligible edges are listed in geometry_selector_diagnostic.nearest_edges "
+            "(diagnostic only, never selected automatically)";
+    }
     return outcome;
 }
 

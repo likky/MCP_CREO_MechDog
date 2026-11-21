@@ -809,6 +809,11 @@ def build_native() -> Path:
     settings = json.dumps(
         {key: value for key, value in c.items() if key not in startup_keys}, sort_keys=True
     ).encode()
+    # BUG-142: compiler flags are part of the produced binary. Sources compiled
+    # without /utf-8 mangle non-ASCII string literals under the system code page,
+    # which put invalid UTF-8 into JSON receipts; keep the flag set in the cache
+    # key so an existing worker is rebuilt instead of silently reused.
+    digest.update(b"\0NATIVE_BUILD_FLAGS\0/utf-8-v1\0")
     digest.update(settings)
     abi.update(settings)
     callback_relatives = (
@@ -977,7 +982,7 @@ def build_native() -> Path:
         ""
         if reuse_callback
         else f'''
-cl /nologo /MD /EHsc /std:c++17 /W3 /we4552 /DPRO_MACHINE=36 /DPRO_OS=4 /I"{sdk / "includes"}" /c "{ROOT / "native/blend_sync.cpp"}" /Fo"{build / "blend_sync.obj"}"
+cl /nologo /MD /EHsc /std:c++17 /utf-8 /W3 /we4552 /DPRO_MACHINE=36 /DPRO_OS=4 /I"{sdk / "includes"}" /c "{ROOT / "native/blend_sync.cpp"}" /Fo"{build / "blend_sync.obj"}"
 if errorlevel 1 exit /b 2
 link /nologo /DLL /MACHINE:X64 /OUT:"{blend_dll}" "{build / "blend_sync.obj"}" kernel32.lib user32.lib wsock32.lib advapi32.lib mpr.lib winspool.lib netapi32.lib psapi.lib gdi32.lib shell32.lib comdlg32.lib ole32.lib ws2_32.lib
 if errorlevel 1 exit /b 3
@@ -987,7 +992,7 @@ if errorlevel 1 exit /b 3
         ""
         if reuse_loader
         else f'''
-cl /nologo /MD /EHsc /std:c++17 /W3 /we4552 /DPRO_MACHINE=36 /DPRO_OS=4 /I"{sdk / "includes"}" /c "{ROOT / "native/blend_loader.cpp"}" /Fo"{build / "blend_loader.obj"}"
+cl /nologo /MD /EHsc /std:c++17 /utf-8 /W3 /we4552 /DPRO_MACHINE=36 /DPRO_OS=4 /I"{sdk / "includes"}" /c "{ROOT / "native/blend_loader.cpp"}" /Fo"{build / "blend_loader.obj"}"
 if errorlevel 1 exit /b 2
 link /nologo /DLL /MACHINE:X64 /OUT:"{loader_dll}" "{build / "blend_loader.obj"}" {dll_libs} kernel32.lib user32.lib wsock32.lib advapi32.lib mpr.lib winspool.lib netapi32.lib psapi.lib gdi32.lib shell32.lib comdlg32.lib ole32.lib ws2_32.lib
 if errorlevel 1 exit /b 3
@@ -1000,7 +1005,7 @@ setlocal DisableDelayedExpansion
 {compiler_setup_script(c)}
 "{sys.executable}" "{ROOT / "tools/compiler_preflight.py"}"
 if errorlevel 1 exit /b 4
-cl /nologo /MD /EHsc /std:c++17 /bigobj /W3 /we4552 /DPRO_MACHINE=36 /DPRO_OS=4 /DPRO_USE_VAR_ARGS /DMECHDOG_BUILD_SOURCE_DIGEST=\\"{fingerprint}\\" /I"{sdk / "includes"}" /c "{ROOT / "native/worker.cpp"}" /Fo"{build / "worker.obj"}"
+cl /nologo /MD /EHsc /std:c++17 /utf-8 /bigobj /W3 /we4552 /DPRO_MACHINE=36 /DPRO_OS=4 /DPRO_USE_VAR_ARGS /DMECHDOG_BUILD_SOURCE_DIGEST=\\"{fingerprint}\\" /I"{sdk / "includes"}" /c "{ROOT / "native/worker.cpp"}" /Fo"{build / "worker.obj"}"
 if errorlevel 1 exit /b 2
 link /nologo /MACHINE:X64 /SUBSYSTEM:CONSOLE /OUT:"{exe}" "{build / "worker.obj"}" {libs} bcrypt.lib kernel32.lib user32.lib wsock32.lib advapi32.lib mpr.lib winspool.lib netapi32.lib psapi.lib gdi32.lib shell32.lib comdlg32.lib ole32.lib ws2_32.lib
 if errorlevel 1 exit /b 3

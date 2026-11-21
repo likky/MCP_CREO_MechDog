@@ -423,20 +423,12 @@ executable 仅表示静态能力/schema 准入；native/saved_reload 恒为 not_
 
 ## 零匹配边选择器的诊断范围（DEV-098）
 
-`{"kind":"geometry_selector","target":"edge",...}` 零匹配或多匹配都拒绝，失败回执给出
-`candidate_count`、`matched_ids`、`tolerance_mm`，但**不返回最近候选边**。截至本批，
-只有 `sheetmetal_flange` 旧 `edge_geometry` 路径写 `edge_geometry_diagnostic`
-（`nearest_edges` 最多 5 项：`id`、`endpoints_mm`、`endpoint_errors_mm`），见上文
-DEV-074 增量。所以 `round`/`chamfer` 等通用选择器报 "matched none of the N eligible
-model edges" 时，只能重新 `creo_inspect_model(section="edges")` 按端点自行比对，或
-改用当前巡检的 `{kind:"edge",id:N}`。
+`{"kind":"geometry_selector","target":"edge",...}` 零匹配或多匹配都拒绝。失败回执给出 `candidate_count`、`matched_ids`、`tolerance_mm`；**零匹配**时 `geometry_selector_diagnostic.nearest_edges` 另列最多 5 条最近的可匹配边，按误差再按 id 升序：
 
-通用选择器的最近候选诊断**尚未接入运行时**：需要
-`native/geometry_selectors.cpp::match_geometry_edge_selector()` 在零匹配分支调用
-`geometry_diagnostics::nearest_candidates()` 并写入 `outcome.diagnostic`（字段与
-`flange_geometry_edge_id()` 一致，最多 5 项，按最大端点误差再按 id 排序），再由
-`job_projection` 保留该块。本批不改 native，因此这里不写成已生效行为；任何最近候选
-都只是诊断，不会被自动选中，也不会放宽严格匹配。
+- 端点/点形式：`id`、`endpoints_mm`（模型坐标换算后的毫米端点）、`error_mm`；端点形式另有 `endpoint_errors_mm`，带 `point_mm` 时另有 `point_error_mm`。
+- 圆形式：`id`、`center_mm`、`radius_mm`、`radius_error_mm`、`center_error_mm`、`error_mm`；带 `axis` 过滤时另有 `axis_error_deg`。
+
+最近候选**只是诊断**：匹配器不会自动选中，严格匹配与唯一性判定不变；坐标与 ID 随模型重建变化，重试前应重新 `creo_inspect_model(section="edges")` 或改用当前巡检的 `{kind:"edge",id:N}`。多匹配时仍只给 `matched_ids`，不列最近候选。`sheetmetal_flange` 旧 `edge_geometry` 路径继续使用 `edge_geometry_diagnostic`（字段见上文 DEV-074 增量）。
 
 ## quilt closure 的三种含义（DEV-098）
 

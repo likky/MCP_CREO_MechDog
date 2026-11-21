@@ -10,11 +10,26 @@ int wmain(int argc, wchar_t **argv) {
     std::ifstream mode_file(job + L"\\scenario.txt");
     std::string mode;
     mode_file >> mode;
-    const bool success = mode == "success";
+    const bool success = mode == "success" || mode == "invalid_utf8_complete";
     nlohmann::json report = {{"success", success},
                              {"toolkit_code", success ? 0 : -4},
                              {"message", success ? "fixture success" : "fixture operation failed"},
                              {"fixture_only", true}};
+    if (mode == "invalid_utf8" || mode == "invalid_utf8_complete" ||
+        mode == "strict_dump_crash") {
+        // A Toolkit-shaped string that is not valid UTF-8. nlohmann's default
+        // handler throws on it; the replacement handler publishes it.
+        report["message"] = std::string("toolkit text with invalid \x92 byte");
+    }
+    if (mode == "strict_dump_crash") {
+        // BUG-142 pre-fix reproduction: the old publication path called
+        // dump(2) with the strict handler, and the uncaught type_error ends in
+        // abort(), observed as 0xC0000409 with no result file.
+        std::ofstream output(job + L"\\strict_result.json", std::ios::binary);
+        output << report.dump(2);
+        output.close();
+        return 0;
+    }
     if (!success) {
         report["rollback_succeeded"] = true;
         report["rollback_code"] = 0;
