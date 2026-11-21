@@ -375,6 +375,7 @@ def _deployment(deadline: float) -> str:
         "native/planar_wall.cpp",
         "native/planar_wall.h",
         "native/result_delivery.h",
+        "native/worker_result_delivery.h",
         "native/recovery_deadline.h",
         "src/creo_mechdog/blend_callback.py",
         "native/worker.cpp",

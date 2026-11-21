@@ -1136,13 +1136,15 @@ class RoundOp(StrictModel):
 
 
 class ChamferOp(StrictModel):
-    """DEV-089 T6a: equal-distance chamfer plus the documented distance-angle schema.
+    """Equal-distance, distance-angle and explicitly referenced two-distance chamfers.
 
     ``equal_distance`` keeps the historical ``size``/``distance`` payload. In
     ``distance_angle`` the leg distance is measured on ``angle_reference`` (the
     face the angle is taken from) and ``angle_deg`` is the angle between the
     chamfer face and that reference face; the probe that fixes this reading is
-    recorded in docs/work-items/DEV-089.md.
+    recorded in docs/work-items/DEV-089.md. ``d1_d2`` writes the two explicit
+    Creo legs and the SDK-required ``reference_surface`` without inferring a
+    face direction from edge or face-pair ordering.
     """
 
     op: Literal["chamfer"]
@@ -1172,12 +1174,13 @@ class ChamferOp(StrictModel):
     ]
     references: Annotated[list[dict[str, Any]], Field(min_length=1, max_length=100)]
     chamfer_type: Annotated[
-        Literal["equal_distance", "distance_angle"],
+        Literal["equal_distance", "distance_angle", "d1_d2"],
         Field(
             default="equal_distance",
             exclude=True,
             description="equal_distance keeps the historical size-only tree; "
-            "distance_angle requires angle_deg and angle_reference",
+            "distance_angle requires angle_deg and angle_reference; d1_d2 requires "
+            "distance_1, distance_2 and reference_surface",
         ),
     ]
     angle_deg: Annotated[
@@ -1197,6 +1200,31 @@ class ChamferOp(StrictModel):
             "geometry_selector targeting a surface",
         ),
     ]
+    distance_1: Annotated[
+        Positive | None,
+        Field(
+            default=None,
+            description="First explicit Creo D1/LEG1 distance in mm (d1_d2 only)",
+        ),
+    ]
+    distance_2: Annotated[
+        Positive | None,
+        Field(
+            default=None,
+            description="Second explicit Creo D2/LEG2 distance in mm (d1_d2 only)",
+        ),
+    ]
+    reference_surface: Annotated[
+        dict[str, Any] | None,
+        Field(
+            default=None,
+            description="Explicit PRO_E_RNDCH_REFERENCE_SURFACE required by the SDK for d1_d2. "
+            "It is never inferred from edge or face-pair order. The installed SDK does not "
+            "establish which adjacent face receives D1; swapping distance_1/distance_2 swaps "
+            "the two Creo leg values, while the per-face direction remains to be verified on "
+            "the target Creo",
+        ),
+    ]
 
     @field_validator("angle_deg", mode="before")
     @classmethod
@@ -1213,43 +1241,82 @@ class ChamferOp(StrictModel):
             raise ValueError("op 'chamfer' does not accept 'radius'; use 'distance' or 'size'")
         if self.size is not None and self.distance is not None:
             raise ValueError("Provide either 'distance' or 'size' for op 'chamfer', not both")
-        if self.size is None:
-            if self.distance is None:
-                raise ValueError("Provide 'size' or 'distance' for op 'chamfer'")
-            self.size = self.distance
+        has_two_distance_fields = any(
+            value is not None
+            for value in (self.distance_1, self.distance_2, self.reference_surface)
+        )
+        if self.chamfer_type != "d1_d2":
+            if has_two_distance_fields:
+                raise ValueError(
+                    "distance_1/distance_2/reference_surface require chamfer_type='d1_d2'"
+                )
+            if self.size is None:
+                if self.distance is None:
+                    raise ValueError("Provide 'size' or 'distance' for op 'chamfer'")
+                self.size = self.distance
+            geometry_selectors.validate_reference_list(self.references, f"{self.op}.references")
+            if self.chamfer_type == "equal_distance":
+                if self.angle_deg is not None or self.angle_reference is not None:
+                    raise ValueError(
+                        "angle_deg/angle_reference require chamfer_type='distance_angle'; an "
+                        "equal-distance chamfer is defined by size alone"
+                    )
+            else:
+                if self.angle_deg is None:
+                    raise ValueError("chamfer_type='distance_angle' requires angle_deg")
+                if not 0 < self.angle_deg < 180:
+                    raise ValueError("angle_deg must be between 0 and 180 degrees")
+                if self.angle_reference is None:
+                    raise ValueError(
+                        "chamfer_type='distance_angle' requires angle_reference: the face the "
+                        "angle is measured from and the leg distance is taken on"
+                    )
+                if (
+                    isinstance(self.angle_reference, dict)
+                    and self.angle_reference.get("kind")
+                    == geometry_selectors.GEOMETRY_SELECTOR_KIND
+                ):
+                    normalized = geometry_selectors.validate_geometry_selector(
+                        self.angle_reference, "surface"
+                    )
+                    if normalized["target"] != "surface":
+                        raise ValueError(
+                            "chamfer angle_reference geometry_selector must target a surface"
+                        )
+                    if "coaxial" in normalized:
+                        raise ValueError(
+                            "chamfer angle_reference cannot use coaxial='any'; it must name one face"
+                        )
+                    self.angle_reference = normalized
+            return self
+        if self.size is not None or self.distance is not None:
+            raise ValueError("chamfer_type='d1_d2' uses distance_1/distance_2, not size/distance")
+        if self.angle_deg is not None or self.angle_reference is not None:
+            raise ValueError("angle_deg/angle_reference require chamfer_type='distance_angle'")
         geometry_selectors.validate_reference_list(self.references, f"{self.op}.references")
-        if self.chamfer_type == "equal_distance":
-            if self.angle_deg is not None or self.angle_reference is not None:
+        if self.distance_1 is None or self.distance_2 is None:
+            raise ValueError("chamfer_type='d1_d2' requires distance_1 and distance_2")
+        if self.reference_surface is None:
+            raise ValueError(
+                "chamfer_type='d1_d2' requires reference_surface: the SDK-required "
+                "PRO_E_RNDCH_REFERENCE_SURFACE; it is not inferred from reference order"
+            )
+        if (
+            isinstance(self.reference_surface, dict)
+            and self.reference_surface.get("kind") == geometry_selectors.GEOMETRY_SELECTOR_KIND
+        ):
+            normalized = geometry_selectors.validate_geometry_selector(
+                self.reference_surface, "surface"
+            )
+            if normalized["target"] != "surface":
                 raise ValueError(
-                    "angle_deg/angle_reference require chamfer_type='distance_angle'; an "
-                    "equal-distance chamfer is defined by size alone"
+                    "chamfer reference_surface geometry_selector must target a surface"
                 )
-        else:
-            if self.angle_deg is None:
-                raise ValueError("chamfer_type='distance_angle' requires angle_deg")
-            if not 0 < self.angle_deg < 180:
-                raise ValueError("angle_deg must be between 0 and 180 degrees")
-            if self.angle_reference is None:
+            if "coaxial" in normalized:
                 raise ValueError(
-                    "chamfer_type='distance_angle' requires angle_reference: the face the angle "
-                    "is measured from and the leg distance is taken on"
+                    "chamfer reference_surface cannot use coaxial='any'; it must name one face"
                 )
-            if (
-                isinstance(self.angle_reference, dict)
-                and self.angle_reference.get("kind") == geometry_selectors.GEOMETRY_SELECTOR_KIND
-            ):
-                normalized = geometry_selectors.validate_geometry_selector(
-                    self.angle_reference, "surface"
-                )
-                if normalized["target"] != "surface":
-                    raise ValueError(
-                        "chamfer angle_reference geometry_selector must target a surface"
-                    )
-                if "coaxial" in normalized:
-                    raise ValueError(
-                        "chamfer angle_reference cannot use coaxial='any'; it must name one face"
-                    )
-                self.angle_reference = normalized
+            self.reference_surface = normalized
         return self
 
 

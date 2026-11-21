@@ -1,7 +1,11 @@
 #define NOMINMAX
 #include "geometry.cpp"
 #include "preview.h"
-#include "result_delivery.h"
+#include "worker_result_delivery.h"
+
+// generic.cpp and drawing.cpp are textually included below; route the generic,
+// drawing and plate modeling exits through pre-disconnect result publication.
+#define deliver_native_result deliver_worker_result
 
 static std::string utf8(const std::wstring &s) {
     int n = WideCharToMultiByte(CP_UTF8, 0, s.data(), (int)s.size(), nullptr, 0, nullptr, nullptr);

@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-21（桌面 `0.33.0` 三份反馈首批实现并随 **0.35.0** 发布）：三份报告逐字节归档至 [feedback-0.33.0-2026-11-21](validation/feedback-0.33.0-2026-11-21/SOURCE_MANIFEST.json)。BUG-137/BUG-138 的工具数、TaskGroup 异常可见性、独立门禁与 Popen 竞态已在 0.34.0 交付，本轮复验无回归（工具列表由 `mcp.list_tools()` 驱动，注入旧值 84 时明确退出 1 并给出完整断言）。六项随 v0.35.0 交付并转「部分交付，剩余待验收」：BUG-143（曲面回执实测 `quilt_id`，同计划 merge 标签被 `solidify` 消费，实机 785.3981633974481 mm³、保存重载 true）、FEAT-071（`d1_d2` 实机 2/5 与 5/2 各去除 250 mm³）、BUG-142（实机复现 `0xC0000409`，断连前结果预发布与非 UTF-8 容错；根因未定位）、BUG-140（指纹 legacy 候选 0.415647 s/1024 → 1.8 µs/0）、BUG-141（只忽略可确认退出的进程）、DEV-098（诊断语义与文档契约）。`tools/dev_check.py` 全量 4286 项通过、`success=true`；原生 `bridge.py build` 通过。发布记录见 [RELEASE-0.35.0](validation/RELEASE-0.35.0.md)；外部 0.32.0 现象按当前源码重新核对，未倒填为已修复。
+
 2026-11-21（0.34.0 发布后收口；台账 205→202 项）：发布提交 `bbd81cdbaa92f7acdc1988d574dfdab832e01bed`，[v0.34.0 Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.34.0) 四附件、sidecar 与正文自证远端核验 exit 0。BUG-137、BUG-138、DEV-097 验收范围闭环并移入完成档案；BUG-139 保留 `force_ready`/失败路径实机夹具，FEAT-070 保留 `strategy=existing` 稳定性与本轮 G1 复测，两项转入“部分交付，剩余待验收”。已发布标签和冻结附件不随本段回填改写。
 
 2026-11-20（0.31.1/0.32.0 反馈剩余项 + FEAT-070；台账 200→205 项）：按桌面 `0.32.0/` 三份反馈核对当前 0.33.0 源码——0.32.0 反馈 P1（`previous_release_commit` 语义校验）已由 DEV-096 在 0.33.0 修复（状态“待验收”）；仍开着 5 项，登记为 **DEV-097**（Release 正文自证回退 + 资产门禁缺正文检查）、**BUG-137**（全量单测 3 个 teardown errors，`subprocess.Popen` 未隔离致 `runner.log` WinError 32，跨 6 版本未修）、**BUG-138**（验收脚本硬编码工具数 82/84 + 文档，失败被 TaskGroup 掩盖，门禁不覆盖）、**BUG-139**（启动协调器 2s 探测超时一次判死、预算耗尽丢弃已成功探测、连接阶段无相位、总预算固定 300s、无准入降级、`worker_build_identity` 陈旧不可归因、文案误导，致 109 工具全部拒单，本机 Creo 10 实机复现）；连同 BUG-120 实体化链路唯一剩余能力缺口 **FEAT-070**（实体化重定义重建失效主体参照）一并在本批推进。三份反馈原件逐字节归档 `docs/validation/feedback-0.31.1-2026-11-20/` 与 `docs/validation/feedback-0.32.0-2026-11-20/`。开发分支 `codex/feedback-0311-0320-feat070`，完成后升版 0.34.0 发布。
@@ -191,7 +193,7 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 
 诊断交付不等于根因修复；部分交付不关整卡；缺其他版本证据不自动判未修。观察项等自然新现场，不制造故障。已完成且无保留范围的行移入 [完成档案](BACKLOG_COMPLETED.md#2026-11-07dev-073-归档与历史进展)。原进展/证据保留日期，不再回填第二份待办。小修复沿用卡与证据，复杂跨模块任务才另建完整计划。
 
-当前唯一 ID **202**（BUG **91**、FEAT **67**、DEV **44**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
+当前唯一 ID **208**（BUG **95**、FEAT **68**、DEV **45**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
@@ -201,7 +203,7 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
 | 开发中 | 7 |
-| 部分交付，剩余待验收 | 44 |
+| 部分交付，剩余待验收 | 50 |
 | 部分交付，剩余待规划 | 7 |
 | 待规划 | 46 |
 
@@ -348,6 +350,12 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
+| [BUG-143](work-items/BUG-143.md) | P1 | 部分交付 0.35.0，剩余待验收 | 0.35.0（子项已交付）；剩余未排期 | fill/mirror/merge/trim 回执给实测 `quilt_id`，同计划 merge/fill 标签可被 `solidify` 消费（本机 Creo 10 实机 785.3981633974481 mm³、保存重载 true），已随 v0.35.0 发布。剩：跨作业需用回执 `quilt_id`，mirror 标签与 trim 标签链未实机。 |
+| [FEAT-071](work-items/FEAT-071.md) | P2 | 部分交付 0.35.0，剩余待验收 | 0.35.0（子项已交付）；剩余未排期 | `d1_d2` 与独立 `creo_chamfer` 契约已落地；Creo 10 实机 2/5 与 5/2 各去除 250 mm³，D1 落在非 `reference_surface` 相邻面，已随 v0.35.0 发布。剩：其他参考面组合、曲面边与其他 Creo 版本。 |
+| [BUG-142](work-items/BUG-142.md) | P1 | 部分交付 0.35.0，剩余待验收 | 0.35.0（子项已交付）；剩余未排期 | 断连前预发布执行/回滚事实并对非 UTF-8 文本容错；本机实机复现 `0xC0000409`（作业 `0e5ea74c…`），修复后失败路径回执实机可见，已随 v0.35.0 发布。剩：栈 Cookie 根因、真实 disconnect 阻塞夹具。 |
+| [BUG-140](work-items/BUG-140.md) | P1 | 部分交付 0.35.0，剩余待验收 | 0.35.0（子项已交付）；剩余未排期 | legacy 候选惰性求值并设 8 依赖上限（10 依赖 0.415647 s/1024 → 1.8 µs/0），已随 v0.35.0 发布。剩：真实构建缓存端到端启动计时。 |
+| [BUG-141](work-items/BUG-141.md) | P1 | 部分交付 0.35.0，剩余待验收 | 0.35.0（子项已交付）；剩余未排期 | 仅忽略可确认退出的进程，`selection_required` 不再被 `force_ready` 绕过，已随 v0.35.0 发布。剩：真实僵尸进程现场。 |
+| [DEV-098](work-items/DEV-098.md) | P2 | 部分交付 0.35.0，剩余待验收 | 0.35.0（子项已交付）；剩余未排期 | 诊断语义模块、b_spline/closure/窗口/选择器文档与 4 条限制已落地，已随 v0.35.0 发布。剩：通用 `geometry_selector` 零候选最近边原生接入。 |
 | [BUG-139](work-items/BUG-139.md) | P1 | 部分交付 0.34.0，剩余待验收 | 0.34.0（子项已交付）；剩余未排期 | 启动协调器探测超时可配、成功探测循环外落地、`connecting` 相位、预算分段、recent-connected/`force_ready` 降级、身份归因与错误上下文已交付；26 项定向单测通过，本机 Creo 10 冷启动→ready→FEAT-070 建模及保存重载通过，已随 v0.34.0 发布。剩：`force_ready` 与失败路径文案的实机夹具，其他环境按反馈补录。 |
 | [FEAT-070](work-items/FEAT-070.md) | P2 | 部分交付 0.34.0，剩余待验收 | 0.34.0（子项已交付）；剩余未排期 | `creo_redefine_solidify_body` 已公开（109→110），`strategy=new` 在本机 Creo 10 解除实体化主体自锁，redefine/regenerate=0、体积 55087038135.823044 mm³ 不变、保存重载 true；非实体化目标按 phase/原始码失败并回滚，已随 v0.34.0 发布。剩：`strategy=existing` 在该几何的 Creo 模态稳定性、本轮 quilt 142 G1 复测、真实船体非圆剖面与其他环境。 |
 | [BUG-121](work-items/BUG-121.md) | P2 | 部分交付，剩余待验收 | 0.24.0（子项）；剩余未排期 | 只读型计划（`export`/`dump_tree`/`mass_properties`/`surface_group_measure`/`surface_curvature`/`udf_inspect`）在 Python 侧自动按只读准入并记 `readonly_source`，不再被 GUI 保存造成的基线漂移挡住；写计划的 `model_reconciliation_required` 失败消息追加 `creo_reconcile_model` 动作指引，原生原文保留在 `native_message`。离线 11 项单测通过；Creo 12.4 实机多轮导出均成功（最新 `...T160310` 作业 `7b7ec1450490427598a2dbe72b99941c`，`...T150422`/`...T145133` 同结论），`job.json` 记 `readonly=true`/`readonly_source=inspection_only_plan`；GUI 保存造成的漂移与 Creo 10 未验。 |

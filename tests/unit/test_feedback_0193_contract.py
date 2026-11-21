@@ -75,17 +75,17 @@ class FeatureStateTargetShapeTests(unittest.TestCase):
 
 
 class QuiltMergeReferenceGuidanceTests(unittest.TestCase):
-    def test_capability_limits_name_the_original_target_workaround(self):
+    def test_capability_limits_name_the_result_quilt_resolution(self):
         text = (ROOT / "src/creo_mechdog/capabilities.py").read_text(encoding="utf-8")
         flat = " ".join(text.split())
-        self.assertIn("a merge result has no separately referenceable quilt label", flat)
+        self.assertIn("resolves to the quilt the native operation measured", flat)
         self.assertIn("keep referencing the original target quilt", flat)
         self.assertIn("ProFeatureGeomitemVisit -4", flat)
 
-    def test_reference_syntax_documents_the_workaround(self):
+    def test_reference_syntax_documents_the_result_quilt_rules(self):
         text = (ROOT / "docs/REFERENCE_SYNTAX.md").read_text(encoding="utf-8")
         flat = " ".join(text.split())
-        self.assertIn("没有可独立引用的 quilt 标签", flat)
+        self.assertIn("可由特征标签重新引用", flat)
         self.assertIn("继续引用**原始 target**", flat)
         self.assertIn("BUG-115", flat)
 

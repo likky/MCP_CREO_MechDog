@@ -692,6 +692,79 @@ def annotate_alias_receipts(result: dict[str, Any], aliases: Any = None) -> None
                 op[key] = alias[key]
 
 
+def _quilt_id(value: Any) -> int | None:
+    return value if type(value) is int and value >= 0 else None
+
+
+def annotate_quilt_result_ids(result: dict[str, Any]) -> None:
+    """Publish only quilt ids tied to the operation by native evidence (BUG-143).
+
+    Merge aliases and operation details are recorded by the native implementation
+    after visiting or opening the result quilt. Fill/mirror can instead be
+    identified from the final native inspection's exact feature ownership. Zero
+    or several matching quilts stay unidentified; geometry similarity, face
+    counts, bounding boxes and record order are not evidence.
+    """
+    operations = result.get("operations")
+    if not isinstance(operations, list):
+        return
+    aliases = result.get("aliases")
+    inspection = result.get("inspection")
+    quilts = inspection.get("quilts") if isinstance(inspection, dict) else None
+    for record in operations:
+        if not isinstance(record, dict):
+            continue
+        kind = record.get("op")
+        if not isinstance(kind, str) or kind not in {"mirror", "surface_fill", "quilt_merge"}:
+            continue
+        if (
+            record.get("execution_status") != "succeeded"
+            or record.get("effect_status") != "committed"
+        ):
+            continue
+        label = record.get("label")
+        alias = aliases.get(label) if isinstance(aliases, dict) and isinstance(label, str) else None
+        if not isinstance(alias, dict) or alias.get("op") != kind:
+            alias = None
+        feature_id = _quilt_id(record.get("feature_id"))
+        alias_feature_id = _quilt_id(alias.get("feature_id")) if alias is not None else None
+        if feature_id is None:
+            feature_id = alias_feature_id
+
+        quilt_id = None
+        if kind == "quilt_merge":
+            native_id = _quilt_id(record.get("result_quilt_id"))
+            alias_id = _quilt_id(alias.get("quilt_id")) if alias is not None else None
+            if native_id is not None and alias_id is not None and native_id != alias_id:
+                continue
+            quilt_id = native_id if native_id is not None else alias_id
+        else:
+            quilt_id = _quilt_id(record.get("quilt_id"))
+            alias_id = _quilt_id(alias.get("quilt_id")) if alias is not None else None
+            if quilt_id is not None and alias_id is not None and quilt_id != alias_id:
+                continue
+            if quilt_id is None and feature_id is not None and isinstance(quilts, list):
+                matches = set()
+                for quilt in quilts:
+                    if not isinstance(quilt, dict):
+                        continue
+                    candidate = _quilt_id(quilt.get("quilt_id"))
+                    owners = quilt.get("feature_ids")
+                    if (
+                        candidate is not None
+                        and isinstance(owners, list)
+                        and any(type(owner) is int and owner == feature_id for owner in owners)
+                    ):
+                        matches.add(candidate)
+                if len(matches) == 1:
+                    quilt_id = matches.pop()
+        if quilt_id is None:
+            continue
+        record["quilt_id"] = quilt_id
+        if alias is not None and (alias_feature_id is None or alias_feature_id == feature_id):
+            alias["quilt_id"] = quilt_id
+
+
 def annotate_native_result(
     result: dict[str, Any],
     *,
@@ -728,6 +801,7 @@ def annotate_native_result(
         cleanup_confirmed=cleanup_is_trusted(result, is_new_model=is_new_model),
     )
     annotate_alias_receipts(result)
+    annotate_quilt_result_ids(result)
     from creo_mechdog.geometry_deviation import normalize_solver_receipt
 
     for operation in result["operations"]:

@@ -38,6 +38,20 @@
 
 2026-11-15 Creo 12.4 实机测量（50×30×10 块、70°、腿距 3 mm）：`PRO_CHM_ANG_X_D` 的 `PRO_E_RNDCH_LEG1` 是线性腿距、`LEG2` 是角度（写反时特征 status=6）；腿距量在 `angle_reference` 指定的面上，另一面腿长为 3·tan70°=8.2424 mm，去除体积与 0.5·3·8.2424·50 一致，保存重载通过。`chamfer_type` 只是准入别名，native 载荷仍靠 `angle_deg`/`angle_reference` 存在与否区分，等距倒角载荷与旧版一致。
 
+## 两距离不等距倒角（FEAT-071）
+
+`chamfer_type="d1_d2"` 表示两个相邻面分别退距：必须同时给出 `distance_1`、`distance_2`（正数，mm）与 `reference_surface`（显式面引用），并拒绝 `size`/`distance` 及 `angle_deg`/`angle_reference`。原生据此写 `PRO_CHM_D1_X_D2`，`LEG1` 取 `distance_1`、`LEG2` 取 `distance_2`，同时写 SDK 要求的 `PRO_E_RNDCH_REFERENCE_SURFACE`。
+
+```json
+{"op": "chamfer", "label": "bevel", "references": [{"edge": {"kind": "geometry_selector", "target": "edge", "endpoints_mm": [[0,0,10],[50,0,10]], "tolerance_mm": 0.001}}], "chamfer_type": "d1_d2", "distance_1": 2, "distance_2": 5, "reference_surface": {"kind": "geometry_selector", "target": "surface", "axis": [0,0,1], "points_mm": [[25,15,10]], "tolerance_mm": 0.001}}
+```
+
+SDK 依据：本机 `ProChamfer.h` 声明 `PRO_CHM_D1_X_D2 = 603`，该 schema 要求 `PRO_E_RNDCH_LEG1`、`PRO_E_RNDCH_LEG2` 与 `PRO_E_RNDCH_REFERENCE_SURFACE`。
+
+2026-11-21 本机 Creo 10.0.0.0（release 42）实机（50×30×10 块，顶边 y=0/z=10，`reference_surface`=顶面）：`distance_1`/`distance_2` 分别为 2/5 时，前侧面腿 2.0 mm、顶面腿 5.0 mm；对调为 5/2 时前侧面 5.0 mm、顶面 2.0 mm。即在该参考面组合下 **D1 落在未在 `reference_surface` 指定的相邻面，D2 落在 `reference_surface` 指定的面**，两次去除体积均为 0.5·2·5·50 = 250 mm³，保存重载通过。其他参考面组合、曲面边与其他 Creo 版本未验，本实现仍不从边/面集合顺序或法向推断方向。
+
+独立工具 `creo_chamfer` 与计划操作共用同一契约：`distance`（或 `size`）对应等距，`chamfer_type`/`angle_deg`/`angle_reference` 对应距离+角度，`distance_1`/`distance_2`/`reference_surface` 对应 `d1_d2`；等距与距离+角度的旧载荷与行为不变。
+
 
 ## 显式平面几何 ID（BUG-084 / T03）
 
@@ -212,7 +226,7 @@
 - 回执 `boundary_conditions[]` 逐项回显 `boundary`、`condition`、`edge_id`、`surface_id`；写入的项另有 `status="written"`、`tnc_index`、`tan_cond_type`、`stretch`、`connect_chain="kernel_default"`。
 - 实测：两张 40×10 mm 竖直曲面带相距 20 mm，用两条顶边作截面、不加导线。自由时补面为 800 mm² 平面，与曲面带成 90°；两端 `tangent` 时补面成拱形，982.5888 mm²，包围盒 z 最高 15.12 mm，与两张曲面带分别 JOIN 后用 `creo_measure_surface_curvature` 测得接缝法向夹角均为 0.0°（`within_g1=true`）。
 
-`extrude(mode="surface")`、`revolve(mode="surface")`（含局部角度）以及曲面特征上的 `axis_pattern` 已有 Creo 10 报告方实机正证据；它们不替代多截面放样或 quilt 合并。`creo_quilt_merge` 自 0.19.0（FEAT-039 H03）起已公开：只支持两片相接/相交 quilt 的 JOIN，在 `target` 上原地重剪（`result_quilt_source="retrimmed_target_quilt"`）。**merge 的结果没有可独立引用的 quilt 标签**：下一次 merge、`solidify` 或 `thicken` 必须继续引用**原始 target** 的标签或几何 ID，用 merge 特征标签会得到 `ProFeatureGeomitemVisit -4`（2026-11-10 Creo 10 上报，同计划与跨计划均复现，见 [BUG-115](work-items/BUG-115.md)）。修剪结果 quilt 通过特征标签再次引用、弯曲 quilt 的偏置距离读回与保留侧的几何判据仍未闭环；需要从当前模型的 `inspect_model(section="quilts")` 获取实际几何 ID，不能把请求值当成实测值。
+`extrude(mode="surface")`、`revolve(mode="surface")`（含局部角度）以及曲面特征上的 `axis_pattern` 已有 Creo 10 报告方实机正证据；它们不替代多截面放样或 quilt 合并。`creo_quilt_merge` 自 0.19.0（FEAT-039 H03）起已公开：只支持两片相接/相交 quilt 的 JOIN，在 `target` 上原地重剪（`result_quilt_source="retrimmed_target_quilt"`）。**merge/mirror/trim 的结果在 BUG-143 起可由特征标签重新引用**：原生把该标签解析为操作实测的结果 quilt（同计划内），回执同时给出 `quilt_id`；无法唯一定位结果 quilt 时明确拒绝并附候选，不按 bbox 或最近 quilt 猜测。2026-11-21 本机 Creo 10 实机：`quilt_merge` 结果标签被同计划的 `solidify` 消费，`target_quilt_id=71`、体积 785.3981633974481 mm³、保存重载通过；`surface_fill` 标签同样可被引用（开放 quilt 被正确拒绝）。标签别名按作业持有，**跨作业**应使用前一次回执发布的 `quilt_id`，或继续引用**原始 target** 的标签或几何 ID；旧版本解析 merge 特征标签会得到 `ProFeatureGeomitemVisit -4`（2026-11-10 Creo 10 上报，见 [BUG-115](work-items/BUG-115.md)）。修剪结果 quilt 通过特征标签再次引用、弯曲 quilt 的偏置距离读回与保留侧的几何判据仍未闭环；需要从当前模型的 `inspect_model(section="quilts")` 获取实际几何 ID，不能把请求值当成实测值。
 
 ## 各工具的外层形状
 
@@ -341,7 +355,7 @@ label 永远不是身份：同名 label 可以存在于不同模型，删除重�
 部署核对方法（仅用公开 MCP 接口，不读源码）：
 
 1. 用 `creo_capabilities`（或 `creo_check_update`）读当前部署的 `version`/`current_version`：低于 0.3.7 的部署没有计划别名，独立工具的 `radius`/`distance` 参数一直可用。
-2. 在客户端 `tools/list` 或 `creo_capabilities` 的 tools 分节核对 schema：`creo_round` 输入为 `radius`（无 `size`），`creo_chamfer` 输入为 `distance`，`creo_execute_plan` 的 round/chamfer 操作含 `size` 与别名字段。
+2. 在客户端 `tools/list` 或 `creo_capabilities` 的 tools 分节核对 schema：`creo_round` 输入为 `radius`（无 `size`），`creo_chamfer` 以 `distance`（或 `size`）表示等距，并在 FEAT-071 之后同时接受 `chamfer_type`/`angle_deg`/`angle_reference` 与 `distance_1`/`distance_2`/`reference_surface`（见「两距离不等距倒角」），`creo_execute_plan` 的 round/chamfer 操作含 `size` 与别名字段。
 3. 实测一条最小请求：任一入口提交成功后，提交返回与终态均出现 `operations[].size` 且数值等于输入；给 round 同时传 `size` 与 `radius`（或给 round 传 `distance`）应被明确拒绝。
 
 外部 0.3.1/0.3.4/0.3.5 的参数名差异反馈来自别名引入前的部署；在核对真实请求与受测部署身份之前，不把这些旧反馈计为当前实现的回归。
@@ -395,10 +409,87 @@ executable 仅表示静态能力/schema 准入；native/saved_reload 恒为 not_
 - 不支持 `closed`：周期 B 样条需要周期节点，请改用 `spline` 的
   `closed=true`。`dimensioning="coordinates"` 仍只接受
   line/centerline/rectangle/polyline/circle/arc，`b_spline` 走 autodim。
+- `b_spline` 会让草图的 `profile` 报告变成 `analysis="partial"`：该报告只展开
+  line/arc/circle/rectangle/polyline，`b_spline`/`spline`/`ellipse` 只记入
+  `categories.unsupported`，因此 `entity_count`/`contour_count`/
+  `closed_contour_count` 是**下界**。两条首末相接的闭合 `b_spline` 可以同时出现
+  `profile.entity_count=0` 与 `native_section.entities=2`，这不是内核丢轮廓，也不是
+  草图没闭合：判断闭合看 `native_section`（`closed_contours`/`open_ends`）或只读
+  `creo_measure_surface_group`。不要用 `profile` 计数否证一次已成功的草图提交。
 - `b_spline` 仅支持创建；`update_sketch_geometry` 不能改写其 degree/knots/weights，
   需要变更时重建草图。
 - 可用性不依赖 `Probbl.h`；草图实体写入只需要 `Pro2dEntdef.h` 的
   `PRO_2D_B_SPLINE` 定义。
+
+## 零匹配边选择器的诊断范围（DEV-098）
+
+`{"kind":"geometry_selector","target":"edge",...}` 零匹配或多匹配都拒绝，失败回执给出
+`candidate_count`、`matched_ids`、`tolerance_mm`，但**不返回最近候选边**。截至本批，
+只有 `sheetmetal_flange` 旧 `edge_geometry` 路径写 `edge_geometry_diagnostic`
+（`nearest_edges` 最多 5 项：`id`、`endpoints_mm`、`endpoint_errors_mm`），见上文
+DEV-074 增量。所以 `round`/`chamfer` 等通用选择器报 "matched none of the N eligible
+model edges" 时，只能重新 `creo_inspect_model(section="edges")` 按端点自行比对，或
+改用当前巡检的 `{kind:"edge",id:N}`。
+
+通用选择器的最近候选诊断**尚未接入运行时**：需要
+`native/geometry_selectors.cpp::match_geometry_edge_selector()` 在零匹配分支调用
+`geometry_diagnostics::nearest_candidates()` 并写入 `outcome.diagnostic`（字段与
+`flange_geometry_edge_id()` 一致，最多 5 项，按最大端点误差再按 id 排序），再由
+`job_projection` 保留该块。本批不改 native，因此这里不写成已生效行为；任何最近候选
+都只是诊断，不会被自动选中，也不会放宽严格匹配。
+
+## quilt closure 的三种含义（DEV-098）
+
+`closure`（`creo_inspect_model(section="quilts")`、`quilt_merge`、`solidify` 回执）
+来自原生 `ProQuiltVolumeEval`（`native/surface_measure.h`），只有三类结果：
+
+| 回执 | 含义 | 不能推出 |
+| --- | --- | --- |
+| `available=true`、`query_code=0` | 内核返回了体积 | 边界拓扑闭合（单片封盖面也可返回体积） |
+| `reason="quilt_is_open"`（内核码 `PRO_TK_INVALID_TYPE`） | 该 quilt 对体积求值开放 | 一定不能实体化 |
+| `reason="quilt_volume_eval_failed"`（外部 Creo 10 实测 `-62`） | 体积求值失败 | 边界不闭合，或 `solidify` 一定失败 |
+| 缺块 / `unit_scale_unknown` | 未知 | 任何 true/false |
+
+已记录的实测（0.32.0 外部 Creo 10）：3 面壳体 `closure` 为 `-62`/
+`quilt_volume_eval_failed`，同一 quilt 的**单步** `solidify` 仍 `succeeded` +
+`committed`；单片封盖 `surface_fill` 报 `closed: true`，几何上并不是闭合壳体。
+因此：
+
+- **拓扑闭合**看只读 `creo_measure_surface_group`（`state`、`boundary_closed`、
+  `open_edge_records`），不是 `closure`；
+- **能否实体化**只看实际 `solidify` 记录的 `execution_status`/`effect_status`；
+- 未知保持 `null`；`creo_mechdog.diagnostic_semantics.closure_semantics()` 与本文件
+  都不把它折算成 true/false。
+
+## 已验证的分步曲面路径：开放壳体封口并实体化（DEV-098 引用）
+
+来源是 0.32.0 外部报告（Creo 10.0.0.0，`release_numeric=42`）的球鼻艏案例，
+原件在 `docs/validation/feedback-0.33.0-2026-11-21/`；**本仓库本批未实机复验**，
+不能当作本机或当前版本已验收。
+
+`surface_boundary_fill` 仍不可用（见 `UNAVAILABLE_OPERATIONS`）；开放壳体封口用
+「闭合双 `b_spline` 草图 + `surface_fill` + `quilt_merge`」绕行，且每步必须是**独立
+作业**，等到 `saved_file_reloaded_and_verified=true` 再进入下一步。
+
+| 步骤 | 工具 | 关键参数 | 该报告中的产出 |
+| --- | --- | --- | --- |
+| 1 | `creo_surface_loft`（`creation_route:"resident_panel"`） | 7 截面 + 末端点 | quilt 144 / 490,915.028962 mm² |
+| 2 | `creo_mirror` | `target:{kind:"quilt",id:144}`、`plane:{id:4}` | quilt 155 |
+| 3 | `creo_quilt_merge` | target 144 + tool 155 | quilt 144 → 2 面 / 981,830.165755 mm² |
+| 4 | `creo_create_sketch` + `surface_fill` | 闭合双 `b_spline`（plane id 41） | quilt 196 / 59,827.268099 mm² |
+| 5 | `creo_quilt_merge` | target 144 + tool 196 | quilt 144 → 3 面 / 1,041,657.460478 mm² |
+| 6 | `solidify` | `reference:{kind:"quilt",id:144}`、`mode:"add"`、`new_body:true`、`side:"positive"` | 实体，54,905,286.63066032 mm³ |
+
+三条规则（同一报告实测）：
+
+1. `merge`/`mirror`/`trim` 的结果在 BUG-143 起可继续用 feature label 引用：原生把该 label 解析为操作实际测量到的结果 quilt，回执同时给出 `quilt_id`；无法唯一确定结果 quilt 时在提交前或执行中明确拒绝并附候选，不按 bbox/最近 quilt 猜测。该解析在目标 Creo 实机核对前，`{kind:"quilt",id:N}` 仍是唯一已证实的引用方式（旧版本解析 label 会 `ProFeatureGeomitemVisit -4`）；
+2. 不要把这几步放进同一个 `operations` 数组；
+3. 每次 `quilt_merge` 后重新 `creo_inspect_model(section="quilts")` 取当前
+   `quilt_id`，不复用合并前的假设。
+
+封盖草图在该报告中为两条闭合 `b_spline`，`native_section` 给出 `closed_contours=1`、
+`open_ends=0`、端点偏差 2.84e-14 mm；其 `profile` 因 `b_spline` 不受支持而是
+`partial`，计数不能用来反驳——见上文 b_spline 一节。
 
 ## 装配位姿矩阵与约束组（DEV-092 / BUG-133，开发分支）
 

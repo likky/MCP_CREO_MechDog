@@ -16,6 +16,42 @@
 > **版本归属说明（2026-11-05 补记）：** 当时**已发布**版本为 **0.12.1**，本次交付候选为 **0.13.0**（开发分支验收完成，未合并 main、未发布，见[发布记录](validation/RELEASE-0.13.0.md)）；下文分节按写作时点保留各自结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
 > **版本归属说明（2026-11-04 补记）：** 当时正式版为 **0.12.0**（见下方对应分节）。本文件按版本分节保留各自时点的结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
 
+## 2026-11-21：DEV-098 诊断语义与文档契约（离线，本机未实机复验）
+
+本节只收口回执语义，不改变任何原生能力、公开工具数或通道/revision 边界。详细 JSON
+形状见 [REFERENCE_SYNTAX](REFERENCE_SYNTAX.md)。
+
+- **b_spline 的 `profile` 是下界**：草图的 `profile` 由 Python 按输入坐标分析
+  （`method="analytic-input"`），只展开 line/arc/circle/rectangle/polyline；
+  `b_spline`/`spline`/`ellipse` 记入 `categories.unsupported` 并令
+  `analysis="partial"`。两条闭合 `b_spline` 可同时报 `profile.entity_count=0` 与
+  `native_section.entities=2`，不是内核丢轮廓。闭合与数量以 `native_section`
+  （`closed_contours`/`open_ends`）或 `creo_measure_surface_group` 为准；
+  `creo_mechdog.diagnostic_semantics.describe_profile_consistency()` 在 `partial`
+  时返回 `consistent=null`，不做 true/false 折算。
+- **`dimensioning="coordinates"` 仍不含 `b_spline`**：坐标尺寸只支持
+  line/centerline/rectangle/polyline/circle/arc，`b_spline`（以及 spline/ellipse）走
+  autodim；`sketch_dimensioning.limits` 已显式点名 `b_spline`。
+- **quilt `closure` 三态不是可实体化判据**：`available=true`（返回体积）、
+  `quilt_is_open`（内核判定开放）、`quilt_volume_eval_failed`（求值失败，外部
+  Creo 10 实测 `-62`）。记录过的反例：`-62` 的 3 面壳体单步 `solidify` 仍
+  `committed`；单片封盖报表 `closed: true`。拓扑闭合看
+  `creo_measure_surface_group.boundary_closed`/`open_edge_records`，能否实体化只看
+  `solidify` 的 `execution_status`/`effect_status`；未知保持 `null`。
+- **隐藏窗口与 hung 标记**：`creo_process_snapshot` 中 `windows.state="hidden_only"`
+  且 `visible_count=0` 时的 `hung_window_observed=true` 只说明某个**隐藏**顶层窗口不
+  响应（例如 launcher），`visible_hung_window_observed=false`。它不证明可见主窗口
+  卡死、不证明 Creo 不可用，也不构成结束进程的理由；同一次快照里 `xtop.exe` 可能
+  仍是 `visible`。`hung_implies_modal` 恒为 false：hung 窗口与 Dashboard/模态对话框
+  是不同条件，`connection_guidance()` 已按可见/隐藏分别解释。
+- **零匹配边选择器**：只有 `sheetmetal_flange` 旧 `edge_geometry` 提供
+  `edge_geometry_diagnostic.nearest_edges`；通用 `geometry_selector` 零匹配仍只有
+  `candidate_count`/`matched_ids`，最近候选诊断尚未接入 native，见
+  REFERENCE_SYNTAX「零匹配边选择器的诊断范围」。
+- **分步曲面路径**：`surface_boundary_fill` 不可用时的封口绕行（闭合双 `b_spline`
+  草图 + `surface_fill` + `quilt_merge` + `solidify`，六步独立作业）已按 0.32.0
+  外部 Creo 10 报告写入 REFERENCE_SYNTAX；那是外部历史证据，本机本批未复验。
+
 ## 2026-11-13：Creo 13.4.0.0 编译层实测与无图形启动（随 0.24.1 披露）
 
 - **编译证据**：报告环境 Creo 13.4.0.0（`release_numeric=45`）用 13.4 Toolkit SDK 一次编译通过，`creo_worker.exe constants` 自检 rc=0，`native/constants.inc` 正常生成。本机无 Creo 13.4 SDK，未复现。

@@ -1,5 +1,7 @@
 # 开发入口
 
+2026-11-21（0.35.0 发布）：MINOR，公开工具仍 110。桌面 `0.33.0` 三份反馈首批交付：[BUG-143](work-items/BUG-143.md) 曲面结果回执给出实测 `quilt_id`，同计划 merge/fill 标签可被 `solidify` 消费（本机 Creo 10 实机 785.3981633974481 mm³、保存重载通过）；[FEAT-071](work-items/FEAT-071.md) 新增 `d1_d2` 两距离倒角（实机 2/5 与 5/2 各去除 250 mm³）；[BUG-142](work-items/BUG-142.md) 断连前结果预发布与非 UTF-8 容错（实机复现 `0xC0000409`，根因未定位）；[BUG-140](work-items/BUG-140.md)/[BUG-141](work-items/BUG-141.md) 启动指纹惰性求值与已退出进程判断；[DEV-098](work-items/DEV-098.md) 诊断语义与文档契约。未验：Creo 12.4/9、WorkBuddy 黑盒、mirror/trim 标签实机消费。发布核对见 [RELEASE-0.35.0](validation/RELEASE-0.35.0.md)。
+
 2026-11-19（0.29.0 发布）：MINOR，公开工具仍 109。[BUG-120](work-items/BUG-120.md) 把 Creo 10 `resident_panel` 的 candidate-3 升为公开认证 profile：第一方向 2—8 曲线或首/末单点、可选 2—8 条第二方向导线、最多 11 个位置；新增认证记录 `creo10-bbl-2026-11-19.json` 绑定 2+2、2+3、2+点、7+3 与两段式球鼻艏实体五组实机案例，并用 `require_panel_directions()` 把“profile 无第二方向槽却请求导线”改为提交前拒绝。**不认证**：单特征“7 曲线 + 点 + 3 导线”在 Creo 10 再生失败，点收敛段需作为共享末截面的第二个放样；真实船体非圆剖面映射未做。发布核对见 [RELEASE-0.29.0](validation/RELEASE-0.29.0.md)。
 
 2026-11-19（0.28.0 发布）：MINOR，公开工具仍 109。[BUG-120](work-items/BUG-120.md) 的 Creo 10 `resident_panel` 边界混合路线完成认证与实机：认证 profile `creo10-bbl-candidate-2` 的 2—8 曲线放样、WorkBuddy 两轮黑盒（面板曲面链与半圆柱镜像/合并/封口/实体化，体积 6283.1853 mm³）；candidate-3 增加第二方向导线/末端单点与 11 位置票据上限，已验证 2+2、2+3、2+点、7+点、7+3 与两段式球鼻艏演示体实体化（体积 167543.67 mm³）。**未通过**：11 位置“7 曲线 + 点 + 3 导线”单特征在 Creo 10 再生失败，边界收窄为“末端基准点 + 任意导线”组合；真实船体剖面与非圆截面映射未做。发布核对见 [RELEASE-0.28.0](validation/RELEASE-0.28.0.md)。

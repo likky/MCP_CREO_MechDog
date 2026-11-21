@@ -14,10 +14,12 @@ from __future__ import annotations
 
 import hashlib
 import itertools
+from collections.abc import Callable
 from pathlib import Path
 
 # Identifies the normalized fingerprint algorithm stored in build caches.
 FINGERPRINT_ALGORITHM = "sha256-repo-lf-v1"
+LEGACY_CANDIDATE_DEPENDENCY_LIMIT = 8
 
 
 def normalize_lf(data: bytes) -> bytes:
@@ -44,7 +46,9 @@ def normalized_digest(prefix: bytes, abi_digest: bytes, snapshot: dict[str, byte
 
 
 def match_cached_fingerprint(
-    cache: object, current_fingerprint: str, legacy_candidates: set[str]
+    cache: object,
+    current_fingerprint: str,
+    legacy_candidates: set[str] | Callable[[], set[str]],
 ) -> tuple[bool, str | None]:
     """Match a build cache against the normalized fingerprint.
 
@@ -61,7 +65,10 @@ def match_cached_fingerprint(
             return True, cache.get("generation_key") or current_fingerprint
         return False, None
     legacy = cache.get("fingerprint")
-    if isinstance(legacy, str) and legacy in legacy_candidates:
+    if not isinstance(legacy, str):
+        return False, None
+    candidates = legacy_candidates() if callable(legacy_candidates) else legacy_candidates
+    if legacy in candidates:
         return True, legacy
     return False, None
 
@@ -76,8 +83,11 @@ def legacy_digest_candidates(
     expanded into its original, LF-only and CRLF-only form and the raw-byte
     algorithm is recomputed for every combination. An exact match means the
     cached generation can be reused without rebuilding the DLL or moving the
-    registered loader directory.
+    registered loader directory. Abnormal dependency counts conservatively
+    rebuild instead of attempting an unbounded Cartesian expansion.
     """
+    if len(snapshot) > LEGACY_CANDIDATE_DEPENDENCY_LIMIT:
+        return set()
     variants: list[list[bytes]] = []
     for data in snapshot.values():
         lf = normalize_lf(data)

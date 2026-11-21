@@ -2,6 +2,15 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
+## v0.35.0（2026-11-21，发布前快照）
+
+- 版本与范围：`0.35.0` MINOR 部分交付，公开工具仍 110；交付桌面 `0.33.0` 三份反馈首批——[BUG-143](../work-items/BUG-143.md) 曲面结果回执给实测 `quilt_id` 且同计划 merge/fill 标签可被 `solidify` 消费；[FEAT-071](../work-items/FEAT-071.md) `d1_d2` 两距离倒角；[BUG-142](../work-items/BUG-142.md) 断连前结果预发布与非 UTF-8 容错；[BUG-140](../work-items/BUG-140.md)/[BUG-141](../work-items/BUG-141.md) 启动链修复；[DEV-098](../work-items/DEV-098.md) 诊断语义与文档契约。发布记录见 [RELEASE-0.35.0](../validation/RELEASE-0.35.0.md)。
+- 打包顺序：`tools\package_seeds.py` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools\package.py` → 标签/发布 → `tools\check_release_assets.py` 远端复核。
+- 种子包 SHA256 `8f7c1645d7a324f674de6f486bd83aca0f4ad99e5abd50177843fedc6352f02d`（24 个文件、9 个种子，两次构建摘要一致；包内 `seed_manifest.json` 声明 `compatible_server_version=0.35.0`）。
+- 源码包由发布提交源码构建，字节数与 SHA256 见同名 sidecar，不写入包内文件。
+- Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.0`（发布后执行，当前未验证）；四附件为 `MCP_CREO_MechDog-0.35.0-source.zip`、`MCP_CREO_MechDog-0.35.0-source.zip.sha256`、`MCP_CREO_MechDog-0.35.0-seed-library.zip` 与 `MCP_CREO_MechDog-0.35.0-seed-library.zip.sha256`。
+- 发布后核对结果与附件摘要追加在本段；冻结源码包内保持本快照措辞，不回写已发布附件。
+
 ## v0.34.0（2026-11-21，发布后已核对）
 
 - 版本与范围：`0.34.0` MINOR 部分交付，公开工具 109→110；交付 0.31.1/0.32.0 反馈剩余项 + BUG-120 实体化链路收官——[FEAT-070](../work-items/FEAT-070.md) 新增 `creo_redefine_solidify_body`，以 `strategy=new` 重建失效主体参照、解除 `BOW_BULB_SOLID`（feature 250）自锁；[BUG-137](../work-items/BUG-137.md) 隔离 `subprocess.Popen` 消除全量单测 teardown WinError 32，并加“全量通过”口径须 `success=true` 报告的发布门禁；[BUG-138](../work-items/BUG-138.md) 去除验收脚本硬编码工具数 82/84、改以 `creo_capabilities` 为准，`dev_check` 新增离线验收门禁；[BUG-139](../work-items/BUG-139.md) 启动协调器探测超时可配/循环外成功落地/连接相位/预算分段/准入降级/身份归因/文案修复；[DEV-097](../work-items/DEV-097.md) Release 正文自证门禁（四附件名 + sidecar 指引 + 摘要比对，≥0.34.0 强制执行，历史版本祖父化）。发布记录见 [RELEASE-0.34.0](../validation/RELEASE-0.34.0.md)。

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "version": "0.35.0",
+  "previous_version": "0.34.0",
+  "previous_release_tag": "v0.34.0",
+  "previous_release_commit": "bbd81cdbaa92f7acdc1988d574dfdab832e01bed",
+  "remote_verification": "pending",
+  "delivery_ids": [
+    "BUG-140",
+    "BUG-141",
+    "BUG-142",
+    "BUG-143",
+    "DEV-098",
+    "FEAT-071"
+  ],
+  "frozen_on": "2026-11-21",
+  "note": "Frozen from this batch's actual changes, the main ledger and the work cards. This batch implements the first pass of the three 0.33.0 desktop feedback reports: BUG-143 (surface_fill/quilt_merge/mirror/surface_trim receipts publish the measured quilt_id and same-plan merge/fill labels resolve to it, so solidify consumes the merge result; live Creo 10 closed cylinder plan 785.3981633974481 mm3 with save/reload), FEAT-071 (chamfer_type=d1_d2 two-distance chamfer sharing one contract with the standalone creo_chamfer; live 2/5 and 5/2 swaps each remove 250 mm3, D1 lands on the non-reference adjacent face), BUG-142 (pre-disconnect result publication plus non-UTF-8 tolerant receipt writing; 0xC0000409 reproduced live, stack-cookie root cause still unknown), BUG-140 (lazy legacy fingerprint candidates with an 8-dependency cap; 0.415647 s/1024 candidates to 1.8 us/0 calls), BUG-141 (only ignore processes provably exited; selection_required is not bypassed), DEV-098 (b_spline/closure/window/selector diagnostic semantics and documentation contracts). Public tools stay at 110. Update only before packaging a new candidate, never to make a failing table pass."
+}

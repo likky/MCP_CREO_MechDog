@@ -1,0 +1,23 @@
+{
+  "source_directory": "C:/Users/Administrator/Desktop/0.33.0",
+  "archived_at": "2026-11-21",
+  "files": [
+    {
+      "archive_path": "originals/startup-chamfer.md",
+      "source_name": "2026-11-20+CREO+0.32.0+不等距倒角不可表达与启动链自锁只能重启Windows.md",
+      "sha256": "8f90547656bcb6deaf7a7d0dccc7221545facfb5b9efbeacb0f413bdeba8d543"
+    },
+    {
+      "archive_path": "originals/surface-worker.md",
+      "source_name": "2026-11-20+CREO+0.32.0+合并结果无法被solidify引用且worker退出崩溃.md",
+      "sha256": "6e96a11f447e1ce03e8e9e05dfde85fc5285d921bda209bff026ce9b7ab79761"
+    },
+    {
+      "archive_path": "originals/acceptance-tools.md",
+      "source_name": "2026-11-20_CREO_0.33.0_全测全绿但独立验收脚本硬编码工具数82跨8版本必失败.md",
+      "sha256": "7e3f422597243aec5ee7622f37d2e6a31c67a37eaf2cff29f240087879c14369"
+    }
+  ],
+  "evidence_package": "C:/Users/Administrator/Desktop/0.33.0/反馈-球鼻艏-0.32.0-20261120",
+  "notes": "三份报告按字节归档。验收脚本工具数与 Popen 竞态已由 BUG-137/BUG-138 在 0.34.0 交付，本轮仅复验，不重复登记。证据包保留在原目录，只读引用。"
+}

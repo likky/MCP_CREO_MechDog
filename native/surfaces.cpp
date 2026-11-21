@@ -70,6 +70,73 @@ static void generic_points(const J &op) {
     ProElementFree(&root);
     remember(op, f);
 }
+static int verified_feature_quilt(ProFeature &f) {
+    J ids = J::array();
+    if (ProFeatureGeomitemVisit(&f, PRO_QUILT, collect_geom_ids, nullptr, &ids) !=
+            PRO_TK_NO_ERROR ||
+        ids.size() != 1 || !ids[0]["id"].is_number_integer())
+        return -1;
+    int id = ids[0]["id"].get<int>();
+    ProQuilt quilt = nullptr;
+    if (id < 0 || ProQuiltInit((ProSolid)board, id, &quilt) != PRO_TK_NO_ERROR || !quilt)
+        return -1;
+    return id;
+}
+static ProSelection solidify_quilt_selection(const J &reference) {
+    if (reference.at("kind") != "quilt_feature")
+        return resolve(reference);
+    std::string label = reference.at("label").get<std::string>();
+    const J *entry = alias_entry(label);
+    if (!entry)
+        return resolve(reference);
+    std::string result_op = entry->value("op", std::string());
+    if (result_op != "quilt_merge" && result_op != "mirror" && result_op != "surface_trim")
+        return resolve(reference);
+
+    auto units = inspect_length_units(board);
+    auto scale = length_scale_to_mm(board, units);
+    auto verified_selection = [&](int id) {
+        ProQuilt quilt = nullptr;
+        if (id < 0 || ProQuiltInit((ProSolid)board, id, &quilt) != PRO_TK_NO_ERROR || !quilt)
+            throw std::runtime_error("Solidify result label '" + label + "' recorded quilt id " +
+                                     std::to_string(id) +
+                                     ", but that quilt is not usable in the current model" +
+                                     quilt_candidates_hint((ProSolid)board, units, scale));
+        return selection(id, PRO_QUILT);
+    };
+
+    // Merge and trim remember the quilt actually measured by their native
+    // implementation. Never replace that relation with a feature reverse visit:
+    // a merge result can still belong to the original target feature.
+    const char *id_key = result_op == "surface_trim" ? "result_quilt_id" : "quilt_id";
+    auto recorded = entry->find(id_key);
+    if (recorded != entry->end() && recorded->is_number_integer())
+        return verified_selection(recorded->get<int>());
+
+    // A mirror created earlier in this same atomic plan has not passed through
+    // Python closeout yet. Use the kernel's exact feature/quilt membership and
+    // accept it only when it names one quilt; bbox and recency play no part.
+    if (result_op == "mirror" && entry->at("feature_id").is_number_integer()) {
+        int feature_id = entry->at("feature_id").get<int>();
+        J collected = collect_model_quilts((ProSolid)board, units, scale);
+        std::set<int> matches;
+        for (const auto &record : collected["records"]) {
+            if (!record["quilt_id"].is_number_integer() || !record["feature_ids"].is_array())
+                continue;
+            for (const auto &owner : record["feature_ids"])
+                if (owner.is_number_integer() && owner.get<int>() == feature_id) {
+                    matches.insert(record["quilt_id"].get<int>());
+                    break;
+                }
+        }
+        if (matches.size() == 1)
+            return verified_selection(*matches.begin());
+    }
+    throw std::runtime_error("Solidify result label '" + label + "' (" + result_op +
+                             ") does not identify exactly one usable result quilt; use the "
+                             "operation receipt's quilt_id as {kind:\"quilt\",id:N}" +
+                             quilt_candidates_hint((ProSolid)board, units, scale));
+}
 static void generic_fill(const J &op) {
     ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
     integer(root, PRO_E_FEATURE_TYPE, PRO_FEAT_DATUM_SURF);
@@ -80,7 +147,17 @@ static void generic_fill(const J &op) {
     ProSelectionFree(&s);
     ProFeature f = create(root);
     ProElementFree(&root);
-    remember(op, f);
+    J details = {{"feature_id", (int)f.id}};
+    int quilt_id = verified_feature_quilt(f);
+    if (quilt_id >= 0) {
+        details["quilt_id"] = quilt_id;
+        remember(op, f, {{"quilt_id", quilt_id}});
+    } else {
+        // Zero/ambiguous/unreadable geometry stays unidentified; never borrow a
+        // nearby quilt merely to fill the receipt.
+        remember(op, f);
+    }
+    stage_operation_result(details);
 }
 static void generic_surface_solid(const J &op) {
     bool thin = op["op"] == "thicken", cut = op.value("mode", "add") == "cut";
@@ -88,7 +165,7 @@ static void generic_surface_solid(const J &op) {
     // answers for a closed quilt and returns PRO_TK_INVALID_TYPE for an open
     // one, so the closure is measured, not assumed, and an open quilt is
     // refused with that code instead of a bare feature failure.
-    ProSelection s = resolve(op["reference"]);
+    ProSelection s = thin ? resolve(op["reference"]) : solidify_quilt_selection(op["reference"]);
     int target_quilt_id = -1;
     J closure = J(nullptr);
     if (!thin && !cut) {

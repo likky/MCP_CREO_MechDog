@@ -399,7 +399,14 @@ def inventory(settings: Settings) -> dict:
             if entry.name.lower() in ("xtop.exe", "parametric.exe"):
                 target_session = wintypes.DWORD()
                 if not _session(entry.pid, ctypes.byref(target_session)):
-                    uncertain = True
+                    try:
+                        # None means OpenProcess proved the pid absent or
+                        # GetProcessTimes reported its exit. Any live identity
+                        # or query error remains an identity conflict.
+                        if process_identity(entry.pid) is not None:
+                            uncertain = True
+                    except OSError:
+                        uncertain = True
                 elif target_session.value == session_id:
                     try:
                         identity = process_identity(entry.pid)
@@ -828,10 +835,13 @@ class CreoStartup:
 
     def require_ready(self) -> None:
         value = self.status()
-        if self._force_ready or value["connected"]:
+        if value["connected"]:
+            return
+        identity_conflict = value["state"] == "selection_required"
+        if self._force_ready and not identity_conflict:
             return
         recent = value.get("recent_connected_probe") or {}
-        if recent.get("available"):
+        if recent.get("available") and not identity_conflict:
             return
         native = value.get("native") or {}
         try:

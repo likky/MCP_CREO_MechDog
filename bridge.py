@@ -851,12 +851,12 @@ def build_native() -> Path:
     callback_matched, _ = match_cached_fingerprint(
         callback_cache,
         callback_fingerprint,
-        legacy_digest_candidates(b"MSVC17_MD_DLL_v1", abi.digest(), callback_snapshot),
+        lambda: legacy_digest_candidates(b"MSVC17_MD_DLL_v1", abi.digest(), callback_snapshot),
     )
     loader_matched, cached_loader_generation = match_cached_fingerprint(
         loader_cache,
         loader_fingerprint,
-        legacy_digest_candidates(b"MSVC17_MD_LOADER_v1", abi.digest(), loader_snapshot),
+        lambda: legacy_digest_candidates(b"MSVC17_MD_LOADER_v1", abi.digest(), loader_snapshot),
     )
     reuse_callback = (
         blend_dll.is_file()

@@ -4665,6 +4665,10 @@ static J generic_round(const J &op, bool chamfer) {
     // schema). The angle is written in degrees like PRO_E_DRAFT_ANGLE_1; which
     // leg carries it is a live measurement recorded in docs/work-items/DEV-089.md.
     const bool angle_chamfer = chamfer && op.contains("angle_deg");
+    // FEAT-071: D1xD2 requires an explicit reference face and both distance
+    // legs. The SDK does not bind D1 to one adjacent face, so no direction is
+    // inferred here from the edge or face-pair ordering.
+    const bool two_distance_chamfer = chamfer && op.contains("distance_1");
     // DEV-090 G2 probe: PRO_ROUND_CURV_CONTINUOUS is documented for round
     // creation in the installed SDK help; the value is opt-in and this branch
     // writes no CONIC_VALUE/CONIC_DEP_OPT (the help only requires those for
@@ -4674,8 +4678,12 @@ static J generic_round(const J &op, bool chamfer) {
     for (auto refs : op["references"]) {
         ProElement set = node(sets, PRO_E_RNDCH_SET);
         if (chamfer) {
-            integer(set, PRO_E_RNDCH_DIMENSIONAL_SCHEMA,
-                    angle_chamfer ? PRO_CHM_ANG_X_D : PRO_CHM_D_X_D);
+            int dimensional_schema = PRO_CHM_D_X_D;
+            if (angle_chamfer)
+                dimensional_schema = PRO_CHM_ANG_X_D;
+            else if (two_distance_chamfer)
+                dimensional_schema = PRO_CHM_D1_X_D2;
+            integer(set, PRO_E_RNDCH_DIMENSIONAL_SCHEMA, dimensional_schema);
             integer(set, PRO_E_RNDCH_CHAMFER_SHAPE, PRO_CHM_TANGENT_LEGS);
         } else {
             integer(set, PRO_E_RNDCH_SHAPE_OPTIONS, PRO_ROUND_TYPE_CONSTANT);
@@ -4698,8 +4706,9 @@ static J generic_round(const J &op, bool chamfer) {
             ProSelectionFree(&e);
             curve_collection(node(r, PRO_E_STD_CURVE_COLLECTION_APPL), J::array({refs.at("edge")}));
         }
-        if (angle_chamfer) {
-            ProSelection face = resolve(op.at("angle_reference"));
+        if (angle_chamfer || two_distance_chamfer) {
+            ProSelection face =
+                resolve(op.at(angle_chamfer ? "angle_reference" : "reference_surface"));
             ref(r, PRO_E_RNDCH_REFERENCE_SURFACE, face);
             ProSelectionFree(&face);
         }
@@ -4711,11 +4720,15 @@ static J generic_round(const J &op, bool chamfer) {
         // angle. Writing the angle into LEG1 produced d11=70.0 carried as a
         // linear dimension and d12=3.0 carried as an angle (type 21), and the
         // feature then failed regeneration with status 6.
-        real(leg, PRO_E_RNDCH_LEG_VALUE, op.at("size"));
-        if (angle_chamfer) {
-            ProElement angle_leg = node(radius, PRO_E_RNDCH_LEG2);
-            integer(angle_leg, PRO_E_RNDCH_LEG_TYPE, PRO_ROUND_RADIUS_TYPE_VALUE);
-            real(angle_leg, PRO_E_RNDCH_LEG_VALUE, op.at("angle_deg"));
+        if (two_distance_chamfer)
+            real(leg, PRO_E_RNDCH_LEG_VALUE, op.at("distance_1"));
+        else
+            real(leg, PRO_E_RNDCH_LEG_VALUE, op.at("size"));
+        if (angle_chamfer || two_distance_chamfer) {
+            ProElement second_leg = node(radius, PRO_E_RNDCH_LEG2);
+            integer(second_leg, PRO_E_RNDCH_LEG_TYPE, PRO_ROUND_RADIUS_TYPE_VALUE);
+            real(second_leg, PRO_E_RNDCH_LEG_VALUE,
+                 op.at(angle_chamfer ? "angle_deg" : "distance_2"));
         }
     }
     integer(root, PRO_E_RNDCH_ATTACH_TYPE, PRO_ROUND_ATTACHED);
@@ -4723,17 +4736,24 @@ static J generic_round(const J &op, bool chamfer) {
     ProFeature f = create(root);
     CK(ProElementFree(&root));
     remember(op, f);
-    // Echo the applied leg value so callers can compare it with their input,
+    // Echo the applied leg values so callers can compare them with their input,
     // and report the tree-proven set application beside the requested count.
-    J details = {{"size", op.at("size")}};
+    J details = J::object();
+    if (two_distance_chamfer) {
+        details["chamfer_type"] = "d1_d2";
+        details["distance_1"] = op.at("distance_1");
+        details["distance_2"] = op.at("distance_2");
+    } else {
+        details["size"] = op.at("size");
+        if (angle_chamfer) {
+            details["chamfer_type"] = "distance_angle";
+            details["angle_deg"] = op.at("angle_deg");
+        } else if (chamfer) {
+            details["chamfer_type"] = "equal_distance";
+        }
+    }
     if (!chamfer && curvature_continuous)
         details["curvature_continuous"] = true;
-    if (angle_chamfer) {
-        details["chamfer_type"] = "distance_angle";
-        details["angle_deg"] = op.at("angle_deg");
-    } else if (chamfer) {
-        details["chamfer_type"] = "equal_distance";
-    }
     details["reference_application"] = round_reference_application(f, (int)op["references"].size());
     return details;
 }

@@ -188,6 +188,7 @@ OPERATION_KEYS = (
     "size",
     "file",
     "feature_id",
+    "quilt_id",
     "preserved_feature_id",
     "reordered",
     "sheet",

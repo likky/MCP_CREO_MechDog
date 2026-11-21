@@ -1,14 +1,21 @@
-"""DEV-089 T6a live acceptance: distance-angle chamfer.
+"""DEV-089 T6a / FEAT-071 live acceptance: angle and two-distance chamfers.
 
-Offline run prints the planned case. ``--live`` needs an explicit session
+Offline run prints the planned cases. ``--live`` needs an explicit session
 confirmation because it creates models and writes features in the running Creo
 session:
 
   python tools/test_chamfer_angle.py
   python tools/test_chamfer_angle.py --live --confirm-session-usable
 
-Fixture: 50 x 30 x 10 mm block, chamfer the top/front edge (y=0, z=10) with
-distance 3 mm and angle 70 deg, taking the angle from the top face (z=10).
+Distance-angle fixture: 50 x 30 x 10 mm block, chamfer the top/front edge
+(y=0, z=10) with distance 3 mm and angle 70 deg, taking the angle from the top
+face (z=10).
+
+Two-distance fixture: the same block and edge with chamfer_type="d1_d2",
+distance_1/distance_2 swapped between two runs and the top face as the explicit
+reference_surface. Both legs must appear on the block and the removed material
+must match 0.5*d1*d2*50; which face receives D1 is recorded as an observation,
+not assumed.
 
 The result is read from the created geometry, not from the request: the new
 inclined planar face is located, its bounding box gives the two leg lengths and
@@ -33,6 +40,8 @@ TOL = 1e-4
 BLOCK = [50.0, 30.0, 10.0]
 DISTANCE = 3.0
 ANGLE_DEG = 70.0
+D1_MM = 2.0
+D2_MM = 5.0
 
 
 def wait(job_id: str, timeout: float = 300.0) -> dict:
@@ -243,6 +252,106 @@ def run_case(generic_bridge, name: str, reference_axis: list[float], reference_p
     return cases, passed
 
 
+def run_two_distance_case(
+    generic_bridge, name: str, distance_1: float, distance_2: float
+) -> tuple[list[dict], bool]:
+    """FEAT-071: both legs must land on the block, D1/D2 assignment recorded."""
+    cases: list[dict] = []
+    model_id, job = fixture(generic_bridge, name)
+    if not model_id:
+        return (
+            [
+                {
+                    "case": "fixture_block_two_distance",
+                    "status": job.get("status"),
+                    "message": str(job.get("message"))[:400],
+                    "pass": False,
+                }
+            ],
+            False,
+        )
+    before_volume = generic_bridge.get_mass_properties(model_id).get("volume_mm3")
+    receipt = submit(
+        generic_bridge,
+        model_id,
+        [
+            {
+                "op": "chamfer",
+                "label": "t6b_bevel",
+                "chamfer_type": "d1_d2",
+                "distance_1": distance_1,
+                "distance_2": distance_2,
+                "references": [
+                    {
+                        "edge": {
+                            "kind": "geometry_selector",
+                            "target": "edge",
+                            "endpoints_mm": [[0.0, 0.0, BLOCK[2]], [BLOCK[0], 0.0, BLOCK[2]]],
+                            "tolerance_mm": 0.001,
+                        }
+                    }
+                ],
+                "reference_surface": {
+                    "kind": "geometry_selector",
+                    "target": "surface",
+                    "axis": [0.0, 0.0, 1.0],
+                    "points_mm": [[BLOCK[0] / 2, BLOCK[1] / 2, BLOCK[2]]],
+                    "tolerance_mm": 0.001,
+                },
+            }
+        ],
+    )
+    entry = ((receipt.get("result") or {}).get("operations") or [{}])[0]
+    succeeded = receipt.get("status") == "succeeded"
+    after_volume = (
+        generic_bridge.get_mass_properties(model_id).get("volume_mm3") if succeeded else None
+    )
+    faces = inclined_faces(generic_bridge, model_id) if succeeded else []
+    measured = [
+        {"id": face.get("id"), "normal": face.get("normal"), "bbox": face.get("bbox")}
+        for face in faces
+    ]
+    expected_removed = 0.5 * distance_1 * distance_2 * BLOCK[0]
+    legs: dict[str, float] = {}
+    removed = None
+    passed = False
+    if measured:
+        low, high = measured[0]["bbox"]
+        legs = {"y": high[1] - low[1], "z": high[2] - low[2]}
+        if isinstance(before_volume, (int, float)) and isinstance(after_volume, (int, float)):
+            removed = float(before_volume) - float(after_volume)
+        expected_legs = sorted([distance_1, distance_2])
+        observed_legs = sorted(legs.values())
+        passed = (
+            all(abs(a - b) <= 1e-3 for a, b in zip(observed_legs, expected_legs))
+            and (removed is None or abs(removed - expected_removed) <= 1.0)
+            and (receipt.get("result") or {}).get("saved_file_reloaded_and_verified") is True
+        )
+    cases.append(
+        {
+            "case": f"two_distance_d1_{distance_1:g}_d2_{distance_2:g}",
+            "job_id": receipt.get("job_id"),
+            "status": receipt.get("status"),
+            "message": str(receipt.get("message"))[:600],
+            "receipt": {
+                "chamfer_type": entry.get("chamfer_type"),
+                "distance_1": entry.get("distance_1"),
+                "distance_2": entry.get("distance_2"),
+                "reference_application": entry.get("reference_application"),
+            },
+            "leg_assignment": {"front_face_y_mm": legs.get("y"), "top_face_z_mm": legs.get("z")},
+            "material_removed_mm3": removed,
+            "expected_material_removed_mm3": expected_removed,
+            "inclined_faces": measured,
+            "saved_file_reloaded_and_verified": (receipt.get("result") or {}).get(
+                "saved_file_reloaded_and_verified"
+            ),
+            "pass": passed,
+        }
+    )
+    return cases, passed
+
+
 def run_live(generic_bridge) -> tuple[list[dict], bool]:
     stamp = str(int(time.time()))
     first, first_ok = run_case(
@@ -257,7 +366,10 @@ def run_live(generic_bridge) -> tuple[list[dict], bool]:
         [0.0, -1.0, 0.0],
         [BLOCK[0] / 2, 0.0, BLOCK[2] / 2],
     )
-    return first + second, first_ok and second_ok
+    third, third_ok = run_two_distance_case(generic_bridge, f"t6b_d1d2_{stamp}", D1_MM, D2_MM)
+    fourth, fourth_ok = run_two_distance_case(generic_bridge, f"t6b_d2d1_{stamp}", D2_MM, D1_MM)
+    cases = first + second + third + fourth
+    return cases, first_ok and second_ok and third_ok and fourth_ok
 
 
 def main() -> int:
@@ -266,14 +378,31 @@ def main() -> int:
     parser.add_argument("--confirm-session-usable", action="store_true")
     args = parser.parse_args()
     if not args.live:
-        print(json.dumps({"mode": "offline", "cases": ["A_distance_angle"]}))
+        print(
+            json.dumps(
+                {
+                    "mode": "offline",
+                    "cases": [
+                        "A_distance_angle",
+                        "two_distance_d1_2_d2_5",
+                        "two_distance_d1_5_d2_2",
+                    ],
+                }
+            )
+        )
         return 0
     if not args.confirm_session_usable:
         raise SystemExit("pass --confirm-session-usable after checking the live session")
     import generic_bridge
 
     cases, ok = run_live(generic_bridge)
-    report = {"mode": "live", "creo": "12.4.0.0", "cases": cases, "passed": ok}
+    health = ROOT / "build" / "toolkit_health.json"
+    host = (
+        json.loads(health.read_text(encoding="utf-8")).get("host_release")
+        if health.is_file()
+        else None
+    )
+    report = {"mode": "live", "host_release": host, "cases": cases, "passed": ok}
     target = ROOT / "build" / "chamfer_angle.json"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")

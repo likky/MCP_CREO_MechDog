@@ -282,6 +282,25 @@ static ProSelection resolve_quilt_reference(const J &r, ProSolid solid,
                                      quilt_candidates_hint(solid, units, scale));
         return selection(id, PRO_QUILT);
     }
+    // BUG-143: a result label whose quilt was measured by the native operation
+    // resolves through that recorded id first. A merge/mirror/trim result is not
+    // always reachable through its own feature label, and the alias entry only
+    // exists when the operation itself recorded the quilt it produced, so this
+    // is measured evidence rather than a nearest-quilt guess.
+    if (const J *entry = alias_entry(r.at("label").get<std::string>())) {
+        if (entry->is_object()) {
+            for (const char *key : {"quilt_id", "result_quilt_id"}) {
+                auto found = entry->find(key);
+                if (found == entry->end() || !found->is_number_integer())
+                    continue;
+                int id = found->get<int>();
+                ProQuilt quilt = nullptr;
+                if (id < 0 || ProQuiltInit(solid, id, &quilt))
+                    continue; // fall back to the feature visit and its diagnosis
+                return selection(id, PRO_QUILT);
+            }
+        }
+    }
     ProFeature f = feature(r.at("label"));
     J ids = J::array();
     // BUG-115 (2026-11-10 Creo 10 report): a merge/solidify/trim result is not

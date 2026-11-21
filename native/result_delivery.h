@@ -9,7 +9,10 @@
 static bool publish_native_json(const std::wstring &file, const nlohmann::json &value) {
     const std::wstring temporary = file + L".tmp";
     std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
-    output << value.dump(2);
+    // BUG-142: Toolkit error text can carry non-UTF-8 bytes. The default handler
+    // throws, which left a 0-byte native_result.json.tmp and no receipt at all;
+    // replacing the offending bytes keeps the execution/rollback facts readable.
+    output << value.dump(2, ' ', false, nlohmann::json::error_handler_t::replace);
     output.flush();
     bool written = output.good();
     output.close();

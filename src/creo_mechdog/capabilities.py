@@ -610,6 +610,51 @@ KNOWN_LIMITATIONS = (
         "partly circular multi-contour cuts can differ by about 2% from the removed volume",
     },
     {
+        "id": "sketch_profile_partial_counts",
+        "condition": "caller compares sketch profile counts with native_section on a b_spline/spline/ellipse profile",
+        "release": "FEAT-066 b_spline, all releases with analytic profile diagnostics",
+        "evidence": "DEV-098; profile_diagnostics._expand lists those types as unsupported",
+        "configurable": False,
+        "effect": "analysis='partial' makes profile entity/contour counts a lower bound (two closed "
+        "b_splines can report 0 entities while native_section reports 2); closure and counts come "
+        "from native_section or creo_measure_surface_group, and diagnostic_semantics returns "
+        "consistent=null instead of true/false",
+    },
+    {
+        "id": "quilt_closure_not_solidifiable",
+        "condition": "caller uses the quilt closure block to predict topological closure or solidify",
+        "release": "Creo 12.4 and external Creo 10 evidence",
+        "evidence": "DEV-098 / 0.32.0 feedback; native/surface_measure.h quilt_closed_native",
+        "configurable": False,
+        "effect": "closure is only ProQuiltVolumeEval: available (a volume), quilt_is_open or "
+        "quilt_volume_eval_failed. A failed query (-62 on a 3-face shell) does not prove an open "
+        "boundary and did not stop a single-step solidify committing; a single fill face can report "
+        "closed=true. Topology needs creo_measure_surface_group; solidifiability needs the solidify "
+        "effect_status; unknown stays null",
+    },
+    {
+        "id": "hidden_hung_window_scope",
+        "condition": "creo_process_snapshot reports state hidden_only with hung_window_observed=true",
+        "release": "all releases with window observations",
+        "evidence": "DEV-098 / 0.32.0 feedback; window_observations.connection_guidance",
+        "configurable": False,
+        "effect": "only a hidden top-level window (for example a launcher) failed to respond; "
+        "visible_hung_window_observed stays false, hung_implies_modal is always false, and the "
+        "snapshot neither proves the Creo session is stuck nor authorizes ending a process or "
+        "clearing protection",
+    },
+    {
+        "id": "edge_selector_nearest_scope",
+        "condition": "a geometry_selector edge reference matches zero or several edges",
+        "release": "DEV-074 and 0.33.0 feedback",
+        "evidence": "DEV-098 source check: native/geometry_selectors.cpp has no nearest list",
+        "configurable": False,
+        "effect": "only the legacy sheetmetal_flange edge_geometry path reports "
+        "edge_geometry_diagnostic.nearest_edges; round/chamfer and other geometry_selector users get "
+        "candidate_count and matched_ids only, must re-read creo_inspect_model edges or pass "
+        "{kind:'edge',id:N}, and a nearest candidate is never selected automatically",
+    },
+    {
         "id": "surface_round_scope",
         "condition": "edge-chain, variable radius, full/transition or non-adjacent faces",
         "release": "Creo 12.4",
@@ -664,6 +709,19 @@ KNOWN_LIMITATIONS = (
         "evidence": "FEAT-007",
         "configurable": True,
         "effect": "values above 300 are rejected before reading the job",
+    },
+    {
+        "id": "chamfer_d1_d2_direction",
+        "condition": "chamfer_type='d1_d2' per-face leg direction",
+        "release": "FEAT-071",
+        "evidence": "ProChamfer.h PRO_CHM_D1_X_D2 = 603 requires LEG1/LEG2/REFERENCE_SURFACE; "
+        "2026-11-21 Creo 10 block probe: D1 lands on the adjacent face not named by "
+        "reference_surface and D2 on the reference face (2/5 and 5/2 swapped, both 250 mm3)",
+        "configurable": False,
+        "effect": "distance_1/distance_2 and reference_surface are explicit and no face direction "
+        "is inferred from reference order; on the tested Creo 10 block D1 went to the non-reference "
+        "adjacent face and D2 to reference_surface, but other reference combinations, curved edges "
+        "and other Creo versions stay unverified",
     },
 )
 
@@ -1057,7 +1115,7 @@ def families() -> dict:
             "modes": ["auto", "autodim", "coordinates"],
             "scope": "auto selects native coordinate dimensions on any valid sketch plane for supported undimensioned profiles with at least 10 expanded entities or coordinate/radius magnitude above 1000 mm; coordinates can be requested explicitly",
             "native_test": "19-line large-coordinate profile, R40000 12-gon, large capsule on XY and rotated/translated XZ, large YZ circle and explicit-coordinate rectangle; native sketch/solid IDs, named dimension edits, STL boundaries and save/erase/reload verified",
-            "limits": "coordinates supports line/centerline/rectangle/polyline/circle/arc on any valid sketch plane (principal string or dictionary plane), without user dimensions/constraints; input u/v components are named after their dominant native section axis; actual geometry checked to 1e-5 mm when creating/replacing; centerlines are verified as infinite lines (direction and offset) and skewed centerlines carry no endpoint dimensions; spline/ellipse use autodim; no normalization or rigid solving; solid extrude/revolve admission checks multi-loop input for open, branched, self-intersecting, intersecting, tangent, zero-area and near-tolerance contours and rejects only confirmed cases; sketch results report analytic contour/entity counts plus the solved native section counts; geometry_deviation reports post-solve fidelity at SectionRegenerate and CompleteFeature with bounded samples (unavailable measurements stay null with a reason, never zero); coordinates rejects shape changes above 1e-5 mm and autodim warns above 1e-3 mm unless geometry_tolerance_mm forces a stricter or looser cap (finite positive number; bool/NaN/Inf/zero/negative rejected; an explicit cap also rejects unmeasurable geometry); a measured rigid-body translation (every named point moved by the same vector, shape residual <= 1e-9 mm) is a solver artefact rather than a shape change, so it is accepted up to 1e-2 mm and reported with accepted_rigid=true, beyond which it is rejected with the measured translation and the limit; deformed profiles are still rejected at the shape gate; sketch_shifted publishes the post-solve movement at the top level (detected, rigid, translation_mm, residual_mm, shape_deviation_mm, accepted_rigid, max_point_mm, bounded sample) and accepted_by_request marks a moved sketch that only an explicit tolerance let through; geometry_tolerance_mm is an acceptance threshold, not a solve precision; no coordinates_lenient mode; the native solver remains authoritative; not proof of every constraint or extreme shape",
+            "limits": "coordinates supports line/centerline/rectangle/polyline/circle/arc on any valid sketch plane (principal string or dictionary plane), without user dimensions/constraints; input u/v components are named after their dominant native section axis; actual geometry checked to 1e-5 mm when creating/replacing; centerlines are verified as infinite lines (direction and offset) and skewed centerlines carry no endpoint dimensions; spline/ellipse/b_spline use autodim and coordinates refuses b_spline, so requests that put a b_spline in a coordinates sketch are rejected before a job; no normalization or rigid solving; solid extrude/revolve admission checks multi-loop input for open, branched, self-intersecting, intersecting, tangent, zero-area and near-tolerance contours and rejects only confirmed cases; sketch results report analytic contour/entity counts plus the solved native section counts (any b_spline/spline/ellipse entity sets profile analysis='partial', so those counts are a lower bound: compare with native_section, never read the partial profile as a missing contour); geometry_deviation reports post-solve fidelity at SectionRegenerate and CompleteFeature with bounded samples (unavailable measurements stay null with a reason, never zero); coordinates rejects shape changes above 1e-5 mm and autodim warns above 1e-3 mm unless geometry_tolerance_mm forces a stricter or looser cap (finite positive number; bool/NaN/Inf/zero/negative rejected; an explicit cap also rejects unmeasurable geometry); a measured rigid-body translation (every named point moved by the same vector, shape residual <= 1e-9 mm) is a solver artefact rather than a shape change, so it is accepted up to 1e-2 mm and reported with accepted_rigid=true, beyond which it is rejected with the measured translation and the limit; deformed profiles are still rejected at the shape gate; sketch_shifted publishes the post-solve movement at the top level (detected, rigid, translation_mm, residual_mm, shape_deviation_mm, accepted_rigid, max_point_mm, bounded sample) and accepted_by_request marks a moved sketch that only an explicit tolerance let through; geometry_tolerance_mm is an acceptance threshold, not a solve precision; no coordinates_lenient mode; the native solver remains authoritative; not proof of every constraint or extreme shape",
         },
         "sketch_geometry_edit": {
             "enabled": True,
@@ -1240,11 +1298,8 @@ def families() -> dict:
                 "inspect_model still enumerates kernel residue of a consumed quilt rather "
                 "than filtering it; the consumed tool quilt is no longer measurable, "
                 "intersect, three or more participants, chained merges and closed shells are "
-                "not published; a merge result has no separately referenceable quilt label: "
-                "keep referencing the original target quilt (its label or its geometry id) in "
-                "the next merge, solidify or thicken, because resolving the merge feature label "
-                "fails with ProFeatureGeomitemVisit -4 (2026-11-10 Creo 10 report, reproduced "
-                "in-plan and across plans); the closed non-planar boundary fill stays gated "
+                "not published; a merge, mirror or trim result label resolves to the quilt the native operation measured and the receipt publishes its quilt_id; when no unique result quilt can be identified the reference is refused with candidate guidance instead of guessing (older builds failed resolving the merge feature label with ProFeatureGeomitemVisit -4, 2026-11-10 Creo 10 report); in-plan reuse is live-verified on Creo 10.0.0.0 (a merge result consumed by solidify at the expected volume), while a later job has no in-memory alias and must use the published quilt_id or keep referencing the original target quilt label; "
+                "the closed non-planar boundary fill stays gated "
                 "(UNAVAILABLE_OPERATIONS; the former single-direction candidate "
                 "regenerated to no quilt; DEV-078's four-boundary two-direction route "
                 "is offline only and rejects unsupported parameter reversals); surface_loft is "
@@ -1268,6 +1323,14 @@ def families() -> dict:
                 "needs live evidence; "
                 "trimmed quilt feature-label reuse and curved-quilt offset measurement "
                 "have no published geometric guarantee; "
+                "the closure block is the raw ProQuiltVolumeEval receipt (available / "
+                "quilt_is_open / quilt_volume_eval_failed) and proves neither edge-paired "
+                "topology nor solidifiability - a failed volume query did not stop a "
+                "single-step solidify committing, and a single fill face can report "
+                "closed=true; use creo_measure_surface_group for topology; when "
+                "surface_boundary_fill is unavailable, seal an open shell with a closed "
+                "double-b_spline sketch + surface_fill + quilt_merge in separate jobs "
+                "(documented route, external Creo 10 evidence only); "
                 "creo_measure_surface_group reports member seams (state closed/open/"
                 "micro_gap/overlap) while boundary_closed tells whether the whole group "
                 "boundary is a shell; its overlap area is a tessellation estimate, gaps "

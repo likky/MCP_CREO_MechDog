@@ -181,6 +181,7 @@ _SOURCE_NAMES = (
     "native/assembly_units.h",
     "native/drawing.cpp",
     "native/result_delivery.h",
+    "native/worker_result_delivery.h",
     "native/recovery_deadline.h",
     "native/blend_sync.cpp",
     "native/blend_loader.cpp",
@@ -1493,7 +1494,6 @@ async def creo_chamfer(
     model_id: str,
     expected_revision: int,
     label: str,
-    distance: float,
     references: Annotated[
         list[dict[str, Any]],
         Field(
@@ -1506,26 +1506,48 @@ async def creo_chamfer(
             )
         ),
     ],
+    distance: float | None = None,
+    size: float | None = None,
+    chamfer_type: Literal["equal_distance", "distance_angle", "d1_d2"] = "equal_distance",
+    angle_deg: float | None = None,
+    angle_reference: dict[str, Any] | None = None,
+    distance_1: float | None = None,
+    distance_2: float | None = None,
+    reference_surface: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Create equal-distance native chamfer sets on explicit edges or face pairs.
+    """Create equal-distance, distance-angle or two-distance native chamfer sets.
 
-    distance is in mm and maps to the plan-operation field `size` (op="chamfer"):
-    the submitted job echoes it as operations[].size, and the finished job's
-    result.operations[].size repeats the value the native feature applied.
-    Each executed operation also reports measured material evidence
+    The parameters have the same contract as plan op="chamfer". equal_distance
+    requires size or its distance alias in mm; the submitted job normalizes either
+    to operations[].size. distance_angle also requires angle_deg and the explicit
+    angle_reference face. d1_d2 instead requires positive distance_1/distance_2
+    and reference_surface, and rejects size/distance and angle fields. The D1/D2
+    reference surface is never inferred from edge or face-pair ordering; the
+    per-face direction of the two legs requires target-Creo verification.
+    Each executed operation reports measured material evidence
     (volume_before_mm3, volume_after_mm3, material_delta_mm3 = after - before
     with material_measurement.status measured/unknown/not_applicable and raw
     query codes; unestablished values are null, a zero delta is reported as 0)
     and reference_application with requested_set_count beside the tree-proven
     applied_set_count (null when the tree cannot prove it).
     """
-    return await invoke(
-        general.submit,
-        [{"op": "chamfer", "label": label, "size": distance, "references": references}],
-        model_id,
-        None,
-        expected_revision,
-    )
+    operation: dict[str, Any] = {
+        "op": "chamfer",
+        "label": label,
+        "references": references,
+        "chamfer_type": chamfer_type,
+    }
+    optional = {
+        "distance": distance,
+        "size": size,
+        "angle_deg": angle_deg,
+        "angle_reference": angle_reference,
+        "distance_1": distance_1,
+        "distance_2": distance_2,
+        "reference_surface": reference_surface,
+    }
+    operation.update({name: value for name, value in optional.items() if value is not None})
+    return await invoke(general.submit, [operation], model_id, None, expected_revision)
 
 
 @mcp.tool(annotations=CREATE)
