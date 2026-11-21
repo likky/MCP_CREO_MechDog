@@ -3,7 +3,7 @@
 日期：2026-11-21
 版本：0.35.5（PATCH）
 上一版本：0.35.4（`v0.35.4`，提交 `29f9ed277d6436d9a0c6de4d4a1168fd51942444`）。
-本次发布提交：`main` 上由 annotated 标签 `v0.35.5` 指向的提交（提交号以 `git rev-parse v0.35.5^{}` 为准）。
+本次发布提交：`91642489e708f1c2ac7ee3fa1ff6f8565a53851b`（annotated 标签 `v0.35.5`）。
 
 ## 范围
 
@@ -33,7 +33,7 @@
 ## 源码包
 
 - 名称：`MCP_CREO_MechDog-0.35.5-source.zip`；sidecar `MCP_CREO_MechDog-0.35.5-source.zip.sha256`（一行 `<64 位 SHA256>  文件名`）。
-- 由本版发布提交的源码构建；字节数与 SHA256 见同名 sidecar，不写入包内文件；打包器拒绝放松的文件集、非空 stage 与既有输出。
+- 由本版发布提交 `9164248` 的源码构建；11,516,770 字节，SHA256 `641ed3d2b36d5cbe3ada52862c44b1444d71dcf10a287e025f6aaf8c810aa4b3`；字节数与摘要同时写入同名 sidecar，不写入包内文件。打包器拒绝放松的文件集、非空 stage 与既有输出。
 
 ## 逐 ID 状态核对
 
@@ -45,7 +45,8 @@
 
 ## 发布后远端核对
 
-- 发布后执行，当前未验证（`remote_verification=pending`）；发布后用 `tools/check_release_assets.py --tag v0.35.5` 核对，结果回填本段与 [POSTCHECK](../development/RELEASE-POSTCHECK-2026-11-07.md)。
+- 发布后核对（2026-11-21 20:43 +08:00 / 12:43Z）：`tools\check_release_assets.py --tag v0.35.5` exit 0，输出 `v0.35.5: four assets downloaded and verified; both sidecars match; release body self-proof verified`。Release id `453684723`，发布时间 `2026-11-21T12:43:43Z`。
+- 远端 API digest、本地重算与 sidecar 逐一致：源码包 `641ed3d2b36d5cbe3ada52862c44b1444d71dcf10a287e025f6aaf8c810aa4b3`（11,516,770 字节），种子包 `fa98100e05aae1573322ad89d6f19b0192c63e008557168a4150bce358456405`（493,443 字节）。
 - 四个附件：`MCP_CREO_MechDog-0.35.5-source.zip`、`MCP_CREO_MechDog-0.35.5-source.zip.sha256`、`MCP_CREO_MechDog-0.35.5-seed-library.zip`、`MCP_CREO_MechDog-0.35.5-seed-library.zip.sha256`。
 - Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.5`。
 - 种子包 SHA256 `fa98100e05aae1573322ad89d6f19b0192c63e008557168a4150bce358456405`；源码包摘要见 sidecar。
