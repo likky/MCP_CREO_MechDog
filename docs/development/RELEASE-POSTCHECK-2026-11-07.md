@@ -2,7 +2,7 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
-## v0.35.1（2026-11-21，发布前快照）
+## v0.35.1（2026-11-21，发布后已核对）
 
 - 版本与范围：`0.35.1` PATCH，公开工具仍 110；[BUG-142](../work-items/BUG-142.md) 定位 `0xC0000409` 根因（原生构建缺 `/utf-8` → MSVC 按 CP936 解析窄字面量 → 非法 UTF-8 → 严格 `dump` 抛异常 → abort），`bridge.py` 三条 `cl` 命令加入 `/utf-8` 并把 `NATIVE_BUILD_FLAGS /utf-8-v1` 纳入构建指纹；[DEV-098](../work-items/DEV-098.md) 为通用 `geometry_selector` 零匹配新增只读 `geometry_selector_diagnostic.nearest_edges`（≤5 条、按误差再按 id 排序），本机 Creo 10 实机 `candidate_count=12`、`matched_ids=[]`、候选 ids 54/55/56/59/60。发布记录见 [RELEASE-0.35.1](../validation/RELEASE-0.35.1.md)。
 - 打包顺序：`tools\package_seeds.py` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools\package.py` → 标签/发布 → `tools\check_release_assets.py` 远端复核。
@@ -10,7 +10,7 @@
 - 源码包由发布提交源码构建，字节数与 SHA256 见同名 sidecar，不写入包内文件。
 - Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.1`；四个附件为 `MCP_CREO_MechDog-0.35.1-source.zip`、`MCP_CREO_MechDog-0.35.1-source.zip.sha256`、`MCP_CREO_MechDog-0.35.1-seed-library.zip` 与 `MCP_CREO_MechDog-0.35.1-seed-library.zip.sha256`。
 - 本批验证：受控夹具 `strict_dump_crash` 复现退出码 `0xC0000409` 与 0 字节文件，替换 handler 下正常发布；重建后 worker 中弯破折号字节由 `E2 80 3F` 变为 `E2 80 94`；`tools/dev_check.py` 全量 4293 项通过、`success=true`；原生冒烟作业 `bea2d8d6…` 保存重载通过。
-- 发布后核对：发布后执行，当前未验证；实际列表、标签指向、字节数与 SHA256 追加到本段。
+- 发布后核对：四个附件已在 `v0.35.1` 远端对象上重新下载并重算——`MCP_CREO_MechDog-0.35.1-source.zip` 11453178 字节、SHA256 `c8aacaec4dc814ca4ccf644b8f3b02d26782b20b4e27f15187d910dd49ac696b`；`MCP_CREO_MechDog-0.35.1-seed-library.zip` 493442 字节、SHA256 `ad1d62bfc15e2dd45b1118464df75d19ee3635a871b179e9eaa590ae8b5c0ed4`；两个 sidecar 各含一行 `<64 位 SHA256>  文件名` 且与对应 ZIP 一致。`tools\check_release_assets.py --tag v0.35.1` exit 0（Release 正文自证、附件集合与 sidecar 摘要均通过）；`v0.35.1` 标签指向提交 `9b933cf5507322f7c8693ea6fd6ae74648866e5b`。
 
 ## v0.35.0（2026-11-21，发布后已核对）
 

@@ -1,7 +1,7 @@
 # 发布记录 v0.35.1（0.35.1，2026-11-21）
 
 - 版本：`0.35.1`（PATCH）。
-- 发布提交：合入 `main` 后由该提交源码构建（提交号发布后回填）。
+- 发布提交：`9b933cf5507322f7c8693ea6fd6ae74648866e5b`（`v0.35.1` 标签指向该提交）。
 - 上一版本：0.35.0（`v0.35.0`，提交 `4e42e1d4b7e801894ab296271398e9bd1bb83012`）。
 - 交付快照：[releases/0.35.1.json](../releases/0.35.1.json)。
 - 版本说明：[RELEASE_NOTES_0.35.1.md](../RELEASE_NOTES_0.35.1.md)。
@@ -24,7 +24,7 @@
 - 单元测试：`tools/dev_check.py` 全量 4293 项通过、失败 0、异常 0、跳过 6；`build/unit_test_report.json` `success=true`。跳过项为环境限制（符号链接权限、MSVC x64 独立 helper 环境、归档证据缺失）。
 - 原生构建：`.\.venv\Scripts\python.exe bridge.py build` 编译变更后的 `native/geometry_selectors.cpp` 与 `native/worker.cpp`，exit 0 → `build\creo_worker.exe`；构建指纹含 `NATIVE_BUILD_FLAGS /utf-8-v1`，旧缓存不复用。
 - 发布记录门禁：`tools\check_release_records.py --version 0.35.1` 须 exit 0；`tools\check_backlog_counts.py` 须 `consistent: true`。
-- 资产门禁（DEV-097）：Release 正文须列出四个附件名、声明摘要在同名 sidecar，且正文任一 SHA256 与真实 sidecar 摘要一致（发布后核对）。
+- 资产门禁（DEV-097）：Release 正文列出四个附件名、声明摘要在同名 sidecar，且正文中的种子 SHA256 与真实 sidecar 摘要一致（已核对）。
 
 ## 实机与原生证据摘要（本机 Creo 10.0.0.0 / release 42）
 
@@ -54,4 +54,4 @@
 
 ## 发布后核对
 
-发布后执行，当前未验证。发布后以 `tools\check_release_assets.py --tag v0.35.1` 核对远端四个附件、两个 sidecar 与 Release 正文自证，并把实际列表、标签指向、字节数与 SHA256 追加到 `main` 的 POSTCHECK `## v0.35.1` 段；冻结包内快照不回写。
+已完成（2026-11-21）：四个附件在 `v0.35.1` 远端对象上重新下载并重算——`MCP_CREO_MechDog-0.35.1-source.zip` 11453178 字节、SHA256 `c8aacaec4dc814ca4ccf644b8f3b02d26782b20b4e27f15187d910dd49ac696b`；`MCP_CREO_MechDog-0.35.1-seed-library.zip` 493442 字节、SHA256 `ad1d62bfc15e2dd45b1118464df75d19ee3635a871b179e9eaa590ae8b5c0ed4`；两个 sidecar 各含一行 `<64 位 SHA256>  文件名` 且与对应 ZIP 一致。`tools\check_release_assets.py --tag v0.35.1` exit 0，Release 正文自证（四个附件名、sidecar 说明与种子摘要）通过；标签指向 `9b933cf5507322f7c8693ea6fd6ae74648866e5b`。冻结包内快照不回写。

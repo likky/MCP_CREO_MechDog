@@ -52,4 +52,4 @@ Release：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.1`。
 - WorkBuddy 黑盒验收。
 - BUG-142 的 0.32.0 原始模型与真实 disconnect 阻塞现场。
 - DEV-098 的面/圆边轴/装配坐标选择器形态。
-- 发布后未重复执行 Creo 实机与 WorkBuddy 黑盒，实机范围以发布前记录为准；远端附件核对发布后执行，当前未验证。
+- 发布后未重复执行 Creo 实机与 WorkBuddy 黑盒，实机范围以发布前记录为准；远端附件核对已完成，见 [RELEASE-0.35.1.md](validation/RELEASE-0.35.1.md) 与发布后核对记录。
