@@ -2,6 +2,15 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
+## v0.35.6（2026-11-22，打包时点快照；发布后核对追加于此）
+
+- 范围：0.35.0 反馈批收口——[FEAT-057](../work-items/FEAT-057.md) 装配质量属性与 occurrence 扫描、[FEAT-073](../work-items/FEAT-073.md) 批量只读查询（公开工具 110→111）、[FEAT-072](../work-items/FEAT-072.md) 会话候选与进程内选定、[BUG-143](../work-items/BUG-143.md) 固体镜像根因、[BUG-145](../work-items/BUG-145.md) 桌面 worker 路径、[BUG-146](../work-items/BUG-146.md) 停滞恢复出口、[BUG-147](../work-items/BUG-147.md) 材质密度归因、[BUG-148](../work-items/BUG-148.md) 多开放轮廓指引。发布记录见 [RELEASE-0.35.6](../validation/RELEASE-0.35.6.md)。
+- 打包顺序：`tools\package_seeds.py` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools\package.py`（含本轮 `run_id`/源码指纹证据门禁）→ 标签/发布 → `tools\check_release_assets.py` 远端复核。
+- 种子包 SHA256 `32ea2d0324e329f46bce7ac9dd41bd3086e2b7f151b1227e035038f0b1bd81fe`（24 个文件、9 个种子、493,442 字节，两次构建摘要一致；包内 `seed_manifest.json` 声明 `compatible_server_version=0.35.6`）。
+- 源码包由发布提交源码构建；源码包摘要见同名 sidecar，不写入包内文件。
+- Release 地址（发布后）：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.6`；四个附件为 `MCP_CREO_MechDog-0.35.6-source.zip`、`MCP_CREO_MechDog-0.35.6-source.zip.sha256`、`MCP_CREO_MechDog-0.35.6-seed-library.zip` 与 `MCP_CREO_MechDog-0.35.6-seed-library.zip.sha256`。
+- 发布后核对：发布后执行，当前未验证。结果按附件逐个追加到本段，并同步 `docs/releases/0.35.6.json` 的 `remote_verification`。
+
 ## v0.35.5（2026-11-21，发布后已核对）
 
 - 范围：[BUG-144](../work-items/BUG-144.md)、[DEV-099](../work-items/DEV-099.md)、[BUG-142](../work-items/BUG-142.md) 随 0.35.5 交付；公开工具仍 110。

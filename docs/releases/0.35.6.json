@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "version": "0.35.6",
+  "previous_version": "0.35.5",
+  "previous_release_tag": "v0.35.5",
+  "previous_release_commit": "91642489e708f1c2ac7ee3fa1ff6f8565a53851b",
+  "remote_verification": "pending",
+  "delivery_ids": [
+    "FEAT-057",
+    "FEAT-072",
+    "FEAT-073",
+    "BUG-143",
+    "BUG-145",
+    "BUG-146",
+    "BUG-147",
+    "BUG-148"
+  ],
+  "frozen_on": "2026-11-22",
+  "note": "PATCH: finishes the 0.35.0 feedback batch on Creo 10.0.0.0 / release 42. FEAT-057 admits assemblies through ProSolidMassPropertyWithDensityGet (volume, surface area and centre of volume from unit density; centre of mass from material density) and adds a read-only occurrence scan (nested sub-assemblies <=32, active instances <=4096) whose incompleteness keeps mass null with a named reason; density_is_effective_average marks the total-mass/total-volume interpretation. FEAT-073 adds creo_get_mass_properties_batch (public tools 110->111): 1-16 models, 10-600 s budget, per-item status/error_kind/blocking_job_id, skipped reasons including time_budget_exhausted, still one serial channel. FEAT-072 reports session_candidates and selects a session in-process (retry=true, session_id=...) without restarting or rewriting config. BUG-143 reproduces the solid-feature mirror hang and rejects every feature reference before ProFeatureCreate because PRO_E_MIRROR_REF_ITEMS excludes PRO_FEATURE. BUG-145 removes the batch-script encoding dependency of the desktop worker. BUG-146 records launched_by and adds stalled_recovery/recovery_wait plus the confirmed abandon_stalled_recovery exit. BUG-147 names the Toolkit call and return code behind a failed material density. BUG-148 separates single from multiple open contours in surface-extrude failures. Live evidence: assembly 2199.9999999999986 mm3 / 1679.9999999999998 mm2 / analytic centroid; 16-item batch 131.188 s against a 180 s budget with a real toolkit_busy and a real in-flight timeout; dual-session -36 selection; mirror rejection then a {kind:'part'} mirror at 4000.0000000000005 mm3 with save/reload. Not verified: missing-material and suppressed or nested components, mixed-density real mass, principal moments, the full 120 s timeout window, Creo 9/12, the external feedback environment and the WorkBuddy black box."
+}

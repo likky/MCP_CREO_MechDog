@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.35.5
+# MCP_CREO_MechDog 0.35.6
 
-![version](https://img.shields.io/badge/version-0.35.5-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.35.6-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.35.5**（PATCH——[BUG-144](docs/work-items/BUG-144.md) 修复打包单测跨轮次污染：`tools/test_unit.py` 运行前原子写 `build/unit_test_run.json` 并绑定本轮 `run_id`/源码指纹，`release_integrity` 自本版起要求状态与报告共同支撑“全量通过”声明，`tools/package.py` 新增 `--source-root`/`--unit-report` 并把门禁移到任何产物之前；[DEV-099](docs/work-items/DEV-099.md) 让 README 工具数引用 `creo_capabilities.tool_count`；[BUG-142](docs/work-items/BUG-142.md) 以默认关闭的断开延迟钩子在本机 Creo 10 实机核验被中断的 disconnect 仍保留 `unknown_outcome` 与预发布事实。公开工具仍 110。承接 0.35.4；未验：其他 Creo 版本、外部反馈环境与 WorkBuddy 黑盒） · [版本说明](docs/RELEASE_NOTES_0.35.5.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
+当前正式版 **0.35.6**（PATCH——0.35.0 反馈批：装配质量属性放开（[FEAT-057](docs/work-items/FEAT-057.md)：体积/面积/几何重心与质量重心、只读 occurrence 扫描，缺材料或扫描不完整即拒绝质量、`density_is_effective_average`），新增有界批量只读查询 `creo_get_mass_properties_batch`（[FEAT-073](docs/work-items/FEAT-073.md)：1–16 模型、逐项回执与 `error_kind`，公开工具 110→111）；进程内会话选定与候选列表（[FEAT-072](docs/work-items/FEAT-072.md)）、停滞后恢复意图的终态出口（[BUG-146](docs/work-items/BUG-146.md)）、固体特征镜像挂死根因与创建前拒绝（[BUG-143](docs/work-items/BUG-143.md)）、材质密度失败归因（[BUG-147](docs/work-items/BUG-147.md)）、多开放轮廓曲面拉伸指引（[BUG-148](docs/work-items/BUG-148.md)）、桌面 worker 的 Unicode 路径（[BUG-145](docs/work-items/BUG-145.md)）。承接 0.35.5；未验：其他 Creo 版本、外部反馈环境与 WorkBuddy 黑盒） · [版本说明](docs/RELEASE_NOTES_0.35.6.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 
