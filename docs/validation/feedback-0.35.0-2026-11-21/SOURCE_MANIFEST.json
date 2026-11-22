@@ -1,0 +1,52 @@
+{
+  "date": "2026-11-21",
+  "source": "C:\\Users\\Administrator\\Downloads\\0.35.0",
+  "files": [
+    {
+      "file": "originals/2026-11-21+CREO+0.34.0+镜像挂死与desktop_worker编码缺陷及恢复死局.md",
+      "observed_version": "0.34.0",
+      "tasks": [
+        "T03",
+        "T04",
+        "T06",
+        "T07",
+        "T11"
+      ],
+      "bytes": 16965,
+      "sha256": "ded7e29dddb586d384823ae485cc05e582c5af90e1413adca45ca358cb8816aa"
+    },
+    {
+      "file": "originals/2026-11-21_CREO_0.35.2_反馈已闭环但BUG137修复引入打包门禁读陈旧报告致全量单测跨轮次污染.md",
+      "observed_version": "0.35.2",
+      "tasks": [
+        "T01",
+        "T02",
+        "T11",
+        "T12"
+      ],
+      "bytes": 12274,
+      "sha256": "79ef0fd5f767db990872b2e573c13f9e58ea669959e2c5fe46724594cf79223c"
+    },
+    {
+      "file": "originals/2026-11-21_CREO_0.35.2_多Creo会话并存时toolkit_code负36无工具列出session_id致无人值守无法选择连接目标.md",
+      "observed_version": "0.35.2",
+      "tasks": [
+        "T05"
+      ],
+      "bytes": 5063,
+      "sha256": "6cd7734013e4a325feee83ce409927673eaf2eae1bf6e23c52710282e495d4a9"
+    },
+    {
+      "file": "originals/2026-11-21_CREO_0.35.4_装配体质量属性被拒且材质密度查询失败致mass恒为null及单通道并行请求直接busy拒绝.md",
+      "observed_version": "0.35.2",
+      "tasks": [
+        "T08",
+        "T09",
+        "T10",
+        "T11"
+      ],
+      "bytes": 6962,
+      "sha256": "1d45ed89d2ec62efba83d432fa776830b84577b4a3a30caa1b8b3cde46d84639"
+    }
+  ]
+}
