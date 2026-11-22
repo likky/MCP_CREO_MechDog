@@ -704,6 +704,100 @@ def _terminate_process_tree(pid: object) -> dict:
     }
 
 
+def _job_request(directory: Path) -> dict:
+    """This job's own request view, or an empty one when it cannot be read."""
+    try:
+        value = bridge.read_json(directory / "request.json")
+    except (OSError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _job_readonly(manifest: dict, request: dict) -> bool:
+    """Whether this job could only read (BUG-149).
+
+    The manifest carries the admitted flag. A legacy job without it is judged by
+    its own request, and anything unreadable counts as mutation-capable: an
+    unknown plan must never free a reservation it might have used.
+    """
+    recorded = manifest.get("readonly")
+    if isinstance(recorded, bool):
+        return recorded
+    return request.get("readonly") is True
+
+
+def _live_job_owners(job_id: str, manifest: dict, directory: Path) -> list[dict]:
+    """Recorded runner/worker pids of this job that are provably still alive."""
+    candidates: list[tuple[str, object]] = [("job_runner", manifest.get("runner_pid"))]
+    claim = bridge.channel_claim()
+    if claim.get("job_id") == job_id:
+        candidates.append(("channel_runner", claim.get("runner_pid")))
+    candidates.append(("native_worker", _worker_owner_pid(directory)))
+    alive = []
+    for role, pid in candidates:
+        if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+            continue
+        if bridge._pid_alive(pid):
+            alive.append({"role": role, "pid": pid})
+    return alive
+
+
+def _release_readonly_reservation(
+    job_id: str, manifest: dict, request: dict, *, stop_confirmed: bool = False
+) -> dict:
+    """Retire a read-only job's model reservation without native work (BUG-149).
+
+    A read-only plan is admitted only with inspection operations, so it can
+    change neither geometry nor the revision nor the saved file. A model that
+    still names such a job as ``pending_job`` therefore has nothing to
+    reconcile: the job's own outcome may be unknown, but the model's is not.
+    Only the model record changes - the reservation is cleared and a status the
+    read-only job itself set to ``unknown_outcome`` goes back to ``ready`` - and
+    only when no recorded runner or worker of that job is alive. A live owner
+    keeps the reservation, because it may still be about to write the record.
+    ``stop_confirmed`` is the caller's own proof (a successful tree kill) and
+    replaces the probe, whose answer can lag that kill by a moment.
+    """
+    model_id = manifest.get("model_id") or (request.get("model") or {}).get("model_id")
+    base: dict = {"job_id": job_id, "model_id": model_id, "readonly": True}
+    if not isinstance(model_id, str) or not bridge.JOB_ID.fullmatch(model_id):
+        return {**base, "released": False, "reason": "model_id_unavailable"}
+    alive = [] if stop_confirmed else _live_job_owners(job_id, manifest, bridge.job_path(job_id))
+    if alive:
+        return {
+            **base,
+            "released": False,
+            "reason": "runner_or_worker_still_alive",
+            "owners": alive,
+        }
+    try:
+        record = model_info(model_id)
+    except (OSError, ValueError) as exc:
+        return {**base, "released": False, "reason": "model_record_unreadable", "error": str(exc)}
+    if record.get("pending_job") != job_id:
+        return {
+            **base,
+            "released": False,
+            "reason": "model_does_not_hold_this_job",
+            "pending_job": record.get("pending_job"),
+        }
+    previous = record.get("status")
+    record["pending_job"] = None
+    if previous == "unknown_outcome":
+        # The read-only job cannot have produced that uncertainty about the
+        # model; it only ever marked it while its own query was unresolved.
+        record["status"] = "ready"
+    record["updated_at"] = bridge.now()
+    model_registry.write_model(model_path(model_id), record)
+    return {
+        **base,
+        "released": True,
+        "previous_model_status": previous,
+        "model_status": record["status"],
+        "revision": record.get("revision"),
+    }
+
+
 def cancel_job(job_id: str) -> dict:
     """Cancel a queued/running job. Cancellation is not a rollback.
 
@@ -711,6 +805,11 @@ def cancel_job(job_id: str) -> dict:
     job killed after its worker started becomes ``unknown_outcome`` and keeps
     the model reservation, because geometry may already have been applied. Only
     a job killed before any worker start returns the model to its prior state.
+
+    BUG-149: a read-only job is the exception. Its plan can only read, so it
+    never applies geometry and its reservation is retired on the same call -
+    including for a job that already reached a terminal status, which is the
+    state a client that exited mid-query used to leave behind.
     """
     if not isinstance(job_id, str) or not bridge.JOB_ID.fullmatch(job_id):
         raise ValueError("job_id must be the 32-character id returned by a modeling tool")
@@ -720,13 +819,37 @@ def cancel_job(job_id: str) -> dict:
         raise ValueError(f"Unknown job_id {job_id}; it has no job record")
     manifest = bridge.read_json(manifest_file)
     status = manifest.get("status")
+    request = _job_request(directory)
+    readonly = _job_readonly(manifest, request)
     if status in CANCEL_TERMINAL_STATUSES:
-        return {
+        result = {
             "job_id": job_id,
             "status": status,
             "cancelled": False,
             "message": "Job already reached a terminal status; nothing was cancelled",
         }
+        if readonly:
+            # BUG-149: the caller's model may still be locked by a read-only job
+            # that ended while nobody could release it. Reporting "nothing to
+            # cancel" without naming that exit is what made the state permanent.
+            release = _release_readonly_reservation(job_id, manifest, request)
+            result["readonly_release"] = release
+            if release.get("released"):
+                result["model_id"] = release.get("model_id")
+                result["model_status"] = release.get("model_status")
+                result["message"] = (
+                    "Job already reached a terminal status; it was read-only, so its model "
+                    "reservation was retired without native work"
+                )
+                result["next_steps"] = [
+                    "The model is reusable; re-run the read-only query when ready"
+                ]
+            elif release.get("reason") != "model_does_not_hold_this_job":
+                result["next_steps"] = [
+                    "creo_inspect_model: read pending_job and the job's recorded owners",
+                    "Retry creo_cancel_job once no runner or worker of that job is alive",
+                ]
+        return result
     if status not in CANCEL_ACTIVE_STATUSES:
         raise ValueError(f"Job status {status!r} is not cancellable")
     requested_at = bridge.now()
@@ -739,6 +862,11 @@ def cancel_job(job_id: str) -> dict:
     started = bool(manifest.get("worker_started"))
     termination = _terminate_process_tree(runner_pid)
     confirmed = termination.get("returncode") == 0 or runner_pid is None
+    if readonly and runner_pid is None:
+        # A missing runner pid is not evidence that the runner stopped. The
+        # read-only release below is metadata-only, so it may only run on the
+        # same positive evidence that nothing of this job is still alive.
+        confirmed = not _live_job_owners(job_id, manifest, directory)
     # The runner is the only writer of a terminal job record; re-read it so a job
     # that finished between the check and the kill keeps its real outcome.
     latest = bridge.read_json(manifest_file)
@@ -766,13 +894,18 @@ def cancel_job(job_id: str) -> dict:
         }
     outcome = "unknown_outcome" if started else "cancelled"
     finished = bridge.now()
+    geometry_may_have_changed = started and not readonly
     manifest.update(
         status=outcome,
         stage="cancel_unconfirmed" if started else "cancelled_before_worker",
         finished_at=finished,
         cancelled_at=finished,
         message=(
-            "Cancelled after the native worker started; geometry may already have been applied. "
+            "Cancelled after the native worker started. The plan was read-only, so no "
+            "geometry, revision or saved file changed and the model reservation was retired; "
+            "only the query result is unknown."
+            if readonly and started
+            else "Cancelled after the native worker started; geometry may already have been applied. "
             "Inspect the model, then finish with creo_session_status and creo_reconcile_model."
             if started
             else "Cancelled before any native worker started; no geometry was submitted."
@@ -781,7 +914,8 @@ def cancel_job(job_id: str) -> dict:
             "requested_at": requested_at,
             "runner_pid": runner_pid,
             "worker_started": started,
-            "geometry_may_have_changed": started,
+            "readonly": readonly,
+            "geometry_may_have_changed": geometry_may_have_changed,
             "termination": termination,
         },
     )
@@ -793,37 +927,49 @@ def cancel_job(job_id: str) -> dict:
         # panel, so its reserve is retired on that positive evidence. A job killed
         # after the worker started keeps the guard: the dialog may still be open.
         _retire_panel_guard_for_cancel(job_id)
-    try:
-        request = bridge.read_json(directory / "request.json")
-    except (OSError, ValueError):
-        request = {}
-    model_id = manifest.get("model_id") or request.get("model", {}).get("model_id")
+    model_id = manifest.get("model_id") or (request.get("model") or {}).get("model_id")
     model_status = None
+    release = None
     if isinstance(model_id, str) and bridge.JOB_ID.fullmatch(model_id):
-        try:
-            record = model_info(model_id)
-        except (OSError, ValueError):
-            record = None
-        if record is not None and record.get("pending_job") == job_id:
-            if started:
-                record["status"] = "unknown_outcome"
-            else:
-                record["pending_job"] = None
-                record["status"] = "failed" if request.get("new") else "ready"
-            record["updated_at"] = finished
-            model_registry.write_model(model_path(model_id), record)
-            model_status = record["status"]
-    return {
+        if readonly:
+            # BUG-149: read-only work cannot leave a model that needs recovery,
+            # so the reservation goes now instead of becoming a dead end. A
+            # confirmed tree kill already proves the owner stopped.
+            release = _release_readonly_reservation(
+                job_id,
+                manifest,
+                request,
+                stop_confirmed=termination.get("returncode") == 0,
+            )
+            model_status = release.get("model_status")
+        else:
+            try:
+                record = model_info(model_id)
+            except (OSError, ValueError):
+                record = None
+            if record is not None and record.get("pending_job") == job_id:
+                if started:
+                    record["status"] = "unknown_outcome"
+                else:
+                    record["pending_job"] = None
+                    record["status"] = "failed" if request.get("new") else "ready"
+                record["updated_at"] = finished
+                model_registry.write_model(model_path(model_id), record)
+                model_status = record["status"]
+    result = {
         "job_id": job_id,
         "status": outcome,
         "cancelled": True,
         "model_id": model_id,
         "model_status": model_status,
         "worker_started": started,
-        "geometry_may_have_changed": started,
+        "readonly": readonly,
+        "geometry_may_have_changed": geometry_may_have_changed,
         "termination": termination,
         "next_steps": (
-            [
+            ["The model is reusable; re-run the read-only query when ready"]
+            if readonly
+            else [
                 "creo_session_status: confirm the live model state",
                 "creo_reconcile_model: inspect and resolve the unknown outcome",
             ]
@@ -831,6 +977,9 @@ def cancel_job(job_id: str) -> dict:
             else ["The model is reusable; submit a new plan when ready"]
         ),
     }
+    if release is not None:
+        result["readonly_release"] = release
+    return result
 
 
 def _run_worker_with_watchdog(
@@ -1641,6 +1790,12 @@ def run_generic_job(job_id: str, manifest: dict):
     request = bridge.read_json(directory / "request.json")
     model = request["model"]
     path = model_path(model["model_id"])
+    # BUG-149: a read-only plan can only inspect, so no failure of it may ever
+    # leave the model in a state that needs reconciliation. ``admitted_status``
+    # is the status admission proved (ready for an existing model); the job's
+    # own outcome still records that the query did not deliver.
+    readonly = request.get("readonly") is True
+    admitted_status = model.get("status") or "ready"
     # Pre-job verified state snapshot for the bounded component change
     # summary, captured BEFORE the worker can mutate the control record, and
     # ONLY when the request actually targets components — plain part jobs
@@ -1690,9 +1845,15 @@ def run_generic_job(job_id: str, manifest: dict):
                 if not result_file.exists():
                     manifest.update(
                         status="unknown_outcome",
-                        message=f"Native worker exited {returncode} without a result; inspect Creo before retrying",
+                        message=(
+                            f"Native worker exited {returncode} without a result. The plan was "
+                            "read-only, so nothing about the model changed and the model stays "
+                            "reusable; only this query's result is unknown"
+                            if readonly
+                            else f"Native worker exited {returncode} without a result; inspect Creo before retrying"
+                        ),
                     )
-                    model["status"] = "unknown_outcome"
+                    model["status"] = admitted_status if readonly else "unknown_outcome"
                 else:
                     result = operation_results.annotate_native_result(
                         bridge.read_json(result_file),
@@ -1805,9 +1966,15 @@ def run_generic_job(job_id: str, manifest: dict):
                     ):
                         manifest.update(
                             status="unknown_outcome",
-                            message="Native finalization was not confirmed; preserve saved files and inspect the checkpoint",
+                            message=(
+                                "Native finalization was not confirmed. The plan was read-only, "
+                                "so the model itself is unchanged and stays reusable; only this "
+                                "query's result is unknown"
+                                if readonly
+                                else "Native finalization was not confirmed; preserve saved files and inspect the checkpoint"
+                            ),
                         )
-                        model["status"] = "unknown_outcome"
+                        model["status"] = admitted_status if readonly else "unknown_outcome"
                     elif returncode == 0 and result.get("success"):
                         if not request["readonly"] and not result.get(
                             "saved_file_reloaded_and_verified"
@@ -1881,7 +2048,12 @@ def run_generic_job(job_id: str, manifest: dict):
                 manifest.update(
                     status="unknown_outcome" if worker_started else "failed",
                     message=(
-                        f"Native worker exceeded its {budget}s budget; inspect Creo and the "
+                        f"Native worker exceeded its {budget}s budget. The plan was read-only, so "
+                        "nothing about the model changed and the model stays reusable; only this "
+                        "query's result is unknown. A larger timeout_seconds only raises the "
+                        "upper bound of a future attempt; it is not a completion estimate"
+                        if readonly
+                        else f"Native worker exceeded its {budget}s budget; inspect Creo and the "
                         "native checkpoint before retrying. A larger timeout_seconds only "
                         "raises the upper bound of a future attempt; it is not a completion "
                         "estimate and never proves this attempt finished"
@@ -1890,7 +2062,9 @@ def run_generic_job(job_id: str, manifest: dict):
                     else f"Native build exceeded its {budget}s subprocess budget; inspect build logs. No native modeling worker started.",
                 )
                 model["status"] = (
-                    "unknown_outcome"
+                    admitted_status
+                    if readonly
+                    else "unknown_outcome"
                     if worker_started
                     else ("ready" if model.get("part_file") else "failed")
                 )
@@ -1899,18 +2073,24 @@ def run_generic_job(job_id: str, manifest: dict):
                 # watchdog evidence (budget, silent seconds, log bytes) already
                 # rides on the manifest so the stall is visible while polling.
                 manifest.update(status="unknown_outcome", message=str(exc))
-                model["status"] = "unknown_outcome"
+                model["status"] = admitted_status if readonly else "unknown_outcome"
             except Exception as exc:
                 manifest.update(
                     status="unknown_outcome" if worker_started else "failed", message=str(exc)
                 )
                 model["status"] = (
-                    "unknown_outcome"
+                    admitted_status
+                    if readonly
+                    else "unknown_outcome"
                     if worker_started
                     else ("ready" if model.get("part_file") else "failed")
                 )
             # A killed helper or a saved checkpoint is not a confirmed operation outcome.
-            model["pending_job"] = job_id if manifest["status"] == "unknown_outcome" else None
+            # BUG-149: a read-only job has no model outcome to be uncertain about, so
+            # it never keeps the reservation even when its own result is unknown.
+            model["pending_job"] = (
+                job_id if manifest["status"] == "unknown_outcome" and not readonly else None
+            )
             model["last_job"] = job_id
             bridge.apply_terminal_stage(manifest)
             bridge.note_native_outcome(manifest)
@@ -1925,6 +2105,16 @@ def run_generic_job(job_id: str, manifest: dict):
             busy=exc.payload,
             recovery_required="Model reservation retained; inspect before recovery",
         )
+        if readonly:
+            # BUG-149: the holder is another model's job (this model's reservation
+            # refuses a second submission), and this job never dispatched anything,
+            # so retiring its own read-only reservation cannot clobber the holder.
+            manifest["readonly_release"] = _release_readonly_reservation(job_id, manifest, request)
+            if manifest["readonly_release"].get("released"):
+                manifest["recovery_required"] = (
+                    "None: the plan was read-only and never dispatched, so its reservation "
+                    "was retired"
+                )
     # The summary is auxiliary: it rides on the confirmed terminal state and
     # native evidence, and a summary failure must never rewrite that state or
     # leave a persisted job stuck in running. All reads that exist ONLY for

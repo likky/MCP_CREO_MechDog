@@ -734,6 +734,39 @@ def _pending_job_status(model: dict) -> str | None:
     return _job_status(model.get("pending_job"))
 
 
+def _readonly_pending(model: dict) -> dict | None:
+    """BUG-149: name the exit for a reservation held by a read-only job.
+
+    A read-only plan only inspects, so a model that still names one as
+    ``pending_job`` has no geometry to reconcile - the reservation is metadata
+    that ``creo_cancel_job`` retires without native work. That path is reported
+    here because this is the tool an operator opens when the model looks stuck,
+    and the ordinary recovery actions cannot clear it.
+    """
+    job_id = model.get("pending_job")
+    if not isinstance(job_id, str) or not bridge.JOB_ID.fullmatch(job_id):
+        return None
+    try:
+        manifest = bridge.read_json(bridge.job_path(job_id) / "job.json")
+    except (OSError, ValueError):
+        return None
+    if not isinstance(manifest, dict) or manifest.get("readonly") is not True:
+        return None
+    return {
+        "job_id": job_id,
+        "job_status": manifest.get("status"),
+        "readonly_source": manifest.get("readonly_source"),
+        "reason": (
+            "The pending job was read-only: it could not change geometry, the revision or the "
+            "saved file, so the model has no unknown outcome to reconcile"
+        ),
+        "next_step": (
+            "creo_cancel_job with this job_id retires the reservation once no recorded runner or "
+            "worker of that job is alive; it performs no native work"
+        ),
+    }
+
+
 def _panel_guard_state(model: dict) -> dict:
     """The resident panel guard as it applies to this model.
 
@@ -1154,6 +1187,10 @@ def inspect(model_id: str, live: bool = False) -> dict:
         "owners": snapshot["owners"],
         "stalled_recovery": snapshot.get("stalled_recovery"),
         "recovery_wait": _recovery_wait(snapshot),
+        # BUG-149: a read-only reservation has its own one-call exit; every
+        # action in ``actions`` requires evidence about a mutation that this
+        # kind of job can never have made.
+        "readonly_pending": _readonly_pending(model),
         "live": visible_live,
         "actions": _actions(snapshot, realtime),
         # BUG-120/D4.4: a resident panel that may still be open holds the whole Creo
