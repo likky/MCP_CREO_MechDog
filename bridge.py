@@ -49,6 +49,7 @@ from creo_mechdog.job_projection import (
 )
 from creo_mechdog.lock_files import open_lock_file
 from creo_mechdog.recovery import job_evidence, process_identity
+from creo_mechdog.session_choice import selected as selected_session
 
 ROOT = Path(__file__).resolve().parent
 JOBS = ROOT / "jobs"
@@ -240,7 +241,9 @@ def _replace_json(temp: Path, path: Path) -> None:
 
 def write_json(path: Path, value: dict, *, durable: bool = False) -> None:
     content = json.dumps(value, ensure_ascii=False, indent=2)
-    temp = path.with_suffix(path.suffix + f".{uuid.uuid4().hex}.tmp")
+    # The final path can fit under the Windows limit while the old name with
+    # an appended UUID does not. Only the directory must match for replacement.
+    temp = path.with_name(f".{uuid.uuid4().hex}.tmp")
     owned = False
     try:
         with temp.open("x", encoding="utf-8") as stream:
@@ -669,7 +672,11 @@ def windows_process_environment() -> dict[str, str]:
 def native_environment() -> dict[str, str]:
     common = Path(config()["creo_root"]) / "Common Files"
     env = windows_process_environment()
-    selected = config().get("creo_session_id")
+    # FEAT-072: a session selected at runtime outranks config.json for every
+    # worker this service starts, so a client can leave `selection_required`
+    # without editing the file or restarting the connector. The native worker
+    # still rejects a fallback when the id is gone.
+    selected = selected_session(config())
     if selected:
         env["MECHDOG_CREO_SESSION_ID"] = selected
     else:
@@ -1503,21 +1510,22 @@ def toolkit_hint(value: dict) -> str:
     return message
 
 
-def _desktop_probe(
-    command: list[str], env: dict[str, str], budget: float, identity: dict
-) -> dict | None:
-    """Probe once through Explorer; None keeps the direct result authoritative."""
+def _desktop_probe(command: list[str], env: dict[str, str], budget: float, identity: dict) -> dict:
+    """Probe once through Explorer; report a launch failure separately from Toolkit."""
     import desktop_worker
 
-    result = desktop_worker.run(command, ROOT / "build", env, budget, ROOT / "build/desktop_runs")
-    if result is None:
-        return None
+    try:
+        result = desktop_worker.run(
+            command, ROOT / "build", env, budget, ROOT / "build/desktop_runs"
+        )
+    except desktop_worker.DesktopUnavailable as exc:
+        return {"desktop_error": str(exc)}
     try:
         payload = json.loads(result.stdout.decode("utf-8"))
     except (ValueError, UnicodeDecodeError):
-        return None
+        return {"desktop_error": "Desktop worker output was not valid status JSON"}
     if not isinstance(payload, dict) or not isinstance(payload.get("connected"), bool):
-        return None
+        return {"desktop_error": "Desktop worker did not return a connection status"}
     return _record_probe_result(result, worker_identity=identity)
 
 
@@ -1570,15 +1578,18 @@ def session_status(connect_timeout_seconds: int = 30, *, build_worker: bool = Tr
             mode == "auto" and value is not None and value.get("toolkit_code") == -4
         ):
             desktop = _desktop_probe(command, env, budget, identity)
-            if desktop is None:
+            if "desktop_error" in desktop:
+                reason = desktop["desktop_error"]
                 if value is None:
                     return record_channel_health(
                         False,
                         connection_state="worker_unavailable",
+                        desktop_retry_reason=reason,
                         message="Toolkit worker could not be started through the desktop; check "
                         "the interactive Explorer session, or set creo_worker_launch to direct",
                     )
                 value["desktop_retry"] = "unavailable"
+                value["desktop_retry_reason"] = reason
             elif mode == "desktop" or desktop.get("connected") or desktop.get("toolkit_code") != -4:
                 desktop["worker_launch"] = "desktop"
                 value = desktop
