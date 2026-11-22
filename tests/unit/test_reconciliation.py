@@ -76,6 +76,14 @@ class Reconciliation(unittest.TestCase):
     def save_model(self):
         bridge.write_json(general.model_path(self.mid) / "model.json", self.model)
 
+    def test_recovery_evidence_can_be_written_near_the_windows_path_limit(self):
+        directory = self.root / ("d" * (206 - len(str(self.root)) - 1))
+        directory.mkdir()
+        evidence = directory / f"evidence-{'a' * 32}.json"
+        bridge.write_json(evidence, {"status": "recorded"}, durable=True)
+        self.assertEqual(bridge.read_json(evidence), {"status": "recorded"})
+        self.assertEqual(list(directory.iterdir()), [evidence])
+
     def prepare(self, action="restore_baseline", key="recovery_fixture", live=False):
         evidence = rec.inspect(self.mid, live)
         args = (
@@ -425,7 +433,10 @@ class Reconciliation(unittest.TestCase):
     def test_runner_channel_admission_failure_keeps_unlocked_reservation(self):
         created, _ = self.prepare()
         with bridge.toolkit_lock(operation="other_job", job_id="c" * 32):
-            with patch.object(rec, "_native") as worker:
+            with (
+                patch.object(rec, "RUNNER_CHANNEL_WAIT_SECONDS", 0),
+                patch.object(rec, "_native") as worker,
+            ):
                 bridge.run_job(created["job_id"])
         worker.assert_not_called()
         result = bridge.get_job(created["job_id"], "compact")
@@ -434,6 +445,33 @@ class Reconciliation(unittest.TestCase):
         self.assertFalse(result["recovery_pending_released"])
         self.assertEqual(result["busy"]["blocking_job_id"], "c" * 32)
         self.assertEqual(general.model_info(self.mid)["recovery_pending"], created["job_id"])
+
+    def test_accepted_runner_waits_for_submit_lock_before_native_execution(self):
+        created, _ = self.prepare()
+        job_id = created["job_id"]
+        self.assertEqual(bridge.admission_holder()["job_id"], job_id)
+        attempt = threading.Event()
+        real_locking = bridge.msvcrt.locking
+
+        def observe_contention(*args):
+            try:
+                return real_locking(*args)
+            except OSError:
+                attempt.set()
+                raise
+
+        with (
+            concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor,
+            patch.object(rec, "_native", side_effect=self.native),
+            patch.object(bridge.msvcrt, "locking", side_effect=observe_contention),
+        ):
+            with bridge.toolkit_lock(operation="submit_reconciliation", model_id=self.mid):
+                runner = executor.submit(bridge.run_job, job_id)
+                self.assertTrue(attempt.wait(5))
+                self.assertFalse(runner.done())
+            runner.result(timeout=5)
+        self.assertEqual(bridge.get_job(job_id)["status"], "succeeded")
+        self.assertIsNone(bridge.admission_holder())
 
     def test_delivered_native_session_refusal_keeps_unknown_and_original_message(self):
         created, _ = self.prepare()

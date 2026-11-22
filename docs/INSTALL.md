@@ -182,7 +182,7 @@ Test-Path "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\um\x64\kernel
 
 同一用户会话、安装和 PSF 的多个服务共享 `%LOCALAPPDATA%/MCP_CREO_MechDog/startup/<目标摘要>/` 下的锁、`state.json` 和 `startup.log`。启动预留先于实际拉起写入；先前结果不确定且当前没有进程时，需要显式调用 `creo_startup_status(retry=true)`。重试会复查实际进程，正在启动或已有 Creo 时继续等待，不重复创建。日志不包含许可或敏感会话 ID。冷启动时先依据进程检查拉起 GUI，再进行真实 Toolkit 探测，避免首次探测创建的名称服务随 MCP 主机退出而被清理。Explorer 启动接口不提供子进程退出码；请求异常记录为失败，无就绪确认则有界超时，不将启动请求返回当作成功。
 
-`timeout` 时先处理 Creo 对话框或检查启动环境，再请求重试。`selection_required` 时核对安装和 `creo_session_id`：多会话不随机选择，失效的指定 ID 不会被替换为其他实例。开关关闭后，手动打开 Creo，再调用 `creo_startup_status(retry=true)` 或 `creo_session_status` 重新检测。工具不会自动关闭会话或恢复失联任务；后者仍属 BUG-001 的独立范围。
+`timeout` 时先处理 Creo 对话框或检查启动环境，再请求重试。`selection_required` 时先看 `creo_startup_status` 返回的 `session_selection` 与 `session_candidates`：候选按进程列出 pid、创建时间、是否匹配配置安装路径和窗口状态，`identified=false` 表示该进程的 Toolkit 会话 ID 无法由 Windows PID 推导（Creo 10 `ProCore.h` 把 `ProProcessHandle` 声明为 `PeerIdx`）。已知目标 ID 时用 `creo_startup_status(retry=true, session_id="...")` 在进程内选定，无需修改 `config.json` 或重启服务；`clear_session_id=true` 回到配置值。多进程不等于多会话（一次 Creo 会显示 parametric.exe 与 xtop.exe），只有 `toolkit_code=-36` 证明会话歧义。多会话不随机选择，失效的指定 ID 不会被替换为其他实例，也不会为此另起 Creo。开关关闭后，手动打开 Creo，再调用 `creo_startup_status(retry=true)` 或 `creo_session_status` 重新检测。工具不会自动关闭会话或恢复失联任务；后者仍属 BUG-001 的独立范围。
 
 | 现象 | 处理 |
 | --- | --- |

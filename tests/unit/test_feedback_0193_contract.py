@@ -8,6 +8,7 @@ dependency-list hint. Behaviour that needs Creo is not asserted here.
 
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -94,13 +95,21 @@ class AmbiguousSessionMessageTests(unittest.TestCase):
     def test_message_names_both_recovery_paths_and_the_restart(self):
         text = (ROOT / "creo_startup.py").read_text(encoding="utf-8")
         start = text.index('native.get("connection_state") == "ambiguous"')
-        block = " ".join(text[start : start + 1400].split())
+        # Drop the seam between adjacent literals so a sentence that wraps in
+        # source can still be asserted as the caller will read it.
+        raw = re.sub(r'"[ \t]*\r?\n[ \t]*"', "", text[start : start + 2600])
+        block = " ".join(raw.split())
         self.assertIn("toolkit_code=-36", block)
-        self.assertIn("Close every Creo instance", block)
+        # FEAT-072: the response now lists the observed processes, states why
+        # a PID is not a session id, and offers a selection that needs no restart.
+        self.assertIn("session_candidates", block)
+        self.assertIn("cannot choose a session programmatically", block)
+        self.assertIn("retry=true, session_id=", block)
+        self.assertIn("needs no restart", block)
+        self.assertIn("close every Creo instance but the one you want", block)
         self.assertIn("restart the MCP service", block)
         self.assertIn("editing config.json alone does not change the running service", block)
-        self.assertIn("cannot choose a", block)
-        self.assertIn("session programmatically", block)
+        self.assertIn("no Creo is closed", block)
 
     def test_startup_settings_are_read_from_disk_on_each_load(self):
         # The report's dead end was "edit config.json and retry" against a

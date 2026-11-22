@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
 import time
 import uuid
 from collections.abc import Callable
+from datetime import datetime, timezone
 from pathlib import Path
 
 import bridge
@@ -27,6 +29,7 @@ ACTIONS = (
     "ack_no_mutation",
     "ack_failure",
     "confirm_panel_closed",
+    "abandon_stalled_recovery",
 )
 # BUG-110: actions that touch a saved model or its component ownership stay
 # limited to parts and sheetmetal; the two acknowledgements are metadata-only.
@@ -36,7 +39,13 @@ COMPONENT_ACTIONS = ("restore_baseline", "accept_saved", "accept_live", "abandon
 TERMINAL_FAILURE_STATUSES = ("failed", "unknown_outcome")
 TOKEN_SECONDS = 600
 WORKER_SECONDS = 115
+RUNNER_CHANNEL_WAIT_SECONDS = 120
 HASH_SECONDS = 8
+# BUG-146: how long a persisted recovery intent may sit before its absent
+# launcher/runner counts as proof that nothing ever started. The runner writes
+# runner_identity as its first durable action, before it waits for the channel,
+# so this window covers process creation and the first JSON write only.
+STALLED_INTENT_SECONDS = 120
 SNAPSHOT_SECONDS = 12
 MAX_FILE_BYTES = 1024**3
 
@@ -59,7 +68,9 @@ def _binding(snapshot: dict) -> str:
     # Windows can remove an exited process object after the last open handle
     # closes. Both observations prove the same recorded owner has stopped.
     stable = {
-        **snapshot,
+        # BUG-146: the stalled-intent diagnosis carries an age that changes on
+        # every read; it is not an identity, so it never binds an evidence token.
+        **{key: value for key, value in snapshot.items() if key != "stalled_recovery"},
         "owners": [
             {
                 "job_id": owner["job_id"],
@@ -291,6 +302,148 @@ def _legacy_identity_incomplete(recorded: dict | None) -> bool:
     )
 
 
+def _age_seconds(value: object) -> float | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return max(0.0, (datetime.now(timezone.utc) - moment).total_seconds())
+
+
+def _stalled_intent(directory: Path, job: dict) -> dict:
+    """BUG-146: prove that a persisted recovery intent never started anything.
+
+    0.34.0 feedback: a recovery job stayed ``queued``/``intent_persisted`` while
+    its owner PID was gone, and every action reported "cannot be proven
+    stopped", so the model was unrecoverable even though its disk baseline was
+    healthy. A job that never recorded a runner, never reported a started
+    worker and has no native identity cannot be stopped by a live process *if*
+    the process that wrote the intent is provably gone. Nothing is assumed:
+
+    * a started worker or any native file keeps the ordinary identity rules --
+      this proof never overrides a record;
+    * a recorded runner is not trusted either way: it must be provably exited
+      (gone, or the same PID with a different creation time) before the intent
+      counts as stalled. A live or unreadable runner keeps the job protected;
+    * the launcher identity must be present and readable; a live launcher with
+      the same creation time protects the job, and a reused PID (same number,
+      different creation time) counts as exited;
+    * the intent must be older than the runner's own first-write window.
+    """
+    if job.get("kind") != "reconciliation":
+        return {"proven": False, "reason": "not_a_recovery_intent"}
+    # Both stages are still before the native worker: a runner that died after
+    # reserving the channel (``waiting_for_channel``) is exactly as stuck as one
+    # that died before its first write, and the real 2026-11-21 case landed
+    # there.
+    if job.get("stage") not in ("intent_persisted", "waiting_for_channel"):
+        return {"proven": False, "reason": "stage_advanced"}
+    if job.get("status") not in ("queued", "waiting_for_channel"):
+        return {"proven": False, "reason": "job_is_not_pending"}
+    if job.get("worker_started") is not False:
+        return {"proven": False, "reason": "worker_start_undetermined"}
+    runner = job.get("runner_identity")
+    runner_exited = False
+    if runner is not None:
+        if (
+            not isinstance(runner, dict)
+            or type(runner.get("pid")) is not int
+            or type(runner.get("created")) is not int
+            or runner["pid"] <= 0
+            or runner["created"] <= 0
+        ):
+            return {"proven": False, "reason": "runner_identity_unreadable", "runner": runner}
+        seen_runner = process_identity(runner["pid"])
+        if seen_runner.get("alive") is None:
+            return {
+                "proven": False,
+                "reason": "runner_identity_unreadable",
+                "runner": runner,
+                "runner_observed": seen_runner,
+            }
+        if seen_runner.get("alive") and seen_runner.get("created") == runner["created"]:
+            return {
+                "proven": False,
+                "reason": "runner_still_alive",
+                "runner": runner,
+                "runner_observed": seen_runner,
+            }
+        runner_exited = True
+    for name in ("native_owner.json", "native_checkpoint.json", "native_result.json"):
+        if (directory / name).is_file():
+            return {"proven": False, "reason": f"{name}_present"}
+    launcher = job.get("launched_by")
+    if (
+        not isinstance(launcher, dict)
+        or type(launcher.get("pid")) is not int
+        or launcher["pid"] <= 0
+        or type(launcher.get("created")) is not int
+        or launcher["created"] <= 0
+    ):
+        # Intents written before this field existed stay protected; the reboot
+        # evidence chain is their only route.
+        return {"proven": False, "reason": "launcher_identity_unavailable"}
+    observed = process_identity(launcher["pid"])
+    if observed.get("alive") is None:
+        return {
+            "proven": False,
+            "reason": "launcher_identity_unreadable",
+            "launcher": launcher,
+            "observed": observed,
+        }
+    reused = bool(observed.get("alive")) and observed.get("created") != launcher["created"]
+    if observed.get("alive") and not reused:
+        return {
+            "proven": False,
+            "reason": "launcher_still_alive",
+            "launcher": launcher,
+            "observed": observed,
+        }
+    age = _age_seconds(job.get("created_at"))
+    if age is None:
+        return {"proven": False, "reason": "intent_age_unknown"}
+    if age < STALLED_INTENT_SECONDS:
+        return {
+            "proven": False,
+            "reason": "within_startup_window",
+            "age_seconds": round(age, 3),
+        }
+    return {
+        "proven": True,
+        "job_id": job.get("job_id"),
+        "basis": (
+            "runner_exited"
+            if runner_exited
+            else ("launcher_pid_reused" if reused else "launcher_exited")
+        ),
+        "stage": job.get("stage"),
+        "runner": runner,
+        "launcher": launcher,
+        "observed": observed,
+        "age_seconds": round(age, 3),
+        "grace_seconds": STALLED_INTENT_SECONDS,
+        "evidence": (
+            "No started worker and no native file were recorded, every recorded process "
+            "identity (runner and launcher) is provably gone, so nothing can still be "
+            "executing this intent"
+            if runner_exited
+            else (
+                "No runner identity, no started worker and no native file were recorded; the "
+                "process that persisted the intent is provably gone, so nothing can still be "
+                "executing it"
+            )
+        ),
+        "limits": (
+            "This proves the intent never started; it never accepts a model state, changes a "
+            "revision or releases the model's own pending job"
+        ),
+    }
+
+
 def _owners(
     job_id: str,
     boot_reader: Callable[[], dict | None] | None = None,
@@ -331,6 +484,15 @@ def _owners(
         "worker": worker,
         "stopped": runner["stopped"] and worker["stopped"],
     }
+    # BUG-146: a recovery intent that provably never started is stopped by
+    # definition. The proof is recorded either way so a client can see why an
+    # intent is still protected instead of only reading "cannot be proven".
+    stalled = _stalled_intent(directory, job)
+    result["stalled_intent"] = stalled
+    if not result["stopped"] and stalled["proven"]:
+        runner.update(stopped=True, reason="The recovery intent never started a runner")
+        worker.update(stopped=True, reason="The recovery intent never started a worker")
+        result["stopped"] = True
     # A complete but live/unreadable recorded identity never gets a time-based override.
     missing_runner = not runner["stopped"] and _legacy_identity_incomplete(
         job.get("runner_identity")
@@ -427,6 +589,7 @@ def _snapshot(model_id: str) -> dict:
     files = []
     owners = []
     candidate = None
+    stalled_recovery = None
     verified_boot = _cached_boot_reader()
 
     for job_id in job_ids:
@@ -452,6 +615,8 @@ def _snapshot(model_id: str) -> dict:
         if job.get("model_id") != model_id or request.get("model", {}).get("model_id") != model_id:
             raise ValueError("Job evidence is not bound to this model")
         owners.append(_owners(job_id, verified_boot))
+        if model.get("recovery_pending") == job_id:
+            stalled_recovery = owners[-1].get("stalled_intent")
         for name in (
             "job.json",
             "request.json",
@@ -546,6 +711,7 @@ def _snapshot(model_id: str) -> dict:
         "files": files,
         "baseline": baseline,
         "candidate": candidate,
+        "stalled_recovery": stalled_recovery,
         "deployment": _deployment(deadline),
         "runtime_selection": digest(
             {key: bridge.config().get(key) for key in ("creo_root", "creo_session_id")}
@@ -599,6 +765,93 @@ def _panel_guard_state(model: dict) -> dict:
         "since": guard.get("created_at"),
         "status": _job_status(job_id),
         "mine": guard.get("model_id") == model.get("model_id"),
+    }
+
+
+def _recovery_wait(snapshot: dict) -> dict | None:
+    """BUG-146: say why a reserved recovery job has not advanced.
+
+    0.34.0 feedback reported only ``queued``/``intent_persisted`` for six
+    minutes. This block names the observed cause and the one action that fits,
+    and never claims the model's own outcome was decided.
+    """
+    job_id = snapshot["model"].get("recovery_pending")
+    if not job_id:
+        return None
+    stalled = snapshot.get("stalled_recovery") or {}
+    if stalled.get("proven"):
+        basis = stalled.get("basis")
+        return {
+            "job_id": job_id,
+            "state": "stalled_intent_proven",
+            "reason": (
+                "The recovery runner exited before a native worker started, and nothing else "
+                "holds the intent"
+                if basis == "runner_exited"
+                else (
+                    "The recovery intent never started a runner or worker, and the process that "
+                    "persisted it is gone"
+                )
+            ),
+            "detail": {
+                key: stalled.get(key)
+                for key in (
+                    "basis",
+                    "stage",
+                    "age_seconds",
+                    "grace_seconds",
+                    "runner",
+                    "launcher",
+                    "observed",
+                )
+                if stalled.get(key) is not None
+            },
+            "next_step": (
+                "abandon_stalled_recovery with confirm_stalled_recovery=true closes this intent "
+                "without touching the model's pending job, revision, file or session"
+            ),
+        }
+    reason = stalled.get("reason") or "The recovery intent's ownership is still unproven"
+    next_step = {
+        "stage_advanced": (
+            "The job advanced past the pre-worker stages, so its runner is the only source of "
+            "truth now: poll creo_get_job and read its stage"
+        ),
+        "runner_still_alive": (
+            "The recorded runner process is still alive; poll the job until it exits or reports "
+            "a terminal stage"
+        ),
+        "launcher_still_alive": (
+            "The process that persisted this intent is still alive; a retry from that client is "
+            "the shortest route"
+        ),
+        "within_startup_window": (
+            "The intent is younger than the startup window; poll again after the grace period "
+            "before concluding it is stuck"
+        ),
+    }.get(
+        reason,
+        "Poll the job; while a recorded process identity is alive or unreadable no action can "
+        "prove the intent stopped",
+    )
+    return {
+        "job_id": job_id,
+        "state": "protected",
+        "reason": reason,
+        "detail": {
+            key: stalled.get(key)
+            for key in (
+                "stage",
+                "age_seconds",
+                "grace_seconds",
+                "runner",
+                "runner_observed",
+                "launcher",
+                "observed",
+            )
+            if stalled.get(key) is not None
+        },
+        "next_step": next_step,
     }
 
 
@@ -724,6 +977,30 @@ def _actions(snapshot: dict, live: dict | None) -> dict:
         ),
     }
     guard = _panel_guard_state(model)
+    # BUG-146: a recovery intent that provably never started a runner or worker
+    # holds recovery_pending forever, and every other action reports it as an
+    # owner that "cannot be proven stopped". Closing it is metadata only: the
+    # model's own pending job, revision, saved file and session stay protected.
+    stalled = snapshot.get("stalled_recovery") or {}
+    stalled_target = bool(
+        stalled.get("proven")
+        and stalled.get("job_id")
+        and model.get("recovery_pending") == stalled.get("job_id")
+    )
+    states["abandon_stalled_recovery"] = {
+        "available": bool(stopped and stalled_target),
+        "reason": (
+            "Previous runner/worker is active or cannot be proven stopped"
+            if not stopped
+            else "No recovery intent is provably stalled; this action only closes an intent "
+            "that recorded no started worker and no native file, whose stage is still before "
+            "the worker, and whose recorded runner and launcher are provably gone"
+            if not stalled_target
+            else "Explicit apply with confirm_stalled_recovery=true, matching evidence and an "
+            "idempotency key required"
+        ),
+        "stalled_intent": stalled or None,
+    }
     terminal = general.CANCEL_TERMINAL_STATUSES
     states["confirm_panel_closed"] = {
         "available": bool(
@@ -875,6 +1152,8 @@ def inspect(model_id: str, live: bool = False) -> dict:
         "baseline": snapshot["baseline"],
         "candidate": candidate,
         "owners": snapshot["owners"],
+        "stalled_recovery": snapshot.get("stalled_recovery"),
+        "recovery_wait": _recovery_wait(snapshot),
         "live": visible_live,
         "actions": _actions(snapshot, realtime),
         # BUG-120/D4.4: a resident panel that may still be open holds the whole Creo
@@ -1103,6 +1382,94 @@ def _retire_panel_guard(model_id: str, record: dict, idempotency_key: str) -> di
     }
 
 
+def _abandon_stalled_intent(
+    model_id: str, record: dict, idempotency_key: str, arguments: dict
+) -> dict:
+    """BUG-146: close one recovery intent that provably never started.
+
+    Metadata only: it records the intent as failed, releases ``recovery_pending``
+    and leaves ``pending_job``, the revision, the saved file and every session
+    protection exactly as they were.
+
+    The order is deliberate: the reservation is released before the job record is
+    rewritten, so an interrupted call can only leave an orphan job record -- never
+    a reservation pointing at a terminal job that would look "unproven" again.
+    The idempotency journal is recorded last because this action has no external
+    side effect to protect: both writes are re-verifiable from the model record,
+    and a replayed key returns the recorded result.
+    """
+    snapshot = record["snapshot"]
+    job_id = snapshot["model"].get("recovery_pending")
+    stalled = snapshot.get("stalled_recovery") or {}
+    if not job_id or not stalled.get("proven") or stalled.get("job_id") != job_id:
+        raise ValueError("No provably stalled recovery intent is reserved; inspect again")
+    directory = bridge.job_path(job_id)
+    manifest = _read(directory / "job.json") or {}
+    if manifest.get("model_id") != model_id:
+        raise ValueError("Recovery job evidence is not bound to this model")
+    model = general.model_info(model_id)
+    if model.get("recovery_pending") != job_id:
+        raise ValueError("Recovery reservation changed; inspect again")
+    if model.get("revision") != snapshot["model"]["revision"]:
+        raise ValueError("Model revision changed after inspection; inspect again")
+    finished = bridge.now()
+    journal = _journal(model_id, idempotency_key)
+    released = {**model, "recovery_pending": None, "updated_at": finished}
+    model_registry.write_model(general.model_path(model_id), released)
+    terminal = {
+        **manifest,
+        "status": "failed",
+        "stage": "intent_abandoned",
+        "reason": "recovery_intent_never_started",
+        "failure_phase": "before_native",
+        "finished_at": finished,
+        "recovery_pending_released": True,
+        "abandoned_intent": stalled,
+        "message": (
+            "Recovery intent abandoned: it recorded no started worker and no native file, "
+            f"its stage was {stalled.get('stage') or 'pre-worker'}, and every recorded process "
+            f"identity is gone ({stalled.get('basis')}). The model, its saved file, revision, "
+            "pending job and session protection were not touched"
+        ),
+    }
+    bridge.write_json(directory / "job.json", terminal, durable=True)
+    result = {
+        "model_id": model_id,
+        "action": "abandon_stalled_recovery",
+        "job_id": job_id,
+        "status": "failed",
+        "stage": "intent_abandoned",
+        "revision": released.get("revision"),
+        "pending_job": released.get("pending_job"),
+        "recovery_pending": None,
+        "model_unchanged": True,
+        "recovery_pending_released": True,
+        "original_plan_replayed": False,
+        "stalled_intent": stalled,
+        "message": (
+            "The stalled recovery intent is closed and recovery_pending is released. The "
+            "original pending job and revision are unchanged, so the model still needs its own "
+            "reconciliation action after inspecting the geometry"
+        ),
+    }
+    bridge.write_json(
+        journal,
+        {
+            "state": "committed",
+            "action": "abandon_stalled_recovery",
+            "model_id": model_id,
+            "job_id": job_id,
+            "arguments": arguments,
+            "evidence": record,
+            "model_after": released,
+            "job_after": result,
+            "created_at": finished,
+        },
+        durable=True,
+    )
+    return result
+
+
 def apply(
     model_id: str,
     action: str,
@@ -1113,6 +1480,7 @@ def apply(
     confirm_zero_mutation: bool = False,
     confirm_failure_ack: bool = False,
     confirm_panel_closed: bool = False,
+    confirm_stalled_recovery: bool = False,
 ) -> dict:
     if (
         action not in ACTIONS
@@ -1139,6 +1507,14 @@ def apply(
             "Check in Creo that no panel or dialog from this job is open (and that the old Creo "
             "session ended if you closed Creo), then pass confirm_panel_closed=true. It never "
             "changes the model's status, revision or pending job."
+        )
+    if action == "abandon_stalled_recovery" and confirm_stalled_recovery is not True:
+        raise ValueError(
+            "abandon_stalled_recovery closes one recovery intent that provably never started a "
+            "runner or worker (no runner identity, worker_started=false, no native file, launcher "
+            "process gone). Inspect the job and pass confirm_stalled_recovery=true to record it as "
+            "failed and release recovery_pending; the model's pending job, revision, saved file and "
+            "session protection are not touched."
         )
     if expected_pending_job_id is not None and (
         not isinstance(expected_pending_job_id, str)
@@ -1170,12 +1546,18 @@ def apply(
         arguments["confirm_failure_ack"] = True
     if action == "confirm_panel_closed":
         arguments["confirm_panel_closed"] = True
+    if action == "abandon_stalled_recovery":
+        arguments["confirm_stalled_recovery"] = True
     file = _journal(model_id, idempotency_key)
     # A duplicate query does not contend for Toolkit or repeat native work.
     existing = _read(file)
     if existing:
         if existing["arguments"] != arguments:
             raise ValueError("Idempotency key already belongs to another recovery request")
+        if existing.get("state") == "committed" and action == "abandon_stalled_recovery":
+            # A metadata-only acknowledgement records its own result; there is no
+            # native commit to resume and no job to poll.
+            return existing["job_after"]
         resume_committed(existing["job_id"])
         return bridge.get_job(existing["job_id"], "compact")
     if action == "confirm_panel_closed":
@@ -1186,6 +1568,13 @@ def apply(
             model_id, evidence_token, expected_revision, expected_pending_job_id, action
         )
         return _retire_panel_guard(model_id, record, idempotency_key)
+    if action == "abandon_stalled_recovery":
+        # Metadata only: no worker, no Toolkit call and no channel admission, so
+        # a stalled intent can be closed even while Creo itself is unusable.
+        record = _validate_evidence(
+            model_id, evidence_token, expected_revision, expected_pending_job_id, action
+        )
+        return _abandon_stalled_intent(model_id, record, idempotency_key, arguments)
     launch_error = None
     try:
         with bridge.toolkit_lock(operation="submit_reconciliation", model_id=model_id):
@@ -1194,6 +1583,9 @@ def apply(
                 raise bridge.ToolkitBusy(
                     "Recovery request was concurrently accepted; poll its recovery job"
                 )
+            holder = bridge.admission_holder()
+            if holder:
+                raise bridge.ToolkitBusy(holder=holder)
             record = _validate_evidence(
                 model_id, evidence_token, expected_revision, expected_pending_job_id, action
             )
@@ -1243,6 +1635,11 @@ def apply(
                 "idempotency_key": idempotency_key,
                 "created_at": bridge.now(),
                 "stage": "intent_persisted",
+                "worker_started": False,
+                # BUG-146: the runner writes runner_identity as its first durable
+                # action. If it never does, this launcher identity is what proves
+                # the intent cannot still be executing (PID + creation time).
+                "launched_by": process_identity(os.getpid()),
                 "revision": model["revision"],
                 "message": "Recovery accepted; poll this job_id; original plan will not be replayed",
             }
@@ -1341,7 +1738,7 @@ def apply(
             model_registry.write_model(general.model_path(model_id), reserved)
             try:
                 with (directory / "runner.log").open("ab") as log:
-                    subprocess.Popen(
+                    process = subprocess.Popen(
                         [sys.executable, str(bridge.ROOT / "bridge.py"), "run-job", job_id],
                         cwd=bridge.ROOT,
                         stdin=subprocess.DEVNULL,
@@ -1360,6 +1757,12 @@ def apply(
                 )
                 launch_error = error
             if launch_error is None:
+                bridge.write_channel_claim(
+                    job_id,
+                    model_id=model_id,
+                    operation="reconcile_model",
+                    runner_pid=process.pid,
+                )
                 return manifest
     except Exception as error:
         if launch_error is None:
@@ -1372,13 +1775,16 @@ def apply(
 def run(job_id: str, manifest: dict) -> None:
     directory = bridge.job_path(job_id)
     file = _journal(manifest["model_id"], manifest["idempotency_key"])
-    intent = bridge.read_json(file)
     failure_recorded = False
     try:
         with bridge.toolkit_lock(
-            operation="reconcile_model", job_id=job_id, model_id=manifest["model_id"]
+            wait_seconds=RUNNER_CHANNEL_WAIT_SECONDS,
+            operation="reconcile_model",
+            job_id=job_id,
+            model_id=manifest["model_id"],
         ):
             try:
+                intent = bridge.read_json(file)
                 manifest = _run_locked(job_id, manifest, intent, file)
             except Exception as error:
                 if not _record_failure(job_id, manifest, file, error, locked=True):
@@ -1608,6 +2014,7 @@ def reconcile(
     confirm_zero_mutation: bool = False,
     confirm_failure_ack: bool = False,
     confirm_panel_closed: bool = False,
+    confirm_stalled_recovery: bool = False,
 ) -> dict:
     if mode == "inspect":
         if action is not None:
@@ -1635,4 +2042,5 @@ def reconcile(
         confirm_zero_mutation,
         confirm_failure_ack,
         confirm_panel_closed,
+        confirm_stalled_recovery,
     )

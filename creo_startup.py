@@ -25,6 +25,7 @@ import win32process
 import win32security
 
 import bridge
+from creo_mechdog import session_candidates, session_choice
 from creo_mechdog.lock_files import open_lock_file
 from creo_mechdog.startup_state import StartupStateError, archive_preboot_state, read_startup_state
 from creo_mechdog.window_observations import connection_guidance, window_observations
@@ -170,6 +171,9 @@ class Settings:
         selected = value.get("creo_session_id", "")
         if not isinstance(selected, str) or any(c in selected for c in "\r\n\0"):
             raise ValueError("creo_session_id must be a string without control characters")
+        # FEAT-072: a session selected at runtime outranks config.json for this
+        # process, so a client can leave `selection_required` without a restart.
+        effective = session_choice.selected(value) or ""
         args = _startup_args(value.get("creo_startup_args"))
         # Missing launch files do not prevent reuse or manual connection when
         # automatic startup is disabled; validate them immediately before launch.
@@ -178,7 +182,7 @@ class Settings:
             psf.resolve(),
             auto,
             timeout,
-            bool(selected),
+            bool(effective),
             args,
             probe_timeout=probe_timeout,
             total_budget=total_budget,
@@ -731,7 +735,27 @@ class CreoStartup:
             value.pop("phase_deadline_monotonic", None)
             return value
 
-    def start(self, retry: bool = False) -> dict:
+    def start(
+        self, retry: bool = False, session_id: str | None = None, *, clear_session_id: bool = False
+    ) -> dict:
+        # FEAT-072: a retry may name the session to connect to. The choice is
+        # process-local, applies to every worker this service starts and never
+        # lands in config.json; without a retry nothing would be re-verified, so
+        # the two cannot be separated.
+        if session_id is not None or clear_session_id:
+            if not retry:
+                raise session_choice.SelectionError(
+                    "Selecting a Creo session rechecks the connection: pass retry=true with "
+                    "session_id, or retry=true with clear_session_id=true"
+                )
+            if session_id is not None and clear_session_id:
+                raise session_choice.SelectionError(
+                    "Pass either session_id or clear_session_id=true, not both"
+                )
+            if session_id is not None:
+                session_choice.set_override(session_id)
+            else:
+                session_choice.clear_override()
         with self._mutex:
             if retry:
                 directory = self._directory or self._directory_override
@@ -855,6 +879,44 @@ class CreoStartup:
             f"poll creo_startup_status. No modeling job was queued."
         )
 
+    def session_report(self, snapshot: dict | None = None) -> dict:
+        """Read-only selection and candidate view (FEAT-072).
+
+        Never probes Toolkit, changes a selection or launches Creo; ``status()``
+        stays cheap because admission calls it on every submission, so this is
+        attached only where a client explicitly asks about sessions.
+        """
+        try:
+            settings = Settings.load()
+            observed = process_snapshot(settings) if snapshot is None else snapshot
+        except (ValueError, OSError, RuntimeError) as exc:
+            return {
+                "selection": session_choice.describe({}),
+                "candidates": {
+                    "read_only": True,
+                    "available": False,
+                    "reason": f"configuration_or_inventory_error_{type(exc).__name__}",
+                    "count": 0,
+                },
+            }
+        try:
+            selection = session_choice.describe(bridge.config())
+            evidence = session_candidates.recorded_fingerprint(bridge.ROOT)
+        except (ValueError, OSError, RuntimeError):
+            selection = session_choice.describe({})
+            evidence = {"available": False, "reason": "evidence_unreadable"}
+        return {
+            "selection": selection,
+            "candidates": session_candidates.build(observed, selection, evidence),
+        }
+
+    def session_keys(self, snapshot: dict | None = None) -> dict:
+        report = self.session_report(snapshot)
+        return {
+            "session_selection": report["selection"],
+            "session_candidates": report["candidates"],
+        }
+
     def session_status(self) -> dict:
         with self._mutex:
             running = bool(self._thread and self._thread.is_alive())
@@ -870,6 +932,7 @@ class CreoStartup:
                     "reason": "startup coordinator is running; no second Toolkit probe was started",
                 },
                 "startup": state,
+                **self.session_keys(),
             }
         try:
             settings = Settings.load()
@@ -936,6 +999,7 @@ class CreoStartup:
             "live_probe": {"performed": True, "busy": False, "queued": False},
             "creo_process_snapshot": snapshot,
             "startup": self.status(),
+            **self.session_keys(snapshot),
         }
 
     def _run(self, retry: bool) -> None:
@@ -1413,22 +1477,30 @@ class CreoStartup:
                 # config.json, but no tool could enumerate the session ids and a
                 # running service never re-read them on its own. Say what
                 # actually recovers, in the order that works without a restart.
+                # FEAT-072 adds the two steps that no longer need one: the
+                # candidate list in this response and an explicit selection.
                 self._publish(
                     "selection_required",
                     "Multiple Creo sessions match and this service cannot tell them apart "
-                    "(toolkit_code=-36). Close every Creo instance but the one you want and "
-                    "call creo_startup_status(retry=true), or set creo_session_id in "
-                    "config.json and restart the MCP service so the startup coordinator reads "
-                    "it; editing config.json alone does not change the running service. No "
-                    "tool can list session ids yet, so an unattended client cannot choose a "
-                    "session programmatically",
+                    "(toolkit_code=-36). The session_candidates field lists the observed Creo "
+                    "processes, but a session id cannot be derived from a Windows PID, so this "
+                    "service cannot choose a session programmatically. If you know the id "
+                    "(Creo Session Info), select it with "
+                    "creo_startup_status(retry=true, session_id=...); that applies to the "
+                    "running service and needs no restart. Otherwise close every Creo instance "
+                    "but the one you want and retry, or set creo_session_id in config.json and "
+                    "restart the MCP service: editing config.json alone does not change the "
+                    "running service. An unknown id is never replaced by another session and "
+                    "no Creo is closed",
                     native=native,
                 )
                 return
             if settings.selected:
                 self._publish(
                     "selection_required",
-                    "Configured session is unavailable or did not match; no replacement session was launched",
+                    "The selected Creo session is unavailable or did not match "
+                    f"(source: {session_choice.describe(bridge.config())['source']}); no "
+                    "replacement session was launched and no other session was connected",
                     native=native,
                 )
                 return
