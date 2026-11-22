@@ -62,7 +62,12 @@ class SessionStatusTests(unittest.TestCase):
             patch.object(bridge, "build_native", return_value=WORKER),
             patch.object(bridge, "native_environment", return_value={"PATH": "x"}),
             patch.object(bridge.subprocess, "run", return_value=direct) as run,
-            patch.object(desktop_worker, "run", return_value=desktop) as desktop_run,
+            patch.object(
+                desktop_worker,
+                "run",
+                side_effect=desktop if isinstance(desktop, Exception) else None,
+                return_value=desktop,
+            ) as desktop_run,
         ):
             value = bridge.session_status(2)
         return value, run, desktop_run
@@ -84,9 +89,12 @@ class SessionStatusTests(unittest.TestCase):
         self.assertEqual(desktop_run.call_count, 1)
 
     def test_desktop_failure_keeps_the_direct_result(self):
-        value, _, desktop_run = self.run_status("auto", probe(-4), None)
+        value, _, desktop_run = self.run_status(
+            "auto", probe(-4), desktop_worker.DesktopUnavailable("Explorer unavailable")
+        )
         self.assertEqual(value["worker_launch"], "direct")
         self.assertEqual(value["desktop_retry"], "unavailable")
+        self.assertEqual(value["desktop_retry_reason"], "Explorer unavailable")
         self.assertEqual(desktop_run.call_count, 1)
 
     def test_desktop_result_that_is_still_bad_context_is_reported_but_not_adopted(self):

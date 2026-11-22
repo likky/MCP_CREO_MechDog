@@ -172,6 +172,7 @@ class FakeStop:
 
 class StallWatchdogTests(unittest.TestCase):
     def setUp(self):
+        self.enterContext(patch.object(bridge, "config", return_value={}))
         self.temporary = tempfile.TemporaryDirectory(prefix="bug131_stall_")
         self.directory = Path(self.temporary.name)
         (self.directory / "worker.log").write_bytes(b"")

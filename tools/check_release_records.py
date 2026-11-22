@@ -30,8 +30,11 @@ def main(argv: list[str] | None = None) -> int:
         default=ROOT,
         help="Source tree to check; defaults to this checkout",
     )
+    parser.add_argument("--unit-report", type=Path, help="Report from tools/test_unit.py --report")
     args = parser.parse_args(argv)
-    problems = validate_release_records(args.version, args.source_zip, args.root)
+    problems = validate_release_records(
+        args.version, args.source_zip, args.root, unit_report=args.unit_report
+    )
     if problems:
         print(f"{args.version}: release records are not current", file=sys.stderr)
         for problem in problems:

@@ -118,12 +118,26 @@ def main():
     parser.add_argument(
         "--output", type=Path, help="New ZIP path; refuses to overwrite an existing archive"
     )
+    parser.add_argument(
+        "--unit-report",
+        type=Path,
+        help="Report from this release's tools/test_unit.py --report run",
+    )
     args = parser.parse_args()
     try:
         summary = validate_release_inputs(ROOT, args.seed_archive.resolve())
     except ValueError as error:
         print(f"Source package refused: {error}", file=sys.stderr)
         raise SystemExit(2) from None
+    problems = validate_release_records(VERSION, root=ROOT, unit_report=args.unit_report)
+    if problems:
+        print("Release record gate rejected this package:", file=sys.stderr)
+        for problem in problems:
+            print(f"  - {problem}", file=sys.stderr)
+        return 1
+    archive = args.output.resolve() if args.output else ROOT.parent / f"{NAME}-{VERSION}-source.zip"
+    if archive.exists():
+        raise ValueError("Output archive already exists; choose a new path")
     try:
         files = source_files()
     except ValueError as error:
@@ -142,10 +156,7 @@ def main():
             destination = stage / source.relative_to(ROOT)
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, destination)
-    archive = args.output.resolve() if args.output else ROOT.parent / f"{NAME}-{VERSION}-source.zip"
-    if args.output and archive.exists():
-        raise ValueError("Explicit output archive already exists; choose a new path")
-    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as output:
+    with zipfile.ZipFile(archive, "x", compression=zipfile.ZIP_DEFLATED) as output:
         for source in files:
             output.write(source, f"{NAME}/" + source.relative_to(ROOT).as_posix())
     checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
@@ -178,9 +189,7 @@ def main():
             print(f"  - {problem}", file=sys.stderr)
         return 1
     print("Release asset gate: four assets present; both sidecars match their ZIP digests")
-    # root=ROOT lets the source-tree gate (including the BUG-137 unit-report
-    # success check) run against the tree that built this archive.
-    problems = validate_release_records(VERSION, archive, root=ROOT)
+    problems = validate_release_records(VERSION, archive)
     if problems:
         print("Release record gate rejected this package:", file=sys.stderr)
         for problem in problems:

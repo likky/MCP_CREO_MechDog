@@ -7,18 +7,21 @@ context the probe returns ``PRO_TK_BAD_CONTEXT`` (-4) even though Creo is health
 a worker started through it keeps the desktop process context instead.
 
 Nothing here selects or closes Creo; the module only starts a worker and returns
-its captured output and exit code. Environment values are passed as a temporary
-batch script; the license value is never written to disk.
+its captured output and exit code. Explorer starts a Python helper directly;
+only the worker's environment overrides are stored in the temporary request.
 """
 
 from __future__ import annotations
 
 import ctypes
+import json
+import logging
 import os
 import shutil
 import subprocess
+import sys
+import tempfile
 import time
-import uuid
 from contextlib import contextmanager
 from ctypes import wintypes
 from pathlib import Path
@@ -133,51 +136,55 @@ def _explorer_shell() -> Iterator[object]:
         pythoncom.CoUninitialize()
 
 
-def _escape(value: str) -> str | None:
-    """Batch-safe literal; None when the value cannot be expressed safely."""
-    if '"' in value or "\r" in value or "\n" in value:
-        return None
-    return value.replace("%", "%%")
+def _launcher(
+    directory: Path, command: list[str], cwd: Path, env: dict[str, str], deadline: float
+) -> Path:
+    if env.get(LICENSE_KEY) and env[LICENSE_KEY] != os.environ.get(LICENSE_KEY):
+        raise DesktopUnavailable("Desktop launch cannot transfer a different license environment")
+    request = directory / "request.json"
+    request.write_text(
+        json.dumps(
+            {
+                "command": command,
+                "cwd": str(cwd),
+                "env": {key: env[key] for key in ENV_KEYS if env.get(key)},
+                "deadline": deadline,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return request
 
 
-def _launcher(directory: Path, command: list[str], cwd: Path, env: dict[str, str]) -> Path | None:
-    """Write the hidden launcher; return None when the environment cannot be reproduced."""
-    lines = ["@echo off", "setlocal enableextensions"]
-    for key in ENV_KEYS:
-        value = env.get(key)
-        if not value:
-            continue
-        escaped = _escape(value)
-        if escaped is None:
-            return None
-        lines.append(f'set "{key}={escaped}"')
-    license_value = env.get(LICENSE_KEY)
-    if license_value and license_value != os.environ.get(LICENSE_KEY):
-        # Writing the caller's license value to disk would persist a license
-        # location that the desktop already resolves on its own; use a direct run.
-        return None
-    working = _escape(str(cwd))
-    executable = _escape(command[0])
-    if working is None or executable is None:
-        return None
-    lines.append(f'cd /d "{working}"')
-    arguments = subprocess.list2cmdline(command[1:])
-    redirections = []
-    for name in ("stdout.txt", "stderr.txt"):
-        target = _escape(str(directory / name))
-        if target is None:
-            return None
-        redirections.append(f'{1 if name == "stdout.txt" else 2}>"{target}"')
-    code_target = _escape(str(directory / "exit.txt"))
-    if code_target is None:
-        return None
-    parts = [f'"{executable}"', *([arguments] if arguments else []), *redirections]
-    lines.append(" ".join(parts))
-    lines.append(f'>"{code_target}" echo %ERRORLEVEL%')
-    lines.append("exit /b 0")
-    script = directory / "launch.cmd"
-    script.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8", newline="")
-    return script
+def _run_request(request: Path) -> None:
+    directory = request.parent
+    value = json.loads(request.read_text(encoding="utf-8"))
+    remaining = value["deadline"] - time.monotonic()
+    if remaining <= 0:
+        return
+    try:
+        with (
+            (directory / "stdout.txt").open("wb") as stdout,
+            (directory / "stderr.txt").open("wb") as stderr,
+        ):
+            process = subprocess.run(
+                value["command"],
+                cwd=value["cwd"],
+                env={**os.environ, **value["env"]},
+                stdout=stdout,
+                stderr=stderr,
+                timeout=remaining,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+                check=False,
+            )
+        result = {"returncode": process.returncode}
+    except subprocess.TimeoutExpired:
+        result = {"error": "Desktop worker exceeded the probe budget"}
+    except (OSError, ValueError) as exc:
+        result = {"error": f"Desktop worker could not start ({type(exc).__name__})"}
+    temporary = directory / "result.tmp"
+    temporary.write_text(json.dumps(result), encoding="utf-8")
+    temporary.replace(directory / "result.json")
 
 
 def run(
@@ -186,45 +193,50 @@ def run(
     env: dict[str, str],
     timeout: float,
     parent: Path,
-) -> subprocess.CompletedProcess[bytes] | None:
-    """Start ``command`` hidden via Explorer; None when that path is unavailable.
-
-    The caller keeps its direct-launch result either way: this helper is a
-    diagnostic escape hatch, not a replacement for the normal worker start.
-    """
+) -> subprocess.CompletedProcess[bytes]:
+    """Start the worker hidden via Explorer and return its captured process result."""
     if os.name != "nt" or not command:
-        return None
-    parent.mkdir(parents=True, exist_ok=True)
-    directory = parent / uuid.uuid4().hex
-    directory.mkdir()
+        raise DesktopUnavailable("Desktop launch needs Windows and a worker command")
+    directory = None
     try:
-        script = _launcher(directory, command, cwd, env)
-        if script is None:
-            return None
+        parent.mkdir(parents=True, exist_ok=True)
+        directory = Path(tempfile.mkdtemp(dir=parent))
+        deadline = time.monotonic() + timeout
+        request = _launcher(directory, command, cwd, env, deadline)
         with _explorer_shell() as shell:
             shell.ShellExecute(
-                str(Path(os.environ["SYSTEMROOT"]) / "System32/cmd.exe"),
-                subprocess.list2cmdline(["/d", "/c", str(script)]),
+                sys.executable,
+                subprocess.list2cmdline(["-I", str(Path(__file__).resolve()), str(request)]),
                 str(directory),
                 "open",
                 0,
             )
-        code_path = directory / "exit.txt"
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            if code_path.is_file():
-                break
+        result_path = directory / "result.json"
+        while not result_path.is_file():
+            if time.monotonic() >= deadline:
+                raise DesktopUnavailable("Desktop worker did not publish a result before timeout")
             time.sleep(POLL_SECONDS)
-        else:
-            return None
-        try:
-            returncode = int(code_path.read_text(encoding="utf-8").strip())
-        except (OSError, ValueError):
-            return None
+        result = json.loads(result_path.read_text(encoding="utf-8"))
+        if isinstance(result, dict) and isinstance(result.get("error"), str):
+            raise DesktopUnavailable(result["error"])
+        if not isinstance(result, dict) or type(result.get("returncode")) is not int:
+            raise DesktopUnavailable("Desktop worker published an invalid process result")
         stdout = (directory / "stdout.txt").read_bytes()
         stderr = (directory / "stderr.txt").read_bytes()
-        return subprocess.CompletedProcess(command, returncode, stdout, stderr)
-    except (DesktopUnavailable, OSError, pywintypes.error):
-        return None
+        return subprocess.CompletedProcess(command, result["returncode"], stdout, stderr)
+    except (OSError, ValueError, pywintypes.error) as exc:
+        raise DesktopUnavailable(
+            f"Desktop launch result unavailable ({type(exc).__name__})"
+        ) from None
     finally:
-        shutil.rmtree(directory, ignore_errors=True)
+        if directory is not None:
+            try:
+                shutil.rmtree(directory)
+            except Exception as exc:
+                logging.getLogger(__name__).warning(
+                    "Could not clean up desktop worker scratch directory (%s)", type(exc).__name__
+                )
+
+
+if __name__ == "__main__":
+    _run_request(Path(sys.argv[1]))

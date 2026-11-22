@@ -63,10 +63,10 @@
 0.22.0 与 0.23.0 都是先打标签、后回填 POSTCHECK，已发布的 `source.zip` 内因此留下准备态记录。从 0.23.1 起按以下顺序执行，任何一步不通过都不得发布：
 
 1. 提交版本、版本说明、发布记录与 POSTCHECK 段。预发布阶段就要写满：版本、范围、验证命令与结果、四个附件名、种子包 SHA256、两份 sidecar 是各自 ZIP 摘要的说明、Release URL 模板。包内不写 `source.zip` 自身 SHA256（ZIP 不能包含自身摘要），也不写打包时还不存在的 Release id/发布时间。**0.23.2 起这三份文档的本地相对链接必须可解析**：门禁同时检查工作树与源码 ZIP 内的同一批链接，外链、纯锚点和站点绝对路径跳过，`..` 逃出包根的链接直接判失败。
-2. `tools/package_seeds.py --output <new-seed.zip>` → 把实测摘要回填 `docs/seed_package.json` → 再构建一次确认哈希不变 → `tools/package.py --seed-archive <new-seed.zip> --output <new-source.zip>`。`package.py` 在四附件门禁后运行发布记录门禁，包内记录过期时返回非零并保留 ZIP 供排查；修复后删除该 ZIP 重打。
+2. `tools/package_seeds.py --output <new-seed.zip>` → 把实测摘要回填 `docs/seed_package.json` → 再构建一次确认哈希不变 → `tools/package.py --seed-archive <new-seed.zip> --output <new-source.zip>`。`package.py` 写出源码 ZIP 和 stage 前检查当前源码的发布记录及适用的单测证据，写出后复核四附件及 ZIP 内记录。
 3. 打标签、发布、逐个上传四个附件；**不重传、不改 tag**。
 4. `tools/check_release_assets.py --tag vX.Y.Z` 必须 exit 0；版本 ≥ 0.23.1 时该命令会解压源码包并再次运行记录门禁。Release id 与发布时间只回填到 `main` 的 POSTCHECK，不要求进入已冻结的包。
-5. 打包前可单独运行 `tools/check_release_records.py --version X.Y.Z [--source-zip <zip>]` 预检。版本低于 0.23.1 时记录门禁跳过，历史 tag 仍只做四附件校验。
+5. 发布说明或发布记录声明全量单测通过时，先运行 `tools/test_unit.py --report <本轮新路径>`，再将同一路径作为 `--unit-report` 传给 `tools/package.py` 和可选预检 `tools/check_release_records.py --version X.Y.Z`。每次尝试使用一个新报告路径；测试中断时报告保持 `running`，重新运行会拒绝覆盖旧报告。门禁核对完成状态、统计、版本、提交和受测源码指纹。常规 `build/unit_test_report.json` 继续提供开发诊断。只校验远端附件时，源码 ZIP 不包含本机报告，仍按包内记录和四附件检查。版本低于 0.23.1 时记录门禁跳过。
 
 ### 打包调用迁移（DEV-053 P04 / BUG-089 防复发）
 

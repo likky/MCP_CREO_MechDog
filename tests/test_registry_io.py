@@ -218,7 +218,7 @@ class RegistryIO(RegistryFixture, unittest.TestCase):
         self.assert_preserved()
 
     def test_uuid_collision_does_not_remove_unowned_file(self):
-        foreign = self.path.with_suffix(".json.collision.tmp")
+        foreign = self.path.with_name(".collision.tmp")
         foreign.write_bytes(b"foreign")
         with patch.object(bridge.uuid, "uuid4") as uuid:
             uuid.return_value.hex = "collision"

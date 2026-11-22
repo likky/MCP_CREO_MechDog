@@ -59,9 +59,11 @@ class FixtureRoot(unittest.TestCase):
 class FixtureProtocol(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         fixture.FIXTURE_HOME.mkdir(parents=True, exist_ok=True)
-        self.temporary = tempfile.TemporaryDirectory(prefix="stdio-unit-", dir=fixture.FIXTURE_HOME)
+        # The journal filenames contain a full SHA256. Keep this fixture's
+        # scratch segments short on Windows worktrees with long checkout paths.
+        self.temporary = tempfile.TemporaryDirectory(prefix="", dir=fixture.FIXTURE_HOME)
         self.addCleanup(self.temporary.cleanup)
-        self.directory = Path(self.temporary.name) / "data"
+        self.directory = Path(self.temporary.name) / "d"
         self.manifest = fixture.prepare(self.directory)
 
     def client(self):

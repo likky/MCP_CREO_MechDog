@@ -7,6 +7,7 @@ README version section are all rejected before anything is written.
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -18,6 +19,7 @@ from unittest.mock import patch
 
 import bridge
 from creo_mechdog import panel_profiles, release_integrity, seeds
+from creo_mechdog.source_provenance import local_provenance
 from tools import package, package_seeds
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -273,12 +275,41 @@ class SeedArchiveInstallTests(SeedArchiveFixture):
 class SeedPackagingGateTests(SeedArchiveFixture):
     """The source package entry refuses a missing or mismatched seed archive."""
 
-    def run_package(self, *args: str) -> subprocess.CompletedProcess:
+    def setUp(self):
+        super().setUp()
+        for path in package.source_files():
+            target = self.root / path.relative_to(ROOT)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, target)
+        self.report = self.temp / "this-run.json"
+        self.report.write_text(
+            json.dumps(
+                {
+                    "version": VERSION,
+                    "status": "completed",
+                    "release_evidence": True,
+                    "success": True,
+                    "tests_run": 10,
+                    "failures": 0,
+                    "errors": 0,
+                    "skipped": 0,
+                    "source": local_provenance(self.root),
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.shared_report = self.root / "build/unit_test_report.json"
+        self.shared_report.parent.mkdir()
+        self.shared_report.write_text('{"success": false, "errors": 1}', encoding="utf-8")
+
+    def run_package(self, *args: str, use_report: bool = True) -> subprocess.CompletedProcess:
+        evidence = ["--unit-report", str(self.report)] if use_report else []
         return subprocess.run(
-            [sys.executable, str(ROOT / "tools/package.py"), *args],
+            [sys.executable, str(self.root / "tools/package.py"), *args, *evidence],
             capture_output=True,
-            text=True,
-            cwd=str(ROOT),
+            encoding="utf-8",
+            env={**os.environ, "PYTHONUTF8": "1"},
+            cwd=self.root,
             check=False,
         )
 
@@ -313,15 +344,35 @@ class SeedPackagingGateTests(SeedArchiveFixture):
         self.assertIn("MCP_CREO_MechDog/seed_library/seed_manifest.json", names)
 
     def test_valid_seed_archive_packages_the_source_with_the_default_output(self):
-        default = ROOT.parent / f"MCP_CREO_MechDog-{VERSION}-source.zip"
-        self.assertFalse(default.exists(), "default output path is already taken")
+        default = self.temp / f"MCP_CREO_MechDog-{VERSION}-source.zip"
         result = self.run_package("--seed-archive", str(self.archive))
-        try:
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertTrue(default.is_file())
-        finally:
-            default.unlink(missing_ok=True)
-            default.with_suffix(".zip.sha256").unlink(missing_ok=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(default.is_file())
+        self.assertEqual(
+            self.shared_report.read_text(encoding="utf-8"), '{"success": false, "errors": 1}'
+        )
+
+    def test_full_pass_claim_refuses_shared_report_before_writing_any_output(self):
+        release = self.root / f"docs/validation/RELEASE-{VERSION}.md"
+        with release.open("a", encoding="utf-8") as stream:
+            stream.write("\n\n- 全量 unittest 通过。\n")
+        self.shared_report.write_bytes(self.report.read_bytes())
+        stage = self.temp / "stage"
+        output = self.temp / f"MCP_CREO_MechDog-{VERSION}-source.zip"
+        result = self.run_package(
+            "--seed-archive",
+            str(self.archive),
+            "--output",
+            str(output),
+            "--stage",
+            str(stage),
+            use_report=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no --unit-report was supplied", result.stderr)
+        self.assertFalse(stage.exists())
+        self.assertFalse(output.exists())
+        self.assertFalse(output.with_suffix(".zip.sha256").exists())
 
     def test_valid_seed_archive_packages_a_new_empty_stage_directory(self):
         stage = self.temp / "stage"

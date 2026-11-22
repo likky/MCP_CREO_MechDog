@@ -12,6 +12,22 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
+def source_file_hashes(
+    root: Path, names: Iterable[str]
+) -> tuple[dict[str, str], list[dict[str, str]]]:
+    """Hash the specified files, preserving missing-file evidence."""
+    hashes = {}
+    errors = []
+    for name in sorted(names):
+        try:
+            content = (root / name).read_bytes()
+        except OSError as error:
+            errors.append({"path": name, "error_type": type(error).__name__})
+        else:
+            hashes[name] = hashlib.sha256(content.replace(b"\r\n", b"\n")).hexdigest()
+    return hashes, errors
+
+
 def local_provenance(root: Path, extra_names: Iterable[str] = ()) -> dict[str, Any]:
     """Hash distributed source without inventing a Git identity when unavailable."""
     from version import VERSION
@@ -57,15 +73,7 @@ def local_provenance(root: Path, extra_names: Iterable[str] = ()) -> dict[str, A
         commit = branch = dirty = None
         git_status = "unavailable"
     names.update(extra_names)
-    hashes = {}
-    source_errors = []
-    for name in sorted(names):
-        try:
-            content = (root / name).read_bytes()
-        except OSError as error:
-            source_errors.append({"path": name, "error_type": type(error).__name__})
-        else:
-            hashes[name] = hashlib.sha256(content.replace(b"\r\n", b"\n")).hexdigest()
+    hashes, source_errors = source_file_hashes(root, names)
     source_status = "incomplete" if source_errors else "complete" if hashes else "unavailable"
     return {
         "version": VERSION,
