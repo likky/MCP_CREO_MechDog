@@ -3,7 +3,7 @@
 日期：2026-11-22
 版本：0.35.6（PATCH）
 上一版本：0.35.5（`v0.35.5`，提交 `91642489e708f1c2ac7ee3fa1ff6f8565a53851b`）。
-本次发布提交：见 `v0.35.6` 标签指向（本记录随该提交冻结；实际提交号与 Release id 由发布后的 POSTCHECK 回填）。
+本次发布提交：`13aa9e163da7569c548949de8c8c3b9b8bf3615a`（annotated 标签 `v0.35.6`；包内该行为打包时点措辞，提交号在此 `main` 版本回填）。
 
 ## 范围
 
@@ -31,7 +31,7 @@
   - BUG-146：`waiting_for_channel` + runner 已退出的真实残留 `stalled_recovery.proven=true`（basis=`runner_exited`）→ `abandon_stalled_recovery` → `restore_baseline` `succeeded`，`pending_job`/`recovery_pending` 均 null。
   - BUG-148：两开放轮廓报 `-1` 并给出拆分指引（0 闭合、2 轮廓、4 开放端），单开放轮廓 `quilts=1`/`has_solid=false`，闭合对照成功。
 - 发布记录门禁：`tools/check_release_records.py --version 0.35.6` exit 0；`tools/package.py` 的发布记录门禁（含本轮 `run_id`/源码指纹证据）在写 ZIP、sidecar、stage 之前执行并通过。
-- 源码包解压独立验收：打包后执行，当前未验证。计划在 `%TEMP%\mc-0356-extract` 解压 `MCP_CREO_MechDog-0.35.6-source.zip`，用独立 venv（`pip install -e .` 与 `-r requirements.txt`）运行 `tools/test_unit.py`，并把项数、跳过、解压受测指纹与差异项追加到 `main` 的统一 POSTCHECK；包内记录不预填该轮结果。
+- 源码包解压独立验收：`MCP_CREO_MechDog-0.35.6-source.zip` 解压到 `%TEMP%\mc-0356-extract`（2,273 个文件、无 `.git`、无本机 `config.json`），新建 venv 后 `pip install -e .` 与 `-r requirements.txt` 成功，运行 `tools/test_unit.py`：4,368 项、0 失败、0 错误、14 跳过，解压受测指纹 `96262512a5d847f927d31ecc08bff4fd7bd12ee470d06c6f2f7d3e9c3803ad91`（`commit`/`dirty` 为 null，`source_status=complete`）。较工作树 4,376 项少 8 项，全部转为跳过（本机编译器配置缺失 5、无 `config.json` 2、符号链接特权 1 等环境项）。
 
 ## 种子库
 
@@ -59,8 +59,11 @@
 
 ## 发布后远端核对
 
-- 发布后执行，当前未验证。核对方式：`tools\check_release_assets.py --tag v0.35.6`，并把真实附件列表、API digest、本地实算 SHA256 与 sidecar 比对结果追加到 `main` 的统一 POSTCHECK。
-- Release 地址（发布后）：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.6`。
+- 发布：Release id `454230616`，`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.6`，非 draft、非 prerelease，`created_at=2026-11-22T05:40:56Z`、`published_at=2026-11-22T05:41:17Z`（13:41 +08:00），target `main`，正文 2,652 字符。
+- 标签：附注标签 `v0.35.6` 指向 `13aa9e163da7569c548949de8c8c3b9b8bf3615a`，远端 `main` 同值（`919f575..13aa9e1`）。
+- 核对命令：`tools\check_release_assets.py --tag v0.35.6` 首次尝试因本机 `gh release download` 30 s 超时与 GitHub API 直连 502 未取得远端结论；改用 `gh release download v0.35.6 --dir build\release-assets\v0.35.6-remote` 下载四附件后执行 `tools\check_release_assets.py --tag v0.35.6 --version 0.35.6 --dir build\release-assets\v0.35.6-remote --body-file build\release-assets\v0.35.6-body.md`，exit 0，输出 `local_verified: four assets present; both sidecars match (version 0.35.6); release body self-proof verified`。
+- 远端 API digest、下载后本地实算与 sidecar 逐一致：源码包 `4cdd0bb47e1590c3424a2f4f8c911be3ba01687d4a7a6c9a286d48a582b9f041`（11,618,127 字节）、源码 sidecar `fcbd997b87b9188896ad0068771d0af18cb915f7099adce7efa9d425a1ed76da`（101 字节）、种子包 `32ea2d0324e329f46bce7ac9dd41bd3086e2b7f151b1227e035038f0b1bd81fe`（493,442 字节）、种子 sidecar `d8f54519d30cef2d827dc1b63ba29248e9a597f0c950235fd5751dff905e33b8`（107 字节）。
+- 正文：`gh release view v0.35.6 --json body` 与本地 `--notes-file` 除末尾换行外逐字相同。
 
 ## 未验
 

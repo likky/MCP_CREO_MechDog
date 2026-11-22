@@ -8,8 +8,21 @@
 - 打包顺序：`tools\package_seeds.py` → 回填 `docs/seed_package.json` → 重建确认摘要不变 → `tools\package.py`（含本轮 `run_id`/源码指纹证据门禁）→ 标签/发布 → `tools\check_release_assets.py` 远端复核。
 - 种子包 SHA256 `32ea2d0324e329f46bce7ac9dd41bd3086e2b7f151b1227e035038f0b1bd81fe`（24 个文件、9 个种子、493,442 字节，两次构建摘要一致；包内 `seed_manifest.json` 声明 `compatible_server_version=0.35.6`）。
 - 源码包由发布提交源码构建；源码包摘要见同名 sidecar，不写入包内文件。
-- Release 地址（发布后）：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.6`；四个附件为 `MCP_CREO_MechDog-0.35.6-source.zip`、`MCP_CREO_MechDog-0.35.6-source.zip.sha256`、`MCP_CREO_MechDog-0.35.6-seed-library.zip` 与 `MCP_CREO_MechDog-0.35.6-seed-library.zip.sha256`。
-- 发布后核对：发布后执行，当前未验证。结果按附件逐个追加到本段，并同步 `docs/releases/0.35.6.json` 的 `remote_verification`。
+- Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.6`；四个附件为 `MCP_CREO_MechDog-0.35.6-source.zip`、`MCP_CREO_MechDog-0.35.6-source.zip.sha256`、`MCP_CREO_MechDog-0.35.6-seed-library.zip` 与 `MCP_CREO_MechDog-0.35.6-seed-library.zip.sha256`。
+- 标签与提交：`main` 提交 `13aa9e163da7569c548949de8c8c3b9b8bf3615a`，附注标签 `v0.35.6` 指向该提交（`git rev-parse v0.35.6^{commit}` 同值）；远端 `main` 已推进到同一提交（`919f575..13aa9e1`）。
+- 发布对象：Release id `454230616`，非 draft、非 prerelease，`created_at=2026-11-22T05:40:56Z`，`published_at=2026-11-22T05:41:17Z`（13:41 +08:00），target `main`，正文 2,652 字符，含四个附件名与「源码包摘要记录在同名 sidecar 中」。
+- 远端核对（2026-11-22 13:41—13:44 +08:00）：`tools\check_release_assets.py --tag v0.35.6` 首次尝试因本机 `gh release download` 30 s 超时与 GitHub API 直连 502 未取得远端结论（如实记为未核对）；改用 `gh release download v0.35.6` 逐个下载四附件到 `build\release-assets\v0.35.6-remote`，再执行 `tools\check_release_assets.py --tag v0.35.6 --version 0.35.6 --dir build\release-assets\v0.35.6-remote --body-file build\release-assets\v0.35.6-body.md`，exit 0，输出 `local_verified: four assets present; both sidecars match (version 0.35.6); release body self-proof verified`。
+- 附件逐个列出（未用通配）；远端 API digest、下载后本地实算与 sidecar 逐一致：
+
+| 附件 | 字节 | 远端 API digest / 本地实算 SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.35.6-source.zip` | 11,618,127 | `4cdd0bb47e1590c3424a2f4f8c911be3ba01687d4a7a6c9a286d48a582b9f041` |
+| `MCP_CREO_MechDog-0.35.6-source.zip.sha256` | 101 | `fcbd997b87b9188896ad0068771d0af18cb915f7099adce7efa9d425a1ed76da` |
+| `MCP_CREO_MechDog-0.35.6-seed-library.zip` | 493,442 | `32ea2d0324e329f46bce7ac9dd41bd3086e2b7f151b1227e035038f0b1bd81fe` |
+| `MCP_CREO_MechDog-0.35.6-seed-library.zip.sha256` | 107 | `d8f54519d30cef2d827dc1b63ba29248e9a597f0c950235fd5751dff905e33b8` |
+- 正文比对：`gh release view v0.35.6 --json body` 取回的正文与本地 `--notes-file` 内容除末尾换行外逐字相同（2,652 字符）。
+- 源码包解压独立验收（发布后，2026-11-22 13:34—13:54 +08:00）：把发布附件解压到 `%TEMP%\mc-0356-extract`（2,273 文件、无 `.git`、无 `config.json`），独立 venv 安装后运行 `tools/test_unit.py`，4,368 项、0 失败、0 错误、14 跳过，解压受测指纹 `96262512a5d847f927d31ecc08bff4fd7bd12ee470d06c6f2f7d3e9c3803ad91`；较工作树 4,376 项少的 8 项全部转为环境跳过。
+- 包内快照与 `main` 的差异：冻结源码包内的本段与发布记录仍是打包时点措辞（`remote_verification=pending`、「发布后执行，当前未验证」），以上实际结果、Release id 与提交号只存在于 `main`，不改写、不重传已发布附件。
 
 ## v0.35.5（2026-11-21，发布后已核对）
 
