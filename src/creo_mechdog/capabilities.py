@@ -704,14 +704,6 @@ KNOWN_LIMITATIONS = (
         "effect": "the tool is gated; planar sketch fill is unchanged",
     },
     {
-        "id": "assembly_mass_parts_only",
-        "condition": "creo_get_mass_properties called on an assembly",
-        "release": "all releases through 0.19.0",
-        "evidence": "FEAT-057 parts_only contract",
-        "configurable": False,
-        "effect": "refused; query managed parts individually or use creo_inspect_model",
-    },
-    {
         "id": "creo9_10_unverified",
         "condition": "Creo 9 or Creo 10 runtime behavior",
         "release": "external reports only; local baseline is Creo 12.4",
@@ -858,13 +850,43 @@ def families() -> dict:
         "mass_properties": {
             "enabled": True,
             "tool": "creo_get_mass_properties",
-            "scope": "Read-only volume, mass, density and centre of mass of a part",
-            "density": "Model material density first; density_g_cm3 is an explicit what-if fallback; neither means null mass",
-            "parts_only": True,
+            "scope": "Read-only volume, surface area, mass, density and centres of a part, "
+            "sheetmetal part or assembly",
+            "density": "Model material density first; density_g_cm3 is an explicit what-if "
+            "fallback; neither means null mass",
+            "parts_only": False,
+            "assembly": {
+                "mass": "Creo's own assembly query, reported only when the read-only occurrence "
+                "scan proves every active component has a material and resolved",
+                "density": "total mass over total volume with "
+                "density_is_effective_average=true; not a component material density",
+                "suppressed_components": "skipped as Creo skips them",
+                "unproven_tree": [
+                    "component_material_missing",
+                    "component_unavailable",
+                    "component_scan_incomplete",
+                    "no_components",
+                ],
+            },
             "mass_value_unit": "g",
             "native_mass_unit": "Model unit; also retained in the compatibility mass_unit field",
             "mass_source": ["native", "computed_from_density", "none"],
             "job_id": "Finished execution record; the synchronous query needs no polling",
+            "batch": {
+                "tool": "creo_get_mass_properties_batch",
+                "scope": "Same reading per model, at most 16 models per call, read serially",
+                "item": "Each item is succeeded with the single-model receipt fields, or failed "
+                "with error_kind invalid_request/query_failed/toolkit_busy/timeout, or skipped "
+                "with reason toolkit_busy/timeout/time_budget_exhausted",
+                "limits": {
+                    "model_ids": 16,
+                    "time_budget_seconds": {"default": 180, "min": 10, "max": 600},
+                },
+                "partial": "A failed item never erases the readings already taken; all_succeeded "
+                "is false while any item failed or was skipped",
+                "concurrency": "No added concurrency: independent requests still get the declared "
+                "busy error (BUG-009)",
+            },
         },
         "job_reporting": {
             "failed_stage": "Terminal failed jobs prefer the native failed_stage when reported; otherwise retain the last known stage",
@@ -1393,11 +1415,14 @@ def families() -> dict:
         "mirror": {
             "enabled": True,
             "native_test": "whole solid about a principal datum plane",
-            "scope": "whole-part, geometry, or feature-label references; the receipt names the "
-            "native implementation path and the reference kinds",
-            "limits": "feature labels are passed as PRO_FEATURE mirror items, so only solid "
-            "features the release accepts can be mirrored; feature subtrees are not expanded "
-            "by Python and no geometry is synthesised",
+            "scope": "whole-part, geometry or datum references; the receipt names the native "
+            "implementation path and the reference kinds",
+            "limits": "PRO_E_MIRROR_REF_ITEMS (ProMirror.h) takes curves, axes, quilts, datum "
+            "planes, coordinate systems, points or the whole part, so a feature reference is "
+            "refused by the contract and again natively before creation: a feature item hung "
+            "Creo's main thread twice on 2026-11-21 (10.0.0.0). Mirror the part with "
+            "kind=part, or a surface feature's quilt with kind=quilt; feature subtrees are not "
+            "expanded by Python and no geometry is synthesised",
         },
         "surface_offset": {
             "enabled": True,

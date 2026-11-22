@@ -61,9 +61,10 @@ class ModelingCandidateGateTests(unittest.TestCase):
         import server
 
         names = {tool.name for tool in asyncio.run(server.mcp.list_tools())}
-        # 110 = 109 plus creo_redefine_solidify_body (FEAT-070); 109 added
-        # creo_cancel_job (BUG-131) on top of the 108 published tools.
-        self.assertEqual(len(names), 110)
+        # 110 adds creo_get_mass_properties_batch (FEAT-073/T10) to the 109
+        # published tools; 109 added creo_cancel_job (BUG-131) and
+        # creo_redefine_solidify_body (FEAT-070).
+        self.assertEqual(len(names), 111)
         for op in candidate_operations():
             self.assertNotIn("creo_" + op["op"], names)
 

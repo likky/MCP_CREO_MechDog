@@ -83,7 +83,11 @@ class NativeResultDeliveryFixture(unittest.TestCase):
         process = subprocess.run(
             [str(self.exe), "generic", str(directory)],
             capture_output=True,
-            timeout=5,
+            # The cases assert the exit code and the artifacts, never latency. A
+            # deliberate fail-fast (0xC0000409) can take seconds while Windows
+            # Error Reporting collects a report on this host, so 5 s produced
+            # TimeoutExpired without any behavioural difference.
+            timeout=30,
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
         return process, directory

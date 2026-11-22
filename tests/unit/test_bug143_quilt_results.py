@@ -174,17 +174,30 @@ class QuiltNativeSourceTests(unittest.TestCase):
         self.assertIn('details["result_quilt_id"]', source)
         self.assertIn('remember(op, feature, {{"quilt_id", result_id}})', source)
 
-    def test_mirror_feature_reference_refuses_a_surface_feature(self):
-        # Live 2026-11-21: a surface feature passed as a mirror feature item
-        # killed Creo's main thread (EXCEPTION_NONCONTINUABLE_EXCEPTION). The
-        # guard must resolve the label itself and refuse before create().
+    def test_mirror_refuses_every_feature_reference_before_create(self):
+        # Live 2026-11-21: a solid feature passed as a mirror item hung Creo's
+        # main thread inside ProFeatureWithoptionsCreate (330 s and 240 s, then
+        # toolkit_code=-38); a surface feature had already killed it with an
+        # EXCEPTION_NONCONTINUABLE_EXCEPTION. ProMirror.h lists no PRO_FEATURE
+        # item, so both branches refuse before create() and name a route that is
+        # a real mirror item.
         source = (ROOT / "native" / "advanced.cpp").read_text(encoding="utf-8")
-        guard = source[
-            source.index('if (kind == "feature")') : source.index("++feature_references;")
+        mirror = source[
+            source.index("static J generic_mirror") : source.index("static J draft_reference_json")
         ]
-        self.assertIn('feature(r.at("label"))', guard)
-        self.assertIn("ProFeatureGeomitemVisit(&target, PRO_QUILT", guard)
-        self.assertIn("must name a solid feature", guard)
+        guard = mirror[mirror.index('if (kind == "feature")') : mirror.index("bool known = false")]
+        for marker in (
+            "PRO_E_MIRROR_REF_ITEMS",
+            "hangs Creo's main thread",
+            "{kind:'quilt',id:N}",
+            "{kind:'part'}",
+            "Nothing was created or modified",
+        ):
+            self.assertIn(marker, guard)
+        self.assertEqual(guard.count("throw std::runtime_error"), 2)
+        self.assertNotIn("++feature_references", mirror)
+        # Both refusals precede creation, so no mirror feature can be attempted.
+        self.assertGreater(mirror.index("ProFeature f = create(root)"), mirror.index("hangs Creo"))
 
 
 if __name__ == "__main__":

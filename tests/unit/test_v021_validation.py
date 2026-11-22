@@ -13,11 +13,18 @@ class AdvancedValidation(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.valid(op)
 
-    def test_mirror_geometry_and_feature_references(self):
+    def test_mirror_references_take_geometry_or_the_whole_part(self):
         base = {"op": "mirror", "label": "copy", "plane": {"kind": "datum_plane", "axis": "x"}}
         self.assertEqual(self.valid(base)["references"], [])
-        feature = self.valid({**base, "references": [{"kind": "feature", "label": "solid"}]})
-        self.assertEqual(feature["references"], [{"kind": "feature", "label": "solid"}])
+        quilt = self.valid({**base, "references": [{"kind": "quilt", "id": 144}]})
+        self.assertEqual(quilt["references"], [{"kind": "quilt", "id": 144}])
+        part = self.valid({**base, "references": [{"kind": "part"}]})
+        self.assertEqual(part["references"], [{"kind": "part"}])
+        # BUG-143: PRO_FEATURE is not a mirror item (ProMirror.h) and hung Creo
+        # twice on 2026-11-21, so the contract refuses it before any worker runs.
+        with self.assertRaises(ValueError) as caught:
+            self.valid({**base, "references": [{"kind": "feature", "label": "solid"}]})
+        self.assertIn("hangs Creo", str(caught.exception))
         self.invalid({**base, "references": [{"kind": "feature"}]})
         self.invalid({**base, "references": [{"kind": "part"}, {"kind": "curve", "id": 1}]})
 

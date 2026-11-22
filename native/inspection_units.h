@@ -18,6 +18,15 @@ struct InspectionLengthUnits {
             return native_volume;
         return std::nullopt;
     }
+
+    // FEAT-057/T08: surface area follows the same rule as volume - it is only
+    // reported when the model length unit is millimeters, so an unconverted
+    // area never claims to be mm2.
+    std::optional<double> area_mm2(double native_area) const {
+        if (millimeters() && std::isfinite(native_area))
+            return native_area;
+        return std::nullopt;
+    }
 };
 
 inline InspectionLengthUnits inspect_length_units(ProMdl model) {

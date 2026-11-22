@@ -102,6 +102,16 @@ def list_models(limit: int = 10, detail: str = "compact", cursor: str | None = N
 
 
 MASS_PROPERTIES_TIMEOUT_SECONDS = 120.0
+#: FEAT-073: one call may read this many models. Each model still gets its own
+#: read-only job on the single Toolkit channel, so the bound is about the
+#: caller's wait, not about native concurrency.
+MASS_PROPERTIES_BATCH_LIMIT = 16
+MASS_PROPERTIES_BATCH_BUDGET_SECONDS = 180.0
+MASS_PROPERTIES_BATCH_MIN_BUDGET_SECONDS = 10.0
+MASS_PROPERTIES_BATCH_MAX_BUDGET_SECONDS = 600.0
+#: Below this much remaining budget a new item is not started: a mass query that
+#: is cut off mid-flight would leave the channel busy for the next caller.
+MASS_PROPERTIES_BATCH_MIN_ITEM_SECONDS = 5.0
 _MASS_PROPERTIES_TERMINAL = (
     "succeeded",
     "failed",
@@ -111,29 +121,36 @@ _MASS_PROPERTIES_TERMINAL = (
 )
 
 
+class MassPropertiesTimeout(RuntimeError):
+    """The read-only mass query never reached a terminal state in its budget."""
+
+
 def get_mass_properties(model_id: str, density_g_cm3: float | None = None) -> dict:
     """FEAT-057: read the model's mass properties through a read-only job.
 
     Synchronous on purpose: the query writes nothing, so the caller gets the
     normalized receipt instead of a job id it would have to poll. The material
     density decides the mass when it exists; ``density_g_cm3`` is only the
-    explicit fallback, and the receipt always says which one was used.
+    explicit fallback, and the receipt always says which one was used. Assembly
+    totals are reported only when the native occurrence scan vouches for every
+    active component, so an unmaterialed or unresolved component never turns
+    into a silently understated sum.
     """
-    from creo_mechdog.mass_properties import normalize_mass_properties
+    return _mass_properties_receipt(model_id, density_g_cm3, MASS_PROPERTIES_TIMEOUT_SECONDS)
 
-    if model_info(model_id).get("model_type", "part") == "assembly":
-        raise ValueError(
-            "Mass properties for assemblies are unsupported; query managed parts individually. "
-            "use_tool: creo_inspect_model (read-only component and model inspection); "
-            "no revision or source file was changed"
-        )
+
+def _mass_properties_receipt(
+    model_id: str, density_g_cm3: float | None, wait_seconds: float
+) -> dict:
+    """Submit one read-only mass job and return its normalized receipt."""
+    from creo_mechdog.mass_properties import normalize_mass_properties
 
     operation: dict = {"op": "mass_properties"}
     if density_g_cm3 is not None:
         operation["density_g_cm3"] = float(density_g_cm3)
     accepted = submit([operation], model_id=model_id, readonly=True)
     job_id = accepted["job_id"]
-    deadline = time.monotonic() + MASS_PROPERTIES_TIMEOUT_SECONDS
+    deadline = time.monotonic() + wait_seconds
     record: dict = {}
     while True:
         path = bridge.job_path(job_id) / "job.json"
@@ -142,7 +159,7 @@ def get_mass_properties(model_id: str, density_g_cm3: float | None = None) -> di
             if record.get("status") in _MASS_PROPERTIES_TERMINAL:
                 break
         if time.monotonic() > deadline:
-            raise RuntimeError(f"Mass properties query did not finish: job {job_id}")
+            raise MassPropertiesTimeout(f"Mass properties query did not finish: job {job_id}")
         time.sleep(0.25)
     if record.get("status") != "succeeded":
         message = record.get("message") or f"Mass properties query failed: job {job_id}"
@@ -157,6 +174,128 @@ def get_mass_properties(model_id: str, density_g_cm3: float | None = None) -> di
                 **receipt,
             }
     raise RuntimeError(f"Mass properties query returned no reading: job {job_id}")
+
+
+def get_mass_properties_batch(
+    model_ids: list[str],
+    density_g_cm3: float | None = None,
+    time_budget_seconds: float = MASS_PROPERTIES_BATCH_BUDGET_SECONDS,
+) -> dict:
+    """FEAT-073: bounded read-only mass properties for several models.
+
+    The models are read serially, one job each, on the single Toolkit channel.
+    Every item keeps its own receipt, so one invalid id, one failed model or one
+    query that never finishes cannot erase the readings already taken and cannot
+    turn a partial answer into a silent success (``all_succeeded`` stays false).
+    A busy channel or a timeout stops new items: the rest are reported as
+    ``skipped`` with that reason instead of queueing behind an occupied channel.
+    """
+    ids = _batch_model_ids(model_ids)
+    budget = _batch_budget(time_budget_seconds)
+    started = time.monotonic()
+    deadline = started + budget
+    items: list[dict] = []
+    stop_reason: str | None = None
+    for model_id in ids:
+        remaining = deadline - time.monotonic()
+        if stop_reason is None and remaining < MASS_PROPERTIES_BATCH_MIN_ITEM_SECONDS:
+            stop_reason = "time_budget_exhausted"
+        if stop_reason is not None:
+            items.append({"model_id": model_id, "status": "skipped", "reason": stop_reason})
+            continue
+        wait_seconds = min(MASS_PROPERTIES_TIMEOUT_SECONDS, remaining)
+        try:
+            receipt = _mass_properties_receipt(model_id, density_g_cm3, wait_seconds)
+        except bridge.ToolkitBusy as error:
+            stop_reason = "toolkit_busy"
+            items.append(
+                _batch_failure(
+                    model_id,
+                    "toolkit_busy",
+                    error,
+                    blocking_job_id=error.payload.get("blocking_job_id"),
+                )
+            )
+        except MassPropertiesTimeout as error:
+            # A cut-short wait leaves the job running; only report it as the
+            # item's own timeout when the whole per-item budget was available.
+            stop_reason = (
+                "timeout"
+                if wait_seconds >= MASS_PROPERTIES_TIMEOUT_SECONDS
+                else "time_budget_exhausted"
+            )
+            items.append(_batch_failure(model_id, "timeout", error))
+        except (ValueError, OSError, RuntimeError) as error:
+            kind = "invalid_request" if isinstance(error, ValueError) else "query_failed"
+            items.append(_batch_failure(model_id, kind, error))
+        else:
+            items.append({"status": "succeeded", **receipt})
+    succeeded = sum(1 for item in items if item["status"] == "succeeded")
+    failed = sum(1 for item in items if item["status"] == "failed")
+    skipped = sum(1 for item in items if item["status"] == "skipped")
+    return {
+        "requested": len(ids),
+        "succeeded": succeeded,
+        "failed": failed,
+        "skipped": skipped,
+        "all_succeeded": succeeded == len(ids),
+        "time_budget_seconds": budget,
+        "elapsed_seconds": round(time.monotonic() - started, 3),
+        "items": items,
+    }
+
+
+def _batch_failure(
+    model_id: str, kind: str, error: Exception, blocking_job_id: str | None = None
+) -> dict:
+    return {
+        "model_id": model_id,
+        "status": "failed",
+        "error_kind": kind,
+        "error": str(error),
+        "blocking_job_id": blocking_job_id,
+    }
+
+
+def _batch_model_ids(value: object) -> list[str]:
+    if not isinstance(value, (list, tuple)):
+        raise ValueError("model_ids must be a list of model_id strings")
+    if not value:
+        raise ValueError("model_ids needs at least one model_id")
+    if len(value) > MASS_PROPERTIES_BATCH_LIMIT:
+        raise ValueError(
+            f"model_ids accepts at most {MASS_PROPERTIES_BATCH_LIMIT} models per call; "
+            "split the request and query the remainder in a second call"
+        )
+    ids: list[str] = []
+    seen: set[str] = set()
+    for index, item in enumerate(value):
+        if not isinstance(item, str) or not item:
+            raise ValueError(f"model_ids[{index}] must be a non-empty model_id string")
+        if item in seen:
+            raise ValueError(
+                f"model_ids repeats {item}; one receipt per model keeps the batch unambiguous"
+            )
+        seen.add(item)
+        ids.append(item)
+    return ids
+
+
+def _batch_budget(value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("time_budget_seconds must be a number")
+    budget = float(value)
+    if not (
+        MASS_PROPERTIES_BATCH_MIN_BUDGET_SECONDS
+        <= budget
+        <= MASS_PROPERTIES_BATCH_MAX_BUDGET_SECONDS
+    ):
+        raise ValueError(
+            "time_budget_seconds must be "
+            f"{MASS_PROPERTIES_BATCH_MIN_BUDGET_SECONDS:.0f}–"
+            f"{MASS_PROPERTIES_BATCH_MAX_BUDGET_SECONDS:.0f}"
+        )
+    return budget
 
 
 def measure_surface_group(
@@ -1058,10 +1197,6 @@ def submit(
 
                 validate_baseline(model)
         actual_type = model.get("model_type", "part")
-        if actual_type == "assembly" and any(op["op"] == "mass_properties" for op in operations):
-            raise ValueError(
-                "Mass properties for assemblies are unsupported; query managed parts individually"
-            )
         assembly_ops = {
             "assemble_component",
             "component_placement",

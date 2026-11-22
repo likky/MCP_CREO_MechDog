@@ -30,7 +30,10 @@ class CapabilitySummaryTests(unittest.IsolatedAsyncioTestCase):
         # and the read-only creo_get_mass_properties (FEAT-057).
         # 104 = 102 that carry creo_surface_trim (live P3), creo_project_curve
         # (live S04) and creo_surface_offset (live S07, 2026-11-05).
-        self.assertEqual(len(tools), 110)
+        # 110 adds the read-only bounded batch creo_get_mass_properties_batch
+        # (FEAT-073/T10): at most 16 models, serial on the single channel, one
+        # job and one receipt per model.
+        self.assertEqual(len(tools), 111)
         status = server._support_status()
         families = capabilities.families()
         for summary, family in (

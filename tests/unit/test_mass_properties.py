@@ -249,6 +249,22 @@ class NormalizeMassPropertiesTest(unittest.TestCase):
                 self.assertEqual(result["mass_unavailable_reason"], reason)
                 self.assertIsNone(result["mass_g"])
 
+    def test_assigned_material_query_failure_names_the_call_and_what_if_input(self):
+        result = normalize_mass_properties(
+            reading(
+                mass_g=None,
+                density_g_cm3=None,
+                density_source="none",
+                mass_unavailable_reason="material_query_failed",
+                mass_query_code=-1,
+            )
+        )
+        self.assertTrue(result["material_assigned"])
+        self.assertIsNone(result["mass_g"])
+        self.assertIn("ProSolidMassPropertyWithDensityGet", result["hint"])
+        self.assertIn("returned -1", result["hint"])
+        self.assertIn("density_g_cm3", result["hint"])
+
     def test_missing_reason_stays_none_for_older_native_readings(self):
         result = normalize_mass_properties(
             reading(mass_g=None, density_g_cm3=None, density_source="none")
@@ -273,6 +289,151 @@ class NormalizeMassPropertiesTest(unittest.TestCase):
                     normalize_mass_properties(
                         reading(density_source=source, mass_unavailable_reason="no_density")
                     )
+
+
+def component_scan(**overrides):
+    base = {
+        "occurrences": 2,
+        "suppressed": 0,
+        "without_material": [],
+        "unresolved": [],
+        "truncated": False,
+        "visit_codes": [],
+        "complete": True,
+    }
+    base.update(overrides)
+    return base
+
+
+def assembly_reading(**overrides):
+    base = {
+        "model_type": "assembly",
+        "volume_mm3": 12000.0,
+        "surface_area_mm2": 4400.0,
+        "mass_g": 94.2,
+        "density_g_cm3": 7.85,
+        "density_source": "model_material",
+        "mass_source": "native",
+        "density_is_effective_average": True,
+        "center_of_mass_mm": [10.0, 0.0, 0.0],
+        "center_of_volume_mm": [0.0, 0.0, 0.0],
+        "material_assigned": True,
+        "mass_unit": "kg",
+        "component_scan": component_scan(),
+        "volume_query_code": 0,
+        "mass_query_code": 0,
+        "units_query_code": 0,
+    }
+    base.update(overrides)
+    return base
+
+
+class AssemblyMassPropertiesTest(unittest.TestCase):
+    def test_assembly_mass_carries_the_full_geometry_and_occurrence_evidence(self):
+        result = normalize_mass_properties(assembly_reading())
+        self.assertEqual(result["model_type"], "assembly")
+        self.assertEqual(result["volume_mm3"], 12000.0)
+        self.assertEqual(result["surface_area_mm2"], 4400.0)
+        self.assertEqual(result["center_of_volume_mm"], [0.0, 0.0, 0.0])
+        self.assertEqual(result["center_of_mass_mm"], [10.0, 0.0, 0.0])
+        self.assertTrue(result["density_is_effective_average"])
+        self.assertEqual(result["component_scan"]["occurrences"], 2)
+        self.assertTrue(result["component_scan"]["complete"])
+
+    def test_old_part_readings_default_to_part_and_no_scan(self):
+        result = normalize_mass_properties(reading())
+        self.assertEqual(result["model_type"], "part")
+        self.assertIsNone(result["component_scan"])
+        self.assertFalse(result["density_is_effective_average"])
+        self.assertIsNone(result["surface_area_mm2"])
+
+    def test_unknown_model_type_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "model type"):
+            normalize_mass_properties(reading(model_type="drawing"))
+
+    def test_effective_average_density_is_assembly_only(self):
+        with self.assertRaisesRegex(ValueError, "effective_average"):
+            normalize_mass_properties(reading(density_is_effective_average=True))
+
+    def test_assembly_mass_from_material_needs_the_component_scan(self):
+        with self.assertRaisesRegex(ValueError, "component scan"):
+            normalize_mass_properties(assembly_reading(component_scan=None))
+
+    def test_missing_component_material_keeps_mass_null(self):
+        scan = component_scan(
+            occurrences=2,
+            without_material=[[7]],
+            complete=False,
+        )
+        result = normalize_mass_properties(
+            assembly_reading(
+                mass_g=None,
+                density_g_cm3=None,
+                density_source="none",
+                mass_source="none",
+                density_is_effective_average=False,
+                material_assigned=False,
+                mass_unavailable_reason="component_material_missing",
+                component_scan=scan,
+            )
+        )
+        self.assertIsNone(result["mass_g"])
+        self.assertEqual(result["mass_unavailable_reason"], "component_material_missing")
+        self.assertEqual(result["component_scan"]["without_material"], [[7]])
+        self.assertFalse(result["component_scan"]["complete"])
+
+    def test_unresolved_component_code_is_signed(self):
+        scan = component_scan(
+            unresolved=[{"occurrence_path": [9, 4], "code": -1}],
+            complete=False,
+        )
+        result = normalize_mass_properties(
+            assembly_reading(
+                mass_g=None,
+                density_g_cm3=None,
+                density_source="none",
+                mass_source="none",
+                density_is_effective_average=False,
+                mass_unavailable_reason="component_unavailable",
+                component_scan=scan,
+            )
+        )
+        self.assertEqual(result["component_scan"]["unresolved"][0]["code"], -1)
+        self.assertEqual(result["component_scan"]["unresolved"][0]["occurrence_path"], [9, 4])
+
+    def test_scan_complete_must_match_its_evidence(self):
+        with self.assertRaisesRegex(ValueError, "complete disagrees"):
+            normalize_mass_properties(
+                assembly_reading(component_scan=component_scan(without_material=[[3]]))
+            )
+
+    def test_empty_scan_paths_and_malformed_items_are_refused(self):
+        for scan in (
+            component_scan(without_material=[[]]),
+            component_scan(unresolved=[{"occurrence_path": [1]}]),
+            component_scan(visit_codes=["-1"]),
+            component_scan(occurrences=-1),
+        ):
+            with self.subTest(scan=scan):
+                with self.assertRaises(ValueError):
+                    normalize_mass_properties(
+                        assembly_reading(
+                            mass_g=None,
+                            density_g_cm3=None,
+                            density_source="none",
+                            mass_source="none",
+                            density_is_effective_average=False,
+                            component_scan=scan,
+                        )
+                    )
+
+    def test_negative_surface_area_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "surface_area_mm2"):
+            normalize_mass_properties(reading(surface_area_mm2=-1.0))
+
+    def test_center_of_volume_must_be_three_numbers(self):
+        result = normalize_mass_properties(assembly_reading(center_of_volume_mm=[0.0, 1.0]))
+        self.assertIsNone(result["center_of_volume_mm"])
 
 
 if __name__ == "__main__":

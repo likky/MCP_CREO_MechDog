@@ -1554,6 +1554,11 @@ class MirrorOp(StrictModel):
 
     @model_validator(mode="after")
     def geometry_references(self):
+        # BUG-143: PRO_E_MIRROR_REF_ITEMS (ProMirror.h) takes curves, axes,
+        # quilts, datum planes, coordinate systems, points or the whole part;
+        # PRO_FEATURE items are documented as unsupported since Wildfire 2.0 and
+        # hung Creo's main thread twice on 2026-11-21 (10.0.0.0). A feature
+        # reference is therefore refused here, before any worker starts.
         allowed = {
             "curve",
             "axis",
@@ -1561,21 +1566,16 @@ class MirrorOp(StrictModel):
             "csys",
             "point",
             "part",
-            "feature",
             "datum_feature",
             "datum_axis_feature",
             "datum_plane",
         }
         if any(r.get("kind") not in allowed for r in self.references):
             raise ValueError(
-                "Toolkit mirror accepts geometry, part, or feature-label references; "
-                "use kind=feature with a solid feature label to mirror a feature"
+                "Toolkit mirror accepts curves, axes, quilts, datum planes, coordinate systems, "
+                "points or the whole part; a feature reference is not a mirror item and hangs "
+                "Creo, so mirror the part with kind=part or the feature's quilt with kind=quilt"
             )
-        for reference in self.references:
-            if reference.get("kind") != "feature":
-                continue
-            if not reference.get("label") and not isinstance(reference.get("id"), int):
-                raise ValueError("A feature mirror reference needs a label or an integer id")
         if any(r.get("kind") == "part" for r in self.references) and len(self.references) != 1:
             raise ValueError("Whole-part mirror cannot mix reference types")
         return self
@@ -2885,9 +2885,11 @@ class DumpTreeOp(StrictModel):
 class MassPropertiesOp(StrictModel):
     """FEAT-057: read-only mass properties of the model itself.
 
-    ``density_g_cm3`` is an explicit what-if input, used only when the model's
-    own material carries no usable density. It never replaces a real material
-    density, and the receipt reports which source produced the mass.
+    Parts, sheetmetal parts and assemblies are read. ``density_g_cm3`` is an
+    explicit what-if input, used only when the model's own material carries no
+    usable density. It never replaces a real material density, and the receipt
+    reports which source produced the mass. An assembly total is only reported
+    when every active component has a material and resolved.
     """
 
     op: Literal["mass_properties"]

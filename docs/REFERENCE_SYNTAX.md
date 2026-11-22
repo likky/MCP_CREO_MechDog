@@ -483,6 +483,15 @@ executable 仅表示静态能力/schema 准入；native/saved_reload 恒为 not_
 3. 每次 `quilt_merge` 后重新 `creo_inspect_model(section="quilts")` 取当前
    `quilt_id`，不复用合并前的假设。
 
+`creo_mirror` 的 `references` 只接受镜像项：`curve`、`axis`、`quilt`、`csys`、
+`point`、`datum_plane`、`datum_feature`、`datum_axis_feature`，或单独一个
+`part`。`{kind:"feature"}` 不在 `PRO_E_MIRROR_REF_ITEMS` 里（`ProMirror.h` 明确把
+`PRO_FEATURE` 排除在镜像项之外），2026-11-21 在 Creo 10 上两次把主线程卡死：作业停在
+`mirror:<label>` 330 s / 240 s、Creo CPU 不增长，随后 `toolkit_code=-38`、worker
+退出码 20。现在契约与原生都在创建特征之前拒绝，并同时给出可行路线——整体镜像用
+`{"kind":"part"}`（不能与其他引用混用），曲面特征改用 `creo_inspect_model(section="quilts")`
+得到的 `{"kind":"quilt","id":N}`。
+
 封盖草图在该报告中为两条闭合 `b_spline`，`native_section` 给出 `closed_contours=1`、
 `open_ends=0`、端点偏差 2.84e-14 mm；其 `profile` 因 `b_spline` 不受支持而是
 `partial`，计数不能用来反驳——见上文 b_spline 一节。

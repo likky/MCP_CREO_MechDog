@@ -171,7 +171,8 @@ class SurfaceRoundRegistrationTests(unittest.TestCase):
         # creo_quilt_merge (FEAT-039/H03) was published on 2026-11-08,
         # creo_sheetmetal_base_flange (DEV-089 T3) on 2026-11-15 and
         # creo_cancel_job (BUG-131) with the job-control work.
-        self.assertEqual(len(tools), 110)
+        # creo_get_mass_properties_batch (FEAT-073/T10) is published too.
+        self.assertEqual(len(tools), 111)
 
     def test_require_available_admits_the_operation(self):
         require_available(validate_operations([surface_round()]))

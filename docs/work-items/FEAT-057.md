@@ -1,6 +1,6 @@
 # FEAT-057：真实材料质量属性
 
-类型：功能。优先级：P2。状态：已交付 0.18.0 子项（只读 `creo_get_mass_properties`）；密度/单位/缺失原因契约为后续离线增量，实机、主惯量与装配 occurrence 汇总仍开放。目标版本：已交付子项 0.18.0；余项未排期。
+类型：功能。优先级：P2。状态：已交付 0.18.0 子项（只读 `creo_get_mass_properties`）；密度/单位/缺失原因契约为后续离线增量；2026-11-22 装配路径与 occurrence 完整性已实现并取得 Creo 10 几何实机证据，真实材料密度、抑制/嵌套/混合密度与主惯量仍开放。目标版本：已交付子项 0.18.0；余项未排期。
 
 来源：2026-11-03 用户要求比较 alphai 项目并建立由用户自行派工的计划；静态参考源码不构成当前实机证据。
 
@@ -57,3 +57,19 @@
 - 工具说明同步单位与原因，`material_assigned`/`mass_unit`/`density_source` 语义不变。
 
 验收：`tests/unit/test_mass_properties.py` 24/24 通过；`bridge.py build` 组合编译通过（Windows x64 / Creo 12.4.0.0 匹配 SDK）。**未连接 Creo/Toolkit**：原生原因分支、真实材料密度、英寸/磅单位模型、保存重载均无实机证据；主惯量、装配 occurrence 汇总与 `complete` 契约仍开放。未合入 main，未发布。
+
+## 2026-11-22 装配质量属性（0.35.0 反馈 T08）
+
+分支 `codex/bug-144-release-evidence-plan`（基线 `98c598f`）。放开 `creo_get_mass_properties` 的装配路径，仍只读：
+
+- 原生沿用 `ProSolidMassPropertyWithDensityGet`（SDK 头文件明确接受零件或装配）。单位密度一次取值给出体积、面积与几何重心 `center_of_volume_mm`；材料密度一次给出质量重心 `center_of_mass_mm`。混合密度装配的两个重心因此可以分开核对。
+- 新增只读 occurrence 扫描：按组件特征递归（子装配上限 32 层、活动实例上限 4096），跳过抑制实例（与内核一致），记录缺材料与未解析组件的 occurrence path。扫描不能证明整棵树时 `mass_g` 保持 null，原因分别为 `component_material_missing`、`component_unavailable`、`component_scan_incomplete`、`no_components`。
+- 装配由真实材料求得质量时，`density_g_cm3` 是总量除以总体积的有效平均密度，并带 `density_is_effective_average=true`；它不代表任何一个组件的材料密度。显式 `density_g_cm3` 仍是均匀 what-if，走原有 `computed_from_density` 路径。
+- `material_assigned` 对装配的含义是“全部活动实例都有材料”，零件语义不变；`component_scan` 公开计数、抑制数、缺材料/未解析路径、截断标记、visit 返回码与 `complete`。
+- Python 归一化拒绝：`complete` 与证据不一致、非装配或非材料来源带有效平均标记、装配材料质量缺少扫描块、面积为负、未知 `model_type`。能力清单移除 `assembly_mass_parts_only`，`family.mass_properties.parts_only=false` 并补装配口径。
+
+验收与证据：
+
+- 新增 `tests/unit/test_mass_properties.py` 装配契约 10 项；`tests/unit/test_mass_assembly_admission.py` 改为断言装配计划只读提交（含与不含显式密度两条）。
+- 实机 Creo 10.0.0.0（`build/live_t08_assembly_mass.py`，12/12 检查通过）：A 件 1000 mm³ 两个实例（x=0、x=50）加 B 件 200 mm³（y=30）的装配得体积 `2199.9999999999986`、面积 `1679.9999999999998`、几何重心 `[22.72727272727273, 2.727272727272727, 2.3636363636363638]`，与解析加权值一致；两次读取前后 revision 均为 4。模板材料存在但质量查询返回 `-1`（与 BUG-147 同源）时回执为 `mass:null`、`material_query_failed`、`mass_query_code=-1`，扫描报告 3 个活动实例、0 缺材料、0 未解析；`density_g_cm3=7.85` 得 `17.26999999999999 g` 且体积/面积/重心不变。
+- 未取得实机证据：缺材料组件（本机模板自动带材料，MCP 无移除材料工具）、抑制组件（`feature_state` 仅零件/钣金）、嵌套子装配（`creo_assemble_component` 尚未支持）、混合密度真实质量（Creo 10 材料密度查询返回 -1）、Creo 9/12。主惯量仍开放。

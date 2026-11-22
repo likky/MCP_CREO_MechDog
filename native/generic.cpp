@@ -786,23 +786,146 @@ static bool assembly_model() {
     CK(ProMdlTypeGet(board, &t));
     return t == PRO_MDL_ASSEMBLY;
 }
-// FEAT-057: real mass properties from the model itself. Volume comes from a
-// unit-density calculation. Mass prefers the density Creo reports for the
-// assigned material, then the density the caller supplies as an explicit
-// what-if input; with neither, mass stays null and the receipt says why instead
-// of inventing a material. Nothing is summed across components here: an
-// assembly is refused until its own query path is verified.
+// FEAT-057/T08: real mass properties from the model itself. Volume, surface
+// area and the geometric centroid come from a unit-density calculation. Mass
+// prefers the density Creo reports for the assigned material, then the density
+// the caller supplies as an explicit what-if input; with neither, mass stays
+// null and the receipt says why instead of inventing a material.
+//
+// An assembly is measured by the same native call, but its total only counts
+// when every active occurrence contributed. A component whose part has no
+// material, whose model did not resolve, or a truncated scan would silently
+// understate the sum, so the read-only scan below proves the tree per
+// occurrence first. Suppressed occurrences are skipped exactly as the kernel
+// skips them; nothing is loaded, activated, regenerated or saved.
+struct AssemblyMassScan {
+    static constexpr int max_occurrences = 4096;
+    static constexpr int max_depth = 32;
+    int occurrences = 0;
+    int suppressed = 0;
+    int missing_material = 0;
+    int unresolved = 0;
+    bool truncated = false;
+    J without_material = J::array();
+    J unresolved_items = J::array();
+    J visit_codes = J::array();
+
+    bool complete() const {
+        return !truncated && missing_material == 0 && unresolved == 0 && visit_codes.empty();
+    }
+};
+
+static J mass_occurrence_json(const std::vector<int> &path) {
+    J out = J::array();
+    for (int id : path)
+        out.push_back(id);
+    return out;
+}
+
+struct MaterialScanContext {
+    AssemblyMassScan *scan = nullptr;
+    std::vector<int> path;
+    int depth = 0;
+};
+
+static void scan_assembly_materials(ProSolid owner, const std::vector<int> &path, int depth,
+                                    AssemblyMassScan &scan);
+
+static ProError material_scan_callback(ProFeature *feature, ProError status, ProAppData data) {
+    auto *context = static_cast<MaterialScanContext *>(data);
+    AssemblyMassScan &scan = *context->scan;
+    if (status)
+        return status;
+    if (scan.truncated)
+        return PRO_TK_NO_ERROR;
+    // The candidate path always ends at this feature: a failed type query may
+    // hide a component, and an empty path could not name what is unaccounted for.
+    std::vector<int> occurrence = context->path;
+    occurrence.push_back(feature->id);
+    ProFeattype type = PRO_FEAT_COMPONENT;
+    ProError type_code = ProFeatureTypeGet(feature, &type);
+    if (type_code) {
+        scan.unresolved++;
+        scan.unresolved_items.push_back(
+            {{"occurrence_path", mass_occurrence_json(occurrence)}, {"code", (int)type_code}});
+        return PRO_TK_NO_ERROR;
+    }
+    if (type != PRO_FEAT_COMPONENT)
+        return PRO_TK_NO_ERROR;
+    ProFeatStatus feature_status = PRO_FEAT_ACTIVE;
+    ProError status_code = ProFeatureStatusGet(feature, &feature_status);
+    if (status_code) {
+        scan.unresolved++;
+        scan.unresolved_items.push_back(
+            {{"occurrence_path", mass_occurrence_json(occurrence)}, {"code", (int)status_code}});
+        return PRO_TK_NO_ERROR;
+    }
+    if (feature_status == PRO_FEAT_SUPPRESSED || feature_status == PRO_FEAT_FAMTAB_SUPPRESSED ||
+        feature_status == PRO_FEAT_SIMP_REP_SUPPRESSED ||
+        feature_status == PRO_FEAT_PROG_SUPPRESSED) {
+        scan.suppressed++;
+        return PRO_TK_NO_ERROR;
+    }
+    if (scan.occurrences >= AssemblyMassScan::max_occurrences) {
+        scan.truncated = true;
+        return PRO_TK_NO_ERROR;
+    }
+    scan.occurrences++;
+    ProMdl child = nullptr;
+    ProError model_code = ProAsmcompMdlGet((ProAsmcomp *)feature, &child);
+    if (model_code || !child) {
+        scan.unresolved++;
+        scan.unresolved_items.push_back(
+            {{"occurrence_path", mass_occurrence_json(occurrence)}, {"code", (int)model_code}});
+        return PRO_TK_NO_ERROR;
+    }
+    ProMdlType kind = PRO_MDL_PART;
+    ProError kind_code = ProMdlTypeGet(child, &kind);
+    if (kind_code) {
+        scan.unresolved++;
+        scan.unresolved_items.push_back(
+            {{"occurrence_path", mass_occurrence_json(occurrence)}, {"code", (int)kind_code}});
+        return PRO_TK_NO_ERROR;
+    }
+    if (kind == PRO_MDL_ASSEMBLY) {
+        if (context->depth + 1 > AssemblyMassScan::max_depth) {
+            scan.truncated = true;
+            return PRO_TK_NO_ERROR;
+        }
+        scan_assembly_materials((ProSolid)child, occurrence, context->depth + 1, scan);
+        return PRO_TK_NO_ERROR;
+    }
+    ProMaterial material = {};
+    if (ProMaterialCurrentGet((ProSolid)child, &material) != PRO_TK_NO_ERROR) {
+        scan.missing_material++;
+        scan.without_material.push_back(mass_occurrence_json(occurrence));
+    }
+    return PRO_TK_NO_ERROR;
+}
+
+static void scan_assembly_materials(ProSolid owner, const std::vector<int> &path, int depth,
+                                    AssemblyMassScan &scan) {
+    MaterialScanContext context;
+    context.scan = &scan;
+    context.path = path;
+    context.depth = depth;
+    ProError visit_code =
+        ProSolidFeatVisit(owner, material_scan_callback, nullptr, (ProAppData)&context);
+    if (visit_code)
+        scan.visit_codes.push_back((int)visit_code);
+}
+
 static J mass_properties_json(const J &op) {
-    if (assembly_model())
-        throw std::runtime_error(
-            "Mass properties for assemblies are unsupported; query managed parts individually");
+    const bool assembly = assembly_model();
     J out = {{"volume_mm3", nullptr},
+             {"surface_area_mm2", nullptr},
              {"mass_g", nullptr},
              {"density_g_cm3", nullptr},
              {"density_model_units", nullptr},
              {"mass_model_units", nullptr},
              {"center_of_mass_mm", nullptr},
              {"center_of_mass_model_units", nullptr},
+             {"center_of_volume_mm", nullptr},
              {"material_assigned", false},
              {"mass_unit", nullptr},
              {"native_mass_unit", nullptr},
@@ -812,12 +935,22 @@ static J mass_properties_json(const J &op) {
              {"mass_query_code", nullptr},
              {"units_query_code", nullptr},
              {"density_source", "none"},
+             {"density_is_effective_average", false},
              {"mass_unavailable_reason", nullptr},
              {"hint", nullptr},
+             {"model_type", assembly ? "assembly" : "part"},
+             {"component_scan", nullptr},
              {"source", "ProSolidMassPropertyWithDensityGet"}};
     auto length_units = inspect_length_units(board);
     out["length_unit"] = preview_utf8(std::wstring(length_units.length.name));
     auto length_scale = length_scale_to_mm(board, length_units);
+    auto set_centroid = [&](const char *mm_key, const char *native_key, const ProMassProperty &mp) {
+        out[native_key] = xyz(mp.center_of_gravity);
+        if (length_scale.known)
+            out[mm_key] = J::array({mp.center_of_gravity[0] * length_scale.scale,
+                                    mp.center_of_gravity[1] * length_scale.scale,
+                                    mp.center_of_gravity[2] * length_scale.scale});
+    };
     ProMassProperty unit_density{};
     ProError volume_code = PRO_TK_NO_ERROR;
     volume_code = ProSolidMassPropertyWithDensityGet((ProSolid)board, nullptr,
@@ -825,23 +958,62 @@ static J mass_properties_json(const J &op) {
     out["volume_query_code"] = (int)volume_code;
     double volume_mm3 = 0.0;
     if (!volume_code) {
-        out["center_of_mass_model_units"] = xyz(unit_density.center_of_gravity);
+        // Unit density weights every point by volume, so this centroid is the
+        // geometric centre: with mixed component densities it stays distinct
+        // from the mass centroid reported further down.
+        set_centroid("center_of_mass_mm", "center_of_mass_model_units", unit_density);
+        if (length_scale.known)
+            out["center_of_volume_mm"] = out["center_of_mass_mm"];
         if (auto mm3 = length_units.volume_mm3(unit_density.volume)) {
             volume_mm3 = *mm3;
             out["volume_mm3"] = volume_mm3;
-            if (length_scale.known)
-                out["center_of_mass_mm"] =
-                    J::array({unit_density.center_of_gravity[0] * length_scale.scale,
-                              unit_density.center_of_gravity[1] * length_scale.scale,
-                              unit_density.center_of_gravity[2] * length_scale.scale});
         }
+        if (auto mm2 = length_units.area_mm2(unit_density.surface_area))
+            out["surface_area_mm2"] = *mm2;
+    }
+    // What Creo's own assembly query sums is only trustworthy when every active
+    // occurrence had a material: an unmaterialed component otherwise weighs zero.
+    AssemblyMassScan scan;
+    if (assembly) {
+        scan_assembly_materials((ProSolid)board, std::vector<int>(), 0, scan);
+        out["component_scan"] = {{"occurrences", scan.occurrences},
+                                 {"suppressed", scan.suppressed},
+                                 {"without_material", scan.without_material},
+                                 {"unresolved", scan.unresolved_items},
+                                 {"truncated", scan.truncated},
+                                 {"visit_codes", scan.visit_codes},
+                                 {"complete", scan.complete()}};
     }
     // The model's own material first: it is the only density that describes the
-    // part rather than a hypothesis about it.
+    // model rather than a hypothesis about it.
     ProMaterial material = {};
     ProError material_code = ProMaterialCurrentGet((ProSolid)board, &material);
-    out["material_assigned"] = material_code == PRO_TK_NO_ERROR;
-    if (material_code == PRO_TK_NO_ERROR) {
+    if (assembly) {
+        out["material_assigned"] = scan.complete() && scan.occurrences > 0;
+        if (!scan.complete()) {
+            if (scan.missing_material > 0) {
+                out["mass_unavailable_reason"] = "component_material_missing";
+                out["hint"] = "At least one active component has no material; assign a material "
+                              "to every component, or pass density_g_cm3 for a uniform what-if";
+            } else if (scan.unresolved > 0) {
+                out["mass_unavailable_reason"] = "component_unavailable";
+                out["hint"] = "At least one active component model did not resolve; mass is not "
+                              "summed from an incomplete tree";
+            } else {
+                out["mass_unavailable_reason"] = "component_scan_incomplete";
+                out["hint"] = "The component scan was truncated or a component visit failed; "
+                              "mass is not summed from an unproven tree";
+            }
+        } else if (scan.occurrences == 0) {
+            out["mass_unavailable_reason"] = "no_components";
+            out["hint"] = "The assembly has no active components; there is no geometry to weigh";
+        }
+    } else {
+        out["material_assigned"] = material_code == PRO_TK_NO_ERROR;
+    }
+    const bool material_path =
+        assembly ? scan.complete() && scan.occurrences > 0 : material_code == PRO_TK_NO_ERROR;
+    if (material_path) {
         ProMassProperty material_density{};
         ProError mass_code = ProSolidMassPropertyWithDensityGet(
             (ProSolid)board, nullptr, PRO_MP_DENS_DEFAULT, 0.0, &material_density);
@@ -857,10 +1029,16 @@ static J mass_properties_json(const J &op) {
             if (grams > 0.0 && density > 0.0) {
                 out["mass_g"] = grams;
                 out["density_g_cm3"] = density;
-                out["density_model_units"] = material_density.density;
                 out["mass_model_units"] = material_density.mass;
+                if (!assembly)
+                    out["density_model_units"] = material_density.density;
                 out["density_source"] = "model_material";
                 out["mass_source"] = "native";
+                // A mixed-density assembly has no single material density; the
+                // reported one is total mass over total volume and is labelled
+                // as such instead of passing for a component material.
+                out["density_is_effective_average"] = assembly;
+                set_centroid("center_of_mass_mm", "center_of_mass_model_units", material_density);
                 return out;
             }
         }
@@ -868,13 +1046,20 @@ static J mass_properties_json(const J &op) {
         // must say which link broke instead of repeating "assign a material".
         if (mass_code != PRO_TK_NO_ERROR) {
             out["mass_unavailable_reason"] = "material_query_failed";
-            out["hint"] = "The model material could not be measured; mass is unavailable";
+            out["hint"] = assembly
+                              ? "Creo's assembly mass query failed; check every component "
+                                "material and its density"
+                              : "The model material could not be measured; mass is unavailable";
         } else if (!grams_per_unit) {
             out["mass_unavailable_reason"] = "unsupported_mass_unit";
             out["hint"] = "The model mass unit is not g, kg or tonne; mass is not converted";
+        } else if (volume_mm3 <= 0.0) {
+            out["mass_unavailable_reason"] = "volume_unavailable";
+            out["hint"] = "Volume is unknown, so the native mass cannot be normalized to grams";
         } else {
             out["mass_unavailable_reason"] = "material_density_unavailable";
-            out["hint"] = "The model material reports no usable density";
+            out["hint"] = assembly ? "A component material reports no usable density"
+                                   : "The model material reports no usable density";
         }
     }
     // Caller-supplied density: geometry stays measured, the density is labelled
@@ -2839,7 +3024,18 @@ static std::string section_create_failure(const J &op, bool revolve, ProError er
              " contour(s), " + std::to_string(section["entities"].get<int>()) + " entity(ies), " +
              std::to_string(section["open_ends"].get<int>()) + " open end(s).";
         if (section["open_ends"].get<int>() > 0) {
-            m += " The section carries open ends, so it is not a closed profile.";
+            if (!revolve && op.value("mode", std::string("add")) == "surface") {
+                int open_contours =
+                    section["contours"].get<int>() - section["closed_contours"].get<int>();
+                if (open_contours > 1)
+                    m += " The section contains multiple open contours. Try one sketch and "
+                         "surface extrude per open contour.";
+                else
+                    m += " The section contains open ends; check the curve geometry and "
+                         "surface extrusion settings.";
+            } else {
+                m += " The section carries open ends, so it is not a closed profile.";
+            }
             if (section.contains("max_endpoint_gap_mm")) {
                 char gap_text[64];
                 snprintf(gap_text, sizeof(gap_text), "%.9g",

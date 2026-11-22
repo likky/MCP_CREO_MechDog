@@ -266,6 +266,9 @@ async def invoke(fn, *args, **kwargs):
             bridge.create_job,
             general.submit,
             general.new_loft_part,
+            # FEAT-073: the batch owns several jobs, so readiness is checked once
+            # here instead of letting every item fail on its own.
+            general.get_mass_properties_batch,
             submit_open_file,
             submit_recolor,
         ):
@@ -363,15 +366,34 @@ async def creo_reclaim_generations(
 
 
 @mcp.tool(annotations=CREATE)
-async def creo_startup_status(retry: bool = False, force_ready: bool = False) -> dict[str, Any]:
-    """Read a background snapshot with verified_at, verification_age_seconds and stale. retry=true rechecks the channel within 180s preparation plus configured startup budget; overlapping retries share coordination. force_ready=true is an operator override that opens modeling admission despite a non-ready snapshot (sets force_ready/force_ready_at; verify Toolkit connectivity before modeling); force_ready=false clears it. Unreadable startup history can be archived/rebuilt only when it predates a verified Windows reboot, both recovery locks are held and no Creo session exists; startup_recovery identifies the backup. Same-boot/unverified history requires manual reconciliation. waiting_for_channel includes busy details. Never closes Creo, clears unknown job/model reservations or replays jobs. Poll until ready; inspect recovery guidance otherwise. session_health is a read-only evidence summary (unknown/suspected_damage/no_failure_observed) built from recorded save/connection results; it opens no connection, saves nothing and is not a health guarantee."""
-    if force_ready:
+async def creo_startup_status(
+    retry: bool = False,
+    force_ready: bool = False,
+    session_id: str | None = None,
+    clear_session_id: bool = False,
+) -> dict[str, Any]:
+    """Read a background snapshot with verified_at, verification_age_seconds and stale. retry=true rechecks the channel within 180s preparation plus configured startup budget; overlapping retries share coordination. session_id with retry=true selects the Creo session to connect to for this process (FEAT-072): it is validated by that connection, applies to every following worker, is never written to config.json, never survives a restart and is never replaced by another session when it is absent; clear_session_id=true with retry=true drops the selection and falls back to config.json. session_selection reports which source applies and its fingerprint (the raw id is never echoed); session_candidates lists the observed Creo processes as identified/unidentified, because a Toolkit session id cannot be derived from a Windows PID. force_ready=true is an operator override that opens modeling admission despite a non-ready snapshot (sets force_ready/force_ready_at; verify Toolkit connectivity before modeling); force_ready=false clears it. Unreadable startup history can be archived/rebuilt only when it predates a verified Windows reboot, both recovery locks are held and no Creo session exists; startup_recovery identifies the backup. Same-boot/unverified history requires manual reconciliation. waiting_for_channel includes busy details. Never closes Creo, clears unknown job/model reservations or replays jobs. Poll until ready; inspect recovery guidance otherwise. session_health is a read-only evidence summary (unknown/suspected_damage/no_failure_observed) built from recorded save/connection results; it opens no connection, saves nothing and is not a health guarantee."""
+    if force_ready and (session_id is not None or clear_session_id):
+        raise ValueError(
+            "session_id and clear_session_id select a connection target and cannot be combined "
+            "with force_ready, which only overrides admission"
+        )
+    if session_id is not None or clear_session_id:
+        # Both knobs re-verify one target; a read-only snapshot must not change
+        # which session this process would use.
+        result = await invoke(startup.start, True, session_id, clear_session_id=clear_session_id)
+    elif force_ready:
         result = await invoke(startup.force_ready, enabled=True)
     elif retry:
         result = await invoke(startup.start, retry=True)
     else:
         result = await invoke(startup.status)
-    return {**result, "update": updates.snapshot(), "session_health": session_health()}
+    return {
+        **result,
+        **await asyncio.to_thread(startup.session_keys),
+        "update": updates.snapshot(),
+        "session_health": session_health(),
+    }
 
 
 @mcp.tool(annotations=NETWORK_READ)
@@ -477,6 +499,7 @@ async def creo_reconcile_model(
         "ack_no_mutation",
         "ack_failure",
         "confirm_panel_closed",
+        "abandon_stalled_recovery",
     ]
     | None = None,
     expected_revision: int | None = Field(
@@ -524,6 +547,18 @@ async def creo_reconcile_model(
             "job is not that confirmation."
         ),
     ),
+    confirm_stalled_recovery: bool = Field(
+        default=False,
+        description=(
+            "Apply only, action=abandon_stalled_recovery: set true to close one recovery intent "
+            "that provably never started a runner or worker (no runner identity, "
+            "worker_started=false, no native owner/checkpoint/result file, and the process that "
+            "persisted the intent is gone by PID and creation time). It records the intent as "
+            "failed and releases recovery_pending only; the model's pending job, revision, saved "
+            "file and session protection are left untouched. Pre-0.35.5 intents without a "
+            "recorded launcher stay protected."
+        ),
+    ),
 ) -> dict[str, Any]:
     """Inspect uncertain owned models without requiring Creo. live=true performs a bounded read-only session preflight. Apply an explicitly selected available action with the returned token, revision, pending_job (null when absent) and a unique 8–80 character idempotency_key. Poll its independent recovery job; never replay the original plan. Execution failures expose reason and failure_phase: before_native refusals release only their own recovery reservation under the channel lock; native_worker_started means dispatch may have begun and unknown_outcome protection remains. restore_baseline keeps revision; accept_saved/live increments once; abandon_new preserves files and archives the model. ack_no_mutation (confirm_zero_mutation=true) records that a failed job changed nothing and returns the model to ready as a metadata transaction: no worker, no Toolkit connection, no file writes, revision unchanged, an audit block under reconciliation and no need to edit model.json by hand. It qualifies for parts, sheetmetal, assemblies and drawings when status=failed, nothing is pending, the checkpoint identity still matches and the failed job's rollback did not fail; it never re-scopes component ownership. ack_failure (confirm_failure_ack=true) is the exit for a terminal failure whose disk or component state cannot be proven: it accepts the failure and returns the model to ready without a worker, without Toolkit, without touching revision, model files or component bindings, and records prior_job_status plus outcome_uncertain (true when the last job ended as unknown_outcome) and disk_state_verified=false under reconciliation. It is available for assemblies and drawings too; when a zero-mutation acknowledgement is also provable, prefer ack_no_mutation. accept_live requires live preflight. Unsupported/unproven ownership is rejected; no Creo restart or user file deletion. confirm_panel_closed (confirm_panel_closed=true) is the exit for a resident panel that refuses every native job for every model: it retires that session-wide guard only after a human confirms the panel is closed, takes no Toolkit call, and leaves this model's status, revision and pending job exactly as they were."""
     return await invoke(
@@ -539,6 +574,7 @@ async def creo_reconcile_model(
         confirm_zero_mutation,
         confirm_failure_ack,
         confirm_panel_closed,
+        confirm_stalled_recovery,
     )
 
 
@@ -2538,23 +2574,64 @@ async def creo_lookup_constants(prefix: str, limit: int = 100) -> dict[str, Any]
 async def creo_get_mass_properties(
     model_id: str, density_g_cm3: float | None = None
 ) -> dict[str, Any]:
-    """Read the model's own mass properties (volume, mass, density, centre of mass).
+    """Read the model's own mass properties (volume, area, mass, density, centres).
 
-    Volume and the centre of mass are measured from the model geometry. The mass
-    uses the density of the model's material when that material carries one;
-    otherwise pass density_g_cm3 for an explicit what-if and the receipt reports
-    density_source=request. With neither, mass is null with a hint - it is never
-    filled in from an assumed density. mass_g is grams and density_g_cm3 is
-    g/cm3; mass_value_unit is always g. native_mass_unit and the compatibility
-    mass_unit field name the model unit; only g/kg/tonne are converted.
-    mass_source is native, computed_from_density or none. The returned job_id
-    identifies the finished execution record; this synchronous call needs no polling.
+    Volume, surface area and the geometric centre come from the model geometry;
+    the centre of volume is measured with unit density, so an assembly whose
+    components carry different densities reports it separately from the mass
+    centre. Mass uses the density of the model's material when that material
+    carries one; otherwise pass density_g_cm3 for an explicit what-if and the
+    receipt reports density_source=request. With neither, mass is null with a
+    hint - it is never filled in from an assumed density. mass_g is grams and
+    density_g_cm3 is g/cm3; mass_value_unit is always g. native_mass_unit and
+    the compatibility mass_unit field name the model unit; only g/kg/tonne are
+    converted. mass_source is native, computed_from_density or none. The
+    returned job_id identifies the finished execution record; this synchronous
+    call needs no polling.
     When mass is null, mass_unavailable_reason names the broken link
     (no_density, unsupported_mass_unit, material_density_unavailable,
-    material_query_failed, volume_unavailable). Parts only: assemblies are
-    refused until their own query path is verified.
+    material_query_failed, volume_unavailable).
+    Parts and assemblies are supported. For an assembly, mass is only reported
+    when a read-only occurrence scan proves every active component has a
+    material and resolved; otherwise the reason is component_material_missing,
+    component_unavailable, component_scan_incomplete or no_components, and the
+    component_scan block lists the occurrence paths. Suppressed components are
+    skipped as Creo skips them. An assembly built from mixed materials reports
+    density_g_cm3 as total mass over total volume with
+    density_is_effective_average=true; it is not a component material density.
+    For several models use creo_get_mass_properties_batch, which keeps one
+    receipt per model and bounds the whole call.
     """
     return await invoke(general.get_mass_properties, model_id, density_g_cm3)
+
+
+@mcp.tool(annotations=READ)
+async def creo_get_mass_properties_batch(
+    model_ids: Annotated[list[str], Field(min_length=1, max_length=16)],
+    density_g_cm3: float | None = None,
+    time_budget_seconds: Annotated[int, Field(ge=10, le=600)] = 180,
+) -> dict[str, Any]:
+    """Read mass properties for up to 16 models in one bounded, serial call.
+
+    Each model is read with its own read-only job on the single Toolkit channel,
+    one after another; this tool adds no native concurrency. Every item keeps
+    the same receipt fields as creo_get_mass_properties plus status=succeeded,
+    so a caller parses one shape. A single item that fails does not cancel the
+    others: invalid model ids give error_kind=invalid_request, a failed native
+    query gives query_failed, and each failed item carries its error text and
+    blocking_job_id (null unless the channel was busy). An occupied channel or a
+    query that overruns its wait stops new items, and the remaining ones are
+    returned as status=skipped with reason=toolkit_busy, timeout or
+    time_budget_exhausted. requested/succeeded/failed/skipped count every item
+    and all_succeeded is true only when every requested model was read. The
+    density_g_cm3 fallback applies to every item that has no usable material
+    density; each receipt still reports its own density_source. Read-only: no
+    revision or source file changes. Prefer creo_get_mass_properties for a
+    single model.
+    """
+    return await invoke(
+        general.get_mass_properties_batch, model_ids, density_g_cm3, time_budget_seconds
+    )
 
 
 @mcp.tool(annotations=READ)
