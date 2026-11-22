@@ -111,7 +111,7 @@ class SourcePackageContents(unittest.TestCase):
 
     def test_the_packager_uses_the_shared_allowlist(self):
         source = (ROOT / "tools" / "package.py").read_text(encoding="utf-8")
-        self.assertIn("template_library_files(ROOT)", source)
+        self.assertIn("template_library_files(root)", source)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "version": "0.35.5",
+  "previous_version": "0.35.4",
+  "previous_release_tag": "v0.35.4",
+  "previous_release_commit": "29f9ed277d6436d9a0c6de4d4a1168fd51942444",
+  "remote_verification": "verified",
+  "delivery_ids": [
+    "BUG-144",
+    "DEV-099",
+    "BUG-142"
+  ],
+  "frozen_on": "2026-11-21",
+  "note": "PATCH: BUG-144 binds the release's full-unit-test claim to this round's evidence. tools/test_unit.py atomically writes build/unit_test_run.json (running -> completed/interrupted) with a run_id, PID and source identity, holds an O_EXCL lock that only takes over a dead PID, and publishes the report atomically with the same run_id. From UNIT_EVIDENCE_ENFORCED_FROM=(0,35,5) release_integrity requires the state and report to agree with the tested source fingerprint, while older releases keep the success-only check. tools/package.py adds --source-root and --unit-report and runs the release-record gate before writing any ZIP, sidecar or stage output; SeedPackagingGateTests now package a temporary checkout and cover explicit, default and stage paths. DEV-099 makes README reference creo_capabilities.tool_count instead of a stale 109; both offline checks exit 0 with tool_count=110. BUG-142 adds an opt-in MECHDOG_TEST_DISCONNECT_DELAY_MS hook and verifies on Creo 10.0.0.0 release 42 that a SIGTERM during the pre-disconnect window leaves the pre-published native_result.json with delivery_complete=false and reports unknown_outcome without losing saved files. Public tools stay at 110. Not verified: other Creo versions, external feedback environments (Windows 10 / Python 3.13 / Creo 9 SDK) and the WorkBuddy black box."
+}

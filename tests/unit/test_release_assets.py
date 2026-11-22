@@ -308,7 +308,7 @@ class SourcePackageAssetGateTests(unittest.TestCase):
         with (
             patch.object(package, "VERSION", self.version),
             patch.object(package, "ROOT", self.root),
-            patch.object(package, "source_files", lambda: [self.root / "version.py"]),
+            patch.object(package, "source_files", lambda root=None: [self.root / "version.py"]),
             patch.object(package, "validate_release_inputs", lambda root, seed: self.summary),
             patch.object(
                 sys,

@@ -1,78 +1,51 @@
 """Run input validation tests and save a versioned result for release evidence."""
 
-import argparse
-import json
 import sys
-import tempfile
 import time
 import unittest
+import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from creo_mechdog.source_provenance import local_provenance, source_file_hashes
+from creo_mechdog import unit_evidence
+from creo_mechdog.source_provenance import local_provenance
 from creo_mechdog.unit_report import build_unit_report
+from version import VERSION
 
 
-def write_report(path: Path, report: dict) -> None:
-    with tempfile.NamedTemporaryFile(
-        mode="w", encoding="utf-8", dir=path.parent, delete=False
-    ) as stream:
-        temporary = Path(stream.name)
-        try:
-            json.dump(report, stream, indent=2)
-        except BaseException:
-            stream.close()
-            temporary.unlink(missing_ok=True)
-            raise
+def main() -> int:
+    report = unit_evidence.report_path(ROOT)
+    run_id = uuid.uuid4().hex
     try:
-        temporary.replace(path)
-    finally:
-        temporary.unlink(missing_ok=True)
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--report", type=Path, help="New path for this run's release evidence")
-    args = parser.parse_args(argv)
-    default = ROOT / "build/unit_test_report.json"
-    path = args.report.resolve() if args.report else default
-    path.parent.mkdir(parents=True, exist_ok=True)
-    running = {"status": "running", "success": None, "release_evidence": bool(args.report)}
-    if args.report:
-        if path == default.resolve():
-            parser.error("--report must be separate from build/unit_test_report.json")
+        unit_evidence.acquire(report, run_id=run_id)
+    except unit_evidence.UnitRunBusy as error:
+        print(f"Refusing to start: {error}", file=sys.stderr)
+        return 3
+    try:
+        source = local_provenance(ROOT)
+        unit_evidence.start_run(report, run_id=run_id, version=VERSION, provenance=source)
+        suite = unittest.defaultTestLoader.discover(str(ROOT / "tests"))
+        started = time.monotonic()
         try:
-            with path.open("x", encoding="utf-8") as stream:
-                json.dump(running, stream)
-        except FileExistsError:
-            parser.error("--report must name a new file for each run")
-    else:
-        write_report(path, running)
-    source = local_provenance(ROOT)
-    suite = unittest.defaultTestLoader.discover(str(ROOT / "tests"))
-    started = time.monotonic()
-    result = unittest.TextTestRunner(verbosity=2).run(suite)
-    report = build_unit_report(
-        result,
-        timestamp=time.time(),
-        duration_seconds=time.monotonic() - started,
-        provenance=source,
-    )
-    report.update(status="completed", release_evidence=bool(args.report))
-    if args.report:
-        # Verify the exact files selected before unittest. Re-discovering them
-        # would change the scope if Git is unavailable after running the suite.
-        before = source["source_sha256"]
-        after, errors = source_file_hashes(ROOT, before)
-        if source["source_status"] != "complete" or errors or before != after:
-            print(
-                "Release evidence refused: source files changed or could not be read",
-                file=sys.stderr,
-            )
-            report.update(status="source_changed", success=False)
-    write_report(path, report)
-    return 0 if report["success"] else 1
+            result = unittest.TextTestRunner(verbosity=2).run(suite)
+        except BaseException as error:
+            unit_evidence.interrupt_run(report, run_id=run_id, reason=type(error).__name__)
+            raise
+        unit_evidence.write_json_atomic(
+            report,
+            build_unit_report(
+                result,
+                timestamp=time.time(),
+                duration_seconds=time.monotonic() - started,
+                provenance=source,
+                run_id=run_id,
+            ),
+        )
+        unit_evidence.finish_run(report, run_id=run_id, success=result.wasSuccessful())
+        return 0 if result.wasSuccessful() else 1
+    finally:
+        unit_evidence.release(report, run_id=run_id)
 
 
 if __name__ == "__main__":

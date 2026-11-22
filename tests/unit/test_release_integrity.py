@@ -7,19 +7,20 @@ README version section are all rejected before anything is written.
 
 import hashlib
 import json
-import os
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+import uuid
 import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
 import bridge
-from creo_mechdog import panel_profiles, release_integrity, seeds
+from creo_mechdog import panel_profiles, release_integrity, seeds, unit_evidence
 from creo_mechdog.source_provenance import local_provenance
+from creo_mechdog.unit_report import build_unit_report
 from tools import package, package_seeds
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -272,46 +273,136 @@ class SeedArchiveInstallTests(SeedArchiveFixture):
         self.assertEqual(result["available_count"], 9)
 
 
-class SeedPackagingGateTests(SeedArchiveFixture):
-    """The source package entry refuses a missing or mismatched seed archive."""
+_PACKAGING_IGNORE = shutil.ignore_patterns(
+    ".git",
+    ".venv",
+    "build",
+    "jobs",
+    "models",
+    "staging",
+    "__pycache__",
+    "*.pyc",
+    "*.pyo",
+    "*.zip",
+    "*.sha256",
+    "toolkit.lock",
+    "config.json",
+    "client-config.json",
+    "seed_registry.json",
+    "*.log",
+    "native/constants.inc",
+)
+
+
+class PackagingSourceFixture(unittest.TestCase):
+    """A complete checkout copy so packaging never reads the live workspace."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls._packaging_temp = tempfile.TemporaryDirectory(prefix="mechdog-packaging-")
+        base = Path(cls._packaging_temp.name)
+        cls.source_root = base / "checkout"
+        shutil.copytree(ROOT, cls.source_root, ignore=_PACKAGING_IGNORE)
+        cls.seed_archive = base / f"MCP_CREO_MechDog-{VERSION}-seed-library.zip"
+        cls.seed_digest = build_seed_archive(cls.source_root, cls.seed_archive)
+        release_integrity.write_sidecar(
+            cls.seed_archive.with_suffix(".zip.sha256"),
+            cls.seed_digest,
+            cls.seed_archive.name,
+        )
+        record = {
+            "compatible_server_version": VERSION,
+            "seed_archive_name": cls.seed_archive.name,
+            "seed_archive_sha256": cls.seed_digest,
+        }
+        (cls.source_root / "docs/seed_package.json").write_text(
+            json.dumps(record, indent=2) + "\n", encoding="utf-8"
+        )
+        cls.provenance = local_provenance(cls.source_root)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._packaging_temp.cleanup()
+        super().tearDownClass()
 
     def setUp(self):
-        super().setUp()
-        for path in package.source_files():
-            target = self.root / path.relative_to(ROOT)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(path, target)
-        self.report = self.temp / "this-run.json"
-        self.report.write_text(
-            json.dumps(
-                {
-                    "version": VERSION,
-                    "status": "completed",
-                    "release_evidence": True,
-                    "success": True,
-                    "tests_run": 10,
-                    "failures": 0,
-                    "errors": 0,
-                    "skipped": 0,
-                    "source": local_provenance(self.root),
-                }
-            ),
-            encoding="utf-8",
-        )
-        self.shared_report = self.root / "build/unit_test_report.json"
-        self.shared_report.parent.mkdir()
-        self.shared_report.write_text('{"success": false, "errors": 1}', encoding="utf-8")
+        self.temp = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.evidence = self.temp / "evidence"
+        self.evidence.mkdir()
+        default = self.source_root.parent / f"MCP_CREO_MechDog-{VERSION}-source.zip"
+        default.unlink(missing_ok=True)
+        default.with_suffix(".zip.sha256").unlink(missing_ok=True)
+        self.write_evidence()
 
-    def run_package(self, *args: str, use_report: bool = True) -> subprocess.CompletedProcess:
-        evidence = ["--unit-report", str(self.report)] if use_report else []
+    @property
+    def report(self) -> Path:
+        return self.evidence / "unit_test_report.json"
+
+    def write_evidence(
+        self,
+        *,
+        run_id: str | None = None,
+        report_success: bool = True,
+        tests_run: int = 1,
+        state: str = "completed",
+        state_success: bool = True,
+        report_fingerprint: str | None = None,
+        version: str = VERSION,
+        write_state: bool = True,
+    ) -> str:
+        run_id = run_id or uuid.uuid4().hex
+        unit_evidence.start_run(
+            self.report, run_id=run_id, version=version, provenance=self.provenance
+        )
+        if state == "completed":
+            unit_evidence.finish_run(self.report, run_id=run_id, success=state_success)
+        result = unittest.TestResult()
+        result.testsRun = tests_run
+        if not report_success:
+            result.failures.append((unittest.FunctionTestCase(lambda: None), "evidence"))
+        document = build_unit_report(
+            result,
+            timestamp=1.0,
+            duration_seconds=0.1,
+            provenance=self.provenance,
+            run_id=run_id,
+        )
+        document["version"] = version
+        if report_fingerprint is not None:
+            document["source"]["source_fingerprint"] = report_fingerprint
+        unit_evidence.write_json_atomic(self.report, document)
+        if not write_state:
+            unit_evidence.run_state_path(self.report).unlink()
+        return run_id
+
+    def run_package(self, *args: str, unit_report: bool = True) -> subprocess.CompletedProcess:
+        command = [
+            sys.executable,
+            str(ROOT / "tools/package.py"),
+            "--source-root",
+            str(self.source_root),
+        ]
+        if unit_report:
+            command.extend(["--unit-report", str(self.report)])
+        command.extend(args)
         return subprocess.run(
-            [sys.executable, str(self.root / "tools/package.py"), *args, *evidence],
+            command,
             capture_output=True,
-            encoding="utf-8",
-            env={**os.environ, "PYTHONUTF8": "1"},
-            cwd=self.root,
+            text=True,
+            cwd=str(self.source_root),
             check=False,
         )
+
+    def assert_refused_without_artifacts(self, result: subprocess.CompletedProcess):
+        output = self.temp / f"MCP_CREO_MechDog-{VERSION}-source.zip"
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(output.exists())
+        self.assertFalse(output.with_suffix(".zip.sha256").exists())
+
+
+class SeedPackagingGateTests(PackagingSourceFixture):
+    """The source package entry refuses a missing or mismatched seed archive."""
 
     def test_missing_seed_archive_argument_is_refused(self):
         result = self.run_package("--output", str(self.temp / "source.zip"))
@@ -320,7 +411,7 @@ class SeedPackagingGateTests(SeedArchiveFixture):
 
     def test_mismatched_seed_archive_is_refused_without_writing_a_source_package(self):
         wrong = self.temp / "wrong.zip"
-        shutil.copy2(self.archive, wrong)
+        shutil.copy2(self.seed_archive, wrong)
         with zipfile.ZipFile(wrong, "a") as archive:
             archive.writestr("extra.txt", "not part of the release")
         result = self.run_package(
@@ -333,7 +424,7 @@ class SeedPackagingGateTests(SeedArchiveFixture):
 
     def test_valid_seed_archive_packages_the_source_with_the_explicit_output(self):
         output = self.temp / f"MCP_CREO_MechDog-{VERSION}-source.zip"
-        result = self.run_package("--seed-archive", str(self.archive), "--output", str(output))
+        result = self.run_package("--seed-archive", str(self.seed_archive), "--output", str(output))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(output.is_file())
         self.assertTrue(output.with_suffix(".zip.sha256").is_file())
@@ -344,41 +435,24 @@ class SeedPackagingGateTests(SeedArchiveFixture):
         self.assertIn("MCP_CREO_MechDog/seed_library/seed_manifest.json", names)
 
     def test_valid_seed_archive_packages_the_source_with_the_default_output(self):
-        default = self.temp / f"MCP_CREO_MechDog-{VERSION}-source.zip"
-        result = self.run_package("--seed-archive", str(self.archive))
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue(default.is_file())
-        self.assertEqual(
-            self.shared_report.read_text(encoding="utf-8"), '{"success": false, "errors": 1}'
-        )
-
-    def test_full_pass_claim_refuses_shared_report_before_writing_any_output(self):
-        release = self.root / f"docs/validation/RELEASE-{VERSION}.md"
-        with release.open("a", encoding="utf-8") as stream:
-            stream.write("\n\n- 全量 unittest 通过。\n")
-        self.shared_report.write_bytes(self.report.read_bytes())
-        stage = self.temp / "stage"
-        output = self.temp / f"MCP_CREO_MechDog-{VERSION}-source.zip"
-        result = self.run_package(
-            "--seed-archive",
-            str(self.archive),
-            "--output",
-            str(output),
-            "--stage",
-            str(stage),
-            use_report=False,
-        )
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("no --unit-report was supplied", result.stderr)
-        self.assertFalse(stage.exists())
-        self.assertFalse(output.exists())
-        self.assertFalse(output.with_suffix(".zip.sha256").exists())
+        default = self.source_root.parent / f"MCP_CREO_MechDog-{VERSION}-source.zip"
+        self.assertFalse(default.exists(), "default output path is already taken")
+        result = self.run_package("--seed-archive", str(self.seed_archive))
+        try:
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(default.is_file())
+            self.assertNotEqual(
+                default.parent, ROOT.parent, "default output must stay in the fixture"
+            )
+        finally:
+            default.unlink(missing_ok=True)
+            default.with_suffix(".zip.sha256").unlink(missing_ok=True)
 
     def test_valid_seed_archive_packages_a_new_empty_stage_directory(self):
         stage = self.temp / "stage"
         result = self.run_package(
             "--seed-archive",
-            str(self.archive),
+            str(self.seed_archive),
             "--output",
             str(self.temp / f"MCP_CREO_MechDog-{VERSION}-source.zip"),
             "--stage",
@@ -391,7 +465,7 @@ class SeedPackagingGateTests(SeedArchiveFixture):
     def test_existing_output_archive_is_still_refused(self):
         output = self.temp / "source.zip"
         output.write_bytes(b"existing")
-        result = self.run_package("--seed-archive", str(self.archive), "--output", str(output))
+        result = self.run_package("--seed-archive", str(self.seed_archive), "--output", str(output))
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(output.read_bytes(), b"existing")
 
@@ -401,7 +475,7 @@ class SeedPackagingGateTests(SeedArchiveFixture):
         (stage / "occupied.txt").write_text("keep me", encoding="utf-8")
         result = self.run_package(
             "--seed-archive",
-            str(self.archive),
+            str(self.seed_archive),
             "--output",
             str(self.temp / "source.zip"),
             "--stage",
@@ -409,6 +483,69 @@ class SeedPackagingGateTests(SeedArchiveFixture):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual((stage / "occupied.txt").read_text(encoding="utf-8"), "keep me")
+
+    def test_missing_unit_evidence_is_refused_before_any_artifact(self):
+        unit_evidence.run_state_path(self.report).unlink()
+        self.report.unlink()
+        result = self.run_package(
+            "--seed-archive",
+            str(self.seed_archive),
+            "--output",
+            str(self.temp / f"MCP_CREO_MechDog-{VERSION}-source.zip"),
+            "--stage",
+            str(self.temp / "stage"),
+            unit_report=False,
+        )
+        self.assert_refused_without_artifacts(result)
+        self.assertFalse((self.temp / "stage").exists())
+        expected = (self.source_root / "build" / "unit_test_report.json").resolve()
+        self.assertIn(str(expected), result.stderr)
+
+    def test_failed_unit_evidence_is_refused_before_any_artifact(self):
+        self.write_evidence(report_success=False, state_success=False)
+        result = self.run_package(
+            "--seed-archive",
+            str(self.seed_archive),
+            "--output",
+            str(self.temp / f"MCP_CREO_MechDog-{VERSION}-source.zip"),
+        )
+        self.assert_refused_without_artifacts(result)
+
+    @unittest.skipUnless(
+        release_integrity._release_version_tuple(VERSION)
+        >= release_integrity.UNIT_EVIDENCE_ENFORCED_FROM,
+        "strict run binding starts with the first release that ships BUG-144",
+    )
+    def test_stale_success_report_while_the_current_run_is_running_is_refused(self):
+        previous = self.write_evidence(run_id="previous")
+        self.assertIn("previous", previous)
+        unit_evidence.start_run(
+            self.report, run_id="current", version=VERSION, provenance=self.provenance
+        )
+        result = self.run_package(
+            "--seed-archive",
+            str(self.seed_archive),
+            "--output",
+            str(self.temp / f"MCP_CREO_MechDog-{VERSION}-source.zip"),
+        )
+        self.assert_refused_without_artifacts(result)
+        self.assertIn("not completed", result.stderr)
+
+    @unittest.skipUnless(
+        release_integrity._release_version_tuple(VERSION)
+        >= release_integrity.UNIT_EVIDENCE_ENFORCED_FROM,
+        "strict run binding starts with the first release that ships BUG-144",
+    )
+    def test_success_report_for_another_source_is_refused(self):
+        self.write_evidence(report_fingerprint="0" * 64)
+        result = self.run_package(
+            "--seed-archive",
+            str(self.seed_archive),
+            "--output",
+            str(self.temp / f"MCP_CREO_MechDog-{VERSION}-source.zip"),
+        )
+        self.assert_refused_without_artifacts(result)
+        self.assertIn("source fingerprint", result.stderr)
 
 
 class SeedPackagerAllowlistTests(unittest.TestCase):
@@ -651,7 +788,7 @@ class PanelLibraryAllowlistTests(PanelLibraryFixture):
 
     def test_the_packager_uses_the_shared_panel_allowlist(self):
         source = (ROOT / "tools" / "package.py").read_text(encoding="utf-8")
-        self.assertIn("panel_profile_library_files(ROOT)", source)
+        self.assertIn("panel_profile_library_files(root)", source)
 
 
 class PanelLibraryRefusalTests(PanelLibraryFixture):

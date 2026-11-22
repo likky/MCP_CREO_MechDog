@@ -74,7 +74,7 @@ class SeedManifestVersionTests(unittest.TestCase):
         self.assertIn("validate_release_inputs", source)
         self.assertIn("Source package refused", source)
         self.assertLess(
-            source.index("validate_release_inputs(ROOT"),
+            source.index("validate_release_inputs(source_root"),
             source.index("zipfile.ZipFile(archive"),
         )
 

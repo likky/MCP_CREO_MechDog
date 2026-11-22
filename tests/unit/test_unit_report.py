@@ -41,7 +41,7 @@ class UnitReportTests(unittest.TestCase):
                 patch.object(test_unit, "local_provenance", return_value=source),
                 redirect_stderr(io.StringIO()),
             ):
-                code = test_unit.main([])
+                code = test_unit.main()
             report = json.loads((root / "build/unit_test_report.json").read_text(encoding="utf-8"))
         self.assertEqual(code, 0)
         self.assertEqual(report["tests_run"], 2)
@@ -71,58 +71,9 @@ class UnitReportTests(unittest.TestCase):
                 ),
                 redirect_stderr(io.StringIO()),
             ):
-                code = test_unit.main([])
+                code = test_unit.main()
             report = json.loads((root / "build/unit_test_report.json").read_text(encoding="utf-8"))
         self.assertEqual(code, 1)
         self.assertFalse(report["success"])
         self.assertEqual(report["failures"], 1)
         self.assertEqual(report["errors"], 0)
-
-    def test_interrupted_explicit_run_does_not_reuse_a_successful_report(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            path = root / "releases/this-run.json"
-            path.parent.mkdir()
-            previous = path.with_name("previous-run.json")
-            previous.write_text('{"success": true}', encoding="utf-8")
-            with (
-                patch.object(test_unit, "ROOT", root),
-                patch.object(test_unit, "local_provenance", side_effect=KeyboardInterrupt),
-                redirect_stderr(io.StringIO()),
-            ):
-                with self.assertRaises(KeyboardInterrupt):
-                    test_unit.main(["--report", str(path)])
-                with self.assertRaises(SystemExit) as collision:
-                    test_unit.main(["--report", str(previous)])
-            self.assertEqual(collision.exception.code, 2)
-            self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["status"], "running")
-            self.assertEqual(previous.read_text(encoding="utf-8"), '{"success": true}')
-
-    def test_release_report_rehashes_the_original_files_and_detects_edits(self):
-        for changes in (False, True):
-            with self.subTest(changes=changes), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
-                source = root / "source.py"
-                source.write_text("original", encoding="utf-8")
-                path = root / "report.json"
-
-                def exercise():
-                    if changes:
-                        source.write_text("changed", encoding="utf-8")
-
-                suite = unittest.TestSuite([unittest.FunctionTestCase(exercise)])
-                with (
-                    patch.object(test_unit, "ROOT", root),
-                    patch.object(
-                        test_unit.unittest.defaultTestLoader, "discover", return_value=suite
-                    ),
-                    patch.object(
-                        test_unit, "local_provenance", wraps=test_unit.local_provenance
-                    ) as snapshot,
-                    redirect_stderr(io.StringIO()),
-                ):
-                    code = test_unit.main(["--report", str(path)])
-                snapshot.assert_called_once_with(root)
-                report = json.loads(path.read_text(encoding="utf-8"))
-                self.assertEqual(code, int(changes))
-                self.assertEqual(report["status"], "source_changed" if changes else "completed")

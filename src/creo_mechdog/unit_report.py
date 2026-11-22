@@ -14,10 +14,12 @@ def build_unit_report(
     timestamp: float,
     duration_seconds: float,
     provenance: dict[str, Any],
+    run_id: str | None = None,
 ) -> dict[str, Any]:
     """Keep legacy totals and distinguish skipped cases and source identity."""
     return {
         "version": VERSION,
+        "run_id": run_id,
         "timestamp": timestamp,
         "tests_run": result.testsRun,
         "success": result.wasSuccessful(),

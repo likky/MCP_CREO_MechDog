@@ -18,7 +18,7 @@ import sys
 import zipfile
 from pathlib import Path, PurePosixPath
 
-from creo_mechdog import panel_profiles
+from creo_mechdog import panel_profiles, unit_evidence
 from creo_mechdog.seed_distribution import seed_file_bytes
 from creo_mechdog.source_provenance import local_provenance
 
@@ -41,6 +41,10 @@ RECORDS_ENFORCED_FROM = (0, 23, 1)
 # the first release that ships with this fix; older published bodies are
 # grandfathered and not backfilled (their records stay byte-for-byte).
 BODY_CHECK_ENFORCED_FROM = (0, 34, 0)
+# BUG-144: a full-pass claim is only backed by a report that belongs to the run
+# which just finished. Older releases predate the run state file and keep the
+# success-only check so their published records stay verifiable.
+UNIT_EVIDENCE_ENFORCED_FROM = (0, 35, 5)
 _PLACEHOLDERS = ("待回填", "待发布后回填", "发布后在此段回填", "PENDING", "准备态")
 
 # DEV-083 (0.25.0 feedback): the per-ID gate only checked the rows that were
@@ -1435,6 +1439,7 @@ def _records_problems(version: str, read, exists, origin: str) -> list[str]:
     return problems
 
 
+_UNIT_TEST_REPORT = "build/unit_test_report.json"
 # A positive claim that the full unittest suite passed. Lines that negate the
 # claim ("不宣称全量通过", "未跑全量") are not claims and must not require a
 # success report; otherwise a record that honestly says it did not run would be
@@ -1473,9 +1478,12 @@ def _has_full_unit_pass_claim(text: str) -> bool:
 
 
 def _load_unit_report(path: Path) -> dict | None:
+    text = _read_text_optional(path)
+    if text is None:
+        return None
     try:
-        document = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError):
+        document = json.loads(text)
+    except ValueError:
         return None
     return document if isinstance(document, dict) else None
 
@@ -1486,59 +1494,123 @@ def _unit_report_summary(report: dict | None) -> str:
     return (
         f"success={report.get('success')!r}, tests_run={report.get('tests_run')!r}, "
         f"failures={report.get('failures')!r}, errors={report.get('errors')!r}, "
-        f"skipped={report.get('skipped')!r}"
+        f"skipped={report.get('skipped')!r}, run_id={report.get('run_id')!r}"
     )
 
 
-def _unit_test_claim_problems(version: str, base: Path, unit_report: Path | None) -> list[str]:
-    """Require explicit evidence from a completed run of the source being packaged."""
+def _unit_run_problems(version: str, base: Path, report_file: Path, report: dict) -> list[str]:
+    """Reject a success report that is not this round's completed evidence."""
+    state_file = unit_evidence.run_state_path(report_file)
+    state = unit_evidence.load_run(report_file)
+    prefix = "source tree: release record claims 全量 unittest 通过 but "
+    if state is None:
+        return [
+            f"{prefix}{state_file.name} is missing or unreadable; a success report "
+            "alone is not proof of the current round. Run tools/test_unit.py for "
+            "this round and confirm it completed"
+        ]
+    if state.get("schema_version") != unit_evidence.SCHEMA_VERSION:
+        return [
+            f"{prefix}{state_file.name} schema_version is "
+            f"{state.get('schema_version')!r}, expected "
+            f"{unit_evidence.SCHEMA_VERSION}"
+        ]
+    status = state.get("status")
+    if status != "completed":
+        return [
+            f"{prefix}the current unit run is {status!r}, not completed "
+            f"(run_id={state.get('run_id')!r}); a previous success report is not "
+            "accepted. Wait for tools/test_unit.py to finish"
+        ]
+    if state.get("success") is not True:
+        return [
+            f"{prefix}the current unit run reports success={state.get('success')!r} "
+            f"(run_id={state.get('run_id')!r}); do not write 全量通过 until "
+            "tools/test_unit.py reports success=true"
+        ]
+    if state.get("version") != version:
+        return [
+            f"{prefix}the current unit run is for version "
+            f"{state.get('version')!r}, expected {version}"
+        ]
+    if report.get("version") != version:
+        return [f"{prefix}the report is for version {report.get('version')!r}, expected {version}"]
+    run_id = report.get("run_id")
+    if not run_id or state.get("run_id") != run_id:
+        return [
+            f"{prefix}the report run_id {run_id!r} does not belong to the current "
+            f"run {state.get('run_id')!r}; regenerate the report"
+        ]
+    report_source = report.get("source") or {}
+    state_source = state.get("source") or {}
+    if (
+        report_source.get("source_status") != "complete"
+        or state_source.get("source_status") != "complete"
+    ):
+        return [
+            f"{prefix}the report or run state source_status is not complete "
+            f"(report={report_source.get('source_status')!r}, "
+            f"state={state_source.get('source_status')!r})"
+        ]
+    try:
+        current = local_provenance(Path(base))
+    except Exception as error:  # pragma: no cover - defensive boundary
+        return [f"{prefix}cannot compute the tested source fingerprint: {error}"]
+    fingerprint = current.get("source_fingerprint")
+    if not fingerprint:
+        return [f"{prefix}the tested source fingerprint is unavailable"]
+    problems = []
+    for label, source in (("report", report_source), ("run state", state_source)):
+        actual = source.get("source_fingerprint")
+        if actual != fingerprint:
+            problems.append(
+                f"{prefix}the {label} source fingerprint {actual!r} does not match "
+                f"the tested source {fingerprint}"
+            )
+    if int(report.get("tests_run") or 0) <= 0:
+        problems.append(f"{prefix}the report records tests_run=0")
+    return problems
+
+
+def _unit_test_claim_problems(
+    version: str, base: Path, unit_report: Path | None = None
+) -> list[str]:
+    """A "全量通过" release claim must be backed by this round's success report.
+
+    The real failures/errors/skipped counts are printed so the operator sees
+    them instead of trusting the record's prose; a claim without a passing
+    report is refused (BUG-137). From :data:`UNIT_EVIDENCE_ENFORCED_FROM` the
+    report must also match the completed run state and the tested source
+    fingerprint, so a stale report cannot back a new release (BUG-144).
+    """
     record = _read_text_optional(Path(base) / f"docs/validation/RELEASE-{version}.md")
     notes = _read_text_optional(Path(base) / f"docs/RELEASE_NOTES_{version}.md")
     if not (_has_full_unit_pass_claim(record or "") or _has_full_unit_pass_claim(notes or "")):
         return []
-    claim = "source tree: release record claims 全量 unittest 通过 but "
-    if unit_report is None:
-        return [
-            claim + "no --unit-report was supplied; run tools/test_unit.py --report "
-            "<new-path> and pass that run's report to the release gate"
-        ]
-    report = _load_unit_report(unit_report)
+    report_file = Path(unit_report) if unit_report is not None else Path(base) / _UNIT_TEST_REPORT
+    report = _load_unit_report(report_file)
     print(
         f"[release-gate] {version} unit test report: {_unit_report_summary(report)}",
         file=sys.stderr,
     )
     if report is None:
-        return [claim + f"{unit_report} is missing or unreadable"]
-    if report.get("status") != "completed" or report.get("release_evidence") is not True:
         return [
-            claim
-            + f"{unit_report} is not completed release evidence (status={report.get('status')!r})"
+            "source tree: release record claims 全量 unittest 通过 but "
+            f"{report_file} is missing or unreadable; run tools/test_unit.py "
+            "and confirm success=true before writing 全量通过"
         ]
     if report.get("success") is not True:
-        return [claim + f"{unit_report} reports {_unit_report_summary(report)}"]
-    counts = [report.get(name) for name in ("tests_run", "failures", "errors", "skipped")]
-    if (
-        any(type(value) is not int or value < 0 for value in counts)
-        or counts[0] <= counts[3]
-        or counts[1:3] != [0, 0]
-    ):
         return [
-            claim + f"{unit_report} has inconsistent test totals: {_unit_report_summary(report)}"
+            "source tree: release record claims 全量 unittest 通过 but "
+            f"{report_file.name} reports {_unit_report_summary(report)}; "
+            "do not write 全量通过 until tools/test_unit.py reports success=true"
         ]
-    if report.get("version") != version:
-        return [
-            claim + f"{unit_report} is for version {report.get('version')!r}, expected {version}"
-        ]
-    source = report.get("source")
-    current = local_provenance(base)
-    if (
-        not isinstance(source, dict)
-        or current["source_status"] != "complete"
-        or source.get("source_status") != "complete"
-        or source.get("source_fingerprint") != current["source_fingerprint"]
-        or source.get("commit") != current["commit"]
-    ):
-        return [claim + f"{unit_report} does not match the current source fingerprint or commit"]
+    try:
+        enforced = _release_version_tuple(version) >= UNIT_EVIDENCE_ENFORCED_FROM
+    except ValueError:
+        enforced = False
+    if enforced:
+        return _unit_run_problems(version, base, report_file, report)
     return []
 
 
@@ -1546,7 +1618,6 @@ def validate_release_records(
     version: str,
     source_zip: Path | None = None,
     root: Path | None = None,
-    *,
     unit_report: Path | None = None,
 ) -> list[str]:
     """Problems that keep ``version`` from being packaged or published.
@@ -1589,9 +1660,9 @@ def validate_release_records(
         # is the only independent proof that the recorded commit is the release
         # point rather than a backfill or an arbitrary 40-hex value.
         problems.extend(_tag_commit_problems(version, base))
-        # BUG-137: a "全量通过" release claim must be backed by a success=true
-        # tools/test_unit.py report; build/ is not packaged, so this only runs
-        # against the source tree.
+        # BUG-137/BUG-144: a "全量通过" release claim must be backed by a
+        # success=true report from the run that just completed; build/ is not
+        # packaged, so this only runs against the source tree.
         problems.extend(_unit_test_claim_problems(version, base, unit_report))
     if base is not None and (base / DELIVERY_SNAPSHOT_DIR / f"{version}.json").is_file():
         # Byte-exact TXT distribution: a changed or missing approved file is a

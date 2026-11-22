@@ -6,11 +6,17 @@
 int wmain(int argc, wchar_t **argv) {
     if (argc != 3)
         return 2;
+    // Fixture crash modes abort on purpose; suppress the WER dialog so the
+    // process exits with the same 0xC0000409 code instead of blocking on it.
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     const std::wstring job = argv[2];
     std::ifstream mode_file(job + L"\\scenario.txt");
     std::string mode;
     mode_file >> mode;
-    const bool success = mode == "success" || mode == "invalid_utf8_complete";
+    const bool success = mode == "success" || mode == "invalid_utf8_complete" ||
+                         mode == "delay";
+    if (mode == "delay")
+        _putenv_s("MECHDOG_TEST_DISCONNECT_DELAY_MS", "40");
     nlohmann::json report = {{"success", success},
                              {"toolkit_code", success ? 0 : -4},
                              {"message", success ? "fixture success" : "fixture operation failed"},

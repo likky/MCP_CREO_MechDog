@@ -2,6 +2,9 @@
 #pragma once
 #include "third_party/json.hpp"
 #include <Windows.h>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <string>
 #include <thread>
@@ -32,6 +35,19 @@ static int deliver_native_result(const std::wstring &job, nlohmann::json report,
     if (!publish_native_json(checkpoint, report))
         return 32;
     if (connected) {
+        // BUG-142 test hook: hold the real worker after the pre-disconnect
+        // checkpoint and before ProEngineerDisconnect. Default-off, bounded, and
+        // only used to exercise an interrupted disconnect on a live session.
+        if (const char *delay = std::getenv("MECHDOG_TEST_DISCONNECT_DELAY_MS")) {
+            int milliseconds = std::atoi(delay);
+            if (milliseconds > 0) {
+                if (milliseconds > 60000)
+                    milliseconds = 60000;
+                std::fprintf(stderr, "TEST_DISCONNECT_DELAY_MS=%d\n", milliseconds);
+                std::fflush(stderr);
+                std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
+            }
+        }
         HANDLE done = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         if (!done)
             return 32;

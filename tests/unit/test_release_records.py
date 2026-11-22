@@ -546,25 +546,19 @@ class DeliverySnapshotGateTest(unittest.TestCase):
 class UnitReportGateTest(unittest.TestCase):
     """BUG-137: a 全量通过 release claim requires a success=true unit report."""
 
-    def _write_report(self, root: Path, **fields) -> Path:
-        from creo_mechdog.source_provenance import local_provenance
-
-        (root / "version.py").write_text(f'VERSION = "{VERSION}"\n', encoding="utf-8")
+    def _write_report(self, root: Path, **fields) -> None:
         report = {
             "version": VERSION,
-            "status": "completed",
-            "release_evidence": True,
             "tests_run": 10,
             "success": True,
             "failures": 0,
             "errors": 0,
             "skipped": 0,
-            "source": local_provenance(root),
         }
         report.update(fields)
-        path = root / "this-run.json"
-        path.write_text(json.dumps(report), encoding="utf-8")
-        return path
+        build = root / "build"
+        build.mkdir(exist_ok=True)
+        (build / "unit_test_report.json").write_text(json.dumps(report), encoding="utf-8")
 
     def _tree_with_claim(self, claim: str) -> dict[str, str]:
         files = _fixture_files()
@@ -575,15 +569,15 @@ class UnitReportGateTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             _write_tree(root, self._tree_with_claim("全量 unittest 10 项通过（0 跳过）"))
-            report = self._write_report(root, success=True, tests_run=10)
-            self.assertEqual(validate_release_records(VERSION, root=root, unit_report=report), [])
+            self._write_report(root, success=True, tests_run=10)
+            self.assertEqual(validate_release_records(VERSION, root=root), [])
 
     def test_full_pass_claim_with_failing_report_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             _write_tree(root, self._tree_with_claim("全量 unittest 4078 项通过（6 跳过）"))
-            report = self._write_report(root, success=False, failures=0, errors=3, skipped=4)
-            problems = validate_release_records(VERSION, root=root, unit_report=report)
+            self._write_report(root, success=False, failures=0, errors=3, skipped=4)
+            problems = validate_release_records(VERSION, root=root)
         self.assertTrue(
             any("全量 unittest 通过" in p and "success=False" in p for p in problems), problems
         )
@@ -593,32 +587,8 @@ class UnitReportGateTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             _write_tree(root, self._tree_with_claim("全量 unittest 通过"))
-            problems = validate_release_records(
-                VERSION, root=root, unit_report=root / "absent.json"
-            )
+            problems = validate_release_records(VERSION, root=root)
         self.assertTrue(any("missing or unreadable" in p for p in problems), problems)
-
-    def test_running_legacy_version_and_different_source_reports_are_refused(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            _write_tree(root, self._tree_with_claim("全量 unittest 通过"))
-            for changes, expected in (
-                ({"status": "running"}, "not completed release evidence"),
-                ({"release_evidence": False}, "not completed release evidence"),
-                ({"version": "0.1.0"}, "expected " + VERSION),
-                (
-                    {"source": {"source_status": "complete", "source_fingerprint": "bad"}},
-                    "fingerprint",
-                ),
-                ({"tests_run": 0}, "inconsistent test totals"),
-            ):
-                with self.subTest(changes=changes):
-                    report = self._write_report(root, **changes)
-                    problems = validate_release_records(VERSION, root=root, unit_report=report)
-                    self.assertTrue(any(expected in p for p in problems), problems)
-            report.write_bytes(b"\xff")
-            problems = validate_release_records(VERSION, root=root, unit_report=report)
-            self.assertTrue(any("missing or unreadable" in p for p in problems), problems)
 
     def test_record_without_a_pass_claim_does_not_require_a_report(self):
         with tempfile.TemporaryDirectory() as temp:
