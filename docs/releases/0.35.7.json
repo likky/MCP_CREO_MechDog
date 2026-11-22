@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "version": "0.35.7",
+  "previous_version": "0.35.6",
+  "previous_release_tag": "v0.35.6",
+  "previous_release_commit": "13aa9e163da7569c548949de8c8c3b9b8bf3615a",
+  "remote_verification": "pending",
+  "delivery_ids": [
+    "BUG-149"
+  ],
+  "frozen_on": "2026-11-22",
+  "note": "PATCH: a read-only plan can no longer park a model in unknown_outcome. The 0.35.6 follow-up runs twice hit the same dead state: the client exited before a read-only mass query finished, the job stayed unknown_outcome (termination.attempted=false, reason=no_runner_pid) and the model kept it as pending_job, so every later request was refused with toolkit_busy 'Model has a pending job'; creo_cancel_job answered 'nothing was cancelled' for a terminal job and no recovery action accepted the occupancy. run_generic_job now resolves readonly/admitted_status once, keeps the admitted status on every uncertain exit and never writes pending_job for a read-only job; the ToolkitBusy branch releases only the read-only occupancy it never dispatched. cancel_job classifies with _job_readonly (job.json input flags, request.json fallback, writable when unreadable), reports geometry_may_have_changed=false and releases through _release_readonly_reservation, which edits only the model record and requires that the model still holds the job and its recorded runner/worker are gone (a successful taskkill is the stop evidence). The same path handles already-terminal historic occupancy and returns readonly_release; writable semantics are unchanged. inspect gains readonly_pending naming creo_cancel_job as the only exit. Live Creo 10.0.0.0 evidence uses the actual residue from 0.35.6: model 0ce7c04e (revision 1) plus read-only job 07e6f30d (worker_started=true, runner_pid=null); toolkit_busy before, then released=true, unknown_outcome->ready, revision unchanged, and the same model re-queried at 1150.0 mm3. Public tools stay at 111 and no native code changed. Not verified: the real client-exit timing at the protocol level, concurrent release ordering, Creo 9/12, the external feedback environment and the WorkBuddy black box."
+}
