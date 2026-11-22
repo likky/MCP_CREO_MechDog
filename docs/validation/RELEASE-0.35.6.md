@@ -20,7 +20,7 @@
 ## 验收
 
 - 环境：Windows x64 build 26200、Python 3.12.10、MSVC 19.29、Creo 10.0.0.0 / release 42（实机部分）。源码为本次发布提交，`dirty=false`，受测指纹与 `run_id` 见 `build/unit_test_report.json`、`build/unit_test_run.json`。
-- 单元测试（本轮 `tools/test_unit.py`，报告落在 `build/unit_test_report.json`，运行状态在 `build/unit_test_run.json`）：全量 unittest 通过，`tests_run=4368`、`failures=0`、`errors=0`、`skipped=6`（跳过项均为本机环境不具备：MSVC 独立 helper 2 项、归档作业缺失 2 项、符号链接权限 2 项）。
+- 单元测试（本轮 `tools/test_unit.py`，报告落在 `build/unit_test_report.json`，运行状态在 `build/unit_test_run.json`）：全量 unittest 通过，`tests_run=4376`、`failures=0`、`errors=0`、`skipped=6`（跳过项均为本机环境不具备：MSVC 独立 helper 2 项、归档作业缺失 2 项、符号链接权限 2 项）。
 - 开发检查：`tools/dev_check.py --skip-unit --work-item FEAT-073`（及 FEAT-057、BUG-144 记录在计划的定向运行）Ruff 0 发现、0 文件待格式化，两项独立离线 stdio 验收通过，`success=true`。
 - 原生构建：`bridge.py build` exit 0，产物 `build/creo_worker.exe`；本轮未改动原生接口签名，装配质量属性与镜像拒绝已在 Creo 10 SDK 下编译通过。
 - 实机（Creo 10.0.0.0 / release 42，证据留在 `build/live_t08_assembly_mass.py`、`build/live_t10_batch_mass.py`、`build/live_t10a_full_batch.py`、`build/live_t10a_timeout_followup.py` 的运行记录中）：
