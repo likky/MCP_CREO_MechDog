@@ -3,7 +3,7 @@
 日期：2026-11-22
 版本：0.35.7（PATCH）
 上一版本：0.35.6（`v0.35.6`，提交 `13aa9e163da7569c548949de8c8c3b9b8bf3615a`）。
-本次发布提交：见 `v0.35.7` 标签指向（本记录随该提交冻结；实际提交号与 Release id 由发布后的 POSTCHECK 回填）。
+本次发布提交：`a0aa08dd0f9efd64618868d70634718e88d9792d`（annotated 标签 `v0.35.7`；包内该行为打包时点措辞，提交号在此 `main` 版本回填）。
 
 ## 范围
 
@@ -24,6 +24,7 @@
   - 释放后模型记录：`status=ready`、`pending_job=null`；同一模型重查作业 `881b44fcb84a44e5884b2085be95bf83` `succeeded`、`stage=verified`、`readonly=true`、体积 `1150.0` mm³、`revision` 仍为 1。
   - 只读作业在编译预检阶段失败（`fed46374…`，`worker_started` 未起）：模型保持 `ready`、`pending_job=null`，新不变量在真机生效。
 - 发布记录门禁：`tools/check_release_records.py --version 0.35.7` exit 0；`tools/package.py` 的发布记录门禁（含本轮 `run_id`/源码指纹证据）在写 ZIP、sidecar、stage 之前执行并通过。
+- 源码包解压独立验收（打包后，2026-11-22 18:35—18:53 +08:00）：`MCP_CREO_MechDog-0.35.7-source.zip` 解压到 `%TEMP%\mc-0357-extract`（2,278 个文件、无 `.git`、无本机 `config.json`），新建 venv 后 `pip install -e .` 与 `-r requirements.txt` 成功（`MCP_CREO_MechDog-0.35.7`、`mcp 2.3.0`、`httpx2 2.13.1`），运行 `tools/test_unit.py`：4,381 项、0 失败、0 错误、14 跳过，解压受测指纹 `03092ee98eb3f1dbe023d803ea5f9ed36ebe73dc1206bcf0bcbe107f3e7092b4`（`commit`/`dirty` 为 null、`source_scope=distributed_source`、`git_status=unavailable`、`source_status=complete`）。较工作树 4,389 项少 8 项，全部转为跳过（无 `config.json` 的原生构建夹具与符号链接特权等环境项）。
 
 ## 种子库
 
@@ -46,8 +47,11 @@
 
 ## 发布后远端核对
 
-- 发布后执行，当前未验证。核对方式：`tools\check_release_assets.py --tag v0.35.7`，把真实附件列表、API digest、本地实算 SHA256 与 sidecar 比对结果追加到 `main` 的统一 POSTCHECK 与本段。
-- Release 地址（发布后）：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.7`。
+- 发布：Release id `454380011`，`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.7`，非 draft、非 prerelease，`created_at=2026-11-22T10:53:44Z`、`published_at=2026-11-22T10:54:27Z`（18:54 +08:00），target `main`，正文 3,982 字符。
+- 标签：附注标签 `v0.35.7`（tag 对象 `747567a1eeb994f7a6a7ab311c1ea29f69421b99`）指向 `a0aa08dd0f9efd64618868d70634718e88d9792d`，远端 `main` 同值（`e62eb3c..a0aa08d`）。
+- 核对命令：`tools\check_release_assets.py --tag v0.35.7` exit 0，输出 `v0.35.7: four assets downloaded and verified; both sidecars match; release body self-proof verified`。
+- 远端 API digest、下载后本地实算与 sidecar 逐一致：源码包 `2a2735a18f0484bd21c0b775681d87b70c37a67f8eb159e3d153fde161a506fc`（11,640,169 字节）、源码 sidecar `721815876d1a3714b98a9ae2bc480cb7cccc3b4e6202857f2e0c200d0bebe2e5`（101 字节）、种子包 `2c925e6138f64102666fe6c679520f8522f6dd7e97b3afbae4ba07f9e24f4da2`（493,442 字节）、种子 sidecar `61aea629d5118345349a180df53abaa1cbe01f7cd05cfb6120af82c797979560`（107 字节）。
+- 正文：`gh release view v0.35.7 --json body` 与本地 `--notes-file` 除末尾换行外逐字相同（3,982 字符）。
 
 ## 相对上一正式包核对（上一版本：0.35.6）
 

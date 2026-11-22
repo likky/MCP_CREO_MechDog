@@ -9,7 +9,20 @@
 - 种子包 SHA256 `2c925e6138f64102666fe6c679520f8522f6dd7e97b3afbae4ba07f9e24f4da2`（24 个文件、9 个种子，两次构建摘要一致；包内 `seed_manifest.json` 声明 `compatible_server_version=0.35.7`）。
 - 源码包由发布提交源码构建；源码包摘要见同名 sidecar，不写入包内文件。
 - Release 地址：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.7`；四个附件为 `MCP_CREO_MechDog-0.35.7-source.zip`、`MCP_CREO_MechDog-0.35.7-source.zip.sha256`、`MCP_CREO_MechDog-0.35.7-seed-library.zip` 与 `MCP_CREO_MechDog-0.35.7-seed-library.zip.sha256`。
-- 发布后核对：发布后执行，当前未验证。结果按附件逐个追加到本段，并同步 `docs/releases/0.35.7.json` 的 `remote_verification`。
+- 标签与提交：`main` 提交 `a0aa08dd0f9efd64618868d70634718e88d9792d`，附注标签 `v0.35.7`（tag 对象 `747567a1eeb994f7a6a7ab311c1ea29f69421b99`）指向该提交（`git rev-parse v0.35.7^{commit}` 同值）；远端 `main` 已推进到同一提交（`e62eb3c..a0aa08d`）。
+- 发布对象：Release id `454380011`，非 draft、非 prerelease，`created_at=2026-11-22T10:53:44Z`，`published_at=2026-11-22T10:54:27Z`（18:54 +08:00），target `main`，正文 3,982 字符，含四个附件名与「源码包摘要记录在同名 sidecar 中」。
+- 远端核对（2026-11-22 18:55 +08:00）：`tools\check_release_assets.py --tag v0.35.7` exit 0，输出 `v0.35.7: four assets downloaded and verified; both sidecars match; release body self-proof verified`（`gh` 经 `HTTPS_PROXY=http://127.0.0.1:10809` 直连成功，未退回 `--dir` 手工通道）。
+- 附件逐个列出（未用通配）；远端 API digest、下载后本地实算与 sidecar 逐一致：
+
+| 附件 | 字节 | 远端 API digest / 本地实算 SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.35.7-source.zip` | 11,640,169 | `2a2735a18f0484bd21c0b775681d87b70c37a67f8eb159e3d153fde161a506fc` |
+| `MCP_CREO_MechDog-0.35.7-source.zip.sha256` | 101 | `721815876d1a3714b98a9ae2bc480cb7cccc3b4e6202857f2e0c200d0bebe2e5` |
+| `MCP_CREO_MechDog-0.35.7-seed-library.zip` | 493,442 | `2c925e6138f64102666fe6c679520f8522f6dd7e97b3afbae4ba07f9e24f4da2` |
+| `MCP_CREO_MechDog-0.35.7-seed-library.zip.sha256` | 107 | `61aea629d5118345349a180df53abaa1cbe01f7cd05cfb6120af82c797979560` |
+- 正文比对：`gh release view v0.35.7 --json body` 取回的正文与本地 `--notes-file` 内容除末尾换行外逐字相同（3,982 字符）。
+- 源码包解压独立验收（发布前完成，2026-11-22 18:35—18:53 +08:00）：解压到 `%TEMP%\mc-0357-extract`（2,278 文件、无 `.git`、无 `config.json`），独立 venv 安装后运行 `tools/test_unit.py`，4,381 项、0 失败、0 错误、14 跳过，解压受测指纹 `03092ee98eb3f1dbe023d803ea5f9ed36ebe73dc1206bcf0bcbe107f3e7092b4`；较工作树 4,389 项少的 8 项全部转为环境跳过。
+- 包内快照与 `main` 的差异：冻结源码包内的本段与发布记录仍是打包时点措辞（`remote_verification=pending`、「发布后执行，当前未验证」），以上实际结果、Release id 与提交号只存在于 `main`，不改写、不重传已发布附件。
 
 ## v0.35.6（2026-11-22，打包时点快照；发布后核对追加于此）
 
