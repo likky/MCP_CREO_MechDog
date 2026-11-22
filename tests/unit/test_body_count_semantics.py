@@ -11,7 +11,12 @@ import copy
 import unittest
 from pathlib import Path
 
-from creo_mechdog.model_queries import RESPONSE_BUDGET, inspection_summary, serialized_size
+from creo_mechdog.model_queries import (
+    RESPONSE_BUDGET,
+    inspect_page,
+    inspection_summary,
+    serialized_size,
+)
 
 NATIVE = Path(__file__).resolve().parents[2] / "native"
 
@@ -131,6 +136,32 @@ class CountSemantics(unittest.TestCase):
         before = copy.deepcopy(source)
         inspection_summary(source)
         self.assertEqual(source, before)
+
+    def test_body_pages_expose_scope_id_eligibility_without_changing_saved_records(self):
+        bodies = [
+            active_body(),
+            active_body(id=-5778),
+            empty_body(),
+            empty_body(id=0),
+            empty_body(id=True),
+        ]
+        model = {"model_id": "part", "revision": 7, "inspection": inspection(bodies)}
+        before = copy.deepcopy(model)
+
+        full = inspect_page(model, detail="full")
+        page = inspect_page(model, detail="full", section="bodies", limit=2)
+        tail = inspect_page(model, detail="full", section="bodies", cursor=page["next_cursor"])
+        records = page["data"]["bodies"] + tail["data"]["bodies"]
+        self.assertEqual(records, full["inspection"]["bodies"])
+        self.assertEqual(
+            [body["cut_scope_id_eligible"] for body in records],
+            [True, True, True, False, False],
+        )
+        self.assertEqual(records[1]["id"], -5778)
+        self.assertTrue(records[1]["material"])
+        self.assertEqual(records[1]["bbox"], bodies[1]["bbox"])
+        self.assertFalse(records[2]["material"])
+        self.assertEqual(model, before)
 
     def test_the_separated_block_fits_the_response_budget(self):
         bodies = [active_body() if index == 0 else empty_body(id=index) for index in range(40)]

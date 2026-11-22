@@ -13,6 +13,10 @@ Builds a part with two separate bodies, then cuts only the first one:
 
 Live runs need a usable Creo session, so ``--live`` and
 ``--confirm-session-usable`` are both required.
+
+Use ``--initial-body`` for the BUG-150 Creo 10 matrix. It compares cuts
+with and without scope on the initial body, then repeats explicit scope
+with a second body that the same cutting profile would otherwise intersect.
 """
 
 from __future__ import annotations
@@ -194,6 +198,120 @@ def scope_of(job):
     return None
 
 
+def rectangle(label, offset, minimum, maximum):
+    return {
+        "op": "sketch",
+        "label": label,
+        "plane": "XY",
+        "offset": offset,
+        "entities": [{"type": "rectangle", "name": "outline", "min": minimum, "max": maximum}],
+    }
+
+
+async def initial_body_cases(client):
+    initial_id = -5778
+    plate = [rectangle(f"base_{offset}", offset, [-30, -20], [30, 20]) for offset in (0, 10)]
+    REPORT["cases"] = cases = {}
+    for case, scoped, mixed in (
+        ("unscoped", False, False),
+        ("scoped", True, False),
+        ("scoped_mixed", True, True),
+    ):
+        record = cases[case] = {}
+        created = await call(
+            client,
+            "creo_new_loft_part",
+            {"model_name": f"b150_{case}_{RUN_TAG}", "label": "plate", "sections": plate},
+        )
+        built = await wait_job(client, created["job_id"])
+        record["base_job"] = built["job_id"]
+        if built["status"] != "succeeded":
+            raise RuntimeError(f"{case}: base failed: {built.get('message')}")
+        model_id, revision = built["model_id"], built["revision"]
+        record["model_id"] = model_id
+        if mixed:
+            mixed_plan = [
+                rectangle("other_profile", 11, [-30, -20], [30, 20]),
+                {
+                    "op": "extrude",
+                    "label": "other_body",
+                    "sketch": "other_profile",
+                    "depth": 1,
+                    "direction": "positive",
+                    "mode": "add",
+                    "new_body": True,
+                },
+            ]
+            record["mixed_job"], added = await submit_plan(client, model_id, revision, mixed_plan)
+            if added["status"] != "succeeded":
+                raise RuntimeError(f"{case}: second body failed: {added.get('message')}")
+            revision = added["revision"]
+
+        before_records = await bodies_of(client, model_id)
+        before = body_view(before_records)
+        body_ids = {body_id for body_id, body in before.items() if body["material"]}
+        expected_volume = PLATE_MM + (2400 if mixed else 0)
+        record.update(bodies_before=before_records, volume_before=await volume_of(client, model_id))
+        if not check(initial_id in body_ids and len(body_ids) == 1 + mixed, f"{case}: fixture IDs"):
+            continue
+        check(close(record["volume_before"], expected_volume), f"{case}: initial volume")
+        check(
+            any(
+                body["id"] == initial_id and body.get("cut_scope_id_eligible") is True
+                for body in before_records
+            ),
+            f"{case}: inspection advertises the initial ID",
+        )
+
+        cut = {
+            "op": "extrude",
+            "label": "scoped_cut_800",
+            "sketch": "cut_profile",
+            "depth": 14,
+            "mode": "cut",
+            "direction": "positive",
+        }
+        if scoped:
+            cut["scope"] = {"kind": "bodies", "body_ids": [initial_id]}
+        plan = [rectangle("cut_profile", -2, [-5, -4], [5, 4]), cut]
+        record["cut_job"], result = await submit_plan(client, model_id, revision, plan)
+        if result["status"] != "succeeded":
+            raise RuntimeError(f"{case}: cut failed: {result.get('message')}")
+        receipt = result.get("result") or {}
+        applied = scope_of(result)
+        after = body_view(await bodies_of(client, model_id))
+        record.update(
+            scope_applied=applied,
+            volume_after=await volume_of(client, model_id),
+            bodies_after=after,
+            revision=result.get("revision"),
+            saved_file_reloaded_and_verified=receipt.get("saved_file_reloaded_and_verified"),
+        )
+        check(result.get("revision") == revision + 1, f"{case}: revision advanced")
+        check(record["saved_file_reloaded_and_verified"] is True, f"{case}: save/reload")
+        check(close(record["volume_after"], expected_volume - 800), f"{case}: 800 mm³ removed")
+        check(
+            after.get(initial_id, {}).get("surface_count")
+            == before[initial_id]["surface_count"] + 4,
+            f"{case}: initial body gained the four cut walls",
+        )
+        if scoped:
+            check(
+                applied
+                == {
+                    "requested_body_ids": [initial_id],
+                    "applied_body_ids": [initial_id],
+                    "source": "feature_tree",
+                    "query_code": 0,
+                    "non_target_bodies_unchanged": True,
+                },
+                f"{case}: feature tree kept the exact ID",
+            )
+        if mixed:
+            other_id = (body_ids - {initial_id}).pop()
+            check(after.get(other_id) == before[other_id], f"{case}: intersecting body untouched")
+
+
 async def main_async(args):
     if not (args.live and args.confirm_session_usable):
         print("refused: pass --live --confirm-session-usable to touch the session")
@@ -205,6 +323,14 @@ async def main_async(args):
         if not await ready(client):
             print("refused: session never became ready; see creo_startup_status")
             return 2
+        if args.initial_body:
+            await initial_body_cases(client)
+            REPORT["success"] = not REPORT["failures"]
+            Path(args.output).write_text(
+                json.dumps(REPORT, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            print(f"failures={REPORT['failures']}", flush=True)
+            return 0 if REPORT["success"] else 1
         created = await call(client, "creo_new_part", {"model_name": f"b4_scope_{RUN_TAG}"})
         created = await wait_job(client, created["job_id"])
         model_id, revision = created["model_id"], created["revision"]
@@ -345,6 +471,7 @@ def main():
         help="required: the caller confirmed this session may be used",
     )
     parser.add_argument("--output", default="build/cut_scope_live.json")
+    parser.add_argument("--initial-body", action="store_true", help="run BUG-150 Creo 10 cases")
     args = parser.parse_args()
     try:
         return asyncio.run(main_async(args))

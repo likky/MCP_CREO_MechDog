@@ -134,8 +134,10 @@ class ModelQueryTests(unittest.TestCase):
 
     def test_small_explicit_full_keeps_snapshot(self):
         source = model()
+        expected = copy.deepcopy(source["inspection"])
+        expected["bodies"][0]["cut_scope_id_eligible"] = True
         page = inspect_page(source, "full")
-        self.assertEqual(page["inspection"], source["inspection"])
+        self.assertEqual(page["inspection"], expected)
         self.assertEqual(page["aliases"], source["aliases"])
         self.assertTrue(page["complete"])
 
@@ -167,7 +169,9 @@ class ModelQueryTests(unittest.TestCase):
         # stubs that drop aliases/inspection from full-detail reads.
         self.assertNotIn("data", page)
         self.assertEqual(page["aliases"], source["aliases"])
-        self.assertEqual(page["inspection"], source["inspection"])
+        expected = copy.deepcopy(source["inspection"])
+        expected["bodies"][0]["cut_scope_id_eligible"] = True
+        self.assertEqual(page["inspection"], expected)
 
     def test_whole_full_shape_carries_feature_state_section(self):
         # The whole fast path must serve the same bounded feature_state section
@@ -240,4 +244,6 @@ class QueryClientTests(unittest.IsolatedAsyncioTestCase):
             if field == "features":
                 for feature in expected:
                     feature["sketch_dimensions"] = []
+            elif field == "bodies":
+                expected[0]["cut_scope_id_eligible"] = True
             self.assertEqual(result["inspection"][field], expected)

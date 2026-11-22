@@ -2,6 +2,12 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
+## v0.35.8（2026-11-22，打包时点）
+
+- [BUG-150](../work-items/BUG-150.md) 修复初始实体切除作用域。Creo 10 有无作用域均去料 800 mm³，保存重载通过。原护卫舰零去料待原件复现。[发布记录](../validation/RELEASE-0.35.8.md)
+- 四件附件为 `MCP_CREO_MechDog-0.35.8-source.zip`、`MCP_CREO_MechDog-0.35.8-source.zip.sha256`、`MCP_CREO_MechDog-0.35.8-seed-library.zip`、`MCP_CREO_MechDog-0.35.8-seed-library.zip.sha256`。种子包 SHA256 为 `46afef284f90b01f76ab50152a2f428b16077561e64a3e8159f266721d397b12`。两份 sidecar 记录各自 ZIP 的摘要。
+- Release 地址：https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.8。远端核对发布后执行，当前未验证。
+
 ## v0.35.7（2026-11-22，打包时点快照；发布后核对追加于此）
 
 - 范围：[BUG-149](../work-items/BUG-149.md) 只读作业不再永久占用模型（只读作业从不写 `pending_job`、`creo_cancel_job` 元数据式释放历史占用并回执 `readonly_release`、inspect 报 `readonly_pending`）；公开工具仍 111，无原生改动。发布记录见 [RELEASE-0.35.7](../validation/RELEASE-0.35.7.md)。

@@ -146,10 +146,12 @@ class F08StructuredRejections(unittest.TestCase):
             with self.subTest(value=value):
                 self.assert_rejected(cut_op(scope=value), code)
 
-    def test_negative_zero_bool_and_duplicate_body_ids_are_rejected(self):
+    def test_unsupported_negative_zero_overflow_bool_and_duplicate_body_ids_are_rejected(self):
         for ids, code in (
-            ([-5778], "F08_SCOPE_INVALID_BODY_ID"),
+            ([-1], "F08_SCOPE_INVALID_BODY_ID"),
+            ([-5777], "F08_SCOPE_INVALID_BODY_ID"),
             ([0], "F08_SCOPE_INVALID_BODY_ID"),
+            ([1 << 31], "F08_SCOPE_INVALID_BODY_ID"),
             ([True], "F08_SCOPE_INVALID_BODY_ID"),
             ([12.0], "F08_SCOPE_INVALID_BODY_ID"),
             ([12, 12], "F08_SCOPE_DUPLICATE_BODY_ID"),
@@ -188,8 +190,10 @@ class F08PublicSurfaceEnabled(unittest.TestCase):
         self.assertIn("scope", inspect.signature(server.creo_extrude).parameters)
 
     def test_plan_path_accepts_one_body_and_keeps_it(self):
-        dumped = validate_operations([cut_op(scope=scope(7))])
-        self.assertEqual(dumped[0]["scope"], {"kind": "bodies", "body_ids": [7]})
+        for body_id in (7, -5778, (1 << 31) - 1):
+            with self.subTest(body_id=body_id):
+                dumped = validate_operations([cut_op(scope=scope(body_id))])
+                self.assertEqual(dumped[0]["scope"], {"kind": "bodies", "body_ids": [body_id]})
 
     def test_plan_path_rejects_several_bodies_before_any_job(self):
         with self.assertRaises(ValueError) as caught:
@@ -240,6 +244,7 @@ class F08NativeWiring(unittest.TestCase):
         self.assertIn("integer(b, PRO_E_BODY_USE, PRO_BODY_USE_SELECTED);", self.source)
         self.assertIn("PRO_E_BODY_SELECT", self.source)
         self.assertIn("require_scopable_body(target)", self.source)
+        self.assertIn("selection(target, PRO_BODY)", self.source)
 
     def test_applied_scope_is_read_from_the_feature_tree(self):
         self.assertIn("scope_applied_report", self.source)

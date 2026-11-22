@@ -11,8 +11,8 @@ Design decisions (see the SDD C1 contract note for the full rationale):
   ``BooleanOp.targets``. That field is a required, body-only reference list for
   ``boolean_bodies``; a cut scope is optional and must keep the current global
   ``PRO_BODY_USE_ALL`` behaviour when omitted.
-* Only positive body IDs are supported. Feature labels, surface references and
-  negative IDs from inspection are out of scope for the first native pass.
+* A scope uses a positive native body ID or Creo's initial body ID (-5778).
+  The worker verifies that the ID names an active body of the target part.
 * One target body per cut: the Creo 12 Toolkit extrude body branch has a single
   ``PRO_E_BODY_SELECT`` selection element (``ProBodyOpts.h``), so ``body_ids``
   is limited to one entry and several targets become several cut operations.
@@ -39,6 +39,8 @@ MODE = "cut"
 SUPPORTED_KIND = "bodies"
 SCOPE_ALLOWED_KEYS = ("kind", "body_ids")
 MIN_BODY_ID = 1
+MAX_BODY_ID = (1 << 31) - 1
+INITIAL_BODY_ID = -5778
 #: B4 pre-implementation check (2026-11-10): the Creo 12 Toolkit extrude body
 #: branch exposes only ``PRO_E_BODY_USE`` + ``PRO_E_BODY_SELECT``, and that
 #: element is a single ``PRO_VALUE_TYPE_SELECTION`` (``ProBodyOpts.h``). A cut
@@ -74,8 +76,8 @@ ERROR_MESSAGES = {
         "supported by the native executor"
     ),
     "F08_SCOPE_INVALID_BODY_ID": (
-        "scope.body_ids must contain positive integer body IDs; negative IDs from "
-        "inspection are unsupported, see creo_capabilities known_limitations.cut_scope"
+        "scope.body_ids expects a positive 32-bit integer or Creo's initial body ID; "
+        "see creo_capabilities known_limitations.cut_scope"
     ),
     "F08_SCOPE_DUPLICATE_BODY_ID": (
         "scope.body_ids must not repeat a body ID; submit each target body once"
@@ -107,8 +109,8 @@ ERROR_MESSAGES = {
 
 LIMITATION_ID = "cut_scope"
 LIMITATION_NOTE = (
-    "extrude cut scope takes one positive body ID per cut; feature-label scope, "
-    "revolve cuts, through_all and several targets per cut are unsupported"
+    "one body ID per cut (positive or -5778); feature-label scope, revolve cuts, "
+    "through_all and multiple targets are unsupported"
 )
 
 APPLIED_RECEIPT_FIELDS = (
@@ -150,6 +152,11 @@ def _reject(code: str):
     return _verdict(False, defaulted=False, body_ids=None, code=code)
 
 
+def is_cut_scope_body_id(value: Any) -> bool:
+    """Check the ID format accepted at submission, independently of body state."""
+    return type(value) is int and (value == INITIAL_BODY_ID or MIN_BODY_ID <= value <= MAX_BODY_ID)
+
+
 def validate_scope(operation: dict[str, Any]) -> dict[str, Any]:
     """Validate an optional cut scope before any job is submitted.
 
@@ -183,7 +190,7 @@ def validate_scope(operation: dict[str, Any]) -> dict[str, Any]:
     body_ids = scope.get("body_ids")
     if not isinstance(body_ids, list) or not body_ids:
         return _reject("F08_SCOPE_INVALID_SHAPE")
-    if any(type(value) is not int or value < MIN_BODY_ID for value in body_ids):
+    if any(not is_cut_scope_body_id(value) for value in body_ids):
         return _reject("F08_SCOPE_INVALID_BODY_ID")
     # Duplicates are reported before the count rule so [12, 12] explains the
     # repeat instead of only complaining about two entries.

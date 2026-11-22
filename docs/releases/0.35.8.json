@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "version": "0.35.8",
+  "previous_version": "0.35.7",
+  "previous_release_tag": "v0.35.7",
+  "previous_release_commit": "a0aa08dd0f9efd64618868d70634718e88d9792d",
+  "remote_verification": "pending",
+  "delivery_ids": [
+    "BUG-150"
+  ],
+  "frozen_on": "2026-11-22",
+  "note": "PATCH for BUG-150. Creo 10 returns -5778 as the initial solid body ID. The previous positive-only scope validation refused the valid ID. Extrude cut scopes bind the exact active body of the target part and verify the applied feature-tree reference. Scoped and unscoped single-body cases each removed 800 mm3 and passed save/reload. The original frigate's unscoped zero-removal case awaits its model and complete request."
+}

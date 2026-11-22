@@ -3178,7 +3178,7 @@ def validate_operations(operations: list[dict]) -> list[dict]:
     dumped = [x.model_dump(exclude_none=True) for x in result]
     for index, missing in defaulted_extrude_fields.items():
         dumped[index]["defaulted_fields"] = missing
-    # B4/F08: the contract owns the scope rules (single positive body, cut only,
+    # B4/F08: the contract owns the scope rules (single body, cut only,
     # no through_all/new_body), so the plan path and creo_extrude share one
     # authority instead of two schema-level approximations.
     for index, operation in enumerate(dumped):

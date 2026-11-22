@@ -23,6 +23,7 @@
 #include <cstdlib>
 #include <exception>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <map>
 #include <set>
@@ -1673,7 +1674,15 @@ static J non_target_bodies_unchanged(const J &before, const J &after, const J &r
     return unknown ? J(nullptr) : J(true);
 }
 static int scope_body_id(const J &op) {
-    return op.at("scope").at("body_ids").at(0).get<int>();
+    const J &value = op.at("scope").at("body_ids").at(0);
+    if (value.is_number_integer()) {
+        constexpr int initial_body_id = -5778;
+        const double id = value.get<double>();
+        if (id == initial_body_id || (id > 0 && id <= std::numeric_limits<int>::max()))
+            return value.get<int>();
+    }
+    throw std::runtime_error(
+        "F08_SCOPE_INVALID_BODY_ID: use a positive 32-bit integer or Creo's initial body ID");
 }
 // The requested body must exist and hold material before the feature is built;
 // otherwise the feature would report success while removing nothing.
@@ -1685,7 +1694,7 @@ static void require_scopable_body(int id) {
     bool found = false;
     ProSolidBodyState found_state = PRO_BODY_STATE_NONE;
     for (int i = 0; i < n; i++)
-        if (list[i].id == id) {
+        if (list[i].id == id && list[i].owner == board && list[i].type == PRO_BODY) {
             found = true;
             CK(ProSolidBodyStateGet(&list[i], &found_state));
             break;
@@ -1709,7 +1718,9 @@ static void body_options(ProElement root, const J &op) {
             int target = scope_body_id(op);
             require_scopable_body(target);
             integer(b, PRO_E_BODY_USE, PRO_BODY_USE_SELECTED);
-            ProSelection s = resolve({{"kind", "body"}, {"id", target}});
+            // Explicit scope is an exact ID. The generic resolver interprets
+            // negative IDs as a request for the current default body.
+            ProSelection s = selection(target, PRO_BODY);
             ref(b, PRO_E_BODY_SELECT, s);
             ProSelectionFree(&s);
         } else

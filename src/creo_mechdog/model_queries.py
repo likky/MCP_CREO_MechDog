@@ -8,6 +8,8 @@ import json
 from collections.abc import Callable
 from typing import Any
 
+from creo_mechdog.f08_contract import is_cut_scope_body_id
+
 RESPONSE_BUDGET = 32 * 1024
 COUNT_KEYS = ("features", "surfaces", "edges", "quilts", "bodies", "components")
 # BUG-040: counts.bodies is the number of body *objects* (records), which
@@ -199,6 +201,15 @@ def decode_cursor(cursor: str | None) -> dict[str, Any] | None:
     return value
 
 
+def _body_records(records: list[Any]) -> list[Any]:
+    return [
+        {**record, "cut_scope_id_eligible": is_cut_scope_body_id(record.get("id"))}
+        if isinstance(record, dict)
+        else record
+        for record in records
+    ]
+
+
 def section_records(model: dict[str, Any], section: str) -> list[Any] | None:
     state = full_inspection_of_model(model)
     if section == "metadata":
@@ -231,6 +242,8 @@ def section_records(model: dict[str, Any], section: str) -> list[Any] | None:
     values = state.get(section)
     if not isinstance(values, list):
         return None
+    if section == "bodies":
+        return _body_records(values)
     if section == "components":
         # FEAT-023/T09A: project business labels and source identity onto the
         # physical-copy records at query time (join key: model identity plus
@@ -309,6 +322,9 @@ def inspect_page(
         # whole fast path must serve the same shape (T08 feature_state
         # precedent), so the two full shapes cannot disagree on labels.
         payload = whole.get("inspection")
+        if isinstance(payload, dict) and isinstance(payload.get("bodies"), list):
+            payload = {**payload, "bodies": _body_records(payload["bodies"])}
+            whole["inspection"] = payload
         if isinstance(payload, dict) and isinstance(payload.get("components"), list):
             from creo_mechdog import component_identity
 

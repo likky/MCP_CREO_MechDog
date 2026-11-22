@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-22（0.35.8 PATCH，新增一项，台账 213→214）：[BUG-150](work-items/BUG-150.md) 修复 Creo 初始实体 ID `-5778` 的切除作用域。Creo 10 有无作用域均去料 800 mm³，保存重载通过。原护卫舰无作用域零去料待复现。[发布记录](validation/RELEASE-0.35.8.md)
+
 2026-11-22（[BUG-149](work-items/BUG-149.md) 随 **0.35.7** 发布；台账 213 项不变，公开工具仍 111）：PATCH。只读作业不再永久占用模型：`run_generic_job` 统一取 `readonly`/`admitted_status`，只读作业在超时、看门狗停滞、`native_result.json` 缺失、交付未确认等不确定出口保留准入状态且从不写 `pending_job`（`ToolkitBusy` 分支只释放自己从未派发的只读占用）；`_job_readonly` 定级后 `creo_cancel_job` 对只读作业给出 `geometry_may_have_changed=false`，并以 `_release_readonly_reservation` 只改模型记录地释放（要求模型仍持有该作业、记录的 runner/worker 均不存活，`taskkill` 成功即停止证据），对已终态的历史占用同样生效，回执带 `readonly_release`；`creo_reconcile_model` 的 inspect 增加 `readonly_pending` 并指明唯一出口。可写作业语义不变。新增 `tests/unit/test_bug149_readonly_release.py` 13 项（含“可写作业同条件仍锁模型”的回归保护）。本机 Creo 10.0.0.0 / release 42 用 0.35.6 补验留下的真实残留（模型 `0ce7c04e…`、只读作业 `07e6f30d…`）闭环：释放前 `toolkit_busy`「Model has a pending job」→ `readonly_release.released=true`、`unknown_outcome`→`ready`、revision 1 未变 → 同一模型重查 `881b44fc…` `succeeded`/`verified`、1150.0 mm³；另一次只读作业在编译预检失败后模型仍 `ready`、`pending_job=null`。验证：干净树全量 **4,389 项 / 0 失败 / 0 错误 / 6 跳过**；`tools/dev_check.py --skip-unit --work-item BUG-149` `success=true`（Ruff 0 发现、0 文件待格式化，576 个 Python、69 个 C++）；种子包 SHA256 `2c925e6138f64102666fe6c679520f8522f6dd7e97b3afbae4ba07f9e24f4da2`（24 文件、9 种子，两次构建一致）。发布提交 `a0aa08d`，annotated 标签 `v0.35.7` 已推送（peeled commit `a0aa08dd0f9efd64618868d70634718e88d9792d`）；源码包 2,278 文件、摘要 `2a2735a1…`（记入同名 sidecar）；解压包独立全量 4,381 项 / 0 失败 / 0 错误 / 14 跳过（指纹 `03092ee9…`）。Release id `454380011`（`published_at=2026-11-22T10:54:27Z`），四附件逐个上传后用 `tools/check_release_assets.py --tag v0.35.7` 核对 exit 0（四附件、两份 sidecar、正文自证与远端 API digest 一致）。未验：真实客户端退出时序抓取、只读作业并发释放时序、Creo 9/12、外部反馈环境与 WorkBuddy 黑盒。发布记录见 [RELEASE-0.35.7](validation/RELEASE-0.35.7.md)。
 
 
@@ -212,13 +214,13 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 
 诊断交付不等于根因修复；部分交付不关整卡；缺其他版本证据不自动判未修。观察项等自然新现场，不制造故障。已完成且无保留范围的行移入 [完成档案](BACKLOG_COMPLETED.md#2026-11-07dev-073-归档与历史进展)。原进展/证据保留日期，不再回填第二份待办。小修复沿用卡与证据，复杂跨模块任务才另建完整计划。
 
-当前唯一 ID **213**（BUG **99**、FEAT **70**、DEV **44**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
+当前唯一 ID **214**（BUG **100**、FEAT **70**、DEV **44**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
 | 仍需修复 | 7 |
 | 待复现/待核实 | 36 |
-| 已有修复但待验收 | 37 |
+| 已有修复但待验收 | 38 |
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
 | 开发中 | 7 |
@@ -288,6 +290,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
+| [BUG-150](work-items/BUG-150.md) | P1 | 已有修复但待验收 | 0.35.8（初始实体作用域） | Creo 10 实机明确 `-5778` 是初始实体 ID，有无作用域均去料 800 mm³，保存重载通过。原护卫舰无作用域零去料待原件复现。 |
 | [BUG-145](work-items/BUG-145.md) | P1 | 已有修复但待验收 | 0.35.6（修复已交付）；Creo Toolkit 探针与外部宿主未排期 | 真实 Explorer 的 Unicode 路径、清理异常和探针诊断离线验证通过；剩 Creo Toolkit 探针及外部宿主验收。 |
 | [DEV-078](work-items/DEV-078.md) | P2 | 离线完成；实机待样件 | 未排期 | 四边双方向填充、独立角释放/quilt成形、多段flange全部门禁已在 2026-11-08 离线交付并冻结，3031单测与SDK12.4编译通过；2026-11-17 复核无离线剩余。剩余全是真实样件/实机：Offset/PunchDie、格栅实测、保存重载/回滚、Creo9/10、非mm、WorkBuddy。 |
 | [DEV-076](work-items/DEV-076.md) | P1 | 已有修复但待验收 | 未排期 | H13 worker构建身份/动态准入、H15 overlap预算/覆盖诊断、H16 trim结果句柄与连续trim已在Creo12.4实机通过；H14交线诊断、H17 Creo10直创原件、H18 Creo10同载荷、H19旧原件仍缺；Creo9/10与远端余项见接手H10—H19。 |

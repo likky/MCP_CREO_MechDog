@@ -296,7 +296,9 @@ XZ 的法向是 negative Y，因此 `direction="positive"` 会让实体向更小
 | 字段 | 取值 |
 | --- | --- |
 | `scope.kind` | 只接受 `"bodies"` |
-| `scope.body_ids` | 一个正整数实体 ID，取自 `creo_inspect_model` 的 `bodies[].id` |
+| `scope.body_ids` | 一个实体 ID，取自当前零件的 `creo_inspect_model` → `bodies[].id`。接受 32 位正整数及 Creo 初始实体 ID `-5778`（0.35.8，BUG-150）。 |
+
+全量和分页巡检在 `bodies[]` 返回 `cut_scope_id_eligible`，表示原始 `id` 是否满足作用域的格式要求。选择目标时还需核对 `state_name="active"` 和 `material=true`。初始实体在有材料和空体状态下都可能保有 `-5778`，执行器会在目标零件内按该 ID 查找活动实体，并由特征树回读确认实际选中 ID。见 [BUG-150](work-items/BUG-150.md)。
 
 省略 `scope` 时行为不变，切除对全部实体生效。以下组合在提交前拒绝，不产生作业：多个实体 ID、`kind` 不是 `bodies`、非 `cut` 模式、`depth_type="through_all"`、`new_body=true`、`revolve` 带 scope。
 

@@ -1367,8 +1367,8 @@ async def creo_extrude(
     material_area_mm2 is the analytic input-sketch area (method=analytic-input), not a kernel-measured
     removed section; compare it with material_removed_mm3 only as a sanity check, because a partly
     circular multi-contour profile can differ by about 2% (2026-11-08 Creo 10 feedback).
-    scope limits a cut to one target body in a multi-body part: {kind:'bodies', body_ids:[N]} with
-    the positive body id from creo_inspect_model. It applies only to mode='cut' with blind depth and
+    scope limits a cut to one target body: {kind:'bodies', body_ids:[N]} with the body ID from
+    creo_inspect_model (positive or -5778 for Creo's initial body). It applies to mode='cut' with blind depth and
     no new_body; feature-label scope, several targets per cut, revolve cuts and through_all are
     refused before a job is dispatched. The successful operation reports scope_applied with the
     requested/applied body ids read back from the feature tree plus non_target_bodies_unchanged,

@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.35.7
+# MCP_CREO_MechDog 0.35.8
 
-![version](https://img.shields.io/badge/version-0.35.7-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.35.8-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.35.7**（PATCH——[BUG-149](docs/work-items/BUG-149.md)：只读计划在超时、停滞、结果缺失或交付未确认时不再把模型锁在 `unknown_outcome`，只读作业从不写 `pending_job`；`creo_cancel_job` 对只读作业（含客户端退出遗留的已终态占用）以元数据方式释放并回执 `readonly_release`，`creo_reconcile_model` 增加 `readonly_pending` 指引。本机 Creo 10 实机用 0.35.6 遗留的真实残留闭环：释放前 `toolkit_busy`「Model has a pending job」→ 释放后 `unknown_outcome`→`ready`、revision 不变 → 同一模型重查 `succeeded`、1150.0 mm³。公开工具仍 111。承接 0.35.6；未验：真实退出时序抓取、Creo 9/12、外部反馈环境与 WorkBuddy 黑盒） · [版本说明](docs/RELEASE_NOTES_0.35.7.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
+当前正式版 **0.35.8**（PATCH，[BUG-150](docs/work-items/BUG-150.md)）。拉伸切除可用初始实体 ID `-5778` 指定作用域。Creo 10 实测指定作用域与全体切除均去料 800 mm³，保存重载通过。 · [版本说明](docs/RELEASE_NOTES_0.35.8.md) · [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 
