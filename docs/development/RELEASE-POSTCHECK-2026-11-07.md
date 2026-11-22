@@ -8,6 +8,25 @@
 - 四件附件为 `MCP_CREO_MechDog-0.35.8-source.zip`、`MCP_CREO_MechDog-0.35.8-source.zip.sha256`、`MCP_CREO_MechDog-0.35.8-seed-library.zip`、`MCP_CREO_MechDog-0.35.8-seed-library.zip.sha256`。种子包 SHA256 为 `46afef284f90b01f76ab50152a2f428b16077561e64a3e8159f266721d397b12`。两份 sidecar 记录各自 ZIP 的摘要。
 - Release 地址：https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.8。远端核对发布后执行，当前未验证。
 
+### 发布后核对
+
+- [v0.35.8](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.8) 已发布，Release id `454418748`，`created_at=2026-11-22T12:04:02Z`，`published_at=2026-11-22T12:04:21Z`，正式版。GitHub 正文与本地 notes 文件内容一致。
+- 远端标签对象 `93dd34078edcba6a1ee45f701df68e51e6cad6ab` 指向 `ed8ea5141a0574de91ec0b19d171dd22f55ca68b`，核对时远端 `main` 为同一发布提交。元数据核对时间为 `2026-11-22T12:04:54+00:00`（`2026-11-22T20:04:54+08:00`）。
+- `python tools/check_release_assets.py --tag v0.35.8` exit 0。四个远端附件下载校验通过，两份 sidecar 与各自 ZIP 相符，Release 正文包含对应摘要并通过校验。下表的 API digest 与发布文件实算一致。
+
+| 附件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.35.8-seed-library.zip` | 493,442 | `46afef284f90b01f76ab50152a2f428b16077561e64a3e8159f266721d397b12` |
+| `MCP_CREO_MechDog-0.35.8-seed-library.zip.sha256` | 107 | `1c2e8e6409df01ea585dd1b37a7bb4026842742015ef30ebdbc0139eaa619954` |
+| `MCP_CREO_MechDog-0.35.8-source.zip` | 11,659,906 | `88f058ce5b7451f4ee0701fdcd04661d09f68bffb106ccd00d4627555425345d` |
+| `MCP_CREO_MechDog-0.35.8-source.zip.sha256` | 101 | `9b4dbb005b348aae458c0c8ce286da64cd30dd0e4bd2ca339f0a2d24532effb8` |
+
+- 发布工作树全量单测 4,390 项，0 失败、0 错误、7 跳过。受测提交 `29adc793bef50312228646d2691555ec5610475f`，`dirty=false`，源码指纹 `98ff84c864ea99f67bc568c8b2ebfb24407d1ffc178f5a130abaaaa5ce42923c`。发布提交只回填发布记录，Python 与原生源码差异为空。开发检查的语言与离线 stdio 门禁通过。
+- 发布源码包独立解压 2,284 个文件，在无 `.git` 和本机配置的目录中安装并重跑 `tools/test_unit.py`。4,382 项，0 失败、0 错误、14 跳过。指纹 `13d31eae2b4c18b7bec1776d9a1d6ca893cf0d888a02395c800c69bca32dc57c`，来源为 `distributed_source`。
+- Creo 10.0.0.0 / release 42、匹配 Toolkit SDK / MSVC x64。发布候选重编通过，原生源码指纹 `2a9ac48959786ff93ef6e7968e8eda8c7a2e123f125548529b9b87ea68da2a06`，worker SHA256 `ebee5129c0846f528e507bc31028fc1d516e544e8a58b245b18ccf0429a6bb18`。800 mm³ 实机作业 unscoped `8a79ef0ff28d45408bdbbb91fe895501`、scoped `77195eaacc894bb8a1bff586d86fda0d`、scoped_mixed `63c4617f71a244489e5f220278bc8650`。三次保存重载均通过，重载树作业 unscoped `c671cdf1f9bc4d82899233446d83a686`、scoped `108f572ff7c6407e96c7f830b1ece0c0`、scoped_mixed `33a4156508ba4f158040f57a779d840b`，显式作用域仍引用 `PRO_BODY/-5778`。正 ID 回归 20 项均通过。缺失 ID 回滚作业 `e08c87c24bc742f7acc11f7dd3f5fa4e`。双体保留对照补切作业 `94c1503f80744f33b72819b0d5245657` 再去料 80 mm³。原护卫舰无作用域零去料待原件复现。
+- 已核对 v0.35.7 正式源码包的 `native/third_party/json.hpp` 和第三方许可证与本版逐字节相同。回调及 loader 源码未变。两轮独立构建的 DLL 字节不同，本次验收限于拉伸切除路径。
+- 标签内记录保留打包时点内容。此节记录发布后实证，已发布附件冻结。
+
 ## v0.35.7（2026-11-22，打包时点快照；发布后核对追加于此）
 
 - 范围：[BUG-149](../work-items/BUG-149.md) 只读作业不再永久占用模型（只读作业从不写 `pending_job`、`creo_cancel_job` 元数据式释放历史占用并回执 `readonly_release`、inspect 报 `readonly_pending`）；公开工具仍 111，无原生改动。发布记录见 [RELEASE-0.35.7](../validation/RELEASE-0.35.7.md)。
