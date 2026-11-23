@@ -1403,9 +1403,13 @@ def submit(
             if op["op"] in ("assemble_component", "drawing_model"):
                 source = model_info(op["source_model_id"])
                 components.update(component_graph(source, model_id))
-                if source.get("model_type") in ("assembly", "drawing"):
+                # BUG-156: a nested assembly is a valid component source; only a
+                # drawing cannot be placed (component_graph above already
+                # enforced containment cycles and readiness for its children).
+                if source.get("model_type") == "drawing":
                     raise ValueError(
-                        "Nested assembly copying is not yet supported; insert owned part/sheetmetal models"
+                        "A drawing cannot be inserted as an assembly component; "
+                        "insert an owned part, sheetmetal or assembly model"
                     )
         # DEV-047 T09: a replay plan binds the source revision/file digest it was
         # planned against. Re-read the registry and file bytes under the channel
@@ -1630,6 +1634,12 @@ def submit(
             # against a real number instead of a guess.
             "timeout_seconds": effective_timeout,
             "timeout_source": timeout_source,
+            # BUG-158: the stall watchdog is a separate budget. Report it next to
+            # the job budget so a caller can tell whether timeout_seconds also
+            # moved the stall window (it never does).
+            "stall_watchdog_seconds": stall_watchdog_seconds(),
+            "stall_watchdog_source": "config:generic_stall_seconds",
+            "watch_files": ["worker.log", "native.log"],
             "message": (
                 "Poll creo_get_job with this job_id; do not resubmit the operation. This "
                 "receipt is the queue state: its revision is the value at submission (0 for "

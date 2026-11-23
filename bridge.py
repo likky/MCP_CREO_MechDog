@@ -2105,6 +2105,18 @@ def _read_job(
         from creo_mechdog import rollback_status
 
         rollback_status.ensure_rollback_status(manifest)
+    # BUG-158: running/terminal job views expose the same two budgets the submit
+    # receipt froze, so a caller never has to probe with timeout_seconds to learn
+    # whether the stall watchdog moved. Read the frozen manifest fields; querying
+    # config here would re-validate local paths for an already accepted job.
+    if manifest.get("kind") == "generic":
+        manifest["budgets"] = {
+            "job_timeout_seconds": manifest.get("timeout_seconds"),
+            "timeout_source": manifest.get("timeout_source"),
+            "stall_watchdog_seconds": manifest.get("stall_watchdog_seconds"),
+            "stall_watchdog_source": manifest.get("stall_watchdog_source"),
+            "watch_files": manifest.get("watch_files"),
+        }
     if detail == "compact":
         manifest = compact_job(manifest, sections)
         return manifest
@@ -2187,6 +2199,9 @@ def compact_job(manifest: dict, sections: list[str] | None = None) -> dict:
         "inspection_warnings",
         "native_progress",
         "stall_watchdog",
+        # BUG-158: the budget pair travels with the compact view too; dropping it
+        # here would make the terminal projection disagree with the receipt.
+        "budgets",
     )
     summary = {key: manifest[key] for key in keys if key in manifest}
     summary["detail"] = "compact"

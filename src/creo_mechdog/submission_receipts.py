@@ -31,6 +31,12 @@ _COMPACT_KEYS = (
     "readonly_source",
     "timeout_seconds",
     "timeout_source",
+    # BUG-158: the stall watchdog is separate from the job budget; a compact
+    # receipt that drops it cannot answer "will timeout_seconds keep the job
+    # alive?". Keep the pair and the files the watchdog reads.
+    "stall_watchdog_seconds",
+    "stall_watchdog_source",
+    "watch_files",
     "job_directory",
     "output_directory",
     "region_adaptation",

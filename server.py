@@ -2334,7 +2334,7 @@ async def creo_assemble_component(
     p_parent = p_local * rotation_matrix + translation. Matrix and explicit Euler
     are mutually exclusive; matrix must be finite, orthogonal and det +1 within 1e-7.
     Sources must be ready and saved; later source edits do not update the component snapshot.
-    Native placement can be fixed, default or mate/align/insert/csys constraints. Nested subassemblies are not supported yet.
+    Native placement can be fixed, default or mate/align/insert/csys constraints. A managed assembly may also be a source: it is copied like a part, so its own file and components are never moved, and the receipt names source_model_type, source_snapshot and component_count (drawings are refused).
     """
     return await invoke(
         general.submit,

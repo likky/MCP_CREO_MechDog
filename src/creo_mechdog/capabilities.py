@@ -1725,7 +1725,7 @@ def families() -> dict:
                 "with type_name unknown"
             ),
             "pipeline": "single execute_plan job inserts multiple components (distinct labels per occurrence); official rebuild pipeline: docs/ASSEMBLY_REBUILD.md with examples/assembly_rebuild_pipeline.json",
-            "limits": "MCP-owned part/sheetmetal sources; no nested assemblies; source edits do not update snapshots (regenerate via remove + re-assemble or rebuild); mate/insert/csys/default placement need further validation",
+            "limits": "MCP-owned part/sheetmetal/assembly sources (drawings refused); a nested assembly is copied like a part, so its own file and components are never moved; source edits do not update snapshots (regenerate via remove + re-assemble or rebuild); mate/insert/csys/default placement need further validation",
         },
         "assembly_appearance": {
             "enabled": True,
