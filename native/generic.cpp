@@ -1430,6 +1430,24 @@ static ProSelection resolve(const J &r) {
             throw std::runtime_error(selector_outcome.error);
         }
         stage_operation_result({{"geometry_selector_resolution", selector_outcome.diagnostic}});
+        // BUG-155: validate the matched id against the type the selector asked for.
+        // Without this an id/type mismatch only surfaced later as a bare
+        // ProModelitemInit -23 with no target or id in the message.
+        if (selector_outcome.target == "edge") {
+            ProEdge edge;
+            const ProError code = ProEdgeInit((ProSolid)board, selector_outcome.id, &edge);
+            if (code != PRO_TK_NO_ERROR)
+                throw std::runtime_error("geometry_selector matched edge id " +
+                                         std::to_string(selector_outcome.id) +
+                                         " but ProEdgeInit returned " + std::to_string(code));
+        } else {
+            ProSurface surface;
+            const ProError code = ProSurfaceInit((ProSolid)board, selector_outcome.id, &surface);
+            if (code != PRO_TK_NO_ERROR)
+                throw std::runtime_error("geometry_selector matched surface id " +
+                                         std::to_string(selector_outcome.id) +
+                                         " but ProSurfaceInit returned " + std::to_string(code));
+        }
         return selection(selector_outcome.id,
                          selector_outcome.target == "edge" ? PRO_EDGE : PRO_SURFACE);
     }

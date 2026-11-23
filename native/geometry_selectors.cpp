@@ -318,6 +318,10 @@ static J selector_nearest_surfaces(const J &selector, const J &state, double mm_
 static GeometrySelectorOutcome match_geometry_edge_selector(const J &selector, const J &state,
                                                             double mm_scale, double tolerance) {
     GeometrySelectorOutcome outcome;
+    // BUG-155: resolve() picks PRO_EDGE/PRO_SURFACE from this field. The surface
+    // matcher always set it; the edge matcher did not, so a matched edge id was
+    // initialised as a surface and failed with PRO_TK_NOT_EXIST (-23).
+    outcome.target = "edge";
     const bool circular = selector.contains("center_mm") || selector.contains("radius_mm");
     std::string form = circular                            ? "circular"
                        : selector.contains("endpoints_mm") ? "endpoints"
