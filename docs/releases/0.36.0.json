@@ -4,7 +4,7 @@
   "previous_version": "0.35.8",
   "previous_release_tag": "v0.35.8",
   "previous_release_commit": "ed8ea5141a0574de91ec0b19d171dd22f55ca68b",
-  "remote_verification": "pending",
+  "remote_verification": "verified",
   "delivery_ids": ["BUG-152", "BUG-153", "BUG-154", "FEAT-074"],
   "frozen_on": "2026-11-23"
 }

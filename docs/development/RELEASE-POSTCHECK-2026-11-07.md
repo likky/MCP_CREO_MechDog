@@ -6,7 +6,26 @@
 
 - 受管零件保存与恢复、样条切除诊断、种子放样和同计划选面见[版本说明](../RELEASE_NOTES_0.36.0.md)及[发布记录](../validation/RELEASE-0.36.0.md)。
 - 四件附件为 `MCP_CREO_MechDog-0.36.0-source.zip`、`MCP_CREO_MechDog-0.36.0-source.zip.sha256`、`MCP_CREO_MechDog-0.36.0-seed-library.zip`、`MCP_CREO_MechDog-0.36.0-seed-library.zip.sha256`。种子包 SHA256 为 `c43228ac6a8764cd7369fc04ee151ceb4c3ee735063c6052839e72d0146bf25f`。两份 sidecar 分别核对对应 ZIP。
-- 发布后执行，当前未验证。见 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.36.0)。
+- 打包时远端核对待执行，实际结果见下节。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.36.0)
+
+### 发布后核对
+
+- [v0.36.0](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.36.0) 已发布为正式版并标记为 Latest。Release id `454924862`，`created_at=2026-11-23T02:35:14Z`，`published_at=2026-11-23T02:35:30Z`。GitHub 正文与发布时的 notes 文件一致。
+- 远端附注标签对象 `1e0445e349d3c9f155561a2aa64f0b408e5037b3` 指向 `bc2052e27cb34f03af2e9fcea259cf426bac7d5b`。远端 `main` 在核对时指向同一提交。核对时间 `2026-11-23T02:35:53+00:00`（`2026-11-23T10:35:53+08:00`）。
+- `python -X utf8 tools/check_release_assets.py --tag v0.36.0` 于 `2026-11-23T02:37:03Z`（`2026-11-23T10:37:03+08:00`）退出，退出码为 0。首次运行在 Windows 默认 GBK 下读取 `gh` 输出的 UTF-8 正文失败，显式使用 UTF-8 后复核通过。四个附件均重新下载，两个 ZIP 的实算摘要与各自 sidecar 和 Release 正文一致。逐个核对了下载件、上传前文件、API digest 和字节数。
+
+| 远端附件 | 字节 | 实算 SHA256 / API digest |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.36.0-source.zip` | 11,692,084 | `baa6b9f1e76a5250b0dd73176958b773a30ede4dd148e0f560f799cb21d33b13` |
+| `MCP_CREO_MechDog-0.36.0-source.zip.sha256` | 101 | `8f5864b9c694f80a6a93b163d31336980648d90c7e2f6c858e5c491337e49316` |
+| `MCP_CREO_MechDog-0.36.0-seed-library.zip` | 493,442 | `c43228ac6a8764cd7369fc04ee151ceb4c3ee735063c6052839e72d0146bf25f` |
+| `MCP_CREO_MechDog-0.36.0-seed-library.zip.sha256` | 107 | `71b9204b7588570fc637a0578098ebc0c8135aa70e1f6dc876d7d5616e4bffa2` |
+
+- 发布工作树的 Ruff、clang-format 和离线 MCP 验收通过。全量单测 4,397 项，0 失败、0 错误、7 跳过。受测提交 `2f98b62ea0e60aede631211f04d8c33f603c2cf4`，`dirty=false`，源码指纹 `9798cd0a764df946a79ffd99e5d71476a917eccf382c583e1a61615cb2106f8d`。发布提交回填了验收摘要，单测源码指纹不变。
+- 源码 ZIP 的 2,293 个文件对照发布提交完成核验。独立目录无 `.git` 和本机配置。安装包内 Python 源码后运行 `tools/test_unit.py`，4,389 项，0 失败、0 错误、14 跳过。受测来源为 `distributed_source`，源码指纹 `522583a8c89194ae786ef03e88a13d2a5faa1856f7a12b1e4d8fde4f4d8232c7`。
+- 另一独立解压目录运行 `setup.ps1`，Windows x64 / Creo 10.0.0.0 release 42 / 匹配 Toolkit SDK / MSVC x64 原生构建通过。用该安装的 MCP 服务实测两截面种子放样，三种形状均保存重载。矩形参数更新后 7840.000 mm³，切除后 7745.752 mm³，失败回滚通过。恢复矩阵复测限制、原反馈未复现范围及其他 Creo 版本的未测范围见[发布记录](../validation/RELEASE-0.36.0.md)。
+- 正式包的恢复矩阵首次运行在深层临时夹具路径写入测试意图文件时遇到 `WinError 206`。复测命令为 `python -m tools.test_model_reconciliation --data-root build/bug001-feat018-recovery/r`。缩短独立夹具路径后，完整恢复矩阵通过。通过作业为 `restore_baseline` `b33e906d451344b5a3e617615a41fe8c`、`accept_saved` `fe24a9dfe4694738a1faead723ddadbe`、`accept_live` `a157d3a3d23e4d6598aa48243245ce62`、`abandon_new` `61fee1c6f46444a3bfaf5705d6faba37`；恢复后写入和失败回滚的断言均通过。
+- 核对 BUG-152、BUG-153、BUG-154 和 FEAT-074 的交付状态与工作卡、主台账一致。标签和附件保留打包时点的记录。
 
 ## v0.35.8（2026-11-22，打包时点）
 
