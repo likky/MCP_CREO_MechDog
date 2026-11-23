@@ -198,6 +198,8 @@ def normalize_preview(
         "window_matches_model",
         "current_window_matches",
         "view_matrix_matches",
+        "requested_view",
+        "requested_size_px",
     ):
         if isinstance(native, dict) and native.get(key) is not None:
             block[key] = native[key]

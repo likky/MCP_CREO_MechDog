@@ -732,18 +732,27 @@ def validate_solid_profile(
             point = first["points"][0]
         where = f" near ({point[0]:.9g}, {point[1]:.9g}) mm" if point else ""
         detail = _CATEGORY_TEXT[name].format(closure=report["closure_tolerance_mm"])
+        if name == "near_tolerance" and "gap_mm" in first:
+            detail += (
+                f" (gap {first['gap_mm']:.3g} mm, exact join scale {EXACT_TOLERANCE_MM:.0e} mm)"
+            )
         details.append(f"[{name}] {detail} ({names}){where}" if names else f"[{name}] {detail}")
+    weld_advice = (
+        " " + _weld_verdict(entities) if {"open", "near_tolerance"}.intersection(problems) else ""
+    )
     raise ValueError(
         f"Solid {operation} profile rejected: detected "
         f"{report['closed_contour_count']} closed contour(s), "
         f"{report['open_contour_count']} open contour(s) and "
         f"{report['entity_count']} curve entities; "
         + "; ".join(details)
-        + ". Supply disjoint or nested closed loops; the native solver remains authoritative "
+        + ". Supply disjoint or nested closed loops. For adjacent contours sharing edges, "
+        "combine them into a single outer polyline and omit internal shared edges. "
+        "The native solver remains authoritative "
         "for anything this check cannot confirm. Remediation: set closure_tolerance_mm or "
         "merge the arcs into one polyline; snap_endpoints / endpoint_policy=weld only helps "
         "when the joins named below are actually weldable, and welding is applied at "
-        "submission time, not during plan validation. " + _weld_verdict(entities)
+        "submission time, not during plan validation." + weld_advice
     )
 
 

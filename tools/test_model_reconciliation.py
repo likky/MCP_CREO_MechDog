@@ -27,6 +27,7 @@ if __name__ == "__main__" and not __package__:
 
 import bridge
 import generic_bridge as general
+from creo_mechdog import inspection_refs
 from creo_mechdog import reconciliation as rec
 from tools.dev_check import git_state, source_hash
 
@@ -168,7 +169,7 @@ class Acceptance:
             )
         if process.returncode:
             raise RuntimeError(output.read_text(encoding="utf-8", errors="replace"))
-        return bridge.get_job(job["job_id"])
+        return bridge.read_json(bridge.job_path(job["job_id"]) / "job.json")
 
     def submit(self, operations: list[dict], model_id: str | None = None, fault="none") -> dict:
         with patch.object(bridge.subprocess, "Popen"):
@@ -225,7 +226,7 @@ class Acceptance:
         )
         mid = normal["model_id"]
         baseline = general.model_info(mid)
-        assert abs(baseline["inspection"]["volume_mm3"] - 24000) < 0.01
+        assert abs(inspection_refs.summary_of(baseline)["volume_mm3"] - 24000) < 0.01
         unknown = self.submit(box(24, base=False), mid, "timeout")
         assert unknown["status"] == "unknown_outcome", unknown
         live = rec.inspect(mid, live=True)
@@ -233,7 +234,7 @@ class Acceptance:
         assert live["live"].get("matches_baseline") is False, live
         restored = self.recover(mid, "restore_baseline")
         assert restored["revision"] == baseline["revision"]
-        assert abs(restored["result"]["inspection"]["volume_mm3"] - 24000) < 0.01
+        assert abs(inspection_refs.summary_of(restored["result"])["volume_mm3"] - 24000) < 0.01
         assert rec.identity(Path(baseline["part_file"]))["sha256"] == baseline["part_sha256"]
         following = self.submit([{"op": "set_parameters", "values": {"RECOVERY_NEXT": 7}}], mid)
         assert (

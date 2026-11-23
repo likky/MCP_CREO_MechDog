@@ -290,6 +290,15 @@ def normalize_cut_geometry_context(block: Any) -> dict[str, Any]:
     entry["volume_mm3"] = _normalize_volume(block.get("volume_mm3"))
     entry["volume_change"] = _classify_volume_change(entry["volume_mm3"])
     entry["diagnosis"] = _diagnosis(entry["volume_change"], entry["volume_mm3"])
+    section = block.get("native_section")
+    if isinstance(section, dict):
+        entry["native_section"] = {
+            key: section[key]
+            for key in ("query_code", "b_spline_entities", "closed_contours", "open_ends")
+            if type(section.get(key)) is int
+        }
+        if type(section.get("available")) is bool:
+            entry["native_section"]["available"] = section["available"]
     if entry["status"] == NO_MATERIAL_REMOVED:
         entry["available"] = True
         entry["reason"] = None

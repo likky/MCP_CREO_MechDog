@@ -70,11 +70,13 @@
 }
 ```
 
-`expected_pending_job_id` 契约：必须逐字等于本次预检返回的 `pending_job`。预检返回 null（无待定作业）时发送 JSON null 或省略该字段，两者等价；**不要发送空字符串 `""`**——空串/空白串会被作为请求缺陷精确拒绝（错误引用实际收到的值），不会与 null 混同，也不会被当作模型 revision 冲突。客户端确实无法发送 null 时优先省略字段；字面字符串 `"null"` 在当前 SDK 下会被预解析为 null，但不要依赖该行为。revision 与 pending 不匹配分别返回独立的 stale 错误并给出模型实际值。
+`expected_pending_job_id` 必须等于本次预检返回的 `pending_job`。预检返回 null 时发送 JSON null 或省略该字段。服务会把部分客户端传入的空串 `""` 转回 null。预检返回实际作业 ID 时，仍须逐字传回该 ID。纯空白和畸形 ID 仍为参数错误。revision 与 pending 不匹配时分别返回对应的 stale 错误，并给出模型实际值。
 
 接受后只轮询返回的恢复 `job_id`，不重复提交原计划。同一幂等键与相同输入返回同一恢复任务；换动作或输入必须换键并重新预检。文件、部署、revision 或 reservation 改变会拒绝旧证据。busy 表示本次未获准，遵循其 blocking 字段，不假设排队。
 
 ## 判断完成
+
+对受管且独立的零件或钣金件，`restore_baseline` 会先确认同名旧会话对象已擦除，再读取并核对登记的确切检查点文件。检查点验证后模型回到 `ready`，沿用原 revision。若 Creo 窗口仍持有该对象，回执提供 `recovery_reload_source` 阶段信息，关闭对应窗口后可重新预检并恢复。
 
 恢复作业必须 `succeeded`；除 abandon 外还须 `saved_file_reloaded_and_verified=true`。核对处置动作、revision、保存文件与摘要、原生特征/尺寸/参数/体积，再用最新 revision 继续正常编辑。原未知作业仍保持原历史；其 recovery.resolution 和模型 reconciliation 记录此次独立处置，不能把 accept 解释为原计划剩余操作已执行。
 

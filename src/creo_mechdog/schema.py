@@ -338,6 +338,7 @@ class BSpline(StrictModel):
     control_points: Annotated[list[Point2], Field(min_length=2, max_length=200)]
     knots: list[float] | None = None
     weights: list[float] | None = None
+    approximation_segments: Annotated[int, Field(strict=True, ge=2, le=199)] | None = None
     construction: bool = False
 
     @field_validator("degree", mode="before")
@@ -377,6 +378,15 @@ class BSpline(StrictModel):
                 raise ValueError(
                     "b_spline knots must be clamped: the first and last degree+1 values each repeat"
                 )
+        if self.approximation_segments is not None and (
+            self.knots[0] >= self.knots[-1]
+            or any(
+                a == b
+                for a, b in zip(self.knots, self.knots[self.degree :])
+                if self.knots[0] < a < self.knots[-1]
+            )
+        ):
+            raise ValueError("B-spline approximation requires a continuous, nonempty knot range")
         if self.weights is not None:
             if len(self.weights) != count:
                 raise ValueError(
@@ -525,6 +535,7 @@ class SketchOp(StrictModel):
                 )
             if any(
                 e.type not in {"line", "centerline", "rectangle", "polyline", "circle", "arc"}
+                and not (isinstance(e, BSpline) and e.approximation_segments is not None)
                 for e in self.entities
             ):
                 raise ValueError(
@@ -543,6 +554,10 @@ class SketchOp(StrictModel):
                 expanded += [
                     entity.name + "_" + str(i)
                     for i in range(len(entity.points) - 1 + int(entity.closed))
+                ]
+            elif isinstance(entity, BSpline) and entity.approximation_segments is not None:
+                expanded += [
+                    entity.name + "_" + str(i) for i in range(entity.approximation_segments)
                 ]
             else:
                 expanded.append(entity.name)
@@ -2646,15 +2661,24 @@ class StlOptions(StrictModel):
     angle_control: Annotated[float, BeforeValidator(_stl_angle_control)] = 0.1
 
 
+class JpegOptions(StrictModel):
+    view: Literal["isometric", "front", "top"] = "isometric"
+    width_px: Annotated[int, Field(strict=True, ge=200, le=2400)] = 800
+    height_px: Annotated[int, Field(strict=True, ge=200, le=2400)] = 600
+
+
 class ExportOp(StrictModel):
     op: Literal["export"]
     format: Literal["step", "stl", "iges", "jpeg", "pdf", "native_bundle"] = "step"
     stl_options: StlOptions | None = None
+    jpeg_options: JpegOptions | None = None
 
     @model_validator(mode="after")
-    def _stl_options_only_for_stl(self):
+    def _options_match_format(self):
         if self.stl_options is not None and self.format != "stl":
             raise ValueError("stl_options is only valid when format is 'stl'")
+        if self.jpeg_options is not None and self.format != "jpeg":
+            raise ValueError("jpeg_options is only valid when format is 'jpeg'")
         return self
 
 

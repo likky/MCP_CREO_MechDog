@@ -88,7 +88,9 @@ async def main(seed_file, feature_id, interpolation="straight"):
             print(json.dumps({"tool": tool, "job_id": jid}), flush=True)
             deadline = time.monotonic() + 600
             while time.monotonic() < deadline:
-                r = (await client.call_tool("creo_get_job", {"job_id": jid})).structured_content
+                r = (
+                    await client.call_tool("creo_get_job", {"job_id": jid, "detail": "compact"})
+                ).structured_content
                 if r["status"] in ("succeeded", "failed", "unknown_outcome"):
                     break
                 await asyncio.sleep(0.5)
@@ -106,6 +108,10 @@ async def main(seed_file, feature_id, interpolation="straight"):
             report["native_build"] = native_build
             report["jobs"].append({"job_id": jid, "status": r["status"], "expected_failure": fail})
             output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+            # The developer driver also verifies the native aliases and feature
+            # inventory, which may live outside the inline MCP job page.
+            native_file = ROOT / "jobs" / jid / "native_result.json"
+            r = {**r, "result": json.loads(native_file.read_text(encoding="utf-8"))}
             if fail:
                 assert r["status"] == "failed", r.get("message")
                 if rollback:
@@ -124,7 +130,14 @@ async def main(seed_file, feature_id, interpolation="straight"):
                     assert (
                         setting["interpolation"] == interpolation and setting["section_count"] == 2
                     )
+                    assert setting["section_feature_ids"] == [
+                        r["result"]["aliases"][label]["feature_id"] for label in ("bottom", "top")
+                    ]
                 assert r["result"]["aliases"]["blend"]["interpolation"] == interpolation
+                if tool == "creo_new_loft_part":
+                    verified = r["result"]["loft_seed_feature"]["reloaded_geometry"]
+                    assert verified["section_z_mm"] == [0.0, 30.0]
+                    assert math.isclose(verified["volume_mm3"], args["assertions"]["volume_mm3"])
             return r
 
         for shape, expected in [

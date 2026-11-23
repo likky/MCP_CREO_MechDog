@@ -492,6 +492,15 @@ def _status_core(record: dict[str, Any], *, failed: bool) -> dict[str, Any]:
         # FEAT-065 T1b: the measurement lives in the nested group block, which
         # the top-level key sets cannot name; keep its scalars, drop the lists.
         core["group"] = {key: group[key] for key in SURFACE_GROUP_OUTCOME_KEYS if key in group}
+    if record.get("op") == "sketch":
+        for field, scalars in (
+            ("profile", ("analysis", "closed_contour_count", "material_area_mm2")),
+            ("native_section", ("available", "closed_contours", "open_ends", "b_spline_entities")),
+            ("geometry_deviation", ("available", "max_deviation_mm", "exceeds_warning")),
+        ):
+            block = record.get(field)
+            if isinstance(block, dict):
+                core[field] = {key: block[key] for key in scalars if key in block}
     core["detail_truncated"] = True
     return core
 

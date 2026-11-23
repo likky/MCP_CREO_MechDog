@@ -96,12 +96,15 @@ class NativeSharedStep(unittest.TestCase):
         self.assertIn("capture_preview(", block)
         self.assertNotIn("CK(", block)
         self.assertNotIn("throw ", block)
-        self.assertIn('{"preview_code", preview.raster_code}', block)
+        self.assertIn("preview_code = preview.raster_code;", block)
+        self.assertIn('{"preview_code", preview_code}', block)
         self.assertIn('{"preview", preview_json}', block)
 
     def test_both_paths_publish_the_raw_codes(self):
         generic = native_source("generic.cpp")
-        self.assertEqual(generic.count('{"preview", preview_json}'), 2)
+        self.assertIn('{"preview", preview_json}', generic)
+        self.assertIn('export_result["preview_code"] = preview.raster_code', generic)
+        self.assertIn('export_result["preview"] = std::move(preview_json)', generic)
         drawing = native_source("drawing.cpp")
         self.assertIn('export_detail["preview_code"] = preview.raster_code', drawing)
         self.assertIn('export_detail["preview"] = preview_json', drawing)
@@ -219,6 +222,24 @@ class PreviewProjection(unittest.TestCase):
         (self.root / "output").mkdir()
         self.image = self.root / "output" / "preview.jpg"
         self.image.write_bytes(b"\xff\xd8\xff preview bytes")
+
+    def test_export_options_validate_view_size_and_format(self):
+        from creo_mechdog.schema import ExportOp
+
+        export = ExportOp(
+            op="export", format="jpeg", jpeg_options={"view": "top", "width_px": 1600}
+        )
+        self.assertEqual(
+            export.jpeg_options.model_dump(), {"view": "top", "width_px": 1600, "height_px": 600}
+        )
+        for format_name, options in (
+            ("step", {}),
+            ("jpeg", {"view": "side"}),
+            ("jpeg", {"width_px": True}),
+            ("jpeg", {"height_px": 2401}),
+        ):
+            with self.subTest(format=format_name, options=options), self.assertRaises(ValueError):
+                ExportOp(op="export", format=format_name, jpeg_options=options)
 
     def native_block(self, status: str = "written", raster: int = 0) -> dict:
         return {

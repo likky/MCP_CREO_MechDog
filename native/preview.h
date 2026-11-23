@@ -188,11 +188,15 @@ static bool preview_is_missing(const std::error_code &error) {
            error.value() == ERROR_PATH_NOT_FOUND;
 }
 
-static bool preview_rotation_matches(const ProMatrix actual) {
-    for (int row = 0; row < 3; row++)
+static bool preview_rotation_matches(const ProMatrix actual, const ProMatrix expected) {
+    for (int row = 0; row < 3; row++) {
+        const double length = std::hypot(actual[row][0], actual[row][1], actual[row][2]);
+        if (!std::isfinite(length) || length <= 0.0)
+            return false;
         for (int column = 0; column < 3; column++)
-            if (std::fabs(actual[row][column] - preview_isometric_view[row][column]) > 1e-3)
+            if (std::fabs(actual[row][column] / length - expected[row][column]) > 1e-3)
                 return false;
+    }
     return true;
 }
 
@@ -444,7 +448,7 @@ static nlohmann::json preview_window_codes_json(const PreviewStepOutcome &outcom
 // steps included - leaves the original display state restored.
 static void capture_preview_steps(ProMdl model, const std::wstring &file, bool apply_view_matrix,
                                   double width_inches, double height_inches, ProRasterType type,
-                                  PreviewStepOutcome &outcome) {
+                                  PreviewStepOutcome &outcome, ProMatrix view_matrix) {
     outcome.path = file;
     if (preview_has_no_geometry(model, outcome.empty_geometry_basis)) {
         outcome.skipped_no_geometry = true;
@@ -458,7 +462,7 @@ static void capture_preview_steps(ProMdl model, const std::wstring &file, bool a
     datums.hide(model);
 
     if (apply_view_matrix) {
-        int code = ProViewMatrixSet(model, nullptr, preview_isometric_view);
+        int code = ProViewMatrixSet(model, nullptr, view_matrix);
         outcome.view_matrix_set_code = code;
         preview_record(outcome, "view_matrix_set", code);
         if (code != PRO_TK_NO_ERROR)
@@ -471,7 +475,7 @@ static void capture_preview_steps(ProMdl model, const std::wstring &file, bool a
             return;
         // Creo applies its own shift and scale to the requested matrix, so only
         // the rotation can be compared. A mismatch is reported, not fatal.
-        outcome.view_matrix_matches = preview_rotation_matches(actual);
+        outcome.view_matrix_matches = preview_rotation_matches(actual, view_matrix);
     }
 
     if (!repaint_bound_window(outcome.window, outcome))
@@ -498,10 +502,11 @@ static void capture_preview_steps(ProMdl model, const std::wstring &file, bool a
 // owned by the drawing view rather than by the model orientation.
 static PreviewStepOutcome capture_preview(ProMdl model, const std::wstring &file,
                                           bool apply_view_matrix, double width_inches,
-                                          double height_inches, ProRasterType type) {
+                                          double height_inches, ProRasterType type,
+                                          ProMatrix view_matrix = preview_isometric_view) {
     PreviewStepOutcome outcome;
     capture_preview_steps(model, file, apply_view_matrix, width_inches, height_inches, type,
-                          outcome);
+                          outcome, view_matrix);
     return outcome;
 }
 

@@ -17,6 +17,7 @@ docs/templates/** text eol=lf
 docs/superpowers/** text eol=lf
 docs/work-items/** text eol=lf
 docs/validation/** text eol=lf
+docs/validation/feedback-0.35.5-2026-11-22/originals/save-and-loft.md -text
 docs/BACKLOG.md text eol=lf
 docs/DEVELOPMENT.md text eol=lf
 docs/COMPATIBILITY.md text eol=lf

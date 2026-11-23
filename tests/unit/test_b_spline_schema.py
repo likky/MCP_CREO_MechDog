@@ -67,6 +67,26 @@ class BSplineSchemaTests(unittest.TestCase):
         with self.assertRaisesRegex(ValidationError, "integer between 1 and 10"):
             curve(degree=True)
 
+    def test_polyline_approximation_is_explicit_and_bounded(self):
+        self.assertIsNone(curve().approximation_segments)
+        self.assertEqual(curve(approximation_segments=21).approximation_segments, 21)
+        for invalid in (True, 1, 200, "21"):
+            with self.subTest(value=invalid), self.assertRaises(ValidationError):
+                curve(approximation_segments=invalid)
+        with self.assertRaisesRegex(ValidationError, "continuous, nonempty knot range"):
+            curve(approximation_segments=21, knots=[0] * 9)
+
+    def test_approximation_uses_polyline_segment_names(self):
+        with self.assertRaisesRegex(ValidationError, "Expanded sketch entity names collide"):
+            SketchOp(
+                op="sketch",
+                label="profile",
+                entities=[
+                    curve(approximation_segments=21),
+                    {"type": "line", "name": "side_guide_0", "start": [0, 0], "end": [1, 0]},
+                ],
+            )
+
     def test_closed_is_not_a_field(self):
         with self.assertRaises(ValidationError):
             curve(closed=True)

@@ -327,6 +327,25 @@ class CompactBudgetTests(unittest.TestCase):
         self.assertFalse(result["operations_truncated"])
         self.assertEqual(len(result["operations"]), 12)
 
+    def test_trimmed_sketch_preserves_closure_and_fidelity_scalars(self):
+        result = build_result(40)
+        sketch = next(record for record in result["operations"] if record["op"] == "sketch")
+        sketch["profile"] = {
+            "analysis": "partial",
+            "closed_contour_count": 0,
+            "material_area_mm2": None,
+            "arc_geometry": ["x" * RESPONSE_BUDGET],
+        }
+        sketch["native_section"] = {"available": True, "closed_contours": 1, "open_ends": 0}
+        sketch["geometry_deviation"] = {"available": True, "max_deviation_mm": 0.0015}
+        compact = bridge.compact_job(build_manifest(result, 40))
+        self.assert_within_budget(compact)
+        kept = compact["result"]["operations"][sketch["index"]]
+        self.assertTrue(kept["detail_truncated"])
+        self.assertEqual(kept["profile"]["analysis"], "partial")
+        self.assertEqual(kept["native_section"]["closed_contours"], 1)
+        self.assertEqual(kept["geometry_deviation"]["max_deviation_mm"], 0.0015)
+
     def test_the_failed_record_keeps_its_failure_reason_after_the_trim(self):
         result = build_result(60, polyline=False, failed=True)
         # Fail deep in the plan so the record sits outside the sample window.

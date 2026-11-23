@@ -58,6 +58,7 @@ this module only validates the request shape before dispatch.
 from __future__ import annotations
 
 import math
+import re
 from typing import Any
 
 GEOMETRY_SELECTOR_KIND = "geometry_selector"
@@ -82,6 +83,7 @@ _ALLOWED_KEYS = frozenset(
         "axis_tolerance_deg",
         "coordinate_space",
         "coaxial",
+        "feature",
     }
 )
 
@@ -190,6 +192,18 @@ def validate_geometry_selector(value: Any, path: str = "selector") -> dict[str, 
         "tolerance_mm": tolerance,
         "axis_tolerance_deg": axis_tolerance,
     }
+    if "feature" in value:
+        feature = value["feature"]
+        if (
+            target != "surface"
+            or coordinate_space != "model"
+            or not isinstance(feature, str)
+            or re.fullmatch(r"[a-z][a-z0-9_]{0,27}", feature) is None
+        ):
+            raise ValueError(
+                f"{path}.feature must be a feature label on a model-space surface selector"
+            )
+        normalized["feature"] = feature
 
     if target == "edge":
         if "points_mm" in value:

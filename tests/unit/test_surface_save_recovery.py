@@ -115,23 +115,35 @@ def failed_result(**overrides) -> dict:
 
 
 class SaveFailureReceiptTests(unittest.TestCase):
-    def test_native_records_the_failed_backup_before_the_throw(self):
+    def test_native_records_the_failed_save_call_before_the_throw(self):
         generic = native_source()
         body = region(
-            generic,
-            'generic_substage("verify_model_save");',
-            "saved = latest_model_file();",
+            generic, "static std::wstring save_managed_checkpoint(", "static J read_inspection_ref("
         )
-        self.assertIn("ProError backup = ProMdlnameBackup(board, destination);", body)
-        self.assertLess(body.index('report["save_failure"]'), body.index("check(backup,"))
-        # The failure text stays the CK form callers already match on.
-        self.assertIn('check(backup, "ProMdlnameBackup(board, destination)");', body)
+        for save_call in ("ProMdlSave(board)", "ProMdlnameBackup(board, target)"):
+            with self.subTest(save_call=save_call):
+                after_call = body[body.index(save_call) :]
+                self.assertLess(
+                    after_call.index('report["save_failure"]'),
+                    after_call.index("check(code, call)"),
+                )
+        self.assertIn("saved == previous", body)
+
+    def test_checkpoint_reload_requires_absence_and_the_expected_file(self):
+        body = region(
+            native_source(),
+            "static void reload_managed_checkpoint(",
+            "static J save_failure_report(",
+        )
+        self.assertLess(body.index("ProMdlInit("), body.index("CK(ProMdlFiletypeLoad("))
+        self.assertIn("found == PRO_TK_E_NOT_FOUND", body)
+        self.assertIn("std::filesystem::equivalent(origin, checkpoint_file", body)
 
     def test_native_block_carries_the_fixed_keys_and_stays_bounded(self):
         generic = native_source()
         body = region(generic, "static J save_failure_report(", "static bool collect_ids(")
         for expected in (
-            '"call", "ProMdlnameBackup"',
+            '"call", call',
             '"code", code',
             '"stage", stage',
             '"destination"',
@@ -214,9 +226,15 @@ class RollbackLoadFailureTests(unittest.TestCase):
 
     def test_native_load_failure_publishes_an_unavailable_difference(self):
         generic = native_source()
-        body = region(generic, 'report["rollback_code"] = loaded;', "// BUG-096")
-        self.assertIn('report["rollback_difference"]', body)
-        self.assertIn("checkpoint reload failed with code", body)
+        body = region(generic, "J rollback_baseline = nullptr;", "// BUG-096")
+        self.assertLess(
+            body.index("reload_managed_checkpoint(checkpoint"),
+            body.index("J restored = inspection();"),
+        )
+        catch = body[body.index("catch (ProError e)") :]
+        self.assertIn('report["rollback_code"] = e;', catch)
+        self.assertIn('report["rollback_difference"]', catch)
+        self.assertIn("Checkpoint rollback failed at", catch)
 
     def test_projection_reports_unavailable_with_the_reason(self):
         normalized = operation_results.normalize_rollback_difference(self.load_failure_block())
@@ -308,9 +326,7 @@ class SuccessfulRollbackTests(unittest.TestCase):
 
     def test_native_sets_rollback_succeeded_only_after_verify_saved(self):
         generic = native_source()
-        body = region(
-            generic, "J rollback_baseline = nullptr;", 'report["rollback_code"] = loaded;'
-        )
+        body = region(generic, "J rollback_baseline = nullptr;", "// BUG-096")
         self.assertLess(
             body.index("rollback_restored = restored;"),
             body.index("verify_saved(rollback_baseline, restored);"),

@@ -20,10 +20,19 @@ class BSplineNativeContractTests(unittest.TestCase):
         source = (NATIVE / "generic.cpp").read_text(encoding="utf-8")
         self.assertGreaterEqual(source.count('type == "b_spline"'), 2)
         self.assertIn("Pro2dBSplinedef", source)
-        self.assertIn("b.type = PRO_2D_B_SPLINE", source)
-        for field in ("b.degree", "b.num_knots", "b.params", "b.num_c_points", "b.c_pnts"):
+        self.assertIn("spline.type = PRO_2D_B_SPLINE", source)
+        for field in (
+            "spline.degree",
+            "spline.num_knots",
+            "spline.params",
+            "spline.num_c_points",
+            "spline.c_pnts",
+        ):
             self.assertIn(field, source)
-        self.assertIn("b.weights = weights.empty() ? nullptr", source)
+        self.assertEqual(source.count("add_section_bspline(section, e, project)"), 2)
+        for array_field in ("params", "c_pnts", "weights"):
+            self.assertIn(f"(ProArray *)&spline.{array_field}", source)
+            self.assertIn(f"ProArrayFree((ProArray *)&value.{array_field})", source)
 
     def test_profile_analysis_handles_b_spline(self):
         source = (NATIVE / "generic.cpp").read_text(encoding="utf-8")

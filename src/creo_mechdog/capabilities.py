@@ -540,6 +540,7 @@ def project_worker_availability(
             "state": feature.get("state"),
             "request_field": "creation_route omitted or 'element_tree'",
             "scope": "keeps 2-32 sections, guides, boundary conditions and template trees",
+            "runtime_admission": entry.get("runtime_admission", {"status": "unknown"}),
         },
         "resident_panel": _panel_route_document(identity),
     }
@@ -1595,6 +1596,12 @@ def families() -> dict:
             "tool": "creo_loft",
             "scope": "direct native solid Blend from independent MCP-owned XY sketches ordered by increasing Z; create in a feature plan or append to an owned part",
             "interpolation": ["straight", "smooth"],
+            "section_count_input_range": [2, 20],
+            "runtime_admission": {
+                "status": "requires_ready_callback",
+                "check_tool": "creo_callback_status",
+                "callback_free_tool": "creo_new_loft_part",
+            },
             "native_test": "3/4/6 straight and smooth factory cases; append 3/smooth to an existing saved base, preserve native IDs, edit dimensions, verify all-section STL, save/erase/reload and failed-append rollback with a live refresh",
             "limits": "solid add into the default body only; no cut/surface/new_body, nonparallel sections or endpoint tangency/curvature controls; surface output belongs to creo_surface_loft (2-32 sections plus optional guides), and mode='surface' is refused before a job; native reports support Chinese/English Creo; requires explicit resident callback initialization before modeling under every loader policy, otherwise rejects before DLL load; modeling never loads DLLs or changes security policy",
             "callback_setup": "creo_capabilities.direct_blend_callback lists the generated registry_file; load/start it via Creo Auxiliary Applications and review the DLL prompt before modeling",
@@ -1605,6 +1612,8 @@ def families() -> dict:
             "scope": "new native part by rebinding an automatically selected bundled seed or explicit compatible seed to new XY sketch/airfoil sections",
             "section_count_input_range": [2, 20],
             "seed_section_count_must_match": True,
+            "callback_required": False,
+            "geometry_verification": "Confirms requested sketch dependencies, positive solid volume and end-plane coverage before saving and after reload. Use assertions.volume_mm3 and assertions.bbox_mm for independent numeric targets.",
             "interpolation": ["straight", "smooth"],
             "tested_section_count_mode_pairs": [
                 {"section_count": 2, "interpolation": "straight"},

@@ -261,6 +261,16 @@ SDK 依据：本机 `ProChamfer.h` 声明 `PRO_CHM_D1_X_D2 = 603`，该 schema �
 | round/chamfer 尺寸字段 | 独立工具 `creo_round.radius`、`creo_chamfer.distance` 与计划操作 `size` 是同一数值（mm）：round 计划也接受 `radius`、chamfer 计划也接受 `distance` 作为 `size` 别名；别名与 `size` 同现或用于另一种操作时明确拒绝。任务提交回显 `operations[].size`，终态 `result.operations[].size` 回显原生应用值（compact 返回同样保留） |
 | create_sketch.plane | 主平面字符串 `XY/XZ/YZ`；字典形式为 `{"reference":{"kind":"datum_plane","id":N},"origin":[x,y,z],"u_axis":[x,y,z]}`，reference 也可取已验证平面 `plane`/`surface` 几何 ID 或 `datum_feature` 标签；origin/u_axis 可省略，reference 容器必需 |
 
+### 按特征标签选面（FEAT-074）
+
+当同一个计划先拉伸出 `base`，再对它拔模时，可在 `surfaces` 与 `neutral_plane` 使用带 `feature:"base"` 的 model-space 面选择器。示例选择经过 `[20,0,5]`、法向与 X 轴平行的面。
+
+```json
+{"kind":"geometry_selector","target":"surface","feature":"base","points_mm":[[20,0,5]],"axis":[1,0,0],"tolerance_mm":0.001}
+```
+
+执行器先限定到该标签特征直接拥有的原生面，再按几何条件选取唯一匹配。使用当前仍存在的特征标签。需选择多张面时，在 `surfaces` 分别给出选择器。
+
 ### 钣金首壁的 width 作用轴（BUG-129）
 
 `sheetmetal_base_flange.width` 固定沿草图 v 轴。命名字典平面的默认帧如下（u 为第一段长度方向，v 为宽度方向）：
@@ -390,7 +400,13 @@ executable 仅表示静态能力/schema 准入；native/saved_reload 恒为 not_
 
 这些增量已作离线回归与原生编译；新原生字段的真实MCP/Creo/保存重载验证仍见[接手清单](development/DEV-074-HANDOFF.md)。
 
+## JPEG 导出视图（FEAT-074）
+
+零件和装配可用 `creo_export_model(format="jpeg", jpeg_options={"view":"top","width_px":1600,"height_px":900})` 单独导出预览。视图支持 `isometric`、`front` 和 `top`，每边可选 200–2400 像素。一次作业输出一张图，沿用当前模型 revision。
+
 ## 精确 NURBS 草图实体（b_spline，FEAT-066）
+
+Creo 10 的部分闭合 B 样条轮廓会生成切除特征但量测去料为零。允许折线近似时，可在该草图实体显式传入 `"approximation_segments": 21`，取值 2–199。执行器在结点域等参数采样，保留端点，并按 `<name>_0` 等线段名创建草图。回执 `b_spline_approximations` 给出实际采用的段数。段数只规定采样密度，`geometry_deviation` 核查草图相对折线输入的求解偏移。需要控制曲线与折线之间的误差时，请按目标公差选取段数或提供已有误差界的折线。
 
 `spline` 只接收插值点，由 Creo 拟合曲线，无法 1:1 复现 TXT 的次数/节点/权重。
 `b_spline` 直接映射 Toolkit `Pro2dBSplinedef`（`PRO_2D_B_SPLINE`，见 SDK

@@ -509,8 +509,8 @@ async def creo_reconcile_model(
         default=None,
         description=(
             "Apply only: the pending_job value returned by this inspect. Send JSON null "
-            "(or omit the parameter) when inspect returned pending_job=null; "
-            "never send an empty string."
+            "(or omit the parameter) when inspect returned pending_job=null. "
+            "An empty string produced by a client is treated as null."
         ),
     ),
     evidence_token: str | None = Field(
@@ -568,7 +568,7 @@ async def creo_reconcile_model(
         live,
         action,
         expected_revision,
-        expected_pending_job_id,
+        None if expected_pending_job_id == "" else expected_pending_job_id,
         evidence_token,
         idempotency_key,
         confirm_zero_mutation,
@@ -660,7 +660,7 @@ async def creo_erase_session_models(
     evidence_token: str | None = None,
     idempotency_key: str | None = None,
 ) -> dict[str, Any]:
-    """Explicitly erase selected models from the connected Creo session (FEAT-046). Never saves models and never deletes disk files. inspect(targets=[{name, model_type}]) verifies a manifest and returns per-target identity, blocking reasons, the assembly-before-components erase order, the expected remaining session objects and a 600-second evidence_token; targets qualify only when saved (has origin), unmodified, not MCP-managed, not referenced by session models outside the manifest and free of manifest dependency cycles; incomplete session enumeration refuses. apply(evidence_token, idempotency_key) executes exactly the token's manifest under one Toolkit channel lock and returns a job_id; poll creo_get_job. Each item re-verifies identity, modification state and origin before ProMdlErase, and absence is confirmed through two independent queries; a mid-manifest failure stops remaining items and reports erased, unconfirmed and remaining lists without resubmitting. The currently displayed model may be erased when it qualifies. Managed models stay with creo_reconcile_model; pass a session inventory from creo_list_session_models to choose targets."""
+    """Explicitly erase selected models from the connected Creo session (FEAT-046). Never saves models and never deletes disk files. inspect(targets=[{name, model_type}]) verifies a manifest and returns per-target identity, blocking reasons, the assembly-before-components erase order, the expected remaining session objects and a 600-second evidence_token; targets qualify only when saved (has origin), unmodified, not MCP-managed, not referenced by session models outside the manifest and free of manifest dependency cycles; incomplete session enumeration refuses. apply(evidence_token, idempotency_key) executes exactly the token's manifest under one Toolkit channel lock and returns a job_id; poll creo_get_job. Each item re-verifies identity, modification state and origin before ProMdlErase, and absence is confirmed through two independent queries; a mid-manifest failure stops remaining items and reports erased, unconfirmed and remaining lists without resubmitting. The currently displayed model may be erased when it qualifies. Copy each chosen creo_list_session_models item’s erase_target into targets. Inspect determines eligibility. For a managed model, use creo_reconcile_model."""
     return await invoke(erase_session_models, mode, targets, evidence_token, idempotency_key)
 
 
@@ -2819,6 +2819,13 @@ async def creo_export_model(
             )
         ),
     ] = None,
+    jpeg_options: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description="Part and assembly JPEG only: view is isometric, front or top. "
+            "width_px and height_px each accept 200–2400 pixels."
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Export STEP/STL/IGES/JPEG, drawing PDF/JPEG, or an explicit native assembly bundle.
 
@@ -2828,6 +2835,7 @@ async def creo_export_model(
     rendered ``path``) for the view to display; a model without geometry reports
     ``status="skipped_no_geometry"`` and a render failure reports ``status="failed"``
     with ``failed_step``/``failed_code`` instead of a picture.
+    Part and assembly JPEG exports accept ``jpeg_options`` with a view and dimensions in pixels.
 
     ``stl_options`` is accepted only with ``format="stl"``. Unknown keys,
     booleans, NaN/Inf, a non-positive chord height, or an angle control outside
@@ -2837,6 +2845,8 @@ async def creo_export_model(
     operation: dict[str, Any] = {"op": "export", "format": format}
     if stl_options is not None:
         operation["stl_options"] = stl_options
+    if jpeg_options is not None:
+        operation["jpeg_options"] = jpeg_options
     return await invoke(general.submit, [operation], model_id, None, None, None, True)
 
 

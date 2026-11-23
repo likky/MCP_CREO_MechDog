@@ -1,5 +1,7 @@
 # 开发入口
 
+2026-11-23（0.35.5 反馈开发分支）：受管零件增量保存与精确检查点恢复、B 样条切除的显式折线近似、种子放样重载检查、同计划面的特征标签选择器和 JPEG 选项。已完成的本机验证见[验收记录](validation/feedback-save-loft-2026-11-23.md)。
+
 2026-11-22（0.35.8 PATCH）：[BUG-150](work-items/BUG-150.md) 修复初始实体 ID `-5778` 的切除作用域。Creo 10 实机两种 800 mm³ 切除均保存重载通过。原护卫舰的无作用域零去料待复现。[版本说明](RELEASE_NOTES_0.35.8.md) · [发布记录](validation/RELEASE-0.35.8.md)
 
 2026-11-22（0.35.7 发布）：PATCH，公开工具仍 111。[BUG-149](work-items/BUG-149.md) 修掉只读作业永久占用模型——只读计划（准入仅限 `INSPECTION_ONLY_OPERATIONS`）此前在超时、看门狗停滞、`native_result.json` 缺失、交付未确认等分支被当成可写作业，模型被置 `unknown_outcome` 且收尾无条件写 `pending_job`，客户端退出后即被 `toolkit_busy` 锁死，而 `creo_cancel_job` 对终态作业只回「nothing was cancelled」，恢复侧也没有动作接受这种占用。现 `run_generic_job` 统一取 `readonly`/`admitted_status`，只读作业在所有不确定出口保留准入状态且从不写 `pending_job`；`cancel_job` 给出 `geometry_may_have_changed=false`，以 `_release_readonly_reservation` 只改模型记录地释放（含已终态的历史占用，要求模型仍持有且 owner 均不存活），回执带 `readonly_release`；`creo_reconcile_model` 的 inspect 增加 `readonly_pending`。Creo 10 实机用 0.35.6 遗留真实残留闭环：释放前 `toolkit_busy`、释放后 `ready`（revision 1 未变）、重查 `succeeded` 1150.0 mm³。干净树全量 4,389 项通过（6 跳过）。未验：真实退出时序抓取、Creo 9/12 与 WorkBuddy 黑盒。发布核对见 [RELEASE-0.35.7](validation/RELEASE-0.35.7.md)。

@@ -186,6 +186,12 @@ def list_session_models(limit: int = 20, cursor: str | None = None) -> dict:
                 result = _probe(directory, manifest)
                 items = result["models"]
                 _associations(items)
+                from creo_mechdog.session_erase import TARGET_TYPES
+
+                for item in items:
+                    name, model_type = item.get("name"), item.get("model_type")
+                    if isinstance(name, str) and name and model_type in TARGET_TYPES:
+                        item["erase_target"] = {"name": name, "model_type": model_type}
                 snapshot = {
                     "models": items,
                     "created": time.time(),

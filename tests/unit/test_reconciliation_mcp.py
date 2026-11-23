@@ -256,6 +256,7 @@ class ReconcileMcpContract(unittest.IsolatedAsyncioTestCase):
         cls.directory = prepare_root(Path(cls.temporary.name))
         # N*: no pending job (mirror of the reported failed model shape).
         _model(cls.directory, "a" * 32, "dev034_null_pending", revision=0, status="failed")
+        _model(cls.directory, "ab" * 16, "bug152_empty_pending", revision=0, status="failed")
         _model(cls.directory, "c" * 32, "dev034_null_omitted", revision=0, status="failed")
         _model(cls.directory, "d" * 32, "dev034_null_literals", revision=0, status="failed")
         _model(cls.directory, "e" * 32, "dev034_null_wrong_id", revision=0, status="failed")
@@ -528,11 +529,19 @@ class ReconcileMcpContract(unittest.IsolatedAsyncioTestCase):
             )
             self.assertIn("Stale expected_pending_job_id", text)
             self.assertIn(job_id_for("2" * 32), text)
+            text = await self.error_text(
+                client,
+                self.apply_arguments(
+                    "2" * 32, evidence, "bug152_empty_masks_nothing", "restore_baseline", ""
+                ),
+            )
+            self.assertIn("Stale expected_pending_job_id", text)
+            self.assertIn(job_id_for("2" * 32), text)
 
     async def test_t03_invalid_values_get_precise_input_errors(self):
         async with self.client() as client:
             evidence = await self.inspect_model(client, "d" * 32)
-            for value, key in (("", "dev034_empty_str"), ("   ", "dev034_blank_str")):
+            for value, key in (("not-a-job", "bug152_malformed"), ("   ", "dev034_blank_str")):
                 text = await self.error_text(
                     client,
                     self.apply_arguments("d" * 32, evidence, key, "abandon_new", value),
@@ -554,6 +563,19 @@ class ReconcileMcpContract(unittest.IsolatedAsyncioTestCase):
                 self.apply_arguments(
                     "d" * 32, evidence, "dev034_literal_null", "abandon_new", "null"
                 ),
+            )
+            result = await self.poll(client, created["job_id"])
+            self.assertEqual(result["status"], "succeeded", result)
+
+    async def test_client_empty_pending_id_is_normalized_to_null(self):
+        async with self.client() as client:
+            model_id = "ab" * 16
+            evidence = await self.inspect_model(client, model_id)
+            self.assertIsNone(evidence["pending_job"])
+            created = await self.call(
+                client,
+                "creo_reconcile_model",
+                self.apply_arguments(model_id, evidence, "bug152_empty", "abandon_new", ""),
             )
             result = await self.poll(client, created["job_id"])
             self.assertEqual(result["status"], "succeeded", result)

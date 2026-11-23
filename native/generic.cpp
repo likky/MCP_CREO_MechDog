@@ -1398,8 +1398,28 @@ static ProSelection resolve(const J &r) {
             throw std::runtime_error(
                 "geometry_selector cannot convert the model length unit to millimetres; pass an "
                 "explicit geometry id from creo_inspect_model instead");
+        J state = inspection(false);
+        if (selector.contains("feature")) {
+            ProFeature owner = feature(selector.at("feature"));
+            J items = J::array();
+            const ProError code =
+                ProFeatureGeomitemVisit(&owner, PRO_SURFACE, collect_geom_ids, nullptr, &items);
+            if (code != PRO_TK_E_NOT_FOUND)
+                check(code, "ProFeatureGeomitemVisit(surface selector owner)");
+            std::set<int> owned;
+            for (const auto &item : items)
+                owned.insert(item.at("id").get<int>());
+            J &surfaces = state.at("surfaces");
+            J filtered = J::array();
+            for (auto &item : surfaces)
+                if (owned.count(item.at("id").get<int>()))
+                    filtered.push_back(std::move(item));
+            surfaces = std::move(filtered);
+        }
         GeometrySelectorOutcome selector_outcome =
-            match_geometry_selector(selector, inspection(false), selector_scale.scale);
+            match_geometry_selector(selector, state, selector_scale.scale);
+        if (selector.contains("feature"))
+            selector_outcome.diagnostic["feature"] = selector["feature"];
         // DEV-098: keep the caller's coordinate space visible. The diagnostic
         // below carries measurements in the component frame, so without this the
         // reader cannot tell an assembly-space anchor from a model-space one.
@@ -2156,7 +2176,7 @@ static J section_profile_summary(ProSection section, const char *phase) {
     std::vector<std::vector<int>> members;
     std::vector<int> node_entity;
     std::vector<SectionEdge> edges;
-    int curves = 0, standalone = 0, construction = 0, references = 0, unsupported = 0;
+    int curves = 0, standalone = 0, construction = 0, references = 0, unsupported = 0, bsplines = 0;
     auto node = [&](const std::array<double, 2> &point, int entity) {
         for (size_t index = 0; index < representatives.size(); index++) {
             if (hypot(point[0] - representatives[index][0], point[1] - representatives[index][1]) <=
@@ -2219,6 +2239,7 @@ static J section_profile_summary(ProSection section, const char *phase) {
                      {spline->point_arr[spline->n_points - 1][0],
                       spline->point_arr[spline->n_points - 1][1]});
         } else if (def->type == PRO_2D_B_SPLINE) {
+            bsplines++;
             // FEAT-066: a clamped B-spline interpolates its first and last
             // control point, so the profile contour endpoints are those two.
             auto bspline = (Pro2dBSplinedef *)def;
@@ -2341,6 +2362,7 @@ static J section_profile_summary(ProSection section, const char *phase) {
                {"standalone_curves", standalone},
                {"contours", contours},
                {"closed_contours", closed},
+               {"b_spline_entities", bsplines},
                {"open_ends", open_ends},
                {"branched_points", branched},
                {"construction_entities", construction},
@@ -2441,7 +2463,119 @@ static J arc_geometry_report(ProSection section, ProError unavailable_code, cons
     }
     return report;
 }
-static J sketch(const J &op) {
+template <typename Project>
+static int add_section_bspline(ProSection section, const J &entity, const Project &project) {
+    const J &control_points = entity.at("control_points");
+    const int degree = entity.at("degree");
+    const int count = (int)control_points.size();
+    if (degree < 1 || degree >= count)
+        throw std::runtime_error("b_spline degree must be between 1 and control_points - 1");
+
+    std::vector<double> knots;
+    if (entity.contains("knots") && !entity["knots"].is_null()) {
+        knots = entity["knots"].get<std::vector<double>>();
+    } else {
+        const int spans = count - degree;
+        knots.assign((size_t)degree + 1, 0.0);
+        for (int i = 1; i < spans; i++)
+            knots.push_back((double)i / spans);
+        knots.insert(knots.end(), (size_t)degree + 1, 1.0);
+    }
+    if ((int)knots.size() != count + degree + 1)
+        throw std::runtime_error("b_spline knot count must be len(control_points) + degree + 1");
+    const J weights = entity.value("weights", J(nullptr));
+    if (!weights.is_null() && (int)weights.size() != count)
+        throw std::runtime_error("b_spline weights need one value per control point");
+
+    // The SDK's Pro2dBSplinedef arrays carry Toolkit allocation metadata.
+    // SectionEntityAdd takes these as inputs, so keep them through the call.
+    struct SplineInput {
+        Pro2dBSplinedef value{};
+        ~SplineInput() {
+            if (value.params)
+                ProArrayFree((ProArray *)&value.params);
+            if (value.c_pnts)
+                ProArrayFree((ProArray *)&value.c_pnts);
+            if (value.weights)
+                ProArrayFree((ProArray *)&value.weights);
+        }
+    } input;
+    auto &spline = input.value;
+    spline.type = PRO_2D_B_SPLINE;
+    spline.degree = degree;
+    spline.num_knots = (int)knots.size();
+    spline.num_c_points = count;
+    CK(ProArrayAlloc(spline.num_knots, sizeof(double), 1, (ProArray *)&spline.params));
+    std::copy(knots.begin(), knots.end(), spline.params);
+    CK(ProArrayAlloc(count, sizeof(Pro2dPnt), 1, (ProArray *)&spline.c_pnts));
+    for (int i = 0; i < count; i++)
+        project(control_points[i], spline.c_pnts[i]);
+    if (!weights.is_null()) {
+        CK(ProArrayAlloc(count, sizeof(double), 1, (ProArray *)&spline.weights));
+        for (int i = 0; i < count; i++)
+            spline.weights[i] = weights[i].get<double>();
+    }
+    int id = 0;
+    CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&spline, &id));
+    return id;
+}
+
+static J bspline_polyline_points(const J &entity, int segments) {
+    const J &control = entity.at("control_points");
+    const auto knots = entity.at("knots").get<std::vector<double>>();
+    const J raw_weights = entity.value("weights", J(nullptr));
+    const auto weights = raw_weights.is_null() ? std::vector<double>(control.size(), 1.0)
+                                               : raw_weights.get<std::vector<double>>();
+    const int degree = entity.at("degree");
+    const int count = (int)control.size();
+    const double first = knots.at(degree), last = knots.at(count);
+    std::vector<V> homogeneous;
+    for (int i = 0; i < count; i++) {
+        const double w = weights.at(i);
+        homogeneous.push_back(
+            {control[i][0].get<double>() * w, control[i][1].get<double>() * w, w});
+    }
+    J points = J::array({control.front()});
+    std::vector<V> work(degree + 1);
+    for (int i = 1; i < segments; i++) {
+        const double t = first + (last - first) * ((double)i / segments);
+        const int span = (int)(std::upper_bound(knots.begin(), knots.end(), t) - knots.begin()) - 1;
+        if (span < degree || span >= count)
+            throw std::runtime_error("B-spline approximation could not resolve the knot span");
+        for (int j = 0; j <= degree; j++)
+            work[j] = homogeneous[span - degree + j];
+        for (int level = 1; level <= degree; level++)
+            for (int j = degree; j >= level; j--) {
+                const int index = span - degree + j;
+                const double alpha =
+                    (t - knots[index]) / (knots[index + degree - level + 1] - knots[index]);
+                work[j] = add(scale(work[j - 1], 1.0 - alpha), scale(work[j], alpha));
+            }
+        const auto &p = work[degree];
+        const double x = p[0] / p[2], y = p[1] / p[2];
+        if (!std::isfinite(x) || !std::isfinite(y))
+            throw std::runtime_error("B-spline approximation produced a nonfinite coordinate");
+        points.push_back({x, y});
+    }
+    points.push_back(control.back());
+    return points;
+}
+
+static J sketch(J op) {
+    J approximations = J::array();
+    for (auto &entity : op.at("entities")) {
+        if (entity.value("type", "") != "b_spline" || !entity.contains("approximation_segments") ||
+            entity["approximation_segments"].is_null())
+            continue;
+        const int segments = entity.at("approximation_segments");
+        const J name = entity.at("name");
+        J points = bspline_polyline_points(entity, segments);
+        entity = {{"type", "polyline"},
+                  {"name", name},
+                  {"points", std::move(points)},
+                  {"construction", entity.value("construction", false)}};
+        approximations.push_back({{"entity", name}, {"segments", segments}});
+    }
     Frame frame = sketch_frame(op);
     if (!frame.orientation_exact) {
         log("SKETCH_ORIENTATION_HELPER=1 support=%d\n", frame.surface);
@@ -2684,44 +2818,7 @@ static J sketch(const J &op) {
             s.point_arr = (Pro2dPnt *)xy.data();
             CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&s, &id));
         } else if (type == "b_spline") {
-            // FEAT-066: exact NURBS. Pro2dBSplinedef is the documented carrier
-            // (degree + clamped knots + control points + optional weights), so
-            // the TXT curve is written as given instead of fitted from points.
-            auto control_points = e["control_points"];
-            const int degree = e["degree"].get<int>();
-            if (degree < 1 || degree >= (int)control_points.size())
-                throw std::runtime_error(
-                    "b_spline degree must be between 1 and control_points - 1");
-            std::vector<std::array<double, 2>> control(control_points.size());
-            for (size_t i = 0; i < control.size(); i++)
-                project(control_points[i], control[i].data());
-            std::vector<double> knots;
-            if (e.contains("knots") && !e["knots"].is_null()) {
-                knots = e["knots"].get<std::vector<double>>();
-            } else {
-                const int inner = (int)control.size() - degree - 1;
-                knots.assign((size_t)degree + 1, 0.0);
-                for (int i = 1; i <= inner; i++)
-                    knots.push_back((double)i / (double)(inner + 1));
-                knots.insert(knots.end(), (size_t)degree + 1, 1.0);
-            }
-            if ((int)knots.size() != (int)control.size() + degree + 1)
-                throw std::runtime_error(
-                    "b_spline knot count must be len(control_points) + degree + 1");
-            std::vector<double> weights;
-            if (e.contains("weights") && !e["weights"].is_null())
-                weights = e["weights"].get<std::vector<double>>();
-            if (!weights.empty() && weights.size() != control.size())
-                throw std::runtime_error("b_spline weights need one value per control point");
-            Pro2dBSplinedef b = {};
-            b.type = PRO_2D_B_SPLINE;
-            b.degree = degree;
-            b.num_knots = (int)knots.size();
-            b.params = knots.data();
-            b.num_c_points = (int)control.size();
-            b.c_pnts = (Pro2dPnt *)control.data();
-            b.weights = weights.empty() ? nullptr : weights.data();
-            CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&b, &id));
+            id = add_section_bspline(section, e, project);
         } else if (type == "ellipse") {
             Pro2dEllipsedef ell = {};
             ell.type = PRO_2D_ELLIPSE;
@@ -3011,6 +3108,8 @@ static J sketch(const J &op) {
     }
     if (!sketch_shifted.is_null())
         sketch_result["sketch_shifted"] = sketch_shifted;
+    if (!approximations.empty())
+        sketch_result["b_spline_approximations"] = std::move(approximations);
     return sketch_result;
 }
 // ProFeatureWithoptionsCreate reports an invalid section only as a bare code;
@@ -3436,7 +3535,7 @@ static J extrude_depth_report(ProFeature &f, const J &op);
 // being backfilled from op["depth"]. through_all has no finite interval.
 static J cut_geometry_context(const J &op, bool revolve, int direction_sign, double before_volume,
                               double after_volume, double removed, double threshold,
-                              const J &depth_report) {
+                              const J &depth_report, ProFeature &sketch_feature) {
     J context = {{"status", "no_material_removed"},
                  {"operation", revolve ? "revolve" : "extrude"},
                  {"mode", "cut"},
@@ -3522,13 +3621,36 @@ static J cut_geometry_context(const J &op, bool revolve, int direction_sign, dou
                     {"effective_depth_mm", depth}, {"direction_sign", direction_sign}};
     }
     context["depth_interval_mm"] = interval;
+    ProSection section = nullptr;
+    const ProError copied = ProFeatureSectionCopy(&sketch_feature, 0, &section);
+    if (copied == PRO_TK_NO_ERROR) {
+        J summary;
+        try {
+            summary = section_profile_summary(section, "cut_no_material");
+        } catch (...) {
+            ProSectionFree(&section);
+            throw;
+        }
+        CK(ProSectionFree(&section));
+        for (const char *key :
+             {"available", "query_code", "b_spline_entities", "closed_contours", "open_ends"})
+            if (summary.contains(key))
+                context["native_section"][key] = summary[key];
+    } else
+        context["native_section"] = {{"available", false}, {"query_code", copied}};
     return context;
 }
 // The text stays a readable summary; the structured block is the receipt.
 static std::string cut_no_material_failure(bool revolve, const J &context) {
-    std::string message = std::string(revolve ? "Revolve" : "Extrude") +
-                          " cut removes no material; check the sketch position, direction and "
-                          "depth against existing geometry";
+    std::string message =
+        std::string(revolve ? "Revolve" : "Extrude") + " cut removes no material.";
+    const J &section = context["native_section"];
+    if (section.value("b_spline_entities", 0) > 0 && section.value("closed_contours", 0) > 0)
+        message += " The solved section contains a closed contour and B-splines. Creo can report "
+                   "zero removal for this combination. If an approximation is acceptable, create "
+                   "the B-spline with approximation_segments or provide a sampled polyline.";
+    else
+        message += " Check the sketch position, direction and depth against existing geometry.";
     const J &frame = context["sketch_frame"];
     if (frame.value("available", false)) {
         const J &origin = frame["origin_mm"], &normal = frame["normal"];
@@ -4197,7 +4319,7 @@ static J extrude_or_revolve(const J &op, bool revolve) {
         if (removed <= threshold) {
             J depth_report = revolve ? J::object() : details["extrude_depth"];
             J context = cut_geometry_context(op, revolve, sign, before_volume, after_volume,
-                                             removed, threshold, depth_report);
+                                             removed, threshold, depth_report, sketch_f);
             J staged = has_staged_operation_result ? staged_operation_result : J::object();
             staged["cut_geometry_context"] = context;
             stage_operation_result(staged);
@@ -5517,44 +5639,7 @@ static J populate_profile(ProSection section, const J &op) {
             s.point_arr = (Pro2dPnt *)xy.data();
             CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&s, &id));
         } else if (type == "b_spline") {
-            // FEAT-066: exact NURBS. Pro2dBSplinedef is the documented carrier
-            // (degree + clamped knots + control points + optional weights), so
-            // the TXT curve is written as given instead of fitted from points.
-            auto control_points = e["control_points"];
-            const int degree = e["degree"].get<int>();
-            if (degree < 1 || degree >= (int)control_points.size())
-                throw std::runtime_error(
-                    "b_spline degree must be between 1 and control_points - 1");
-            std::vector<std::array<double, 2>> control(control_points.size());
-            for (size_t i = 0; i < control.size(); i++)
-                project(control_points[i], control[i].data());
-            std::vector<double> knots;
-            if (e.contains("knots") && !e["knots"].is_null()) {
-                knots = e["knots"].get<std::vector<double>>();
-            } else {
-                const int inner = (int)control.size() - degree - 1;
-                knots.assign((size_t)degree + 1, 0.0);
-                for (int i = 1; i <= inner; i++)
-                    knots.push_back((double)i / (double)(inner + 1));
-                knots.insert(knots.end(), (size_t)degree + 1, 1.0);
-            }
-            if ((int)knots.size() != (int)control.size() + degree + 1)
-                throw std::runtime_error(
-                    "b_spline knot count must be len(control_points) + degree + 1");
-            std::vector<double> weights;
-            if (e.contains("weights") && !e["weights"].is_null())
-                weights = e["weights"].get<std::vector<double>>();
-            if (!weights.empty() && weights.size() != control.size())
-                throw std::runtime_error("b_spline weights need one value per control point");
-            Pro2dBSplinedef b = {};
-            b.type = PRO_2D_B_SPLINE;
-            b.degree = degree;
-            b.num_knots = (int)knots.size();
-            b.params = knots.data();
-            b.num_c_points = (int)control.size();
-            b.c_pnts = (Pro2dPnt *)control.data();
-            b.weights = weights.empty() ? nullptr : weights.data();
-            CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&b, &id));
+            id = add_section_bspline(section, e, project);
         } else if (type == "ellipse") {
             Pro2dEllipsedef ell = {};
             ell.type = PRO_2D_ELLIPSE;
@@ -6167,6 +6252,7 @@ static void execute_operation_body(const J &op) {
                                                                               : ".jpg";
             ProPath output;
             path(output, generic_job + L"\\output\\" + model_name + wide(extension));
+            J export_result = {{"op", kind}, {"file", utf8(output)}};
             J stl_export;
             if (format == "jpeg") {
                 // Same shared capture as the automatic job preview (T07). Unlike
@@ -6174,20 +6260,31 @@ static void execute_operation_body(const J &op) {
                 // failed capture fails this input (recorded with the raw codes in
                 // its single T02 result record) rather than the whole job silently
                 // claiming an image it did not write.
+                const J options = op.value("jpeg_options", J::object());
+                const std::string view = options.value("view", "isometric");
+                const int width = options.value("width_px", 800);
+                const int height = options.value("height_px", 600);
+                ProMatrix front = {{1, 0, 0, 0}, {0, 0, -1, 0}, {0, 1, 0, 0}, {0, 0, 0, 1}};
+                ProMatrix top = {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}};
+                auto matrix = view == "front" ? front
+                              : view == "top" ? top
+                                              : preview_isometric_view;
                 PreviewStepOutcome preview = capture_preview(
-                    board, generic_job + L"\\output\\" + model_name + wide(extension), true, 8, 6,
-                    PRORASTERTYPE_JPEG);
+                    board, generic_job + L"\\output\\" + model_name + wide(extension), true,
+                    width / 100.0, height / 100.0, PRORASTERTYPE_JPEG, matrix);
                 J preview_json = preview_outcome_json(preview);
+                preview_json["requested_view"] = view;
+                preview_json["requested_size_px"] = {width, height};
                 log("PREVIEW=%s\n", preview_json.dump().c_str());
-                stage_operation_result({{"op", kind},
-                                        {"file", utf8(output)},
-                                        {"preview_code", preview.raster_code},
-                                        {"preview", preview_json}});
-                if (!preview_written(preview))
+                export_result["preview_code"] = preview.raster_code;
+                export_result["preview"] = std::move(preview_json);
+                if (!preview_written(preview)) {
+                    stage_operation_result(export_result);
                     throw std::runtime_error(
                         "Preview capture failed at " + preview.failed_step + " (code " +
                         std::to_string(preview.failed_code) + ", raster code " +
                         std::to_string(preview.raster_code) + "): " + utf8(preview.path));
+                }
             } else if (format == "stl") {
                 // BUG-130 Task 6: the validated plan may carry an explicit
                 // quality request; otherwise the historical defaults apply.
@@ -6207,7 +6304,6 @@ static void execute_operation_body(const J &op) {
                     format == "step" ? PRO_INTF_EXPORT_STEP : PRO_INTF_EXPORT_IGES;
                 CK(ProIntf3DFileWriteWithDefaultProfile((ProSolid)board, t, output));
             }
-            J export_result = {{"op", kind}, {"file", utf8(output)}};
             if (!stl_export.is_null())
                 export_result["stl_export"] = stl_export;
             stage_operation_result(export_result);
@@ -6387,6 +6483,26 @@ static J measured_bbox_mm(const J &state) {
     return {{"available", true},
             {"min", J::array({low[0], low[1], low[2]})},
             {"max", J::array({high[0], high[1], high[2]})}};
+}
+
+static J verify_seed_solid(const J &binding, const J &state) {
+    const J bounds = measured_bbox_mm(state);
+    const J volume = state.value("volume_mm3", J(nullptr));
+    if (!bounds.value("available", false) || !volume.is_number() || volume.get<double>() <= 0)
+        throw std::runtime_error("Rebound seed Blend has no measurable solid");
+    double min_z = std::numeric_limits<double>::infinity(), max_z = -min_z;
+    for (const auto &label : binding.at("sections")) {
+        const J &alias = aliases.at(label.get<std::string>());
+        const double z = alias.at("origin").at(2).get<double>();
+        min_z = std::min(min_z, z);
+        max_z = std::max(max_z, z);
+    }
+    const double tolerance = std::max(0.01, (max_z - min_z) * 1e-6);
+    if (bounds["min"][2].get<double>() > min_z + tolerance ||
+        bounds["max"][2].get<double>() < max_z - tolerance)
+        throw std::runtime_error(
+            "Rebound seed Blend solid does not reach the requested end planes");
+    return {{"volume_mm3", volume}, {"bbox_mm", bounds}, {"section_z_mm", {min_z, max_z}}};
 }
 // FEAT-067: the total area of a part, summed over every face the kernel reports.
 // Unlike quilt_area_native this walks the whole solid, so "the area of the model"
@@ -6674,22 +6790,28 @@ static void verify_saved(const J &before, const J &after, bool feature_state_com
         }
     }
 }
-static std::wstring latest_model_file() {
+static std::wstring latest_model_file(bool required = true) {
     std::wstring extension = assembly_model() ? L".asm." : L".prt.",
                  mask = folder + L"\\" + model_name + extension + L"*";
     WIN32_FIND_DATAW info;
     HANDLE search = FindFirstFileW(mask.c_str(), &info);
-    if (search == INVALID_HANDLE_VALUE)
-        throw std::runtime_error("Saved model not found");
+    if (search == INVALID_HANDLE_VALUE) {
+        if (!required && GetLastError() == ERROR_FILE_NOT_FOUND)
+            return L"";
+        throw std::runtime_error("Could not enumerate saved model versions");
+    }
     int best = -1;
     std::wstring found;
     do {
         std::wstring name = info.cFileName;
         auto pos = name.rfind(extension);
-        if (pos == std::wstring::npos)
+        if (pos == std::wstring::npos || (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+            continue;
+        auto suffix = name.substr(pos + extension.size());
+        if (suffix.empty() || suffix.find_first_not_of(L"0123456789") != std::wstring::npos)
             continue;
         try {
-            int version = std::stoi(name.substr(pos + extension.size()));
+            int version = std::stoi(suffix);
             if (version > best) {
                 best = version;
                 found = folder + L"\\" + name;
@@ -6697,11 +6819,55 @@ static std::wstring latest_model_file() {
         } catch (...) {
         }
     } while (FindNextFileW(search, &info));
+    auto enumeration_error = GetLastError();
     FindClose(search);
-    if (found.empty())
+    if (enumeration_error != ERROR_NO_MORE_FILES)
+        throw std::runtime_error("Could not enumerate all saved model versions");
+    if (required && found.empty())
         throw std::runtime_error("Saved native model version not found");
     return found;
 }
+
+// ProMdlErase can return while the active model is still in memory. Never let
+// FiletypeLoad satisfy a checkpoint request with that same-name session object.
+static void reload_managed_checkpoint(const std::wstring &checkpoint_file, ProMdlType type,
+                                      bool report_substages = false) {
+    if (board) {
+        CK(ProMdlErase(board));
+        board = nullptr;
+    }
+    ProName name;
+    wcscpy_s(name, model_name.c_str());
+    const auto deadline = GetTickCount64() + 1000;
+    for (;;) {
+        ProMdl resident = nullptr;
+        ProError found = ProMdlInit(name, type, &resident);
+        if (found == PRO_TK_E_NOT_FOUND)
+            break;
+        check(found, "ProMdlInit(checkpoint absence)");
+        if (GetTickCount64() >= deadline)
+            throw std::runtime_error(
+                "Checkpoint reload blocked: the managed model is still in Creo memory after "
+                "erase. Close its window and retry recovery during an idle Creo session.");
+        Sleep(25);
+    }
+    ProPath source;
+    path(source, checkpoint_file);
+    if (report_substages)
+        generic_substage("verify_model_reload");
+    CK(ProMdlFiletypeLoad(source, PRO_MDLFILE_UNUSED, PRO_B_FALSE, &board));
+    ProPath origin;
+    CK(ProMdlOriginGet(board, origin));
+    std::error_code error;
+    if (!std::filesystem::equivalent(origin, checkpoint_file, error)) {
+        board = nullptr;
+        throw std::runtime_error("Creo did not load the exact managed checkpoint requested");
+    }
+}
+
+static J save_failure_report(ProError code, const char *stage, const std::wstring &checkpoint,
+                             const std::wstring &directory, const std::wstring &model_name,
+                             bool assembly, const char *call);
 // The only path allowed to replace a diverged owned session model. Python has
 // already bound the selected source and explicit action to a durable intent.
 static bool recovery_geometry_equal(const J &a, const J &b) {
@@ -6743,8 +6909,9 @@ static std::string recovery_session_fingerprint() {
     return std::to_string(std::hash<std::string>{}(std::string(value)));
 }
 
-static bool dependency_free(ProMdl mdl) {
-    CK(ProMdlDependenciesCleanup(mdl));
+static bool dependency_free(ProMdl mdl, bool cleanup = true) {
+    if (cleanup)
+        CK(ProMdlDependenciesCleanup(mdl));
     ProMdlnameShortdata *names = nullptr;
     ProMdlfileType *types = nullptr;
     int count = 0;
@@ -6761,6 +6928,48 @@ static bool dependency_free(ProMdl mdl) {
 
 static bool recovery_dependency_free() {
     return dependency_free(board);
+}
+
+static std::wstring save_managed_checkpoint(const std::wstring &checkpoint, const char *stage,
+                                            J &report) {
+    const std::wstring previous = latest_model_file(false);
+    ProName iteration_option = L"save_file_iterations";
+    ProPath iterations = {};
+    if (!previous.empty() && ProConfigoptionGet(iteration_option, iterations) == PRO_TK_NO_ERROR &&
+        !_wcsicmp(iterations, L"no"))
+        throw std::runtime_error("Managed saves require Creo save_file_iterations=yes to preserve "
+                                 "the previous checkpoint");
+    const char *call = "ProMdlnameBackup";
+    ProPath target;
+    std::error_code error;
+    // Save in place only when Toolkit confirms that the write destination is
+    // the managed directory and the part cannot propagate saves to dependents.
+    if (!checkpoint.empty() && !assembly_model() &&
+        ProMdlDirectoryPathGet(board, target) == PRO_TK_NO_ERROR &&
+        std::filesystem::equivalent(target, folder, error) && dependency_free(board, false)) {
+        call = "ProMdlSave";
+        const ProError code = ProMdlSave(board);
+        if (code != PRO_TK_NO_ERROR)
+            report["save_failure"] =
+                save_failure_report(code, stage, checkpoint, folder, model_name, false, call);
+        check(code, call);
+        std::wstring saved = latest_model_file(false);
+        if (!saved.empty() && saved != previous)
+            return saved;
+        // A successful Save can leave an unmodified file at its current
+        // version. Explicit and implicit saves both promise a new version.
+        call = "ProMdlnameBackup";
+    }
+    path(target, folder);
+    const ProError code = ProMdlnameBackup(board, target);
+    if (code != PRO_TK_NO_ERROR)
+        report["save_failure"] = save_failure_report(code, stage, checkpoint, folder, model_name,
+                                                     assembly_model(), call);
+    check(code, call);
+    std::wstring saved = latest_model_file();
+    if (saved == previous)
+        throw std::runtime_error("Creo did not produce a new managed model version");
+    return saved;
 }
 
 static J read_inspection_ref(const J &ref) {
@@ -6813,7 +7022,7 @@ static bool millimeter_units(ProMdl mdl) {
     return !wcscmp(unit.name, L"mm");
 }
 
-static void reconcile_native(const J &request, J &report) {
+static void reconcile_native(const J &request, const std::wstring &checkpoint, J &report) {
     const J &choice = request.at("reconciliation");
     const std::string action = choice.at("action");
     const std::string session = recovery_session_fingerprint();
@@ -6880,13 +7089,8 @@ static void reconcile_native(const J &request, J &report) {
                 "accept_live requires an owned loaded model and live evidence");
         verify_recovery(choice_inspection(choice, "live_inspection"), inspection());
     } else if (action == "restore_baseline" || action == "accept_saved") {
-        if (loaded) {
-            CK(ProMdlErase(board));
-            board = nullptr;
-        }
-        ProPath source;
-        path(source, wide(choice.at("source_file")));
-        CK(ProMdlFiletypeLoad(source, PRO_MDLFILE_UNUSED, PRO_B_FALSE, &board));
+        generic_stage("recovery_reload_source");
+        reload_managed_checkpoint(wide(choice.at("source_file")), type);
     } else
         throw std::runtime_error("Unknown reconciliation action");
     ProUnitsystem us;
@@ -6907,15 +7111,9 @@ static void reconcile_native(const J &request, J &report) {
     std::wstring saved = action == "restore_baseline" ? wide(choice.at("source_file")) : L"";
     if (action != "restore_baseline") {
         generic_stage("recovery_save_and_reload");
-        ProPath destination;
-        path(destination, folder);
-        CK(ProMdlnameBackup(board, destination));
-        saved = latest_model_file(); // Only select the output of this acknowledged save.
-        CK(ProMdlErase(board));
-        board = nullptr;
-        ProPath file;
-        path(file, saved);
-        CK(ProMdlFiletypeLoad(file, PRO_MDLFILE_UNUSED, PRO_B_FALSE, &board));
+        const auto source = action == "accept_saved" ? wide(choice.at("source_file")) : checkpoint;
+        saved = save_managed_checkpoint(source, "recovery_save_and_reload", report);
+        reload_managed_checkpoint(saved, type);
         CK(ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS));
     }
     J after = inspection();
@@ -8905,14 +9103,14 @@ static J managed_relative_name(const std::wstring &value, const std::wstring &di
 
 static J save_failure_report(ProError code, const char *stage, const std::wstring &checkpoint,
                              const std::wstring &directory, const std::wstring &model_name,
-                             bool assembly) {
+                             bool assembly, const char *call) {
     const std::wstring extension = assembly ? L".asm" : L".prt";
     J candidates = bounded_directory_names(directory);
     J readability = J::array();
     if (candidates.value("available", false) && candidates.contains("sample") &&
         candidates["sample"].is_array())
         readability = candidate_readability(directory, candidates["sample"]);
-    return {{"call", "ProMdlnameBackup"},
+    return {{"call", call},
             {"code", code},
             {"stage", stage},
             {"destination", utf8(model_name + extension)},
@@ -9264,7 +9462,7 @@ static int run_generic(const std::wstring &job) {
             throw std::runtime_error("Cannot persist connected session ownership evidence");
         if (request.contains("reconciliation")) {
             generic_stage("recovery_" + request["reconciliation"]["action"].get<std::string>());
-            reconcile_native(request, report);
+            reconcile_native(request, checkpoint, report);
         } else if (request.contains("session_models")) {
             generic_stage("list_session_models");
             session_models_native(report);
@@ -9450,6 +9648,9 @@ static int run_generic(const std::wstring &job) {
             }
             generic_substage("verify_model_inspect");
             J state = inspection();
+            if (request.contains("loft_seed"))
+                report["loft_seed_feature"]["before_save_geometry"] =
+                    verify_seed_solid(request.at("loft_seed"), state);
             report["inspection"] = state;
             report["aliases"] = aliases;
             generic_substage("verify_model_assertions");
@@ -9460,30 +9661,18 @@ static int run_generic(const std::wstring &job) {
                 generic_substage("verify_model_before_save");
                 report["loft_checks"]["before_save"] = verify_loft_settings(L"before_save");
                 generic_stage("save_and_reload");
-                ProPath destination;
-                path(destination, folder);
                 generic_substage("verify_model_save");
-                // BUG-113: record the failed backup as its own fact before the
-                // throw, so a later rollback verification failure cannot hide it.
-                ProError backup = ProMdlnameBackup(board, destination);
-                if (backup != PRO_TK_NO_ERROR)
-                    report["save_failure"] =
-                        save_failure_report(backup, "verify_model_save", checkpoint, folder,
-                                            model_name, assembly_model());
-                check(backup, "ProMdlnameBackup(board, destination)");
-                saved = latest_model_file();
+                saved = save_managed_checkpoint(checkpoint, "verify_model_save", report);
                 J before = state;
                 generic_substage("verify_model_erase");
-                CK(ProMdlErase(board));
-                board = nullptr;
-                ProPath file;
-                path(file, saved);
-                generic_substage("verify_model_reload");
-                CK(ProMdlFiletypeLoad(file, PRO_MDLFILE_UNUSED, PRO_B_FALSE, &board));
+                reload_managed_checkpoint(saved, mdltype, true);
                 generic_substage("verify_model_reload_regenerate");
                 CK(ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS));
                 generic_substage("verify_model_reload_inspect");
                 state = inspection();
+                if (request.contains("loft_seed"))
+                    report["loft_seed_feature"]["reloaded_geometry"] =
+                        verify_seed_solid(request.at("loft_seed"), state);
                 // FEAT-052: extend the recolor block with the persisted
                 // appearance readback before the strict comparison, so the
                 // evidence exists even when the comparison throws.
@@ -9521,22 +9710,36 @@ static int run_generic(const std::wstring &job) {
             // the raster call live in native/preview.h. A failed capture is
             // recorded with its raw codes beside the successful save; it never
             // turns this job into a failure and never masks the save outcome.
-            PreviewStepOutcome preview = capture_preview(board, job + L"\\output\\preview.jpg",
-                                                         true, 8, 6, PRORASTERTYPE_JPEG);
-            J preview_json = preview_outcome_json(preview);
-            log("PREVIEW=%s\n", preview_json.dump().c_str());
+            J preview_json;
+            J preview_file;
+            int preview_code = 0;
+            if (request.value("readonly", false) && operation_results.size() == 1 &&
+                operation_results[0].value("op", "") == "export" &&
+                operation_results[0].contains("preview")) {
+                // The requested JPEG is the preview for this read-only job.
+                const J &rendered = operation_results[0];
+                preview_json = rendered.at("preview");
+                preview_code = rendered.at("preview_code");
+                preview_file = rendered.at("file");
+            } else {
+                PreviewStepOutcome preview = capture_preview(board, job + L"\\output\\preview.jpg",
+                                                             true, 8, 6, PRORASTERTYPE_JPEG);
+                preview_json = preview_outcome_json(preview);
+                preview_code = preview.raster_code;
+                preview_file = preview_written(preview) ? J(utf8(preview.path)) : J(nullptr);
+                log("PREVIEW=%s\n", preview_json.dump().c_str());
+            }
             finalize_operation_results(request, true, false, request.value("readonly", false),
                                        false);
-            report.update(
-                {{"success", true},
-                 {"toolkit_code", 0},
-                 {"inspection", state},
-                 {"aliases", aliases},
-                 {"part_file", utf8(saved)},
-                 {"preview_code", preview.raster_code},
-                 {"preview", preview_json},
-                 {"preview_file", preview_written(preview) ? J(utf8(preview.path)) : J(nullptr)},
-                 {"operations", operation_results}});
+            report.update({{"success", true},
+                           {"toolkit_code", 0},
+                           {"inspection", state},
+                           {"aliases", aliases},
+                           {"part_file", utf8(saved)},
+                           {"preview_code", preview_code},
+                           {"preview", preview_json},
+                           {"preview_file", preview_file},
+                           {"operations", operation_results}});
             if (feature_state_touched) {
                 // Model-level registries ride with the confirmed terminal
                 // state; they are never published from a failed job.
@@ -9622,74 +9825,61 @@ static int run_generic(const std::wstring &job) {
     }
     if (!report["success"].get<bool>() && connected && mutated && !checkpoint.empty()) {
         log("PHASE=rollback_to_saved_checkpoint\n");
-        ProError erased = board ? ProMdlErase(board) : PRO_TK_NO_ERROR;
-        board = nullptr;
-        ProPath file;
-        path(file, checkpoint);
-        ProError loaded =
-            erased ? erased : ProMdlFiletypeLoad(file, PRO_MDLFILE_UNUSED, PRO_B_FALSE, &board);
-        if (!loaded) {
-            // BUG-113: the baseline and the restored state stay readable in the
-            // catch blocks, so a rejected comparison reports the actual
-            // difference instead of only the comparison's message.
-            J rollback_baseline = nullptr;
-            J rollback_restored = nullptr;
-            try {
-                // Restore the model-level feature registries from the request
-                // before verifying the restored state: a partially executed
-                // suppress/delete must not leak into the accepted set.
-                const J &rollback_model = request["model"];
-                feature_tombstones = rollback_model.contains("feature_tombstones") &&
-                                             rollback_model["feature_tombstones"].is_object()
-                                         ? rollback_model["feature_tombstones"]
-                                         : J::object();
-                suppressed_features = rollback_model.contains("suppressed_features") &&
-                                              rollback_model["suppressed_features"].is_object()
-                                          ? rollback_model["suppressed_features"]
-                                          : J::object();
-                refresh_recorded_suppressed();
-                feature_state_effects = J::object();
-                feature_state_touched = false;
-                rollback_baseline = rollback_model.contains("inspection_ref")
-                                        ? read_inspection_ref(rollback_model.at("inspection_ref"))
-                                        : rollback_model["inspection"];
-                CK(ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS));
-                J restored = inspection();
-                rollback_restored = restored;
-                verify_saved(rollback_baseline, restored);
-                // FEAT-052: after the checkpoint reload, compare the restored
-                // appearance against the baseline captured before the first
-                // appearance write; an unprovable or mismatching restore keeps
-                // the existing unknown protection.
-                recolor_rollback_check(restored);
-                aliases = rollback_model.contains("aliases_ref")
-                              ? read_inspection_ref(rollback_model.at("aliases_ref"))
-                              : rollback_model["aliases"];
-                report["loft_checks"]["rollback"] = verify_loft_settings(L"rollback");
-                CK(ProMdlDisplay(board));
-                restored["inspection_source"] = "rollback_verified";
-                restored["inspection_available"] = true;
-                report["inspection"] = restored;
-                report["inspection_source"] = "rollback_verified";
-                report["aliases"] = aliases;
-                report["rollback_succeeded"] = true;
-            } catch (const std::exception &e) {
-                report["rollback_message"] = e.what();
-                report["rollback_difference"] =
-                    rollback_difference_report(rollback_baseline, rollback_restored, e.what());
-            } catch (ProError e) {
-                report["rollback_code"] = e;
-                report["rollback_message"] = "Restored file could not be regenerated and verified "
-                                             "against its saved baseline";
-                report["rollback_difference"] = rollback_difference_report(
-                    rollback_baseline, rollback_restored,
-                    "Restored file could not be regenerated and verified against its saved "
-                    "baseline");
-            }
-        } else {
-            report["rollback_code"] = loaded;
+        // BUG-113: the baseline and the restored state stay readable in the
+        // catch blocks, so a rejected comparison reports the actual
+        // difference instead of only the comparison's message.
+        J rollback_baseline = nullptr;
+        J rollback_restored = nullptr;
+        try {
+            const bool assembly = request["model"].value("model_type", "part") == "assembly";
+            reload_managed_checkpoint(checkpoint, assembly ? PRO_MDL_ASSEMBLY : PRO_MDL_PART);
+            // Restore the model-level feature registries from the request
+            // before verifying the restored state: a partially executed
+            // suppress/delete must not leak into the accepted set.
+            const J &rollback_model = request["model"];
+            feature_tombstones = rollback_model.contains("feature_tombstones") &&
+                                         rollback_model["feature_tombstones"].is_object()
+                                     ? rollback_model["feature_tombstones"]
+                                     : J::object();
+            suppressed_features = rollback_model.contains("suppressed_features") &&
+                                          rollback_model["suppressed_features"].is_object()
+                                      ? rollback_model["suppressed_features"]
+                                      : J::object();
+            refresh_recorded_suppressed();
+            feature_state_effects = J::object();
+            feature_state_touched = false;
+            rollback_baseline = rollback_model.contains("inspection_ref")
+                                    ? read_inspection_ref(rollback_model.at("inspection_ref"))
+                                    : rollback_model["inspection"];
+            CK(ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS));
+            J restored = inspection();
+            rollback_restored = restored;
+            verify_saved(rollback_baseline, restored);
+            // FEAT-052: after the checkpoint reload, compare the restored
+            // appearance against the baseline captured before the first
+            // appearance write; an unprovable or mismatching restore keeps
+            // the existing unknown protection.
+            recolor_rollback_check(restored);
+            aliases = rollback_model.contains("aliases_ref")
+                          ? read_inspection_ref(rollback_model.at("aliases_ref"))
+                          : rollback_model["aliases"];
+            report["loft_checks"]["rollback"] = verify_loft_settings(L"rollback");
+            CK(ProMdlDisplay(board));
+            restored["inspection_source"] = "rollback_verified";
+            restored["inspection_available"] = true;
+            report["inspection"] = restored;
+            report["inspection_source"] = "rollback_verified";
+            report["aliases"] = aliases;
+            report["rollback_succeeded"] = true;
+        } catch (const std::exception &e) {
+            report["rollback_message"] = e.what();
+            report["rollback_difference"] =
+                rollback_difference_report(rollback_baseline, rollback_restored, e.what());
+        } catch (ProError e) {
+            report["rollback_code"] = e;
+            report["rollback_message"] = "Checkpoint rollback failed at " + last_toolkit_error;
             report["rollback_difference"] = rollback_difference_report(
-                nullptr, nullptr, "checkpoint reload failed with code " + std::to_string(loaded));
+                rollback_baseline, rollback_restored, report["rollback_message"]);
         }
     }
     // BUG-096: failed new-model orphan cleanup runs in the same Toolkit lock,

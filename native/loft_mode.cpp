@@ -21,11 +21,22 @@ static void activate_blend_context() {
     // CurrentSet only changes Toolkit's graphics context, not the active model.
     // Activate is supported by this asynchronous worker and must precede queries.
     CK(trace_blend_call("blend_window_activate", [] { return ProWindowActivate(win); }));
-    ProMdl current = nullptr;
-    CK(trace_blend_call("blend_model_current_get", [&] { return ProMdlCurrentGet(&current); }));
-    if (current != board)
-        throw std::runtime_error("Cannot activate the target Blend model; finish any modal Creo "
-                                 "command before retrying");
+    const auto deadline = GetTickCount64() + 1000;
+    for (;;) {
+        ProMdl current = nullptr;
+        const ProError code =
+            trace_blend_call("blend_model_current_get", [&] { return ProMdlCurrentGet(&current); });
+        if (code == PRO_TK_NO_ERROR && current == board)
+            return;
+        if (code != PRO_TK_NO_ERROR && code != PRO_TK_BAD_CONTEXT)
+            check(code, "ProMdlCurrentGet(Blend)");
+        if (GetTickCount64() >= deadline)
+            throw std::runtime_error("Cannot activate the target Blend model; Creo current-model "
+                                     "code " +
+                                     std::to_string(code) +
+                                     ". Finish any modal Creo command before retrying.");
+        Sleep(25);
+    }
 }
 
 static J parse_blend_setting(const std::wstring &filename) {
@@ -127,6 +138,25 @@ static J verify_loft_settings(const std::wstring &phase) {
             throw std::runtime_error("Native Blend connection setting changed");
         setting.update(
             {{"feature_id", id}, {"native_subtype", utf8(subtype)}, {"section_count", count}});
+        if (meta.value("op", "") == "loft_seed") {
+            ProIntlist parents = nullptr;
+            int parent_count = 0;
+            CK(ProFeatureParentsGet(&f, &parents, &parent_count));
+            std::set<int> actual;
+            for (int i = 0; i < parent_count; i++)
+                actual.insert(parents[i]);
+            if (parents)
+                ProArrayFree((ProArray *)&parents);
+            J sections = J::array();
+            for (const auto &label : meta.at("sections")) {
+                const int section_id = feature_id(label);
+                if (!actual.count(section_id))
+                    throw std::runtime_error(
+                        "Rebound seed Blend does not depend on requested sketch " + label.dump());
+                sections.push_back(section_id);
+            }
+            setting["section_feature_ids"] = std::move(sections);
+        }
         result[it.key()] = setting;
     }
     return result;

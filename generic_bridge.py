@@ -1365,6 +1365,8 @@ def submit(
                     raise ValueError("native_bundle requires an assembly")
                 if actual_type == "drawing" and op["format"] not in {"pdf", "jpeg"}:
                     raise ValueError("Drawing export supports PDF and JPEG")
+                if actual_type == "drawing" and "jpeg_options" in op:
+                    raise ValueError("jpeg_options is available for part and assembly JPEG exports")
                 if actual_type != "drawing" and op["format"] == "pdf":
                     raise ValueError("PDF export requires a drawing")
             if op["op"] in assembly_ops and actual_type != "assembly":

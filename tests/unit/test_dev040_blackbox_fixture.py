@@ -163,7 +163,7 @@ class FixtureProtocol(unittest.IsolatedAsyncioTestCase):
                     rejected = await self.call(
                         client,
                         "creo_reconcile_model",
-                        {**arguments, "expected_pending_job_id": ""},
+                        {**arguments, "expected_pending_job_id": " "},
                         error=True,
                     )
                     self.assertIn("expected_pending_job_id", str(rejected))

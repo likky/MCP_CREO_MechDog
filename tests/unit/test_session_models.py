@@ -77,7 +77,11 @@ class SessionInventoryRules(unittest.TestCase):
         self.assertTrue(first["models"][0]["is_current"])
         self.assertFalse(first["models"][0]["has_saved_origin"])
         second = inventory.list_session_models(1, first["next_cursor"])
+        self.assertEqual(
+            second["models"][0]["erase_target"], {"name": "saved", "model_type": "sheetmetal"}
+        )
         third = inventory.list_session_models(1, second["next_cursor"])
+        self.assertNotIn("erase_target", third["models"][0])
         self.assertIsNone(third["models"][0]["origin"])
         self.assertIsNone(third["models"][0]["modified"])
         self.assertEqual(first["snapshot_id"], third["snapshot_id"])
