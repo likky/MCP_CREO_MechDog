@@ -106,21 +106,23 @@ class BSplineSchemaTests(unittest.TestCase):
         )
         self.assertIsInstance(op.entities[0], BSpline)
 
-    def test_coordinate_dimensioning_still_excludes_b_spline(self):
-        with self.assertRaisesRegex(ValidationError, "Coordinate dimensioning supports"):
-            SketchOp(
-                op="sketch",
-                label="profile",
-                dimensioning="coordinates",
-                entities=[
-                    {
-                        "type": "b_spline",
-                        "name": "arc",
-                        "degree": 2,
-                        "control_points": [[0, 0], [10, 0], [10, 10]],
-                    }
-                ],
-            )
+    def test_coordinate_dimensioning_accepts_exact_b_spline(self):
+        # BUG-160: the native coordinate path writes exact control points, so an
+        # exact b_spline no longer needs approximation_segments there.
+        op = SketchOp(
+            op="sketch",
+            label="profile",
+            dimensioning="coordinates",
+            entities=[
+                {
+                    "type": "b_spline",
+                    "name": "arc",
+                    "degree": 2,
+                    "control_points": [[0, 0], [10, 0], [10, 10]],
+                }
+            ],
+        )
+        self.assertIsInstance(op.entities[0], BSpline)
 
 
 class BSplinePreflightTests(unittest.TestCase):

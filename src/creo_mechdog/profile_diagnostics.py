@@ -19,6 +19,11 @@ from dataclasses import dataclass, field
 
 CLOSURE_TOLERANCE_MM = 1e-4
 EXACT_TOLERANCE_MM = 1e-9
+# BUG-159: the kernel merges an arc endpoint pair at or below this residual even
+# though the sketch epsilon stays 1e-9; Creo 12.4 welded an 8.215e-7 mm gap
+# (endpoint_welding.OBSERVED_KERNEL_WELD_MM). The coordinate admission gate and
+# the endpoint-welding policy share this one constant.
+KERNEL_COINCIDENT_TOLERANCE_MM = 1e-6
 # DEV-081/F02: a join gap this small relative to the requested closure scale
 # is an input floating-point residual, not a kernel-visible open profile.
 RESIDUAL_RATIO = 1e-3
@@ -628,18 +633,48 @@ def analyze_profile(entities: list[dict], tolerance: float = CLOSURE_TOLERANCE_M
             if _inside(point, other.polygon):
                 contour.depth += 1
 
+    # BUG-160: an unsupported entity is not a zero-area entity. Returning 0 made
+    # a partial analysis look like a measured empty profile, so the area is null
+    # and the reason travels with it.
+    area_status = "complete" if not unsupported else "unavailable_unsupported_entities"
+    # BUG-159: the category lists are truncated for the response, but the
+    # admission decision needs every join. These two scalars summarize the full
+    # near-tolerance list: its largest gap, and whether every join is a two-arc
+    # join (the kernel coincidence rule only covers those).
+    near_items = categories["near_tolerance"]
+    kinds = {curve.name: curve.kind for curve in curves}
+    near_arc_only = bool(near_items) and all(
+        len(item.get("entities") or []) == 2
+        and all(kinds.get(name) == "arc" for name in item["entities"])
+        for item in near_items
+    )
     return {
         "method": "analytic-input",
         "analysis": "partial" if unsupported else "complete",
         "closure_tolerance_mm": tolerance,
         "exact_tolerance_mm": EXACT_TOLERANCE_MM,
+        "near_tolerance_max_gap_mm": (
+            max(item["gap_mm"] for item in near_items) if near_items else None
+        ),
+        "near_tolerance_arc_only": near_arc_only if near_items else None,
         "arc_geometry": [_arc_echo(curve) for curve in curves if curve.kind == "arc"],
         "entity_count": len(curves),
         "contour_count": len(contours),
         "closed_contour_count": len(closed),
         "open_contour_count": len(contours) - len(closed),
-        "material_area_mm2": sum(
-            abs(contour.area) * (1 if contour.depth % 2 == 0 else -1) for contour in closed
+        "area_status": area_status,
+        "area_unavailable_reason": (
+            None
+            if not unsupported
+            else "unsupported entities are not modelled; the area would exclude them and is not reported"
+        ),
+        "unsupported_entities": sorted(unsupported),
+        "material_area_mm2": (
+            None
+            if unsupported
+            else sum(
+                abs(contour.area) * (1 if contour.depth % 2 == 0 else -1) for contour in closed
+            )
         ),
         "categories": {
             name: {
@@ -704,10 +739,20 @@ def validate_solid_profile(
         return report
     fatal = ["open", "branched", "self_intersecting", "intersecting", "tangent", "zero_area"]
     near = report["categories"]["near_tolerance"]
-    residual_only = (
-        bool(near["items"])
-        and not near["truncated"]
-        and all(item["gap_mm"] <= tolerance * RESIDUAL_RATIO for item in near["items"])
+    residual_only = bool(near["count"]) and (
+        (
+            not near["truncated"]
+            and all(item["gap_mm"] <= tolerance * RESIDUAL_RATIO for item in near["items"])
+        )
+        or (
+            # BUG-159: every join is a two-arc joint within the kernel
+            # coincidence tolerance (the same rule endpoint_welding uses),
+            # so a large arc chain whose category list is truncated still
+            # resolves to closed contours. Non-arc joins keep the old gate.
+            report.get("near_tolerance_arc_only") is True
+            and report.get("near_tolerance_max_gap_mm") is not None
+            and report["near_tolerance_max_gap_mm"] <= KERNEL_COINCIDENT_TOLERANCE_MM
+        )
     )
     if dimensioning == "coordinates" and not (
         residual_only and report["closed_contour_count"] >= 1 and report["open_contour_count"] == 0

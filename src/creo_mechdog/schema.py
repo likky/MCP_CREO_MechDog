@@ -535,11 +535,12 @@ class SketchOp(StrictModel):
                 )
             if any(
                 e.type not in {"line", "centerline", "rectangle", "polyline", "circle", "arc"}
-                and not (isinstance(e, BSpline) and e.approximation_segments is not None)
+                and not isinstance(e, BSpline)
                 for e in self.entities
             ):
                 raise ValueError(
-                    "Coordinate dimensioning supports line/centerline/rectangle/polyline/circle/arc entities"
+                    "Coordinate dimensioning supports "
+                    "line/centerline/rectangle/polyline/circle/arc/b_spline entities"
                 )
         names = [e.name for e in self.entities]
         if len(names) != len(set(names)):

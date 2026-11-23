@@ -39,7 +39,11 @@ import copy
 import math
 from typing import Any
 
-from creo_mechdog.profile_diagnostics import EXACT_TOLERANCE_MM, _expand
+from creo_mechdog.profile_diagnostics import (
+    EXACT_TOLERANCE_MM,
+    KERNEL_COINCIDENT_TOLERANCE_MM,
+    _expand,
+)
 
 POLICIES = ("report", "reject", "weld")
 SAMPLE_LIMIT = 20
@@ -52,6 +56,14 @@ WELD_PLAN_LIMIT = 200
 # The 2026-10-31 feedback: the kernel welded an 8.215e-7 mm gap on Creo 12.4,
 # so the 1e-9 mm bound is a risk flag, never a guarantee.
 OBSERVED_KERNEL_WELD_MM = 8.21534267e-7
+# BUG-159: joins at or below this are already one point for this policy layer.
+# The 2026-11-22 feedback submitted a 40-arc contour whose endpoint residuals
+# were 3.464e-8 and 4.727e-8 mm; treating them as weld candidates made
+# arc_inconsistent refuse a contour the kernel already merges (it welded the
+# larger 8.215e-7 mm gap above on Creo 12.4). This is a classification
+# tolerance, not permission to move an endpoint. The admission gate in
+# profile_diagnostics reads the same constant.
+ARC_COINCIDENT_TOLERANCE_MM = KERNEL_COINCIDENT_TOLERANCE_MM
 
 
 def _distance(a: tuple[float, float], b: tuple[float, float]) -> float:
@@ -121,7 +133,10 @@ def _plan(
     """The shared candidate/accepted/refused decision used by every entry."""
     curves, _names = _expand(entities)
     ends = _endpoints(curves)
-    chain_of = _chains(curves, ends, EXACT_TOLERANCE_MM)
+    # BUG-159: chain through the same near-coincident tolerance used below. With
+    # the old 1e-9 exact union each 3.5e-8 mm joint split the contour into a
+    # separate chain, so adjacent arcs looked like separate loops.
+    chain_of = _chains(curves, ends, ARC_COINCIDENT_TOLERANCE_MM)
 
     candidates: list[dict] = []
     for i, first in enumerate(ends):
@@ -132,8 +147,9 @@ def _plan(
             # A candidate is a pair inside the closure diagnostic scale. The
             # 2026-11-05 live measurement showed the sketch epsilon is not the
             # coincidence tolerance, so a bound alone cannot widen this.
-            if gap <= 0.0 or gap > CLUSTER_TOLERANCE_MM:
-                # An exact join is already one point, not a candidate weld.
+            if gap <= ARC_COINCIDENT_TOLERANCE_MM or gap > CLUSTER_TOLERANCE_MM:
+                # An exact or near-coincident join is already one point, not a
+                # candidate weld.
                 continue
             candidates.append(
                 {
@@ -208,7 +224,7 @@ def _closed_chains(ends: list[dict], chain_of: dict[int, int]) -> dict[int, bool
         open_ends = 0
         for index, point in enumerate(positions):
             shared = any(
-                index != other and _distance(point, neighbour) <= EXACT_TOLERANCE_MM
+                index != other and _distance(point, neighbour) <= ARC_COINCIDENT_TOLERANCE_MM
                 for other, neighbour in enumerate(positions)
             )
             if not shared:
@@ -232,7 +248,7 @@ def weld_eligibility(
     """
     curves, _candidates, accepted, refused = _plan(entities, max_move_mm)
     ends = _endpoints(curves)
-    chain_of = _chains(curves, ends, EXACT_TOLERANCE_MM)
+    chain_of = _chains(curves, ends, ARC_COINCIDENT_TOLERANCE_MM)
     closed = _closed_chains(ends, chain_of)
     blocking: list[dict] = []
     unresolved: list[dict] = []

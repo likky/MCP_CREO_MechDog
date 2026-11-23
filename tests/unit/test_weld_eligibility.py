@@ -18,7 +18,10 @@ from creo_mechdog.endpoint_welding import (
 from creo_mechdog.profile_diagnostics import validate_solid_profile
 
 REPORTED_GAP = 1.104e-6
-WELD_GAP = 5e-7
+# BUG-159: endpoint_welding treats any gap at or below 1e-6 mm as already
+# coincident, so a weld-path fixture must stay above that tolerance and inside
+# the 1e-4 mm closure-diagnostic scale.
+WELD_GAP = 5e-5
 
 
 def line(name, start, end):
@@ -83,7 +86,7 @@ def gapped_square(gap=WELD_GAP):
     ]
 
 
-def two_closed_rings(gap=2e-7):
+def two_closed_rings(gap=5e-6):
     """Two closed rings whose corners sit `gap` apart: welding would bridge them."""
     return [
         line("a1", (0.0, 0.0), (10.0, 0.0)),
@@ -133,9 +136,10 @@ class AdmissionVersusSubmissionTests(unittest.TestCase):
     def test_the_obround_seam_is_paired_rather_than_reported_as_closed(self):
         eligibility = weld_eligibility(obround(), max_move_mm=1e-6)
         self.assertEqual(eligibility["verdict"], "weldable")
-        # The short seam plus the trig round-off join between the bottom line
-        # and the left arc (7e-15 mm) are both candidates.
-        self.assertEqual(eligibility["accepted_pairs"], 2)
+        # BUG-159: the trig round-off join between the bottom line and the left
+        # arc (7e-15 mm) is below the 1e-6 mm coincidence tolerance and is no
+        # longer a candidate; only the reported seam needs welding.
+        self.assertEqual(eligibility["accepted_pairs"], 1)
         self.assertAlmostEqual(eligibility["max_required_move_mm"], REPORTED_GAP / 2.0, places=12)
 
     def test_a_lens_of_two_different_arcs_is_blocked_by_arc_geometry(self):
@@ -181,6 +185,29 @@ class AdmissionVersusSubmissionTests(unittest.TestCase):
         self.assertEqual(eligibility["verdict"], "not_needed")
         self.assertIn("structurally open", eligibility_summary(eligibility))
 
+    def test_residual_arc_joints_below_one_micrometre_are_coincident(self):
+        # BUG-159 / 0.35.5 §十三: 3.464e-08 and 4.727e-08 mm residuals must not
+        # be classified as arc_inconsistent. Lens shifts the upper arc's radius
+        # by the gap, the same defect class as the reported 40-arc profile.
+        eligibility = weld_eligibility(lens(gap=4e-8), max_move_mm=1e-6)
+        self.assertEqual(eligibility["candidate_pairs"], 0)
+        self.assertEqual(eligibility["verdict"], "not_needed")
+        self.assertNotIn("arc_inconsistent", eligibility_summary(eligibility))
+
+    def test_a_visible_arc_mismatch_above_the_coincidence_tolerance_is_refused(self):
+        eligibility = weld_eligibility(lens(gap=5e-5), max_move_mm=1e-6)
+        self.assertEqual(eligibility["verdict"], "blocked")
+        self.assertEqual({pair["reason"] for pair in eligibility["blocking"]}, {"arc_inconsistent"})
+
+    def test_a_one_millimetre_gap_is_not_a_closed_contour(self):
+        # A 1e-3 mm seam is beyond every published tolerance, so the profile is
+        # still refused as open instead of being reported as closed.
+        with self.assertRaises(ValueError) as caught:
+            validate_solid_profile(lens(gap=1e-3), "autodim", "extrude")
+        message = str(caught.exception)
+        self.assertIn("no_closed_contour", message)
+        self.assertIn("[open]", message)
+
 
 class SubmissionGateTests(unittest.TestCase):
     def test_weld_policy_refuses_a_pair_the_policy_layer_cannot_weld(self):
@@ -216,7 +243,7 @@ class SubmissionGateTests(unittest.TestCase):
     def test_snap_endpoints_still_rewrites_a_weldable_line_seam(self):
         operation = sketch(gapped_square(), snap_endpoints=True, max_endpoint_move_mm=WELD_GAP)
         prepared = prepare_operations([operation])
-        self.assertEqual(prepared[0]["entities"][3]["end"], [0.0, 2.5e-7])
+        self.assertEqual(prepared[0]["entities"][3]["end"], [0.0, WELD_GAP / 2.0])
         self.assertEqual(prepared[0]["snap_endpoint_receipt"]["applied"], True)
         self.assertEqual(prepared[0]["endpoint_weld_eligibility"]["verdict"], "weldable")
 
