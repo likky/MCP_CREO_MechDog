@@ -22,6 +22,110 @@ struct LinearPatternDirection {
     int candidate_count = 0;
 };
 
+static std::string linear_pattern_leader_kind(ProFeattype t) {
+    if (t == PRO_FEAT_CURVE)
+        return "sketch_or_curve";
+    if (t == PRO_FEAT_DATUM)
+        return "datum_plane";
+    if (t == PRO_FEAT_DATUM_AXIS)
+        return "datum_axis";
+    if (t == PRO_FEAT_DATUM_POINT)
+        return "datum_point";
+    if (t == PRO_FEAT_CSYS)
+        return "datum_csys";
+    if (t == PRO_FEAT_GROUP_HEAD)
+        return "feature_group";
+    if (t == PRO_FEAT_PATTERN_HEAD)
+        return "pattern_head";
+    if (t == PRO_FEAT_PROTRUSION || t == PRO_FEAT_FIRST_FEAT)
+        return "protrusion";
+    if (t == PRO_FEAT_CUT)
+        return "cut";
+    if (t == PRO_FEAT_HOLE)
+        return "hole";
+    if (t == PRO_FEAT_ROUND)
+        return "round";
+    if (t == PRO_FEAT_CHAMFER)
+        return "chamfer";
+    if (t == PRO_FEAT_SHELL)
+        return "shell";
+    if (t == PRO_FEAT_RIB)
+        return "rib";
+    if (t == PRO_FEAT_DRAFT)
+        return "draft";
+    if (t == PRO_FEAT_DATUM_SURF)
+        return "surface";
+    return type_name((int)t);
+}
+
+static bool is_non_solid_pattern_leader(ProFeattype t) {
+    return t == PRO_FEAT_CURVE || t == PRO_FEAT_DATUM || t == PRO_FEAT_DATUM_AXIS ||
+           t == PRO_FEAT_DATUM_POINT || t == PRO_FEAT_CSYS;
+}
+
+static bool is_solid_alias_op(const std::string &op_name) {
+    return op_name == "extrude" || op_name == "revolve" || op_name == "hole" ||
+           op_name == "round" || op_name == "chamfer" || op_name == "shell" || op_name == "sweep" ||
+           op_name == "loft" || op_name == "rib" || op_name == "draft" || op_name == "mirror" ||
+           op_name == "feature_group" || op_name == "sheetmetal_wall" ||
+           op_name == "sheetmetal_planar_wall" || op_name == "sheetmetal_flange";
+}
+
+// BUG-169: measure how many PRO_SURFACE geomitems a pattern leader owns so a
+// sketch/datum or zero-geometry feature cannot silently pattern with dV=0.
+// For a local feature group, sum owned surfaces across its member features.
+static int count_leader_surfaces(ProFeature &leader, bool group, ProError &query_code) {
+    if (!group) {
+        J surface_ids = J::array();
+        query_code =
+            ProFeatureGeomitemVisit(&leader, PRO_SURFACE, collect_geom_ids, nullptr, &surface_ids);
+        if (query_code == PRO_TK_NO_ERROR)
+            return (int)surface_ids.size();
+        if (query_code == PRO_TK_E_NOT_FOUND)
+            return 0;
+        return -1;
+    }
+    ProGroup grp = {};
+    query_code = ProFeatureGroupGet(&leader, &grp);
+    if (query_code != PRO_TK_NO_ERROR)
+        return -1;
+    ProFeature *members = nullptr;
+    query_code = ProGroupFeaturesCollect(&grp, &members);
+    if (query_code != PRO_TK_NO_ERROR || !members) {
+        if (members)
+            ProArrayFree((ProArray *)&members);
+        return query_code == PRO_TK_E_NOT_FOUND ? 0 : -1;
+    }
+    int member_count = 0;
+    ProError size_code = ProArraySizeGet((ProArray)members, &member_count);
+    if (size_code != PRO_TK_NO_ERROR) {
+        ProArrayFree((ProArray *)&members);
+        query_code = size_code;
+        return -1;
+    }
+    int total_surfaces = 0;
+    bool saw_error = false;
+    ProError first_error = PRO_TK_NO_ERROR;
+    for (int i = 0; i < member_count; i++) {
+        J ids = J::array();
+        ProError code =
+            ProFeatureGeomitemVisit(&members[i], PRO_SURFACE, collect_geom_ids, nullptr, &ids);
+        if (code == PRO_TK_NO_ERROR) {
+            total_surfaces += (int)ids.size();
+        } else if (code != PRO_TK_E_NOT_FOUND && !saw_error) {
+            saw_error = true;
+            first_error = code;
+        }
+    }
+    ProArrayFree((ProArray *)&members);
+    if (saw_error && total_surfaces == 0) {
+        query_code = first_error;
+        return -1;
+    }
+    query_code = PRO_TK_NO_ERROR;
+    return total_surfaces;
+}
+
 static bool parallel_to(const V &candidate, const V &requested) {
     // A direction reference must point along the requested vector, not merely
     // near it: a 0.5 deg skew would move every instance. 1e-9 cosine rejects
@@ -87,6 +191,50 @@ static void generic_linear_pattern(const J &op) {
     ProFeattype leader_type;
     CK(ProFeatureTypeGet(&leader, &leader_type));
     const bool group = leader_type == PRO_FEAT_GROUP_HEAD;
+    const std::string leader_kind = linear_pattern_leader_kind(leader_type);
+    ProError surface_query_code = PRO_TK_NO_ERROR;
+    const int leader_surface_count = count_leader_surfaces(leader, group, surface_query_code);
+    const J leader_surface_json = leader_surface_count >= 0 ? J(leader_surface_count) : J(nullptr);
+    const std::string leader_desc =
+        op["leader"].is_string() ? op["leader"].get<std::string>() : op["leader"].dump();
+    stage_operation_result({{"op", "linear_pattern"},
+                            {"feature", op["label"]},
+                            {"leader_id", leader.id},
+                            {"leader_kind", leader_kind},
+                            {"leader_feature_type", (int)leader_type},
+                            {"leader_surface_count", leader_surface_json},
+                            {"leader_surface_query_code", (int)surface_query_code},
+                            {"group_leader", group}});
+    // BUG-169: refuse alias/runtime mismatch and non-solid leaders before
+    // ProPatternCreate so a sketch or datum can never silently pattern with dV=0.
+    if (op["leader"].is_string()) {
+        if (const J *alias = alias_entry(op["leader"].get<std::string>())) {
+            const std::string recorded_op = alias->value("op", "");
+            if (is_solid_alias_op(recorded_op) && is_non_solid_pattern_leader(leader_type)) {
+                throw std::runtime_error("LINEAR_PATTERN_LEADER_ALIAS_MISMATCH: alias '" +
+                                         leader_desc + "' is recorded as op='" + recorded_op +
+                                         "' (feature_id=" + std::to_string(leader.id) +
+                                         ") but Creo reports type=" + leader_kind +
+                                         "; inspect the model feature tree before patterning");
+            }
+        }
+    }
+    if (is_non_solid_pattern_leader(leader_type)) {
+        throw std::runtime_error(
+            "LINEAR_PATTERN_NON_SOLID_LEADER: linear_pattern leader must be a solid feature "
+            "(extrude/cut/hole/sweep/feature_group), not '" +
+            leader_desc + "' (feature_id=" + std::to_string(leader.id) + ", type=" + leader_kind +
+            ", surfaces=" +
+            (leader_surface_count >= 0 ? std::to_string(leader_surface_count) : "unknown") +
+            "); pass the solid feature label instead of its predecessor sketch or datum");
+    }
+    if (leader_surface_count == 0) {
+        throw std::runtime_error(
+            "LINEAR_PATTERN_NON_SOLID_LEADER: linear_pattern leader '" + leader_desc +
+            "' (feature_id=" + std::to_string(leader.id) + ", type=" + leader_kind +
+            ") owns 0 surfaces; pass a solid-producing feature instead of an empty or sketch-only "
+            "feature");
+    }
     const double spacing = op["spacing"].get<double>();
     const int count = op["count"].get<int>();
     if (!std::isfinite(spacing) || spacing <= 0)
@@ -144,12 +292,15 @@ static void generic_linear_pattern(const J &op) {
         CK(ProArraySizeGet((ProArray)members, &member_count));
         ProArrayFree((ProArray *)&members);
     }
-    log("LINEAR_PATTERN head=%d leader=%d count=%d member_count=%d spacing=%.6f source=%s "
-        "reference_id=%d flip=%d\n",
-        head.id, leader.id, count, member_count, spacing, bound.source.c_str(), bound.id,
-        (int)flip);
+    log("LINEAR_PATTERN head=%d leader=%d leader_kind=%s leader_surfaces=%d count=%d "
+        "member_count=%d spacing=%.6f source=%s reference_id=%d flip=%d\n",
+        head.id, leader.id, leader_kind.c_str(), leader_surface_count, count, member_count, spacing,
+        bound.source.c_str(), bound.id, (int)flip);
     remember(op, head,
              {{"leader_id", leader.id},
+              {"leader_kind", leader_kind},
+              {"leader_feature_type", (int)leader_type},
+              {"leader_surface_count", leader_surface_json},
               {"count", count},
               {"spacing", spacing},
               {"direction", xyz(requested.data())},
@@ -160,6 +311,10 @@ static void generic_linear_pattern(const J &op) {
          {"feature", op["label"]},
          {"feature_id", head.id},
          {"leader_id", leader.id},
+         {"leader_kind", leader_kind},
+         {"leader_feature_type", (int)leader_type},
+         {"leader_surface_count", leader_surface_json},
+         {"leader_surface_query_code", (int)surface_query_code},
          {"count", count},
          {"spacing", spacing},
          {"direction", xyz(requested.data())},

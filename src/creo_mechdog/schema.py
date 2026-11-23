@@ -730,6 +730,53 @@ class AxisPatternOp(StrictModel):
         return self
 
 
+NON_SOLID_PATTERN_LEADER_OPS = frozenset(
+    {
+        "sketch",
+        "airfoil_sketch",
+        "datum_plane",
+        "datum_axis",
+        "datum_csys",
+        "datum_points",
+    }
+)
+
+
+def validate_linear_pattern_leaders(
+    operations: list[dict[str, Any]],
+    aliases: dict[str, Any] | None = None,
+) -> None:
+    """BUG-169: reject linear_pattern leaders known to be sketches or datums before any job.
+
+    Patterning a sketch or datum silently creates zero-volume instances in Creo.
+    Same-plan labels are checked in order alongside existing model ``aliases``;
+    numeric feature IDs and anything not resolved here are checked natively via
+    ``ProFeatureTypeGet`` and ``ProFeatureGeomitemVisit``.
+    """
+    known_ops: dict[str, str] = {}
+    if isinstance(aliases, dict):
+        for name, meta in aliases.items():
+            if isinstance(name, str) and isinstance(meta, dict) and isinstance(meta.get("op"), str):
+                known_ops[name.lower()] = meta["op"]
+    for index, operation in enumerate(operations):
+        kind = operation.get("op")
+        if kind == "linear_pattern":
+            leader = operation.get("leader")
+            if isinstance(leader, str):
+                leader_op = known_ops.get(leader.lower())
+                if leader_op in NON_SOLID_PATTERN_LEADER_OPS:
+                    raise ValueError(
+                        f"operations[{index}].leader: LINEAR_PATTERN_NON_SOLID_LEADER: "
+                        f"linear_pattern leader {leader!r} resolves to a {leader_op!r} feature, "
+                        "which has no solid geometry; reference the solid feature (such as "
+                        "extrude, hole, sweep, or feature_group) instead of its predecessor "
+                        "sketch or datum"
+                    )
+        label = operation.get("label")
+        if isinstance(label, str) and isinstance(kind, str):
+            known_ops[label.lower()] = kind
+
+
 class LinearPatternOp(StrictModel):
     """DEV-089 T6b: native direction pattern (translation, spacing, instances).
 
@@ -3203,9 +3250,9 @@ def validate_operations(operations: list[dict]) -> list[dict]:
     dumped = [x.model_dump(exclude_none=True) for x in result]
     for index, missing in defaulted_extrude_fields.items():
         dumped[index]["defaulted_fields"] = missing
-    # B4/F08: the contract owns the scope rules (single body, cut only,
-    # no through_all/new_body), so the plan path and creo_extrude share one
-    # authority instead of two schema-level approximations.
+    # B4/F08 / FEAT-075: the contract owns the scope rules (single body, cut only,
+    # blind or through_all, no new_body), so the plan path and creo_extrude share
+    # one authority instead of two schema-level approximations.
     for index, operation in enumerate(dumped):
         if operation.get("op") != "extrude":
             continue
@@ -3214,6 +3261,7 @@ def validate_operations(operations: list[dict]) -> list[dict]:
             raise ValueError(
                 f"operations[{index}].scope: {f08_contract.error_message(verdict['code'])}"
             )
+    validate_linear_pattern_leaders(dumped)
 
     def finite(x):
         if isinstance(x, float) and not math.isfinite(x):

@@ -785,19 +785,37 @@ def validate_solid_profile(
     weld_advice = (
         " " + _weld_verdict(entities) if {"open", "near_tolerance"}.intersection(problems) else ""
     )
+    if {"intersecting", "tangent"}.intersection(problems) and not {
+        "open",
+        "near_tolerance",
+        "branched",
+        "self_intersecting",
+    }.intersection(problems):
+        remediation = (
+            " Disjoint or nested closed loops are supported in one sketch, but Creo's solid "
+            "extrude kernel rejects crossing or tangent loops. Trim crossing curves into a single "
+            "non-self-intersecting outer boundary, or split overlapping loops into separate "
+            "extrude operations that union onto the solid body."
+        )
+    else:
+        remediation = (
+            " Supply disjoint or nested closed loops. For adjacent contours sharing edges, "
+            "combine them into a single outer polyline and omit internal shared edges. "
+            "The native solver remains authoritative "
+            "for anything this check cannot confirm. Remediation: set closure_tolerance_mm or "
+            "merge the arcs into one polyline; snap_endpoints / endpoint_policy=weld only helps "
+            "when the joins named below are actually weldable, and welding is applied at "
+            "submission time, not during plan validation."
+        )
     raise ValueError(
         f"Solid {operation} profile rejected: detected "
         f"{report['closed_contour_count']} closed contour(s), "
         f"{report['open_contour_count']} open contour(s) and "
         f"{report['entity_count']} curve entities; "
         + "; ".join(details)
-        + ". Supply disjoint or nested closed loops. For adjacent contours sharing edges, "
-        "combine them into a single outer polyline and omit internal shared edges. "
-        "The native solver remains authoritative "
-        "for anything this check cannot confirm. Remediation: set closure_tolerance_mm or "
-        "merge the arcs into one polyline; snap_endpoints / endpoint_policy=weld only helps "
-        "when the joins named below are actually weldable, and welding is applied at "
-        "submission time, not during plan validation." + weld_advice
+        + "."
+        + remediation
+        + weld_advice
     )
 
 

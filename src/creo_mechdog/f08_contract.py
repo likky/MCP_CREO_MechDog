@@ -17,8 +17,11 @@ Design decisions (see the SDD C1 contract note for the full rationale):
   ``PRO_E_BODY_SELECT`` selection element (``ProBodyOpts.h``), so ``body_ids``
   is limited to one entry and several targets become several cut operations.
   This is the 2026-11-10 amendment to the original 100-body design.
-* ``through_all`` and ``new_body`` combinations are refused until a real-model
-  test proves the selected-body element tree interacts correctly with them.
+* ``through_all`` cuts (``positive``, ``negative``, ``symmetric``) are accepted
+  with a single-body ``scope`` (FEAT-075, 2026-11-23), because
+  ``PRO_E_BODY_SELECT`` and ``PRO_EXT_DEPTH_TO_ALL`` / ``PRO_EXT_DEPTH_FROM_ALL``
+  are independent element-tree branches; ``new_body`` stays refused because a
+  scoped cut never creates a new body.
 * Applied scope evidence must come from the created feature's element tree,
   never from the request (FEAT-051 ``reference_application`` precedent).
 * An explicit ``scope=None`` means "no scope requested" and is accepted for any
@@ -55,7 +58,6 @@ SUBMISSION_ERROR_CODES = (
     "F08_SCOPE_DUPLICATE_BODY_ID",
     "F08_SCOPE_TOO_MANY_BODIES",
     "F08_SCOPE_MODE_UNSUPPORTED",
-    "F08_SCOPE_THROUGH_ALL_UNSUPPORTED",
     "F08_SCOPE_NEW_BODY_UNSUPPORTED",
 )
 NATIVE_ERROR_CODES = (
@@ -109,8 +111,8 @@ ERROR_MESSAGES = {
 
 LIMITATION_ID = "cut_scope"
 LIMITATION_NOTE = (
-    "one body ID per cut (positive or -5778); feature-label scope, revolve cuts, "
-    "through_all and multiple targets are unsupported"
+    "one body ID per cut (positive or -5778; blind or through_all); "
+    "feature-label scope, revolve cuts, new_body and multiple targets are unsupported"
 )
 
 APPLIED_RECEIPT_FIELDS = (
@@ -198,8 +200,6 @@ def validate_scope(operation: dict[str, Any]) -> dict[str, Any]:
         return _reject("F08_SCOPE_DUPLICATE_BODY_ID")
     if len(body_ids) > MAX_BODY_IDS:
         return _reject("F08_SCOPE_TOO_MANY_BODIES")
-    if operation.get("depth_type") == "through_all":
-        return _reject("F08_SCOPE_THROUGH_ALL_UNSUPPORTED")
     if operation.get("new_body") is True:
         return _reject("F08_SCOPE_NEW_BODY_UNSUPPORTED")
     return _verdict(True, defaulted=False, body_ids=list(body_ids), code=None)

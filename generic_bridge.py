@@ -33,7 +33,12 @@ from creo_mechdog.capabilities import (
     require_worker_availability,
 )
 from creo_mechdog.model_queries import inspect_page, list_page, model_summary
-from creo_mechdog.schema import Assertions, LoftOp, validate_operations
+from creo_mechdog.schema import (
+    Assertions,
+    LoftOp,
+    validate_linear_pattern_leaders,
+    validate_operations,
+)
 from creo_mechdog.sketch_regions import adapt_region_extrudes
 
 MODELS = bridge.ROOT / "models"
@@ -1510,6 +1515,9 @@ def submit(
             if isinstance(saved, dict) and isinstance(saved.get("features"), list):
                 features = saved["features"]
         native_planar_wall.validate_plan(model if not new else None, operations, aliases, features)
+        # BUG-169: reject linear_pattern leaders pointing at known sketch/datum
+        # aliases before creating a job (native also checks ProFeatureTypeGet).
+        validate_linear_pattern_leaders(operations, aliases)
         # DEV-089 T3: the composed base flange hosts the same first planar wall,
         # so it needs the same "empty sheetmetal model" admission up front.
         sheetmetal_contract.validate_base_flange_plan(

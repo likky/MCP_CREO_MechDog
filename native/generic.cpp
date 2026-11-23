@@ -4294,7 +4294,7 @@ static J extrude_or_revolve(const J &op, bool revolve) {
     }
     CK(ProElementFree(&root));
     remember(op, f);
-    J details = J::object();
+    J details = {{"feature_id", f.id}};
     if (revolve)
         details["revolve_axis"] =
             revolve_axis_report(op, f, sketch_f, revolve_axis_id, revolve_axis_code);
@@ -6422,6 +6422,16 @@ static void execute_operation_body(const J &op) {
     // verified baseline (T02).
     J result = has_staged_operation_result ? staged_operation_result : J::object();
     result.update(details);
+    // BUG-169: every feature-creating operation that registered itself via
+    // remember(op, f) publishes its own feature_id directly in its operation
+    // record so callers never observe feature_id=null while aliases has the id.
+    if (op.contains("label") && op["label"].is_string() && !result.contains("feature_id")) {
+        if (const J *entry = alias_entry(op["label"].get<std::string>())) {
+            if (entry->value("op", "") == kind && entry->contains("feature_id") &&
+                entry->at("feature_id").is_number_integer())
+                result["feature_id"] = entry->at("feature_id");
+        }
+    }
     if (material_op)
         result.update(material_observation_json(material_probe_before, true, probe_volume(),
                                                 !post_state["has_solid"].get<bool>()));

@@ -286,5 +286,35 @@ class DriverOfflineContractTests(unittest.TestCase):
             self.assertTrue(all(c.islower() or c.isdigit() or c == "_" for c in name))
 
 
+class MultiLoopBoundaryDiagnosticsTests(unittest.TestCase):
+    """Disjoint/nested loops pass; crossing/tangent loops emit tailored guidance."""
+
+    def test_disjoint_and_nested_closed_loops_pass_solid_profile_check(self):
+        disjoint = [
+            {"type": "rectangle", "name": "left_box", "min": [0, 0], "max": [10, 10]},
+            {"type": "rectangle", "name": "right_box", "min": [20, 0], "max": [30, 10]},
+        ]
+        nested = [
+            {"type": "rectangle", "name": "outer", "min": [0, 0], "max": [40, 40]},
+            {"type": "circle", "name": "inner_hole", "center": [20, 20], "radius": 5},
+        ]
+        self.assertEqual(validate_solid_profile(disjoint)["closed_contour_count"], 2)
+        self.assertEqual(validate_solid_profile(nested)["closed_contour_count"], 2)
+
+    def test_crossing_loops_remediation_does_not_suggest_closure_tolerance(self):
+        crossing = [
+            {"type": "rectangle", "name": "box_a", "min": [0, 0], "max": [10, 10]},
+            {"type": "rectangle", "name": "box_b", "min": [5, 5], "max": [15, 15]},
+        ]
+        with self.assertRaises(ValueError) as ctx:
+            validate_solid_profile(crossing)
+        msg = str(ctx.exception)
+        self.assertIn("intersecting", msg)
+        self.assertIn("box_a", msg)
+        self.assertIn("box_b", msg)
+        self.assertNotIn("closure_tolerance_mm", msg)
+        self.assertIn("Disjoint or nested closed loops", msg)
+
+
 if __name__ == "__main__":
     unittest.main()

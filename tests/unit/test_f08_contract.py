@@ -161,12 +161,23 @@ class F08StructuredRejections(unittest.TestCase):
 
     def test_unverified_combinations_are_refused_instead_of_silently_ignored(self):
         self.assert_rejected(
-            cut_op(depth_type="through_all", scope=scope(12)),
-            "F08_SCOPE_THROUGH_ALL_UNSUPPORTED",
-        )
-        self.assert_rejected(
             cut_op(new_body=True, scope=scope(12)), "F08_SCOPE_NEW_BODY_UNSUPPORTED"
         )
+
+    def test_through_all_single_body_scope_is_accepted(self):
+        for body_id in (12, -5778):
+            for direction in ("positive", "negative", "symmetric"):
+                with self.subTest(body_id=body_id, direction=direction):
+                    verdict = f08_contract.validate_scope(
+                        cut_op(
+                            depth_type="through_all",
+                            direction=direction,
+                            scope=scope(body_id),
+                        )
+                    )
+                    self.assertTrue(verdict["accepted"])
+                    self.assertEqual(verdict["body_ids"], [body_id])
+                    self.assertIsNone(verdict["code"])
 
     def test_resolve_failure_is_a_native_code_not_a_submission_validation_code(self):
         self.assertIn("F08_SCOPE_RESOLVE_FAILED", f08_contract.NATIVE_ERROR_CODES)
@@ -205,10 +216,15 @@ class F08PublicSurfaceEnabled(unittest.TestCase):
             validate_operations([cut_op(mode="add", scope=scope(7))])
         self.assertIn("only to extrude cuts", str(caught.exception))
 
-    def test_plan_path_rejects_scope_with_through_all(self):
-        with self.assertRaises(ValueError) as caught:
-            validate_operations([cut_op(depth_type="through_all", scope=scope(7))])
-        self.assertIn("through_all", str(caught.exception))
+    def test_plan_path_accepts_scope_with_through_all(self):
+        for body_id in (7, -5778):
+            with self.subTest(body_id=body_id):
+                dumped = validate_operations(
+                    [cut_op(depth_type="through_all", direction="symmetric", scope=scope(body_id))]
+                )
+                self.assertEqual(dumped[0]["depth_type"], "through_all")
+                self.assertEqual(dumped[0]["direction"], "symmetric")
+                self.assertEqual(dumped[0]["scope"], {"kind": "bodies", "body_ids": [body_id]})
 
     def test_plan_path_rejects_scope_on_a_surface_extrude(self):
         with self.assertRaises(ValueError) as caught:

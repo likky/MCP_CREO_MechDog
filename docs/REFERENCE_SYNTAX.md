@@ -26,6 +26,8 @@
 {"op": "linear_pattern", "label": "rows", "leader": "hole", "direction": [1, 0, 0], "spacing": 42, "count": 2, "flip": false}
 ```
 
+`leader` 必须指向拥有实体几何的特征（例如 `extrude`、`hole`、`sweep` 或 `feature_group`）。指向草图或基准特征会在提交前（或原生建特征前）以 `LINEAR_PATTERN_NON_SOLID_LEADER` 拒绝，避免静默生成 ΔV=0 的空转阵列；成功回执返回 `feature_id`、`leader_id`、`leader_kind`、`leader_surface_count` 与 `member_count`（[BUG-169](work-items/BUG-169.md)）。
+
 `direction` 必须是长度 1 的 `[x,y,z]`（容差 1e-6），`spacing` 为大于 0 的毫米中心距，`count` 含首例且至少 2，`flip` 只反转方向。Creo 仍需要一个真实方向参考，因此原生把向量绑定到与其平行（余弦 1-1e-9）的第一条直边（按 id 升序），没有直边时绑定到法向平行的第一个平面；参考自身的朝向决定元素树 flip，`flip` 不依赖假设的边方向。绑不到任何参考时明确拒绝并给出候选数，不发明基准轴。2026-11-15 Creo 12.4 实机：100×30×10 板上 Ø4 通孔沿 +X、间距 42、数量 2，两孔中心 x=10/52；`flip=true` 时同一 leader 从 x=52 得到 x=52/10，均保存重载通过。
 
 ## 距离+角度倒角
@@ -310,7 +312,11 @@ XZ 的法向是 negative Y，因此 `direction="positive"` 会让实体向更小
 
 全量和分页巡检在 `bodies[]` 返回 `cut_scope_id_eligible`，表示原始 `id` 是否满足作用域的格式要求。选择目标时还需核对 `state_name="active"` 和 `material=true`。初始实体在有材料和空体状态下都可能保有 `-5778`，执行器会在目标零件内按该 ID 查找活动实体，并由特征树回读确认实际选中 ID。见 [BUG-150](work-items/BUG-150.md)。
 
-省略 `scope` 时行为不变，切除对全部实体生效。以下组合在提交前拒绝，不产生作业：多个实体 ID、`kind` 不是 `bodies`、非 `cut` 模式、`depth_type="through_all"`、`new_body=true`、`revolve` 带 scope。
+省略 `scope` 时行为不变，切除对全部实体生效。自 0.38.0（[FEAT-075](work-items/FEAT-075.md)）起，单实体 `scope` 同时支持 `depth_type="blind"` 与 `depth_type="through_all"`（含 `positive`、`negative`、`symmetric` 与初始实体 ID `-5778`）。以下组合仍在提交前拒绝，不产生作业：多个实体 ID、`kind` 不是 `bodies`、非 `cut` 模式、`new_body=true`、`revolve` 带 scope。
+
+切除体积口径说明：拉伸切除实际移除的体积为「扫掠体 ∩ 已有实体材料」，而不是无条件等于「草图面积 × 深度」。若草图平面位于实体外部（空切段）或切削穿过曲面壁面，实测 `material_removed_mm3` 只计真正与材料相交的体积。
+
+多闭环实体拉伸边界：同一草图支持多个**互不相交或嵌套**的闭合轮廓（例如外框套内孔或多个独立岛），但 Creo 实体拉伸内核不接受彼此交叉（`intersecting`）或相切（`tangent`）的闭环。遇到相交/相切拒绝时，请修剪为单一无自交外轮廓，或拆分为多条 `extrude` 增料操作让 Creo 自动并入实体。
 
 成功作业的该操作结果带 `scope_applied`：`requested_body_ids`、`applied_body_ids`（从创建后的特征树回读）、`source`、`query_code`、`non_target_bodies_unchanged`。`non_target_bodies_unchanged` 比较其余实体的面数与包围盒；任一侧查询无法完成时为 `null`，不会填 `true`。回读到的实体与请求不一致或特征中没有该选择时作业失败并回滚，错误码 `F08_SCOPE_RESOLVE_FAILED`；非目标实体发生变化时为 `F08_SCOPE_NON_TARGET_CHANGED`。
 

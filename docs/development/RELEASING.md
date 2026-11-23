@@ -15,7 +15,7 @@
 
 ## 版本约定
 
-当前版本为 0.37.1（2026-11-23 PATCH，[BUG-151](../work-items/BUG-151.md) 收口：`tools/test_mcp.py` 补齐实机启动等待、`--offline` 进 `dev_check` 离线门禁与异常回溯输出，补齐本机 Creo 10 实机全模式与 `--create` 验收，清理其余 9 个 `tools/` 脚本的分页漂移与 `mcp_readiness` 过渡态，放宽 `test_startup_reboot` 2s 等待；公开工具仍 111）。见[版本说明](../RELEASE_NOTES_0.37.1.md)和[发布记录](../validation/RELEASE-0.37.1.md)。
+当前版本为 0.38.0（2026-11-23 MINOR，交付 [BUG-169](../work-items/BUG-169.md) 与 [FEAT-075](../work-items/FEAT-075.md)：`extrude` 回执补齐 `feature_id`、`linear_pattern` 双层拒绝非实体/零面 leader 并回执 `leader_kind`/`leader_surface_count`、`extrude mode="cut"` 开放单实体 `scope` 与 `through_all` 组合；本机 Creo 10 实机 8/8 + 回归 3/3 通过并保存重载；公开工具仍 111）。见[版本说明](../RELEASE_NOTES_0.38.0.md)和[发布记录](../validation/RELEASE-0.38.0.md)。
 
 此前的 0.37.0（2026-11-23 MINOR，嵌套装配源、B 样条坐标尺寸、装配 identity 恢复、预算披露与几何/选择器修复）。见[版本说明](../RELEASE_NOTES_0.37.0.md)和[发布记录](../validation/RELEASE-0.37.0.md)。
 
