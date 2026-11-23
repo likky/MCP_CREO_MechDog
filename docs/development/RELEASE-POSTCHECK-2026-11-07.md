@@ -2,6 +2,16 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
+## v0.36.1（2026-11-23，打包时点）
+
+- [BUG-151](../work-items/BUG-151.md) 修复自带 stdio 冒烟脚本 `tools/test_mcp.py` 未适配 `creo_capabilities` compact 分页契约导致的必然失败。见[版本说明](../RELEASE_NOTES_0.36.1.md)及[发布记录](../validation/RELEASE-0.36.1.md)。
+- 四件附件为 `MCP_CREO_MechDog-0.36.1-source.zip`、`MCP_CREO_MechDog-0.36.1-source.zip.sha256`、`MCP_CREO_MechDog-0.36.1-seed-library.zip`、`MCP_CREO_MechDog-0.36.1-seed-library.zip.sha256`。种子包 SHA256 为 `c37d6c7dba91624f315761e24a86f0e806a8dafec9b44b94dd67fd47087ff630`。两份同名 sidecar 分别记录对应 ZIP 的实际摘要。
+- 打包时远端核对待执行，实际结果见下节。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.36.1)
+
+### 发布后核对
+
+- 本节记录发布之后对远端对象的重新下载与摘要重算结果；打包时点尚无可填内容，故此处只留标题。
+
 ## v0.36.0（2026-11-23，打包时点）
 
 - 受管零件保存与恢复、样条切除诊断、种子放样和同计划选面见[版本说明](../RELEASE_NOTES_0.36.0.md)及[发布记录](../validation/RELEASE-0.36.0.md)。

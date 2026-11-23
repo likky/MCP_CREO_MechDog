@@ -1,5 +1,7 @@
 # 开发入口
 
+2026-11-23（0.36.1 PATCH）：[BUG-151](work-items/BUG-151.md) 修复自带 stdio 冒烟脚本 `tools/test_mcp.py` 未随 `creo_capabilities` compact 分页契约更新、按文档运行必 `KeyError: 'interpolation'` 的问题。契约期望集中到 `src/creo_mechdog/mcp_contract.py`，脚本与 `tests/unit/test_mcp_contract.py` 共用同一来源；脚本新增 `--protocol-only` 供无 Creo 环境验收。见[版本说明](RELEASE_NOTES_0.36.1.md)及[发布记录](validation/RELEASE-0.36.1.md)。
+
 2026-11-23（0.36.0 MINOR）：[BUG-152](work-items/BUG-152.md) 改进受管零件保存、检查点恢复和空 pending 兼容；[BUG-153](work-items/BUG-153.md) 提供 B 样条切除的显式折线近似与失败证据；[BUG-154](work-items/BUG-154.md) 加强种子放样重载检查并披露曲面路线限制；[FEAT-074](work-items/FEAT-074.md) 支持同计划按标签选面、JPEG 视图与像素尺寸及会话清理输入。见[版本说明](RELEASE_NOTES_0.36.0.md)、[本机验收](validation/feedback-save-loft-2026-11-23.md)及[发布记录](validation/RELEASE-0.36.0.md)。
 
 2026-11-22（0.35.8 PATCH）：[BUG-150](work-items/BUG-150.md) 修复初始实体 ID `-5778` 的切除作用域。Creo 10 实机两种 800 mm³ 切除均保存重载通过。原护卫舰的无作用域零去料待复现。[版本说明](RELEASE_NOTES_0.35.8.md) · [发布记录](validation/RELEASE-0.35.8.md)
@@ -93,7 +95,11 @@ python -m venv .venv
 .\.venv\Scripts\python.exe tools\test_unit.py
 .\.venv\Scripts\python.exe tools\dev_check.py --skip-unit
 .\.venv\Scripts\python.exe tools\dev_check.py --strict --skip-unit
+.\.venv\Scripts\python.exe tools\test_mcp.py --protocol-only
+.\.venv\Scripts\python.exe tools\test_mcp.py
 ```
+
+`tools\test_mcp.py --protocol-only` 走真实 stdio 传输，核对工具清单、loft 输入 schema 与 `creo_capabilities` 契约，不需要 Creo 会话；不带参数还需已连接会话，并核验 `ready_to_build`、`connected` 与无效几何拒绝。契约期望只写在 `src/creo_mechdog/mcp_contract.py`，由 `tests/unit/test_mcp_contract.py` 守门，脚本不再自带字段断言（BUG-151）。该脚本不进入 `dev_check` 的离线脚本清单：`server.py` 的 lifespan 会启动后台协调器并触发更新检查，离线门禁不引入这类副作用。
 
 统一检查覆盖 Ruff、Python/C++ 格式、存量基线比较及全部单元，报告为 `build/development_check.json`、`build/unit_test_report.json`。`--skip-unit` 只提供语言证据，`--strict` 暴露全部欠账。[风格基线](development/style-baseline.json) 按诊断及内容身份容许存量，不能掩盖工具/配置错误、单测失败或新增问题；正常开发与 CI 不重建基线，不新增豁免。
 

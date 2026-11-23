@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.36.0
+# MCP_CREO_MechDog 0.36.1
 
-![version](https://img.shields.io/badge/version-0.36.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.36.1-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.36.0**（MINOR）。改进受管零件保存和检查点恢复，新增 B 样条折线近似、按特征标签选面和 JPEG 视图选项，加强种子放样的重载校验。见 [版本说明](docs/RELEASE_NOTES_0.36.0.md) 和 [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.36.0)。
+当前正式版 **0.36.1**（PATCH）。修复自带 stdio 冒烟脚本未适配 `creo_capabilities` compact 分页契约导致的必然失败，能力契约期望集中到单一来源并由单测守门；公开工具与建模行为不变。见 [版本说明](docs/RELEASE_NOTES_0.36.1.md) 和 [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.36.1)。
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 

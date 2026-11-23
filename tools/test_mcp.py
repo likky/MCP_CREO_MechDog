@@ -1,4 +1,10 @@
-"""Exercise the real stdio transport. --create also creates a fresh native test part."""
+"""Exercise the real stdio transport. --create also creates a fresh native test part.
+
+--protocol-only stops before the Creo session and modeling checks, so the tool
+list and the creo_capabilities contract can be verified on a machine without a
+session (BUG-151). The contract expectations live in creo_mechdog.mcp_contract so
+this script and tests/unit/test_mcp_contract.py cannot drift apart.
+"""
 
 import argparse
 import asyncio
@@ -11,10 +17,11 @@ from mcp.client.stdio import StdioServerParameters
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from creo_mechdog.mcp_contract import PAGE_LIMIT, capability_contract_problems
 from version import VERSION
 
 
-async def main(create: bool, simple: bool, classic: bool):
+async def main(create: bool, simple: bool, classic: bool, protocol_only: bool):
     params = StdioServerParameters(command=sys.executable, args=[str(ROOT / "server.py")], cwd=ROOT)
     report = {"transport": "stdio", "client_mode": "legacy" if classic else "auto"}
     async with Client(
@@ -66,21 +73,27 @@ async def main(create: bool, simple: bool, classic: bool):
         report["loft_interpolation_schema_verified"] = True
         capabilities = await client.call_tool("creo_capabilities", {})
         assert not capabilities.is_error, capabilities
-        assert capabilities.structured_content["enabled_tool_count"] == len(report["tools"])
-        assert capabilities.structured_content["disabled_tools_hidden"] is True
-        assert capabilities.structured_content["families"]["loft_seed"]["interpolation"] == [
-            "straight",
-            "smooth",
-        ]
-        assert capabilities.structured_content["families"]["loft_seed"][
-            "section_count_input_range"
-        ] == [2, 20]
-        assert (
-            capabilities.structured_content["families"]["loft_seed"][
-                "seed_section_count_must_match"
-            ]
-            is True
+        assert capabilities.structured_content["enabled_tool_count"] == len(report["tools"]), (
+            report["tools"]
         )
+        pages = 0
+
+        async def families_page(cursor):
+            nonlocal pages
+            pages += 1
+            arguments = {"detail": "full", "section": "families", "limit": PAGE_LIMIT}
+            if cursor:
+                arguments["cursor"] = cursor
+            page = await client.call_tool("creo_capabilities", arguments)
+            assert not page.is_error, page
+            return page.structured_content
+
+        problems = await capability_contract_problems(
+            capabilities.structured_content, families_page
+        )
+        assert not problems, "creo_capabilities contract drift: " + "; ".join(problems)
+        report["capability_contract_verified"] = True
+        report["capability_pages"] = pages
         report["server"] = {
             key: capabilities.structured_content[key] for key in ("name", "version")
         }
@@ -90,20 +103,23 @@ async def main(create: bool, simple: bool, classic: bool):
         environment = await client.call_tool("creo_check_environment", {})
         assert not environment.is_error, environment
         report["environment"] = environment.structured_content
-        assert report["environment"]["ready_to_build"], report["environment"]
-        status = await client.call_tool("creo_session_status", {})
-        assert not status.is_error, status
-        report["session"] = status.structured_content
-        assert report["session"]["connected"], report["session"]
-        print(
-            json.dumps(
-                {
-                    "tool_count": len(report["tools"]),
-                    "session_connected": report["session"]["connected"],
-                }
-            ),
-            flush=True,
-        )
+        assert "ready_to_build" in report["environment"], report["environment"]
+        if protocol_only:
+            report["session"] = {"checked": False, "reason": "protocol_only"}
+        else:
+            assert report["environment"]["ready_to_build"], report["environment"]
+            status = await client.call_tool("creo_session_status", {})
+            assert not status.is_error, status
+            report["session"] = status.structured_content
+            assert report["session"]["connected"], report["session"]
+        summary = {
+            "tool_count": len(report["tools"]),
+            "capability_contract_verified": True,
+            "capability_pages": pages,
+        }
+        if not protocol_only:
+            summary["session_connected"] = report["session"]["connected"]
+        print(json.dumps(summary), flush=True)
         invalid = await client.call_tool(
             "creo_create_plate",
             {
@@ -116,7 +132,7 @@ async def main(create: bool, simple: bool, classic: bool):
         assert invalid.is_error, "Invalid geometry must be rejected before submitting a native job"
         report["invalid_geometry_rejected"] = True
         if create:
-            assert report["session"]["connected"], report["session"]
+            assert report["session"].get("connected"), report["session"]
             spec = (
                 {"length": 42, "width": 30, "thickness": 6, "corner_radius": 0, "holes": []}
                 if simple
@@ -138,7 +154,9 @@ async def main(create: bool, simple: bool, classic: bool):
             print(f"job_id={job_id}", flush=True)
             stage = None
             for _ in range(150):
-                result = await client.call_tool("creo_get_job", {"job_id": job_id})
+                result = await client.call_tool(
+                    "creo_get_job", {"job_id": job_id, "detail": "full"}
+                )
                 assert not result.is_error, result
                 job = result.structured_content
                 state = (job["status"], job.get("stage"))
@@ -155,6 +173,10 @@ async def main(create: bool, simple: bool, classic: bool):
                 ROOT / "build" / ("mcp_simple_test.json" if simple else "mcp_integration_test.json")
             ).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
             assert job["status"] == "succeeded", json.dumps(job, ensure_ascii=False, indent=2)
+            assert "result" in job, (
+                "full job response carries no result block; a page of section records means "
+                "the job is larger than one page and must be read with section=result_entries"
+            )
             assert job["result"]["saved_file_reloaded_and_verified"]
             print(json.dumps(job, ensure_ascii=False, indent=2), flush=True)
         else:
@@ -169,5 +191,13 @@ if __name__ == "__main__":
     parser.add_argument("--create", action="store_true")
     parser.add_argument("--simple", action="store_true")
     parser.add_argument("--classic", action="store_true")
+    parser.add_argument(
+        "--protocol-only",
+        action="store_true",
+        help="Verify the stdio transport, tool list and capabilities contract without a "
+        "Creo session (skips ready_to_build, the session probe and every modeling check)",
+    )
     args = parser.parse_args()
-    asyncio.run(main(args.create, args.simple, args.classic))
+    if args.protocol_only and args.create:
+        parser.error("--protocol-only cannot be combined with --create")
+    asyncio.run(main(args.create, args.simple, args.classic, args.protocol_only))
