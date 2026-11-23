@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.37.1
+# MCP_CREO_MechDog 0.38.0
 
-![version](https://img.shields.io/badge/version-0.37.1-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.38.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.37.1**（PATCH）。收口 [BUG-151](docs/work-items/BUG-151.md)：`tools/test_mcp.py` 补齐启动就绪等待与 `--offline` 无副作用离线模式并纳入 `dev_check` 离线门禁，完成本机 Creo 10 实机全模式与 `--create` 建模验收，同步修复其余 9 个 `tools/` 脚本的 `creo_capabilities` 分页契约漂移与 `mcp_readiness` 过渡态。公开工具仍以 `creo_capabilities` 的 `tool_count` 为准。见 [版本说明](docs/RELEASE_NOTES_0.37.1.md) 和 [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.37.1)。
+当前正式版 **0.38.0**（MINOR）。交付 [BUG-169](docs/work-items/BUG-169.md) 与 [FEAT-075](docs/work-items/FEAT-075.md)：`extrude` 等操作全量与 compact 回执统一回填 `feature_id`；`linear_pattern` 双层拒绝草图/基准及零实体面 leader 并回执 `leader_kind`/`leader_surface_count`；`extrude mode="cut"` 开放单实体 `scope` 与 `depth_type="through_all"` 组合（含 `symmetric` 与 `-5778`）；同步改进交叉/相切轮廓诊断文案与语法文档。公开工具仍以 `creo_capabilities` 的 `tool_count` 为准。见 [版本说明](docs/RELEASE_NOTES_0.38.0.md) 和 [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.38.0)。
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 

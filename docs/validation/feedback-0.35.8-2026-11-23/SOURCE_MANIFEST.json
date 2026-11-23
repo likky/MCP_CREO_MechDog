@@ -1,0 +1,12 @@
+{
+  "source_directory": "user-provided-chat-report",
+  "archived_at": "2026-11-23",
+  "files": [
+    {
+      "archive_path": "originals/linear-pattern-leader-and-through-all-scope.md",
+      "source_name": "2026-11-23_CREO_10.0.0.0_MCP_0.35.8_linear_pattern_leader_and_through_all_scope.md",
+      "sha256": "cd93e2c16b4095e5af0d85b76fba5b0099df2613332142c067879d57178b668e"
+    }
+  ],
+  "notes": "用户会话提供的 0.35.8 护卫舰实测反馈原件（不含原始 PRT 与 job 目录）。"
+}

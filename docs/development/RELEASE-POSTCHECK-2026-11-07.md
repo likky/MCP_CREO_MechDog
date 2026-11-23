@@ -2,6 +2,12 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
+## v0.38.0（2026-11-23，打包时点）
+
+- [BUG-169](../work-items/BUG-169.md) 与 [FEAT-075](../work-items/FEAT-075.md) 交付：`extrude` 等操作全量与 compact 回执统一回填 `feature_id`；`linear_pattern` 双层拒绝草图/基准及零实体面 leader（`LINEAR_PATTERN_NON_SOLID_LEADER`）与别名/原生类型冲突（`LINEAR_PATTERN_LEADER_ALIAS_MISMATCH`）并回执 `leader_kind`/`leader_surface_count`；`extrude mode="cut"` 开放单实体 `scope` 与 `through_all` 组合（含 `symmetric` 与 `-5778`）；本机 Creo 10 实机 8/8 + `test_linear_pattern` 3/3 回归全部通过并保存重载；归档 0.35.8 反馈原件并补录 [BUG-150](../work-items/BUG-150.md) 外部 `frigate_v4` 验证。见[版本说明](../RELEASE_NOTES_0.38.0.md)及[发布记录](../validation/RELEASE-0.38.0.md)。
+- 四件附件为 `MCP_CREO_MechDog-0.38.0-source.zip`、`MCP_CREO_MechDog-0.38.0-source.zip.sha256`、`MCP_CREO_MechDog-0.38.0-seed-library.zip`、`MCP_CREO_MechDog-0.38.0-seed-library.zip.sha256`。种子包 SHA256 为 `f01e832b9a8b7ea3eef7f845f53af3502c1b3656e1896a90ab02f76bb6a36223`。两份同名 sidecar 分别记录对应 ZIP 的实际摘要。
+- 远端核对发布后执行，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.38.0)
+
 ## v0.37.1（2026-11-23，打包时点）
 
 - [BUG-151](../work-items/BUG-151.md) 收口：`tools/test_mcp.py` 补齐实机启动等待、`--offline` 纳入 `dev_check` 离线门禁并完成本机 Creo 10 全模式与 `--create` 实机验收，清理其余 9 个 `tools/` 脚本的 `creo_capabilities` 分页契约漂移与 `mcp_readiness` 过渡态，放宽 `test_startup_reboot` 2 s 等待并归档 0.35.8 反馈原件。见[版本说明](../RELEASE_NOTES_0.37.1.md)及[发布记录](../validation/RELEASE-0.37.1.md)。

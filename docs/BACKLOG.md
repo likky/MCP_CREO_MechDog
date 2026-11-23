@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-23（0.38.0 MINOR，新增 2 项，台账 232→234，BUG 117→118 / FEAT 71→72 / DEV 44，公开工具仍 111）：归档 0.35.8 反馈原件 [linear-pattern-leader-and-through-all-scope.md](validation/feedback-0.35.8-2026-11-23/originals/linear-pattern-leader-and-through-all-scope.md) 并在 [BUG-150](work-items/BUG-150.md) 补录外部 `frigate_v4` 验证结果；交付 [BUG-169](work-items/BUG-169.md) 与 [FEAT-075](work-items/FEAT-075.md)（均转入“已有修复但待验收”）：① `extrude` 等创建特征操作在全量与 compact 回执统一回填 `feature_id`；② `linear_pattern` 在 Python 提交准入与原生 `ProPatternCreate` 前双重拒绝草图/曲线/基准及零实体面 leader（`LINEAR_PATTERN_NON_SOLID_LEADER`）与别名/原生类型冲突（`LINEAR_PATTERN_LEADER_ALIAS_MISMATCH`），回执与 compact 投影同步披露 `leader_id`/`leader_kind`/`leader_surface_count`/`member_count`；③ `extrude mode="cut"` 开放单实体 `scope` 与 `depth_type="through_all"` 组合（含 `positive`/`negative`/`symmetric` 与初始体 `-5778`）；④ 完善交叉/相切草图诊断文案（不再建议改 `closure_tolerance_mm`）及 `REFERENCE_SYNTAX.md` 切除交集/多环边界说明。本机 Creo 10.0.0.0（release 42）完成 8/8 实机场景与 `test_linear_pattern.py` 3/3 回归，全部精确匹配解析体积并保存重载通过。见[版本说明](RELEASE_NOTES_0.38.0.md)与[发布记录](validation/RELEASE-0.38.0.md)。
+
 2026-11-23（0.37.1 PATCH，台账 233→232，BUG 118→117，公开工具仍 111）：归档 0.35.8 反馈原件 [test-mcp-capabilities-drift.md](validation/feedback-0.35.8-2026-11-22/originals/test-mcp-capabilities-drift.md) 并收口 [BUG-151](work-items/BUG-151.md) 移入[完成档案](BACKLOG_COMPLETED.md)：`tools/test_mcp.py` 补齐实机启动等待、`--offline` 无副作用离线模式并纳入 `dev_check` 离线门禁、显式输出异常避免被 TaskGroup 遮蔽；`tools/mcp_readiness.py` 对齐 `creo_startup.ACTIVE`；修复其余 9 个 `tools/` 脚本的 `creo_capabilities` 分页契约漂移并加静态护栏；放宽 `test_startup_reboot` 2s 偶发等待；本机 Creo 10.0.0.0（release 42）完成 `test_mcp.py` 默认/`--classic`/`--create --simple`/`--create` 实机验收（两件零件均保存重载通过）。见[版本说明](RELEASE_NOTES_0.37.1.md)与[发布记录](validation/RELEASE-0.37.1.md)。
 
 2026-11-23（0.37.0 MINOR，新增 14 项，台账 219→233，公开工具仍 111）：归档[报告原件](validation/feedback-0.35.5-2026-11-22/originals/geometry-and-assembly-p0.md)。本版交付 P0 批次：[BUG-155](work-items/BUG-155.md) 边选择器类型、[BUG-156](work-items/BUG-156.md) 嵌套装配、[BUG-157](work-items/BUG-157.md) 看门狗与装配恢复、[BUG-158](work-items/BUG-158.md) 预算披露、[BUG-159](work-items/BUG-159.md) 多半径弧准入（部分交付，内核拉伸转 [BUG-165](work-items/BUG-165.md)）、[BUG-160](work-items/BUG-160.md) 样条面积与坐标 B 样条、[BUG-161](work-items/BUG-161.md) 同圆重复边。后续项 [BUG-162](work-items/BUG-162.md) 旋转正交化、[BUG-163](work-items/BUG-163.md) 圆角邻弧提示、[BUG-164](work-items/BUG-164.md) 装配阵列、[BUG-165](work-items/BUG-165.md) 样条共享顶点、[BUG-166](work-items/BUG-166.md) 恢复预算、[BUG-167](work-items/BUG-167.md) 装配换版、[BUG-168](work-items/BUG-168.md) 会话判定与只读导出。见[版本说明](RELEASE_NOTES_0.37.0.md)与[发布记录](validation/RELEASE-0.37.0.md)。
@@ -224,7 +226,7 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 
 诊断交付不等于根因修复；部分交付不关整卡；缺其他版本证据不自动判未修。观察项等自然新现场，不制造故障。已完成且无保留范围的行移入 [完成档案](BACKLOG_COMPLETED.md#2026-11-07dev-073-归档与历史进展)。原进展/证据保留日期，不再回填第二份待办。小修复沿用卡与证据，复杂跨模块任务才另建完整计划。
 
-当前唯一 ID **232**（BUG **117**、FEAT **71**、DEV **44**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
+当前唯一 ID **234**（BUG **118**、FEAT **72**、DEV **44**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
@@ -233,7 +235,7 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 | 已有修复但待验收 | 47 |
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
-| 开发中 | 7 |
+| 开发中 | 9 |
 | 部分交付，剩余待验收 | 50 |
 | 部分交付，剩余待规划 | 7 |
 | 待规划 | 55 |
@@ -300,6 +302,8 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
+| [BUG-169](work-items/BUG-169.md) | P1 | 已有修复但待验收 | 0.38.0 | `extrude` 等操作回执补齐 `feature_id`（全量+compact）；`linear_pattern` 双层拒绝非实体/零面 leader 与别名类型冲突并输出 `leader_kind`/`leader_surface_count`；本机 Creo 10 实机 4/4 + `test_linear_pattern` 3/3 通过并保存重载。剩：原案 B025 原始请求/模型快照、Creo 9/12 实机、WorkBuddy 黑盒。 |
+| [FEAT-075](work-items/FEAT-075.md) | P1 | 已有修复但待验收 | 0.38.0 | `extrude mode="cut"` 开放单实体 `scope` 与 `through_all` 组合；本机 Creo 10 实机双体正交、三体双向对称、`-5778` 初始体及未知 ID 回滚 4/4 通过并保存重载。剩：Creo 9/12 实机、WorkBuddy 黑盒。 |
 | [BUG-150](work-items/BUG-150.md) | P1 | 已有修复但待验收 | 0.35.8（初始实体作用域） | Creo 10 实机明确 `-5778` 是初始实体 ID，有无作用域均去料 800 mm³，保存重载通过。原护卫舰无作用域零去料待原件复现。 |
 | [BUG-152](work-items/BUG-152.md) | P1 | 已有修复但待验收 | 0.36.0（恢复与保存修复）；原现场待原件 | 受管独立零件按目标目录原地保存，重载核对确切版本，MCP 支持客户端空 pending。原现场 Backup -1 根因待原件。 |
 | [BUG-153](work-items/BUG-153.md) | P1 | 已有修复但待验收 | 0.36.0（显式近似与诊断）；精确切除待调查 | Creo 10 实机复现闭合 B 样条零去料。显式 21 段折线近似去料与手工折线一致，保存重载通过。精确切除仍有内核边界。 |

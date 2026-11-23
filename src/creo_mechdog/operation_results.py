@@ -404,6 +404,13 @@ OUTCOME_OPERATION_KEYS = (
     "curve_id",
     "length_mm",
     "surface_id",
+    # BUG-169: preserve created feature_id and linear_pattern leader/member
+    # diagnostics across compact budget trimming.
+    "feature_id",
+    "leader_id",
+    "leader_kind",
+    "leader_surface_count",
+    "member_count",
 )
 
 #: Failure diagnostics kept in full on the failed record itself. A per-record

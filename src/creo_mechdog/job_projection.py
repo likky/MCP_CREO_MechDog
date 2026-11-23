@@ -311,6 +311,19 @@ FLANGE_MITER_KEYS = (
     "adjacent_bend_ends_allowed",
 )
 
+#: BUG-169: leader identity, feature type, surface count and created member
+#: count so a compact poll can distinguish a solid pattern from a silent no-op.
+LINEAR_PATTERN_KEYS = (
+    "leader_id",
+    "leader_kind",
+    "leader_feature_type",
+    "leader_surface_count",
+    "leader_surface_query_code",
+    "group_leader",
+    "member_count",
+    "direction_reference",
+)
+
 _OPERATION_CRITERIA: dict[str, tuple[str, ...]] = {
     "assemble_component": ASSEMBLY_POSE_KEYS,
     "component_placement": ASSEMBLY_POSE_KEYS,
@@ -324,6 +337,7 @@ _OPERATION_CRITERIA: dict[str, tuple[str, ...]] = {
     "project_curve": PROJECT_CURVE_KEYS,
     "solidify": SOLIDIFY_KEYS,
     "sheetmetal_flange": FLANGE_MITER_KEYS,
+    "linear_pattern": LINEAR_PATTERN_KEYS,
 }
 
 #: Progress receipt keys from ``native_stage.stall_report``. Log text and any
