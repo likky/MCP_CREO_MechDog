@@ -47,6 +47,6 @@
 
 ## 远端核对
 
-发布后执行，当前未验证。见 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.36.1) 和 [发布后核对](../development/RELEASE-POSTCHECK-2026-11-07.md)。
+已发布并核对。Release id `455098850`，附注标签对象 `094ac5878ae2eb4d61f51562c0fa7f63c5cec92d` 指向 `a9bf80d`，`tools/check_release_assets.py --tag v0.36.1` 退出 0，四个附件重算摘要与 sidecar 一致。附件字节、摘要与环境侧发布通道见 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.36.1) 和[发布后核对](../development/RELEASE-POSTCHECK-2026-11-07.md)。
 
 Creo 9/12、外部模型、WorkBuddy 黑盒均未纳入本版实机。台账与本版相关的一行见 [docs/BACKLOG.md](../BACKLOG.md)。

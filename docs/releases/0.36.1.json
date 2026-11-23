@@ -4,7 +4,7 @@
   "previous_version": "0.36.0",
   "previous_release_tag": "v0.36.0",
   "previous_release_commit": "bc2052e27cb34f03af2e9fcea259cf426bac7d5b",
-  "remote_verification": "pending",
+  "remote_verification": "verified",
   "delivery_ids": ["BUG-151"],
   "frozen_on": "2026-11-23"
 }

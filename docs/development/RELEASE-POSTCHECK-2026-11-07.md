@@ -12,6 +12,23 @@
 
 - 本节记录发布之后对远端对象的重新下载与摘要重算结果；打包时点尚无可填内容，故此处只留标题。
 
+#### 核对结果
+
+- [v0.36.1](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.36.1) 已发布为正式版，并作为远端 `latest` 返回。Release id `455098850`，`published_at=2026-11-23T07:21:15Z`，`created_at=2026-11-23T07:34:17Z`，四个附件均在。
+- 远端附注标签对象 `094ac5878ae2eb4d61f51562c0fa7f63c5cec92d` 指向 `a9bf80d3036e597258af917f80cffd1f7ca51220`，远端 `main` 在核对时指向同一提交。本地标签对象已按远端逐字节重建为同一 SHA。
+- `python -X utf8 tools/check_release_assets.py --tag v0.36.1` 于 `2026-11-23T07:22Z`（`2026-11-23T15:22+08:00`）退出，退出码为 0：四个附件重新下载后实算摘要与各自 sidecar 一致，Release 正文自证通过。首次运行曾因正文缺少“源码包摘要记录在同名 sidecar 中”一句被拒，补该句后复核通过；仓库内的[版本说明](../RELEASE_NOTES_0.36.1.md)同步了同一句，使正文与文件一致。
+- 发布通道：本机到 `github.com` 的 git 传输不可用（代理 CONNECT 成功但 TLS 握手超时，SSH 无可用密钥且令牌无 `admin` 无法登记部署密钥）。提交改由 Git Data API 逐对象重建，四个提交的 SHA 与本地逐一断言一致后才移动 `refs/heads/main`；标签对象与 Release 由 REST API 创建，四个附件经 `uploads.github.com` 上传。`api.github.com` 可达，其余流量不受影响。
+
+| 远端附件 | 字节 | 实算 SHA256 / API digest |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.36.1-source.zip` | 11,751,401 | `952a5c4f5bed881307ac0a9206f042f7e85b92c3ec50771b4c680a5831b4193a` |
+| `MCP_CREO_MechDog-0.36.1-source.zip.sha256` | 101 | `a3272f0154ff770923fa17a4417b441c917585245a90a99f8b1d533f1f0d1494` |
+| `MCP_CREO_MechDog-0.36.1-seed-library.zip` | 493,442 | `c37d6c7dba91624f315761e24a86f0e806a8dafec9b44b94dd67fd47087ff630` |
+| `MCP_CREO_MechDog-0.36.1-seed-library.zip.sha256` | 107 | `be1580afed8ffca9681ea4995d216e50bfea3dff8ee7dcdb8dc86fff71959d35` |
+
+- 发布前证据：全量单测 4,403 项，0 失败、0 错误、0 跳过，`run_id=f08e18e7e2a0488590cdbab38f0c7318`，源码指纹 `34b7174012c17d2c0aac901cc9cc3cfd3a2ebe3053a49162da04e3fcfa23aa5b`；`tools/dev_check.py --skip-unit --work-item BUG-151` 通过（Ruff 0 发现、clang-format 0 未格式化）；`tools/test_mcp.py --protocol-only` 退出 0（111 工具、契约通过、2 页）。源码包 2,312 个文件。
+- 未验证：Creo 9/12、外部模型、WorkBuddy 黑盒，以及 `tools/test_mcp.py` 的完整模式（`creo_session_status` 与 `--create` 需要已连接会话）。
+
 ## v0.36.0（2026-11-23，打包时点）
 
 - 受管零件保存与恢复、样条切除诊断、种子放样和同计划选面见[版本说明](../RELEASE_NOTES_0.36.0.md)及[发布记录](../validation/RELEASE-0.36.0.md)。

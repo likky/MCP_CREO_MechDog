@@ -17,4 +17,4 @@
 - `MCP_CREO_MechDog-0.36.1-seed-library.zip`
 - `MCP_CREO_MechDog-0.36.1-seed-library.zip.sha256`
 
-种子包 SHA256 为 `c37d6c7dba91624f315761e24a86f0e806a8dafec9b44b94dd67fd47087ff630`。同名 sidecar 分别记录两个 ZIP 的实际 SHA256。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.36.1)
+种子包 SHA256 为 `c37d6c7dba91624f315761e24a86f0e806a8dafec9b44b94dd67fd47087ff630`。源码包摘要记录在同名 sidecar 中，两份 sidecar 分别记录对应 ZIP 的实际 SHA256。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.36.1)
