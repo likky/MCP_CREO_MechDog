@@ -11,7 +11,7 @@
 5. 检查result.adoption证据并apply（新键），预期ready/revision=1。通过inspect找到Z=20的顶面，用thickness=2的shell去顶面，预期7152±0.01 mm³、revision=2、保存重载verified。原001仍保留。
 6. 独立再准备一份无盘快照，由操作者在prepare后修改或关闭原模型再确认。修改场景先保持原件当前，用 `creo_adopt_current_model({"mode":"inspect"})`（不带model_id）记录当前来源几何，无盘原件仍应返回prepare指引；只记录摘要，不再次prepare。带model_id的续签响应中current_model沿用准备时来源摘要，不用于证明原件当前几何。普通creo_inspect_model在adopt_pending时没有几何结果，也不表示准备文件不存在。等令牌过期后先检查apply明确拒绝，再按原model_id续签、记录同一快照身份并确认；不得重新创建副本。apply后检查副本仍为准备时几何，并与已变化的原件摘要对照。使用独立来源测试放弃快照，预期abandoned、后续普通编辑拒绝。
 
-   放弃快照时，reconcile inspect 若返回 pending_job=null，apply 可发送 null 或省略 expected_pending_job_id。若 WorkBuddy 把 null 转成空串，本开发分支会还原为 null。若返回非空 job ID，仍逐字传回该值。
+   放弃快照时，reconcile inspect 若返回 pending_job=null，apply 可发送 null 或省略 expected_pending_job_id。若 WorkBuddy 把 null 转成空串，0.36.0 起服务会还原为 null。若返回非空 job ID，仍逐字传回该值。
 
 7. 分开测试已有文件clean、dirty及钣金接管。dirty场景要事先明确并记录未保存尺寸、参数及新增特征；逐项检查副本，不只比较特征数。原件文件是否字节不变如公开接口无独立证据则记未验证，不推测通过。
 

@@ -2,6 +2,8 @@
 
 # Creo 兼容与验收矩阵
 
+0.36.0 在 Windows x64 / Creo 10.0.0.0（Toolkit 42）验收受管保存与恢复、显式 B 样条折线切除、两截面种子放样、按特征限定拔模面及零件 JPEG 导出。Creo 10 的曲面元素树路线有实测提取限制，能力回执披露当前执行器的证据。Creo 9 和 12 本批未复验，Creo 9 SDK 编译与运行时验收仍未完成。见[发布记录](validation/RELEASE-0.36.0.md)。
+
 2026-11-08 DEV-076开发分支补步：0.18.3/0.18.4的手写surface_loft曾无条件包含Probbl.h，报告方Creo10 SDK因此构建失败。本分支增加头存在性门控；缺头时该操作明确SURFACE_LOFT_SDK_UNAVAILABLE，不生成特征，有头保留原实现。缺头分支以SDK无关C++夹具验证；完整Creo9/10 SDK构建及运行时不据此判通过。本批不修改已发布标签/附件。
 
 2026-11-08 DEV-080补充：`creo_surface_boundary_fill` 与 `creo_surface_loft` 同源于 `Probbl.h` 的边界混合元素树；不含该头的 Toolkit SDK（已观测：Creo 10.0.0.0）上两者均不可用。执行器在 `creo_worker.exe build-info` 自报头条件状态，Python 侧按已验证的 worker 身份在提交作业前拒绝，给出 `SURFACE_LOFT_SDK_UNAVAILABLE` 一类明确降级回执，不伪造几何，也不应被误判为安装失败；`surface_boundary_fill` 另保持能力面 GATED。缺头 SDK 的整包编译还受 `native/surface_boundary_fill.cpp` 复用 `surface_loft.cpp` 内部符号影响，根因、抽头方案与不依赖 `Probbl.h` 的等价元素树见 [DEV-080](work-items/DEV-080.md) H01；需 Creo 10 SDK 编译与实机几何验收，本机未验，不据门控夹具外推为通过。
