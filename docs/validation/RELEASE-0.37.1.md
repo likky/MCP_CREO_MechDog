@@ -33,7 +33,9 @@
 
 ## 单测证据
 
-发布候选在 0.37.1 工作树上运行 `tools/test_unit.py`，全量 unittest 通过，0 失败、0 错误。具体 `run_id`、耗时与源码指纹取自本轮 `build/unit_test_report.json`（不随源码包分发）。
+发布候选在 0.37.1 工作树上运行 `tools/test_unit.py`，全量 unittest 通过，0 失败、0 错误。下列数字取自本轮 `build/unit_test_report.json`，该报告不随源码包分发。
+
+本轮 `run_id=700b7140ff654bae87f4cbd5f0bc02a3`，执行 4,423 项，0 失败、0 错误、6 跳过，耗时 326.09 s，报告 `version=0.37.1`、`status=completed`、`success=true`。受测提交 `cd72a4db3d3d87930f6fe90f11ae6ec1a11ccdea`（分支 `codex/bug151-test-mcp-closeout`，`dirty=false`），源码指纹 `ecb146c71d389fcc19715cce8c3088da5d7327b112b56985399517b33c05a603`，统计 669 个受 Git 跟踪的 `.py` 与原生头/源文件。后续回填本段文档不改动任何受跟踪 `.py` 或原生文件，源码指纹保持不变。跳过项为 Windows 符号链接权限、MSVC 独立辅助程序环境与未随仓库保存的历史作业证据，均不涉及本版改动。
 
 语言与格式检查以 `tools/dev_check.py --skip-unit --work-item BUG-151` 执行：`success=true`，lint 0、unformatted 0，离线验收 3/3 通过（`test_update_check`、`test_model_reconciliation`、`test_mcp`）。
 
