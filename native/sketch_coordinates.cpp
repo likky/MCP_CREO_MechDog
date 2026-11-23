@@ -1,3 +1,8 @@
+// BUG-173: per-operation section reference and origin-pin diagnostics, populated
+// in sketch() and pin_coordinate_origin() so solve failures report missing
+// references rather than masking them behind a rescue AutodimensionSketch code.
+static J last_sketch_reference_info = nullptr;
+
 // Complete coordinate dimensions for exact, fully supplied profile geometry.
 // Accepted native profiles include large polygons, axis-aligned/rotated arcs and circles.
 static J profile_dimensioning_choice(const J &op) {
@@ -49,6 +54,10 @@ static void pin_coordinate_origin(ProSection section, int origin, const std::vec
     Pro2dEntdef *entity = nullptr;
     if (ProSectionEntityGet(section, origin, &entity) != PRO_TK_NO_ERROR || !entity) {
         log("SKETCH_ORIGIN_PIN_UNAVAILABLE reason=origin_not_readable\n");
+        if (last_sketch_reference_info.is_object()) {
+            last_sketch_reference_info["origin_pin_available"] = false;
+            last_sketch_reference_info["origin_pin_reason"] = "origin_not_readable";
+        }
         return;
     }
     auto cs = (Pro2dCoordSysdef *)entity;
@@ -76,6 +85,11 @@ static void pin_coordinate_origin(ProSection section, int origin, const std::vec
             candidates.push_back({axis, anchor, fabs(cs->pnt[axis] - line->end1[axis])});
             covered[axis] = true;
         }
+    }
+    if (last_sketch_reference_info.is_object()) {
+        last_sketch_reference_info["origin_pin_u"] = covered[0];
+        last_sketch_reference_info["origin_pin_v"] = covered[1];
+        last_sketch_reference_info["origin_pin_available"] = candidates.size() >= 2;
     }
     if (candidates.size() < 2) {
         log("SKETCH_ORIGIN_PIN_UNAVAILABLE u=%d v=%d anchors=%d\n", (int)covered[0],

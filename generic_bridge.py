@@ -1785,14 +1785,11 @@ def submit(
         bridge.write_json(directory / "job.json", manifest)
         try:
             with (directory / "runner.log").open("ab") as log:
-                proc = subprocess.Popen(
+                proc, detached_from_job = bridge.spawn_detached_runner(
                     [sys.executable, str(bridge.ROOT / "bridge.py"), "run-job", job_id],
                     cwd=bridge.ROOT,
-                    stdin=subprocess.DEVNULL,
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                    creationflags=bridge.HIDDEN,
-                    close_fds=True,
+                    log_file=log,
+                    popen=subprocess.Popen,
                 )
         except Exception as exc:
             if panel_admission:
@@ -1814,6 +1811,13 @@ def submit(
             raise
         # Still inside the submit lock: the reservation is visible to the next
         # admission before this call returns (BUG-100).
+        manifest["runner_detached_from_job"] = detached_from_job
+        if not detached_from_job:
+            manifest["runner_lifecycle_note"] = (
+                "Host Job Object denied CREATE_BREAKAWAY_FROM_JOB; this job's runner "
+                "depends on the MCP server/client staying alive until completion."
+            )
+        bridge.write_json(directory / "job.json", manifest)
         bridge.write_channel_claim(
             job_id,
             model_id=model_id,

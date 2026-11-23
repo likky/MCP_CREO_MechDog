@@ -47,7 +47,7 @@ WORKER_SECONDS = 115
 # the executor, so a bad config value can neither disarm nor explode the budget.
 RECOVERY_PHASE_SECONDS = 300
 RECOVERY_PHASE_MIN_SECONDS = 30
-RECOVERY_PHASE_MAX_SECONDS = 900
+RECOVERY_PHASE_MAX_SECONDS = 1800
 RECOVERY_PHASE_MARGIN_SECONDS = 30
 RUNNER_CHANNEL_WAIT_SECONDS = 120
 HASH_SECONDS = 8
@@ -99,12 +99,22 @@ def recovery_phase_seconds(model: dict | None = None, budget_seconds: int | None
     except (TypeError, ValueError):
         value = RECOVERY_PHASE_SECONDS
     edges = 0
+    features = 0
+    surfaces = 0
     if isinstance(model, dict):
         summary = inspection_refs.summary_of(model)
         counts = summary.get("counts") if isinstance(summary, dict) else None
-        if isinstance(counts, dict) and isinstance(counts.get("edges"), int):
-            edges = counts["edges"]
-    adaptive_floor = min(RECOVERY_PHASE_MAX_SECONDS, 120 + edges // 15) if edges > 0 else 0
+        if isinstance(counts, dict):
+            if isinstance(counts.get("edges"), int):
+                edges = counts["edges"]
+            if isinstance(counts.get("features"), int):
+                features = counts["features"]
+            if isinstance(counts.get("surfaces"), int):
+                surfaces = counts["surfaces"]
+    edge_floor = 120 + edges // 15 if edges > 0 else 0
+    feature_floor = 120 + features // 2 if features > 0 else 0
+    surface_floor = 120 + surfaces // 4 if surfaces > 0 else 0
+    adaptive_floor = min(RECOVERY_PHASE_MAX_SECONDS, max(edge_floor, feature_floor, surface_floor))
     return min(RECOVERY_PHASE_MAX_SECONDS, max(RECOVERY_PHASE_MIN_SECONDS, value, adaptive_floor))
 
 
@@ -889,6 +899,37 @@ def _recovery_wait(snapshot: dict) -> dict | None:
             ),
         }
     reason = stalled.get("reason") or "The recovery intent's ownership is still unproven"
+    rec_status = _job_status(job_id)
+    if rec_status in ("failed", "unknown_outcome", "aborted", "cancelled"):
+        return {
+            "job_id": job_id,
+            "state": "terminal_unconfirmed",
+            "job_status": rec_status,
+            "reason": (
+                f"Recovery job {job_id} already ended with terminal status {rec_status!r} while "
+                "holding recovery_pending"
+            ),
+            "detail": {
+                key: stalled.get(key)
+                for key in (
+                    "stage",
+                    "age_seconds",
+                    "grace_seconds",
+                    "runner",
+                    "runner_observed",
+                    "launcher",
+                    "observed",
+                )
+                if stalled.get(key) is not None
+            },
+            "next_step": (
+                "Do not poll creo_get_job further (the recovery job is already terminal). "
+                "Once all recorded owners are stopped, call creo_reconcile_model with "
+                "action='restore_baseline' (default verify_mode='identity', or pass a larger "
+                "budget_seconds up to 1800) or release recovery_pending via "
+                "action='abandon_unknown_recovery' with confirm_unknown_recovery=true"
+            ),
+        }
     next_step = {
         "stage_advanced": (
             "The job advanced past the pre-worker stages, so its runner is the only source of "
@@ -1231,6 +1272,19 @@ def _native(directory: Path, manifest: dict) -> dict:
         or result.get("delivery_complete") is not True
         or result.get("disconnect_code") != 0
     ):
+        checkpoint = _read(directory / "native_checkpoint.json") or {}
+        stage = (result or {}).get("completion_stage") or checkpoint.get("completion_stage")
+        budget = (result or {}).get("phase_budget_seconds") or checkpoint.get(
+            "phase_budget_seconds"
+        )
+        if stage == "recovery_phase_timeout":
+            budget_text = f" ({budget} s)" if budget is not None else ""
+            raise RuntimeError(
+                f"Recovery outcome is unconfirmed (recovery_phase_timeout{budget_text}); "
+                "reservation retained; retry restore_baseline with verify_mode='identity' or "
+                "a larger budget_seconds (up to 1800), or release recovery_pending with "
+                "abandon_unknown_recovery"
+            )
         raise RuntimeError(
             "Recovery outcome is unconfirmed; reservation retained; inspect native checkpoint"
         )
@@ -2051,15 +2105,14 @@ def apply(
             model_registry.write_model(general.model_path(model_id), reserved)
             try:
                 with (directory / "runner.log").open("ab") as log:
-                    process = subprocess.Popen(
+                    process, detached_from_job = bridge.spawn_detached_runner(
                         [sys.executable, str(bridge.ROOT / "bridge.py"), "run-job", job_id],
                         cwd=bridge.ROOT,
-                        stdin=subprocess.DEVNULL,
-                        stdout=log,
-                        stderr=subprocess.STDOUT,
-                        creationflags=bridge.HIDDEN,
-                        close_fds=True,
+                        log_file=log,
+                        popen=subprocess.Popen,
                     )
+                manifest["runner_detached_from_job"] = detached_from_job
+                bridge.write_json(directory / "job.json", manifest, durable=True)
             except Exception as error:
                 _record_failure(
                     job_id,

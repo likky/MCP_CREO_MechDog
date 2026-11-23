@@ -63,6 +63,8 @@ _SUMMARY_KEYS = (
     "failure_phase",
     "recovery_required",
     "stall_watchdog",
+    "runner_detached_from_job",
+    "runner_lifecycle_note",
     # R04/0.14.0: ``operations_input`` pages read the persisted manifest plan,
     # which is the normalized view. Carry the marker so a page cannot pass it
     # off as the caller's raw request (legacy jobs simply omit it).

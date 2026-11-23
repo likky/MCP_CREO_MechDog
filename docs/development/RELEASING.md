@@ -15,7 +15,9 @@
 
 ## 版本约定
 
-当前版本为 0.39.0（2026-11-23 MINOR，交付 [BUG-170](../work-items/BUG-170.md)、[BUG-166](../work-items/BUG-166.md)、[FEAT-076](../work-items/FEAT-076.md)、[FEAT-077](../work-items/FEAT-077.md)：`-4` 旧会话诊断与 `force_new_session`、跨会话恢复与 `abandon_unknown_recovery`/自适应预算/`recovery_pending` 口径、边选择器 `feature` 与 `inspect_model(near=...)`、零件预览隐藏基准与更新检查 15 s/advisory；本机 Creo 10 实机 5/5 通过并保存重载；公开工具仍 111）。见[版本说明](../RELEASE_NOTES_0.39.0.md)和[发布记录](../validation/RELEASE-0.39.0.md)。
+当前版本为 0.40.0（2026-11-23 MINOR，交付 [BUG-171](../work-items/BUG-171.md)、[BUG-172](../work-items/BUG-172.md)、[BUG-173](../work-items/BUG-173.md)、[BUG-174](../work-items/BUG-174.md)：恢复阶段超时写出 `recovery_phase_timeout` 结构化结果、消除 `restore_baseline` 重复二次巡检、恢复预算扩至 1800 s 并按 edges/features/surfaces 自适应、终态 `recovery_pending` 返回 `terminal_unconfirmed` 指引；消除单次作业 10+ 次冗余全量 `inspection()` 与逐半边 `fflush()` 刷盘；单轴倾斜三点基准面草图自动创建正交辅助锚定面并精准归因 `ProSectionSolve` 错误；`dump_plan_operations` 保留显式 `chamfer_type`、盲切新增 `cut_volume_check` 低去料告警、runner 尝试 `CREATE_BREAKAWAY_FROM_JOB` 并披露 `runner_detached_from_job`；本机 Creo 10 实机 4/4 通过并保存重载；公开工具仍 111）。见[版本说明](../RELEASE_NOTES_0.40.0.md)和[发布记录](../validation/RELEASE-0.40.0.md)。
+
+此前的 0.39.0（2026-11-23 MINOR，交付 [BUG-170](../work-items/BUG-170.md)、[BUG-166](../work-items/BUG-166.md)、[FEAT-076](../work-items/FEAT-076.md)、[FEAT-077](../work-items/FEAT-077.md)：`-4` 旧会话诊断与 `force_new_session`、跨会话恢复与 `abandon_unknown_recovery`/自适应预算/`recovery_pending` 口径、边选择器 `feature` 与 `inspect_model(near=...)`、零件预览隐藏基准与更新检查 15 s/advisory；本机 Creo 10 实机 5/5 通过并保存重载；公开工具仍 111）。见[版本说明](../RELEASE_NOTES_0.39.0.md)和[发布记录](../validation/RELEASE-0.39.0.md)。
 
 此前的 0.37.0（2026-11-23 MINOR，嵌套装配源、B 样条坐标尺寸、装配 identity 恢复、预算披露与几何/选择器修复）。见[版本说明](../RELEASE_NOTES_0.37.0.md)和[发布记录](../validation/RELEASE-0.37.0.md)。
 

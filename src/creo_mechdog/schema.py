@@ -3221,6 +3221,16 @@ def dump_plan_operations(operations) -> list[dict]:
             for field in ("depth", "depth_type"):
                 if field not in provided:
                     data.pop(field, None)
+        elif data.get("op") == "chamfer":
+            # BUG-174: ChamferOp excludes chamfer_type from the final native
+            # payload, but dump_plan_operations feeds general.submit ->
+            # validate_operations, which needs chamfer_type preserved so inline
+            # d1_d2 and distance_angle plans are not rejected on re-validation.
+            chamfer_type = getattr(op, "chamfer_type", None)
+            if chamfer_type is not None and (
+                "chamfer_type" in provided or chamfer_type != "equal_distance"
+            ):
+                data["chamfer_type"] = chamfer_type
         dumped.append(data)
     return dumped
 

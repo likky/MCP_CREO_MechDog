@@ -2,6 +2,12 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
+## v0.40.0（2026-11-23，打包时点）
+
+- [BUG-171](../work-items/BUG-171.md)、[BUG-172](../work-items/BUG-172.md)、[BUG-173](../work-items/BUG-173.md) 与 [BUG-174](../work-items/BUG-174.md) 交付：恢复阶段超时写出 `recovery_phase_timeout` 结构化结果、消除 `restore_baseline` 重复二次巡检、恢复预算扩至 1800 s 并按 edges/features/surfaces 自适应、终态 `recovery_pending` 返回 `terminal_unconfirmed` 指引；消除单次作业 10+ 次冗余全量 `inspection()` 与逐半边 `fflush()` 刷盘；单轴倾斜三点基准面草图自动创建正交辅助锚定面并精准归因 `ProSectionSolve` 错误；`dump_plan_operations` 保留显式 `chamfer_type`、盲切新增 `cut_volume_check` 低去料告警、runner 尝试 `CREATE_BREAKAWAY_FROM_JOB` 并披露 `runner_detached_from_job`；本机 Creo 10 实机 4/4 通过并保存重载；归档 0.35.8 三份反馈原件。见[版本说明](../RELEASE_NOTES_0.40.0.md)及[发布记录](../validation/RELEASE-0.40.0.md)。
+- 四件附件为 `MCP_CREO_MechDog-0.40.0-source.zip`、`MCP_CREO_MechDog-0.40.0-source.zip.sha256`、`MCP_CREO_MechDog-0.40.0-seed-library.zip`、`MCP_CREO_MechDog-0.40.0-seed-library.zip.sha256`。种子包 SHA256 为 `507bd0019650dd397046b1ed2cfb735a4f840a4174487b45dab55e536e8db77f`。两份同名 sidecar 分别记录对应 ZIP 的实际摘要。
+- 远端核对发布后执行，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.40.0)
+
 ## v0.39.0（2026-11-23，打包时点）
 
 - [BUG-170](../work-items/BUG-170.md)、[BUG-166](../work-items/BUG-166.md)、[FEAT-076](../work-items/FEAT-076.md) 与 [FEAT-077](../work-items/FEAT-077.md) 交付：升级/重启后 `-4` 旧会话诊断与 `force_new_session`；跨会话恢复解死锁、新增 `abandon_unknown_recovery`、自适应/可配恢复预算与 `blocking_operation="recovery_pending"`；边选择器 `feature` 过滤与 `creo_inspect_model(near=...)`；零件 JPEG 预览隐藏基准面及更新检查 15 s 默认预算与 `advisory=true`；本机 Creo 10 实机 5/5 通过并保存重载；归档 0.36.0 反馈原件并补录 [BUG-152](../work-items/BUG-152.md) 外部确认。见[版本说明](../RELEASE_NOTES_0.39.0.md)及[发布记录](../validation/RELEASE-0.39.0.md)。

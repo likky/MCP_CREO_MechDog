@@ -854,6 +854,7 @@ def annotate_native_result(
     annotate_cut_geometry_context(result)
     if inputs is not None:
         annotate_profiles(result, inputs)
+        annotate_cut_volume_check(result, inputs)
         annotate_arc_geometry(result, inputs)
         annotate_feature_state(result, inputs)
         annotate_standard_hole(result, inputs)
@@ -865,6 +866,96 @@ def annotate_native_result(
         for operation in result["operations"]:
             if operation.get("effect_status") in ("committed", "rolled_back"):
                 operation["effect_status"] = "unknown"
+    return result
+
+
+def annotate_cut_volume_check(
+    result: dict[str, Any], inputs: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """BUG-174: compare blind cut material_removed_mm3 against analytic prism volume.
+
+    Advisory diagnostic only (never fails or rolls back a partial-overlap cut).
+    Flags ``low_removal_warning=true`` when a blind cut removes less than 5% of
+    ``profile.material_area_mm2 * effective_depth_mm``, which typically means
+    the cut direction points into empty space or the profile sits mostly outside
+    the target body.
+    """
+    operations = result.get("operations")
+    if not isinstance(operations, list) or not isinstance(inputs, list):
+        return result
+    from creo_mechdog import profile_checks
+
+    sketch_areas: dict[str, float] = {}
+    for record in operations:
+        if not isinstance(record, dict) or record.get("op") != "sketch":
+            continue
+        label = record.get("label")
+        profile = record.get("profile")
+        area = profile.get("material_area_mm2") if isinstance(profile, dict) else None
+        if isinstance(label, str) and label and type(area) in (int, float) and area > 0:
+            sketch_areas[label] = float(area)
+    aliases = result.get("aliases")
+    if isinstance(aliases, dict):
+        for label, entry in aliases.items():
+            if label in sketch_areas or not isinstance(entry, dict):
+                continue
+            geom = entry.get("geometry")
+            if isinstance(geom, list) and geom:
+                try:
+                    summary = profile_checks.inspect_profile({"entities": geom})
+                except Exception:
+                    continue
+                area = summary.get("material_area_mm2") if isinstance(summary, dict) else None
+                if type(area) in (int, float) and area > 0:
+                    sketch_areas[label] = float(area)
+
+    for position, record in enumerate(operations):
+        if not isinstance(record, dict) or record.get("op") != "extrude":
+            continue
+        source = inputs[position] if position < len(inputs) else None
+        if not isinstance(source, dict) or source.get("mode") != "cut":
+            continue
+        removed = _finite_number(record.get("material_removed_mm3"))
+        if removed is None or removed <= 0:
+            continue
+        depth_block = record.get("extrude_depth")
+        depth_type = (
+            depth_block.get("effective_depth_type")
+            if isinstance(depth_block, dict)
+            else source.get("depth_type", "blind")
+        )
+        depth = (
+            _finite_number(depth_block.get("effective_depth_mm"))
+            if isinstance(depth_block, dict)
+            else _finite_number(source.get("depth"))
+        )
+        if depth_type != "blind" or depth is None or depth <= 0:
+            continue
+        sketch_ref = source.get("sketch")
+        area = sketch_areas.get(sketch_ref) if isinstance(sketch_ref, str) else None
+        if area is None or area <= 0:
+            continue
+        expected = area * depth
+        if expected <= 0 or not math.isfinite(expected):
+            continue
+        ratio = removed / expected
+        low = ratio < 0.05
+        record["cut_volume_check"] = {
+            "profile_area_mm2": area,
+            "effective_depth_mm": depth,
+            "expected_prism_volume_mm3": expected,
+            "actual_removed_mm3": removed,
+            "removal_ratio": ratio,
+            "low_removal_warning": low,
+            "warning_threshold_ratio": 0.05,
+            "note": (
+                "Blind cut removed less than 5% of the analytic prism volume "
+                "(profile_area_mm2 * effective_depth_mm); verify cut direction and "
+                "whether the sketch profile overlaps the solid body"
+                if low
+                else "Blind cut removal ratio is within normal partial/full intersection range"
+            ),
+        }
     return result
 
 

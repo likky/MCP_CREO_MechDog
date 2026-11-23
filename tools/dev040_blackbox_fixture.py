@@ -172,6 +172,13 @@ def denied(*_args, **_kwargs):
 def runner_route(directory: Path, manifest: dict, real_popen):
     """Only an exact, owned recovery runner command may create a child process."""
     allowed_models = {item["model_id"] for item in manifest["items"]}
+    new_group = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+    breakaway = getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0x01000000)
+    allowed_flags = {
+        bridge.HIDDEN,
+        bridge.HIDDEN | new_group,
+        bridge.HIDDEN | new_group | breakaway,
+    }
 
     def route(command, *args, **kwargs):
         if (
@@ -181,10 +188,19 @@ def runner_route(directory: Path, manifest: dict, real_popen):
             or not isinstance(command[3], str)
             or not bridge.JOB_ID.fullmatch(command[3])
             or args
-            or set(kwargs) - {"cwd", "stdin", "stdout", "stderr", "creationflags", "close_fds"}
+            or set(kwargs)
+            - {
+                "cwd",
+                "stdin",
+                "stdout",
+                "stderr",
+                "creationflags",
+                "close_fds",
+                "start_new_session",
+            }
             or kwargs.get("stdin") != subprocess.DEVNULL
             or kwargs.get("stderr") != subprocess.STDOUT
-            or kwargs.get("creationflags") != bridge.HIDDEN
+            or kwargs.get("creationflags") not in allowed_flags
             or kwargs.get("close_fds") is not True
             or Path(kwargs.get("cwd", ".")).resolve() != directory
         ):

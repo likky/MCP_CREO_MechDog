@@ -544,16 +544,48 @@ static J feature_axes(ProFeature *feature) {
     ProError code = ProFeatureGeomitemVisit(feature, PRO_AXIS, inspect_axis, nullptr, &feature->id);
     return {{"datum_axes", datum_axes}, {"axes_query_code", code}};
 }
+// BUG-172: silent error check for hot inspection loops (logs and throws only on
+// failure, avoiding tens of thousands of per-edge fflush() syscalls), plus
+// periodic progress logging and safety caps so any true traversal stall names
+// the last feature/surface ID instead of hanging silently.
+static constexpr int INSPECT_MAX_FEATURES = 200000;
+static constexpr int INSPECT_MAX_SURFACES = 500000;
+static constexpr int INSPECT_MAX_HALF_EDGES = 5000000;
+static constexpr int INSPECT_PROGRESS_STRIDE = 100;
+static std::chrono::steady_clock::time_point inspect_started_at = std::chrono::steady_clock::now();
+static int inspect_features_seen = 0;
+static int inspect_surfaces_seen = 0;
+static int inspect_half_edges_seen = 0;
+static int inspect_last_feature_id = -1;
+static int inspect_last_surface_id = -1;
+
+static void check_quiet(ProError e, const char *op, int item_id = -1) {
+    if (e != PRO_TK_NO_ERROR) {
+        log("%s=%d item_id=%d\n", op, (int)e, item_id);
+        last_toolkit_error = op;
+        throw e;
+    }
+}
+
 static ProError inspect_feature(ProFeature *f, ProError status, ProAppData) {
     if (status)
         return PRO_TK_NO_ERROR;
+    inspect_features_seen++;
+    inspect_last_feature_id = f->id;
+    if (inspect_features_seen > INSPECT_MAX_FEATURES) {
+        log("INSPECT_LIMIT_EXCEEDED phase=features count=%d last_id=%d\n", inspect_features_seen,
+            inspect_last_feature_id);
+        throw std::runtime_error("Model inspection exceeded feature traversal limit at feature " +
+                                 std::to_string(inspect_last_feature_id));
+    }
     ProFeattype t;
     ProFeatStatus state;
     ProName name = L"";
     ProBoolean incomplete = PRO_B_FALSE;
-    CK(ProFeatureTypeGet(f, &t));
-    CK(ProFeatureStatusGet(f, &state));
-    CK(ProFeatureIsIncomplete(f, &incomplete));
+    check_quiet(ProFeatureTypeGet(f, &t), "ProFeatureTypeGet(f, &t)", f->id);
+    check_quiet(ProFeatureStatusGet(f, &state), "ProFeatureStatusGet(f, &state)", f->id);
+    check_quiet(ProFeatureIsIncomplete(f, &incomplete), "ProFeatureIsIncomplete(f, &incomplete)",
+                f->id);
     ProModelitemNameGet(f, name);
     J item = {{"id", f->id},
               {"type", (int)t},
@@ -658,13 +690,23 @@ static ProError inspect_feature(ProFeature *f, ProError status, ProAppData) {
         item["datum_axes"] = axes["datum_axes"];
     }
     gfeatures.push_back(item);
+    if (inspect_features_seen % INSPECT_PROGRESS_STRIDE == 0)
+        log("INSPECT_PROGRESS phase=features count=%d last_id=%d elapsed_ms=%lld\n",
+            inspect_features_seen, f->id, milliseconds_between(inspect_started_at));
     return PRO_TK_NO_ERROR;
 }
 static ProError inspect_edge(ProEdge edge, ProError status, ProAppData) {
     if (status)
         return PRO_TK_NO_ERROR;
+    inspect_half_edges_seen++;
+    if (inspect_half_edges_seen > INSPECT_MAX_HALF_EDGES) {
+        log("INSPECT_LIMIT_EXCEEDED phase=edges half_edges=%d last_surface_id=%d\n",
+            inspect_half_edges_seen, inspect_last_surface_id);
+        throw std::runtime_error("Model inspection exceeded edge traversal limit at surface " +
+                                 std::to_string(inspect_last_surface_id));
+    }
     int id;
-    CK(ProEdgeIdGet(edge, &id));
+    check_quiet(ProEdgeIdGet(edge, &id), "ProEdgeIdGet(edge, &id)", inspect_last_surface_id);
     if (!visited_edges.insert(id).second)
         return PRO_TK_NO_ERROR;
     J item = {{"id", id}};
@@ -731,11 +773,22 @@ static ProError inspect_contour(ProContour contour, ProError status, ProAppData 
 static ProError inspect_surface(ProSurface surface, ProError status, ProAppData body_id) {
     if (status)
         return PRO_TK_NO_ERROR;
+    inspect_surfaces_seen++;
     ProGeomitemdata *data = nullptr;
-    CK(ProSurfaceDataGet(surface, &data));
+    check_quiet(ProSurfaceDataGet(surface, &data), "ProSurfaceDataGet(surface, &data)",
+                inspect_last_surface_id);
     auto p = data->data.p_surface_data;
     int id;
-    CK(ProSurfaceIdGet(surface, &id));
+    check_quiet(ProSurfaceIdGet(surface, &id), "ProSurfaceIdGet(surface, &id)",
+                inspect_last_surface_id);
+    inspect_last_surface_id = id;
+    if (inspect_surfaces_seen > INSPECT_MAX_SURFACES) {
+        ProGeomitemdataFree(&data);
+        log("INSPECT_LIMIT_EXCEEDED phase=surfaces count=%d last_id=%d\n", inspect_surfaces_seen,
+            inspect_last_surface_id);
+        throw std::runtime_error("Model inspection exceeded surface traversal limit at surface " +
+                                 std::to_string(inspect_last_surface_id));
+    }
     J item = {{"id", id}, {"body_id", (int)(intptr_t)body_id}};
     if (p) {
         item["type"] = (int)p->type;
@@ -755,7 +808,13 @@ static ProError inspect_surface(ProSurface surface, ProError status, ProAppData 
         item["sheetmetal_type"] = (int)st;
     gsurfaces.push_back(item);
     ProGeomitemdataFree(&data);
-    CK(ProSurfaceContourVisit(surface, inspect_contour, nullptr, surface));
+    check_quiet(ProSurfaceContourVisit(surface, inspect_contour, nullptr, surface),
+                "ProSurfaceContourVisit(surface, inspect_contour, nullptr, surface)", id);
+    if (inspect_surfaces_seen % INSPECT_PROGRESS_STRIDE == 0)
+        log("INSPECT_PROGRESS phase=surfaces count=%d last_id=%d unique_edges=%d half_edges=%d "
+            "elapsed_ms=%lld\n",
+            inspect_surfaces_seen, id, (int)visited_edges.size(), inspect_half_edges_seen,
+            milliseconds_between(inspect_started_at));
     return PRO_TK_NO_ERROR;
 }
 static ProError parameter_cb(ProParameter *param, ProError status, ProAppData data) {
@@ -1113,7 +1172,204 @@ static const char *body_state_name(ProSolidBodyState state) {
 #include "quilt_query.h"
 #include "endpoint_weld.h"
 
-static J inspection(bool require_healthy = true) {
+// BUG-172: quiet datum-plane collection (same Plane records as datum_cb/geom_cb
+// without emitting one fflush()'d line per datum plane).
+static ProError geom_cb_quiet(ProGeomitem *gi, ProError status, ProAppData) {
+    if (status)
+        return PRO_TK_NO_ERROR;
+    ProGeomitemdata *d = nullptr;
+    if (ProGeomitemdataGet(gi, &d) == PRO_TK_NO_ERROR && d) {
+        if (d->obj_type == PRO_SURFACE && d->data.p_surface_data &&
+            d->data.p_surface_data->type == PRO_SRF_PLANE) {
+            const ProPlanedata &p = d->data.p_surface_data->srf_shape.plane;
+            Plane q = {};
+            q.id = gi->id;
+            memcpy(q.n, p.e3, sizeof(q.n));
+            memcpy(q.o, p.origin, sizeof(q.o));
+            planes.push_back(q);
+        }
+        ProGeomitemdataFree(&d);
+    }
+    return PRO_TK_NO_ERROR;
+}
+static ProError datum_cb_quiet(ProFeature *f, ProError status, ProAppData) {
+    ProFeattype type;
+    if (!status && ProFeatureTypeGet(f, &type) == PRO_TK_NO_ERROR && type == PRO_FEAT_DATUM)
+        ProFeatureGeomitemVisit(f, PRO_SURFACE, geom_cb_quiet, nullptr, nullptr);
+    return PRO_TK_NO_ERROR;
+}
+static void collect_datum_planes_quiet() {
+    planes.clear();
+    CK(ProSolidFeatVisit((ProSolid)board, datum_cb_quiet, nullptr, nullptr));
+}
+
+static ProError find_csys_geom_cb(ProGeomitem *gi, ProError status, ProAppData data) {
+    if (status || !gi)
+        return PRO_TK_NO_ERROR;
+    if (gi->type == PRO_CSYS) {
+        *(int *)data = gi->id;
+        return PRO_TK_E_FOUND;
+    }
+    return PRO_TK_NO_ERROR;
+}
+static ProError find_default_csys_feat_cb(ProFeature *f, ProError status, ProAppData data) {
+    if (status || !f)
+        return PRO_TK_NO_ERROR;
+    ProFeattype type;
+    if (ProFeatureTypeGet(f, &type) == PRO_TK_NO_ERROR && type == PRO_FEAT_CSYS) {
+        int csys_id = -1;
+        ProFeatureGeomitemVisit(f, PRO_CSYS, find_csys_geom_cb, nullptr, &csys_id);
+        if (csys_id >= 0) {
+            *(int *)data = csys_id;
+            return PRO_TK_E_FOUND;
+        }
+    }
+    return PRO_TK_NO_ERROR;
+}
+static int find_default_csys_id() {
+    int csys_id = -1;
+    ProError visit =
+        ProSolidFeatVisit((ProSolid)board, find_default_csys_feat_cb, nullptr, &csys_id);
+    if (visit != PRO_TK_NO_ERROR && visit != PRO_TK_E_FOUND)
+        check(visit, "FindDefaultCsys");
+    if (csys_id < 0)
+        throw std::runtime_error("No default coordinate system found");
+    return csys_id;
+}
+
+static ProError any_surface_cb(ProSurface, ProError status, ProAppData data) {
+    if (status)
+        return PRO_TK_NO_ERROR;
+    *(bool *)data = true;
+    return PRO_TK_E_FOUND;
+}
+static ProError any_component_cb(ProFeature *f, ProError status, ProAppData data) {
+    if (status || !f)
+        return PRO_TK_NO_ERROR;
+    ProFeattype type;
+    if (ProFeatureTypeGet(f, &type) == PRO_TK_NO_ERROR && type == PRO_FEAT_COMPONENT) {
+        *(bool *)data = true;
+        return PRO_TK_E_FOUND;
+    }
+    return PRO_TK_NO_ERROR;
+}
+static bool model_has_solid() {
+    if (assembly_model()) {
+        bool has_component = false;
+        ProError visit =
+            ProSolidFeatVisit((ProSolid)board, any_component_cb, nullptr, &has_component);
+        if (visit != PRO_TK_NO_ERROR && visit != PRO_TK_E_FOUND)
+            check(visit, "CheckAssemblyHasComponent");
+        return has_component;
+    }
+    ProSolidBody *list = nullptr;
+    int n = 0;
+    CK(ProSolidBodiesCollect((ProSolid)board, &list));
+    bool solid = false;
+    try {
+        CK(ProArraySizeGet((ProArray)list, &n));
+        for (int i = 0; i < n && !solid; i++) {
+            ProSolidBodyState state;
+            CK(ProSolidBodyStateGet(&list[i], &state));
+            if (state != PRO_BODY_STATE_ACTIVE)
+                continue;
+            bool has_surface = false;
+            ProError visit = ProSolidBodySurfaceVisit(&list[i], any_surface_cb, &has_surface);
+            if (visit != PRO_TK_NO_ERROR && visit != PRO_TK_E_FOUND)
+                check(visit, "CheckBodyHasSurface");
+            if (has_surface)
+                solid = true;
+        }
+    } catch (...) {
+        if (list)
+            ProArrayFree((ProArray *)&list);
+        throw;
+    }
+    if (list)
+        ProArrayFree((ProArray *)&list);
+    return solid;
+}
+
+static int active_body_count() {
+    if (assembly_model())
+        return 0;
+    ProSolidBody *list = nullptr;
+    int n = 0;
+    CK(ProSolidBodiesCollect((ProSolid)board, &list));
+    int active = 0;
+    try {
+        CK(ProArraySizeGet((ProArray)list, &n));
+        for (int i = 0; i < n; i++) {
+            ProSolidBodyState state;
+            CK(ProSolidBodyStateGet(&list[i], &state));
+            if (state == PRO_BODY_STATE_ACTIVE)
+                active++;
+        }
+    } catch (...) {
+        if (list)
+            ProArrayFree((ProArray *)&list);
+        throw;
+    }
+    if (list)
+        ProArrayFree((ProArray *)&list);
+    return active;
+}
+
+struct LightHealthState {
+    bool healthy = true;
+    std::set<int> suppressed_seen;
+};
+static ProError check_feature_health_cb(ProFeature *f, ProError status, ProAppData data) {
+    if (status || !f)
+        return PRO_TK_NO_ERROR;
+    auto *health = (LightHealthState *)data;
+    ProFeatStatus state;
+    ProBoolean incomplete = PRO_B_FALSE;
+    check_quiet(ProFeatureStatusGet(f, &state), "ProFeatureStatusGet(f, &state)", f->id);
+    check_quiet(ProFeatureIsIncomplete(f, &incomplete), "ProFeatureIsIncomplete(f, &incomplete)",
+                f->id);
+    if (state == PRO_FEAT_SUPPRESSED)
+        health->suppressed_seen.insert(f->id);
+    if (incomplete == PRO_B_TRUE) {
+        health->healthy = false;
+        return PRO_TK_NO_ERROR;
+    }
+    if (state != PRO_FEAT_ACTIVE && recorded_suppressed.count(f->id) == 0 &&
+        f->id != temporarily_suppressed_loft) {
+        health->healthy = false;
+    }
+    return PRO_TK_NO_ERROR;
+}
+
+static J inspection(bool require_healthy = true);
+
+// BUG-172: lightweight per-operation health gate. Verifies every feature's
+// status/incomplete flag and recorded_suppressed registry in O(features) without
+// copying sections or traversing surfaces/edges/quilts/mass properties. Only on
+// an actual unhealthy model does it fall back to full inspection(true) so the
+// failure receipt still publishes the complete failed_features snapshot.
+static void check_model_health() {
+    LightHealthState health;
+    CK(ProSolidFeatVisit((ProSolid)board, check_feature_health_cb, nullptr, &health));
+    if (health.healthy) {
+        for (int id : recorded_suppressed) {
+            if (health.suppressed_seen.count(id) == 0) {
+                health.healthy = false;
+                break;
+            }
+        }
+    }
+    if (!health.healthy)
+        inspection(true);
+}
+
+static J inspection(bool require_healthy) {
+    inspect_started_at = std::chrono::steady_clock::now();
+    inspect_features_seen = 0;
+    inspect_surfaces_seen = 0;
+    inspect_half_edges_seen = 0;
+    inspect_last_feature_id = -1;
+    inspect_last_surface_id = -1;
     gfeatures = J::array();
     gsurfaces = J::array();
     gedges = J::array();
@@ -1337,8 +1593,7 @@ static J inspection(bool require_healthy = true) {
                 result["volume_mm3"] = *volume;
         }
     }
-    planes.clear();
-    CK(ProSolidFeatVisit((ProSolid)board, datum_cb, nullptr, nullptr));
+    collect_datum_planes_quiet();
     J ds = J::array();
     for (auto p : planes)
         ds.push_back({{"id", p.id}, {"normal", xyz(p.n)}, {"origin", xyz(p.o)}});
@@ -1348,6 +1603,9 @@ static J inspection(bool require_healthy = true) {
     J params = J::object();
     ProParameterVisit(&owner, nullptr, parameter_cb, &params);
     result["parameters"] = params;
+    log("INSPECT_SUMMARY features=%d surfaces=%d edges=%d half_edges=%d elapsed_ms=%lld\n",
+        (int)gfeatures.size(), (int)gsurfaces.size(), (int)gedges.size(), inspect_half_edges_seen,
+        milliseconds_between(inspect_started_at));
     return result;
 }
 #include "geometry_selectors.cpp"
@@ -1364,13 +1622,7 @@ static ProSelection resolve(const J &r) {
     if (!r.is_object() || !r.contains("kind") || !r["kind"].is_string())
         throw std::runtime_error("Reference requires a {kind:...} selection object");
     if (r.at("kind") == "default_csys") {
-        J state = inspection(false);
-        for (auto f : state["features"])
-            if (f["type"].get<int>() == PRO_FEAT_CSYS)
-                for (auto g : f["geometry_items"])
-                    if (g["type"].get<int>() == PRO_CSYS)
-                        return selection(g["id"], PRO_CSYS);
-        throw std::runtime_error("No default coordinate system found");
+        return selection(find_default_csys_id(), PRO_CSYS);
     }
     if (r.at("kind") == "geometry_selector") {
         // DEV-089 T1: resolve one physical edge/face by measured geometry so a
@@ -1540,8 +1792,18 @@ static ProSelection resolve(const J &r) {
                 std::string("Kind '") + kind +
                 "' plane references resolve by id/axis/normal and do not honour a label; use "
                 "{kind:'datum_feature',label:...} for a plane feature label");
-        J state = inspection(false);
-        J candidates = kind == "datum_plane" ? state["datum_planes"] : state["surfaces"];
+        J candidates = J::array();
+        J datum_list = J::array();
+        if (kind == "datum_plane") {
+            collect_datum_planes_quiet();
+            for (const auto &p : planes)
+                datum_list.push_back({{"id", p.id}, {"normal", xyz(p.n)}, {"origin", xyz(p.o)}});
+            candidates = datum_list;
+        } else {
+            J state = inspection(false);
+            datum_list = state["datum_planes"];
+            candidates = state["surfaces"];
+        }
         if (r.contains("id")) {
             if (r.contains("axis") || r.contains("normal") || r.contains("offset"))
                 throw std::runtime_error("Plane id cannot be combined with axis, normal or offset");
@@ -1552,7 +1814,7 @@ static ProSelection resolve(const J &r) {
             // A generic plane ID may name either a solid face or a datum plane;
             // datum_plane IDs must appear in the dedicated inspection collection.
             if (kind == "plane")
-                for (const auto &datum : state["datum_planes"])
+                for (const auto &datum : datum_list)
                     candidates.push_back(datum);
             for (const auto &candidate : candidates) {
                 if (candidate.at("id").get<int>() != id)
@@ -1796,8 +2058,7 @@ static void body_options(ProElement root, const J &op) {
             integer(b, PRO_E_BODY_USE, PRO_BODY_USE_ALL);
         return;
     }
-    J state = inspection();
-    if (!state["has_solid"].get<bool>() || new_body)
+    if (!model_has_solid() || new_body)
         integer(b, PRO_E_BODY_USE, PRO_BODY_USE_NEW);
     else {
         integer(b, PRO_E_BODY_USE, PRO_BODY_USE_SELECTED);
@@ -1952,8 +2213,7 @@ static Frame sketch_frame(const J &op) {
     f.v = normalized(cross(f.n, f.u));
     double best = 10;
     f.orientation = -1;
-    planes.clear();
-    CK(ProSolidFeatVisit((ProSolid)board, datum_cb, nullptr, nullptr));
+    collect_datum_planes_quiet();
     for (auto p : planes) {
         V normal = {p.n[0], p.n[1], p.n[2]};
         double d = fabs(dot(f.n, normal));
@@ -2007,6 +2267,73 @@ static int build_helper_orientation(Frame &frame) {
     int normal_u = plane(0, 2, 3);
     plane(0, 1, 3);
     return normal_u;
+}
+// BUG-173: compute the mean 2D coordinate of the requested sketch entities so a
+// helper anchor plane passes through the profile region rather than far away.
+static std::array<double, 2> sketch_entity_centroid(const J &op) {
+    double sum_u = 0.0, sum_v = 0.0;
+    int count = 0;
+    auto push_pt = [&](const J &pt) {
+        if (pt.is_array() && pt.size() >= 2 && pt[0].is_number() && pt[1].is_number()) {
+            const double u = pt[0].get<double>(), v = pt[1].get<double>();
+            if (std::isfinite(u) && std::isfinite(v)) {
+                sum_u += u;
+                sum_v += v;
+                count++;
+            }
+        }
+    };
+    if (op.contains("entities") && op["entities"].is_array()) {
+        for (const auto &e : op["entities"]) {
+            if (!e.is_object())
+                continue;
+            for (const char *key : {"start", "end", "min", "max", "center"})
+                if (e.contains(key))
+                    push_pt(e[key]);
+            for (const char *list_key : {"points", "control_points"})
+                if (e.contains(list_key) && e[list_key].is_array())
+                    for (const auto &pt : e[list_key])
+                        push_pt(pt);
+        }
+    }
+    if (count == 0)
+        return {0.0, 0.0};
+    return {sum_u / count, sum_v / count};
+}
+// BUG-173: when a singly-tilted support plane is perpendicular to one existing
+// datum plane (so orientation_exact=true and build_helper_orientation did not
+// run), no second perpendicular datum plane may exist in the model. Creo's
+// ProSectionEntityFromProjection returns PRO_TK_BAD_INPUTS (-2) on oblique
+// datum planes, leaving the section with only one reference and causing
+// ProSectionSolve to fail with -1 and zero section errors. Build one
+// deterministic datum plane perpendicular to BOTH frame.n and orient_normal,
+// passing through the profile centroid, before creating the incomplete sketch.
+static int build_helper_anchor_plane(const Frame &frame, const V &orient_normal, const J &op) {
+    V orient_unit = normalized(orient_normal);
+    V anchor_normal = normalized(cross(frame.n, orient_unit));
+    const auto centroid = sketch_entity_centroid(op);
+    V base = add(frame.origin, add(scale(frame.u, centroid[0]), scale(frame.v, centroid[1])));
+    V locations[3] = {base, add(base, scale(orient_unit, 100.0)), add(base, scale(frame.n, 100.0))};
+    std::string labels[3];
+    for (int i = 0; i < 3; i++) {
+        labels[i] = helper_label();
+        J pt_op = {
+            {"op", "datum_points"},
+            {"label", labels[i]},
+            {"reference", {{"kind", "default_csys"}}},
+            {"points", J::array({J{{"name", "p"}, {"position", xyz(locations[i].data())}}})}};
+        generic_points(pt_op);
+    }
+    J pl_op = {
+        {"op", "datum_plane"},
+        {"label", helper_label()},
+        {"reference",
+         {{"kind", "through_points"}, {"points", J::array({labels[0], labels[1], labels[2]})}}}};
+    J details = through_points_plane(pl_op);
+    int surface_id = details["plane_frame"]["surface_id"].get<int>();
+    log("SKETCH_ANCHOR_HELPER=1 support=%d anchor=%d normal=%.6f,%.6f,%.6f\n", frame.surface,
+        surface_id, anchor_normal[0], anchor_normal[1], anchor_normal[2]);
+    return surface_id;
 }
 static ProSectionPointType point_type(const std::string &s) {
     return s == "start"    ? PRO_ENT_START
@@ -2630,6 +2957,32 @@ static J sketch(J op) {
         log("SKETCH_ORIENTATION_HELPER=1 support=%d\n", frame.surface);
         frame.orientation = build_helper_orientation(frame);
     }
+    // BUG-173: before opening an incomplete sketch feature, make sure at least
+    // one datum plane perpendicular to BOTH the support plane and the
+    // orientation plane exists. Standard XY/XZ/YZ supports already satisfy this
+    // via the template datum planes (zero extra features created); singly-tilted
+    // through_points planes get one reusable helper anchor plane so
+    // ProSectionEntityFromProjection succeeds deterministically and
+    // pin_coordinate_origin can pin both section axes.
+    collect_datum_planes_quiet();
+    V orient_normal = frame.n;
+    for (const auto &p : planes)
+        if (p.id == frame.orientation)
+            orient_normal = normalized(V{p.n[0], p.n[1], p.n[2]});
+    int helper_anchor_surface_id = -1;
+    bool has_orthogonal_anchor = false;
+    for (const auto &p : planes) {
+        if (p.id == frame.orientation)
+            continue;
+        V n = normalized(V{p.n[0], p.n[1], p.n[2]});
+        if (fabs(dot(n, frame.n)) < 1e-5 && fabs(dot(n, orient_normal)) < 1e-5) {
+            has_orthogonal_anchor = true;
+            break;
+        }
+    }
+    if (!has_orthogonal_anchor && fabs(dot(orient_normal, frame.n)) < 1e-5) {
+        helper_anchor_surface_id = build_helper_anchor_plane(frame, orient_normal, op);
+    }
     ProSelection plane_ref = selection(frame.surface, PRO_SURFACE),
                  orient = selection(frame.orientation, PRO_SURFACE);
     ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
@@ -2651,36 +3004,53 @@ static J sketch(J op) {
     int projected;
     CK(ProSectionEntityFromProjection(section, orient, &projected));
     std::vector<int> coordinate_anchors = {projected};
-    planes.clear();
-    CK(ProSolidFeatVisit((ProSolid)board, datum_cb, nullptr, nullptr));
-    // BUG-087: the orientation reference already projects its own datum plane.
-    // A second datum plane that shares that normal projects onto the same
-    // section line, so it cannot anchor the sketch: DEV-049 T04 hit duplicated
-    // Z=0 planes (ids 6/42/49), the section kept a single usable reference and
-    // ProSectionSolve returned -1 without any section error.
-    V orient_normal = frame.n;
-    for (auto &p : planes)
+    collect_datum_planes_quiet();
+    // BUG-087 + BUG-173: order candidate datum planes so planes perpendicular
+    // to both support and orientation (including any helper anchor just built)
+    // are tried first, followed by planes perpendicular to the support, and
+    // finally general non-parallel planes as a last resort. This avoids
+    // hundreds of guaranteed PRO_TK_BAD_INPUTS (-2) calls on oblique planes.
+    for (const auto &p : planes)
         if (p.id == frame.orientation)
-            orient_normal = {p.n[0], p.n[1], p.n[2]};
-    for (auto p : planes) {
-        V n = {p.n[0], p.n[1], p.n[2]};
+            orient_normal = normalized(V{p.n[0], p.n[1], p.n[2]});
+    std::vector<int> tier0, tier1, tier2;
+    for (const auto &p : planes) {
+        V n = normalized(V{p.n[0], p.n[1], p.n[2]});
         if (p.id == frame.orientation || fabs(dot(n, frame.n)) >= 0.95)
             continue;
-        double to_orientation = fabs(dot(normalized(n), normalized(orient_normal)));
+        double to_orientation = fabs(dot(n, orient_normal));
         if (to_orientation >= 1 - 1e-6) {
             log("SKETCH_ANCHOR_SKIPPED=%d parallel_to_orientation=%.9f\n", p.id, to_orientation);
             continue;
         }
-        ProSelection s = selection(p.id, PRO_SURFACE);
-        ProError e = ProSectionEntityFromProjection(section, s, &projected);
-        ProSelectionFree(&s);
-        log("PROJECT_REFERENCE=%d code=%d entity=%d\n", p.id, e, projected);
-        if (!e) {
-            coordinate_anchors.push_back(projected);
-            log("SKETCH_ANCHOR_PLANE=%d\n", p.id);
-            break;
-        }
+        double to_support = fabs(dot(n, frame.n));
+        if (p.id == helper_anchor_surface_id)
+            tier0.insert(tier0.begin(), p.id);
+        else if (to_support < 1e-5 && to_orientation < 1e-5)
+            tier0.push_back(p.id);
+        else if (to_support < 1e-4)
+            tier1.push_back(p.id);
+        else
+            tier2.push_back(p.id);
     }
+    auto try_anchor_planes = [&](const std::vector<int> &ids) {
+        for (int pid : ids) {
+            if (coordinate_anchors.size() >= 2)
+                return;
+            ProSelection s = selection(pid, PRO_SURFACE);
+            ProError e = ProSectionEntityFromProjection(section, s, &projected);
+            ProSelectionFree(&s);
+            log("PROJECT_REFERENCE=%d code=%d entity=%d\n", pid, e, projected);
+            if (!e) {
+                coordinate_anchors.push_back(projected);
+                log("SKETCH_ANCHOR_PLANE=%d\n", pid);
+                return;
+            }
+        }
+    };
+    try_anchor_planes(tier0);
+    try_anchor_planes(tier1);
+    try_anchor_planes(tier2);
     if (coordinate_anchors.size() == 1) {
         // No usable datum plane existed, so the section carries only the
         // orientation reference and ProSectionSolve fails. Fall back to a
@@ -2945,6 +3315,16 @@ static J sketch(J op) {
                                         ? "geometry_tolerance_mm"
                                         : "Coordinate dimensioning";
     J deviation_targets;
+    last_sketch_reference_info = {
+        {"anchor_count", (int)coordinate_anchors.size()},
+        {"reference_incomplete", coordinate_anchors.size() < 2},
+        {"helper_orientation_created", !frame.orientation_exact},
+        {"helper_anchor_created", helper_anchor_surface_id >= 0},
+        {"entity_count", (int)entities.size()},
+        {"origin_pin_u", nullptr},
+        {"origin_pin_v", nullptr},
+        {"origin_pin_available", nullptr},
+    };
     if (solving_op["dimensioning"] == "coordinates") {
         if (!op.value("dimensions", J::array()).empty() ||
             !op.value("constraints", J::array()).empty())
@@ -3132,6 +3512,7 @@ static J sketch(J op) {
                        {"curve_facts", curve_facts},
                        {"surface_id", frame.surface},
                        {"solver", sketch_solver_receipt(solver_info)},
+                       {"section_references", last_sketch_reference_info},
                        {"origin", frame.origin},
                        {"normal", frame.n},
                        {"u_axis", frame.u},
@@ -4376,11 +4757,7 @@ static J extrude_or_revolve(const J &op, bool revolve) {
         }
         details["material_removed_mm3"] = removed;
     }
-    J state = inspection();
-    int active = 0;
-    for (auto b : state["bodies"])
-        if (b["state"].get<int>() == PRO_BODY_STATE_ACTIVE)
-            active++;
+    int active = active_body_count();
     if (active == 1 && !op.value("skip_empty_body_cleanup", false))
         remove_empty_body();
     return details;
@@ -6443,10 +6820,21 @@ static void execute_operation_body(const J &op) {
     if (kind != "export" && kind != "dump_tree" && kind != "udf_inspect" &&
         kind != "mass_properties" && kind != "surface_group_measure" && kind != "surface_curvature")
         CK(ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS));
-    J post_state = inspection();
-    // BUG-120 task 3: a panel loft names the feature and quilt it just created by
-    // comparing this model before the dialog with the model after the operation.
-    panel_attach_post_operation_geometry(staged_operation_result, post_state);
+    const bool needs_full_post_state =
+        has_staged_operation_result &&
+        staged_operation_result.value("creation_route", std::string()) == "resident_panel";
+    bool post_has_solid = false;
+    if (needs_full_post_state) {
+        J post_state = inspection();
+        // BUG-120 task 3: a panel loft names the feature and quilt it just created by
+        // comparing this model before the dialog with the model after the operation.
+        panel_attach_post_operation_geometry(staged_operation_result, post_state);
+        post_has_solid = post_state["has_solid"].get<bool>();
+    } else {
+        check_model_health();
+        if (material_op)
+            post_has_solid = model_has_solid();
+    }
     // One terminal record for this input. Branch details and the staged detail
     // are merged here; effect_status stays unknown until the job-level
     // finalizer knows whether the save committed or the rollback restored the
@@ -6465,7 +6853,7 @@ static void execute_operation_body(const J &op) {
     }
     if (material_op)
         result.update(material_observation_json(material_probe_before, true, probe_volume(),
-                                                !post_state["has_solid"].get<bool>()));
+                                                !post_has_solid));
     result.update({{"op", kind},
                    {"index", operation_position},
                    {"label", op.value("label", "")},
@@ -7399,15 +7787,16 @@ static void reconcile_native(const J &request, const std::wstring &checkpoint, J
         verify_recovery(choice_inspection(choice, "source_inspection"), before);
     report["loft_checks"]["recovery_source"] = verify_loft_settings(L"recovery_source");
     std::wstring saved = action == "restore_baseline" ? wide(choice.at("source_file")) : L"";
+    J after = before;
     if (action != "restore_baseline") {
         generic_stage("recovery_save_and_reload");
         const auto source = action == "accept_saved" ? wide(choice.at("source_file")) : checkpoint;
         saved = save_managed_checkpoint(source, "recovery_save_and_reload", report);
         reload_managed_checkpoint(saved, type);
         CK(ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS));
+        after = inspection();
+        verify_recovery(before, after);
     }
-    J after = inspection();
-    verify_recovery(before, after);
     report["loft_checks"]["recovery_reloaded"] = verify_loft_settings(L"recovery_reloaded");
     after["inspection_source"] = "reconciliation_verified";
     after["inspection_available"] = true;
@@ -9693,12 +10082,12 @@ static int run_generic(const std::wstring &job) {
                                  created.dwLowDateTime}}))
             throw std::runtime_error("Cannot persist native process identity");
         if (request.contains("reconciliation")) {
-            // BUG-157: recovery gets its own phase budget (default 300 s,
-            // clamped to 30-900) and never outlives the job's total budget.
+            // BUG-157/BUG-171: recovery gets its own phase budget (default 300 s,
+            // clamped to 30-1800) and never outlives the job's total budget.
             double phase = request.value("recovery_phase_seconds", 300.0);
             if (!std::isfinite(phase))
                 phase = 300.0;
-            phase = std::min(900.0, std::max(30.0, phase));
+            phase = std::min(1800.0, std::max(30.0, phase));
             const double total = request.value("timeout_seconds", phase);
             if (std::isfinite(total) && total > 0)
                 phase = std::min(phase, total);
@@ -9916,6 +10305,7 @@ static int run_generic(const std::wstring &job) {
             int operation_total = static_cast<int>(request["operations"].size());
             for (auto op : request["operations"]) {
                 last_sketch_solver_info = nullptr;
+                last_sketch_reference_info = nullptr;
                 ++operation_index;
                 operation_position = operation_index;
                 operation_in_flight = op;

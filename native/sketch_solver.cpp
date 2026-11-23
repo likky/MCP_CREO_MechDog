@@ -66,7 +66,10 @@ static J solve_profile(ProSection section, const J &op) {
     info["recovered"] = false;
     last_sketch_solver_info = info;
     try {
-        ProError solved = ProSectionSolve(section, &error);
+        ProError initial_solve = ProSectionSolve(section, &error);
+        ProError solved = initial_solve;
+        ProError retry_solve = PRO_TK_NO_ERROR;
+        bool retried_without_inference = false;
         info["stages"]["initial_solve"] = solved;
         last_sketch_solver_info = info;
         log("SKETCH_SOLVE=%d mode=%s\n", solved, mode.c_str());
@@ -99,6 +102,8 @@ static J solve_profile(ProSection section, const J &op) {
             if (ids)
                 ProArrayFree((ProArray *)&ids);
             solved = ProSectionSolve(section, &error);
+            retry_solve = solved;
+            retried_without_inference = true;
             info["stages"]["retry_without_inference"] = solved;
             last_sketch_solver_info = info;
             log("SKETCH_SOLVE_WITHOUT_INFERENCE=%d\n", solved);
@@ -106,13 +111,44 @@ static J solve_profile(ProSection section, const J &op) {
                 section_errors(error, "coordinate_without_inference");
         }
         if (mode != "coordinates" || solved) {
-            solved = ProSectionAutodim(section, &error);
-            info["stages"]["autodimension"] = solved;
+            ProError autodim_code = ProSectionAutodim(section, &error);
+            info["stages"]["autodimension"] = autodim_code;
             last_sketch_solver_info = info;
-            log("AutodimensionSketch=%d\n", solved);
-            if (solved)
+            log("AutodimensionSketch=%d\n", autodim_code);
+            if (autodim_code)
                 section_errors(error, "autodimension");
-            check(solved, "AutodimensionSketch");
+            if (mode == "coordinates" && autodim_code != PRO_TK_NO_ERROR) {
+                // BUG-173: in coordinates mode, AutodimensionSketch is only a
+                // rescue after ProSectionSolve already failed. Report the real
+                // solve failure and section reference state instead of blaming
+                // AutodimensionSketch alone.
+                J staged = has_staged_operation_result ? staged_operation_result : J::object();
+                staged["solver"] = sketch_solver_receipt(info);
+                if (last_sketch_reference_info.is_object())
+                    staged["section_references"] = last_sketch_reference_info;
+                stage_operation_result(staged);
+                std::string detail = "Coordinate sketch ProSectionSolve failed with code " +
+                                     std::to_string((int)initial_solve);
+                if (retried_without_inference)
+                    detail += " (retry_without_inference=" + std::to_string((int)retry_solve) + ")";
+                detail += "; rescue ProSectionAutodim also failed with code " +
+                          std::to_string((int)autodim_code);
+                if (last_sketch_reference_info.is_object()) {
+                    const int anchors = last_sketch_reference_info.value("anchor_count", -1);
+                    const bool incomplete =
+                        last_sketch_reference_info.value("reference_incomplete", false);
+                    const int ent_count = last_sketch_reference_info.value("entity_count", -1);
+                    const J &pin_avail = last_sketch_reference_info["origin_pin_available"];
+                    detail += " [anchors=" + std::to_string(anchors) +
+                              ", reference_incomplete=" + (incomplete ? "true" : "false") +
+                              ", origin_pin_available=" +
+                              (pin_avail.is_boolean() ? (pin_avail.get<bool>() ? "true" : "false")
+                                                      : "unknown") +
+                              ", entities=" + std::to_string(ent_count) + "]";
+                }
+                throw std::runtime_error(detail);
+            }
+            check(autodim_code, "AutodimensionSketch");
         } else
             log("AutodimensionSketch=SKIPPED_COMPLETE_COORDINATE_DIMENSIONS\n");
         ProError regenerated = ProSectionRegenerate(section, &error);
