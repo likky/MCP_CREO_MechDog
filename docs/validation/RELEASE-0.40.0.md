@@ -60,4 +60,4 @@
 
 ## 远端核对
 
-发布后执行，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.40.0)
+已发布并核对（2026-11-23）。Release id `455632891`（非 draft、非 prerelease），创建于 `2026-11-23T15:44:41Z`、发布于 `2026-11-23T15:45:26Z`；附注标签 `v0.40.0`（对象 `890b21c31ae7be9177e7ff5b0e2d2da185b05891`）指向 `9b7bdaa84675fef364972240a8f3d7c7677e2361`（本版合入提交），远端 `refs/heads/main` 在核对时指向同一提交。`python -X utf8 tools/check_release_assets.py --tag v0.40.0` 返回 `v0.40.0: four assets downloaded and verified; both sidecars match; release body self-proof verified`（exit 0），四个附件与两份 sidecar 摘要及远端 API digest 一致：源码包 `78ebfc8f9d93a6b3edf9fa7eb3079e2550c0ef74d2e5e28c9560a794a40ab56c`（11,971,720 字节，sidecar `aae5ef20a537cefc8426fe26265e1bbf9fc29ddcdaf782182571a772718f56a1`），种子包 `507bd0019650dd397046b1ed2cfb735a4f840a4174487b45dab55e536e8db77f`（493,442 字节，sidecar `b80175c9d34fe426922319d5c20ff644715959f051ec256718c8df66eb4ceb69`）。附件字节、摘要与环境侧发布通道见 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.40.0) 和[发布后核对](../development/RELEASE-POSTCHECK-2026-11-07.md)。

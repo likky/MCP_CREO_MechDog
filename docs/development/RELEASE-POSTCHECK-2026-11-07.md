@@ -8,6 +8,10 @@
 - 四件附件为 `MCP_CREO_MechDog-0.40.0-source.zip`、`MCP_CREO_MechDog-0.40.0-source.zip.sha256`、`MCP_CREO_MechDog-0.40.0-seed-library.zip`、`MCP_CREO_MechDog-0.40.0-seed-library.zip.sha256`。种子包 SHA256 为 `507bd0019650dd397046b1ed2cfb735a4f840a4174487b45dab55e536e8db77f`。两份同名 sidecar 分别记录对应 ZIP 的实际摘要。
 - 远端核对发布后执行，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.40.0)
 
+### 发布后核对
+
+- 2026-11-23 按 `python -X utf8 tools/check_release_assets.py --tag v0.40.0` 重新下载并重算：Release id `455632891`（`created_at=2026-11-23T15:44:41Z`、`published_at=2026-11-23T15:45:26Z`，非 draft、非 prerelease），四件附件齐全，两份 sidecar 与对应 ZIP 摘要及远端 API digest 一致，Release body 自证通过（exit 0）；源码包 `78ebfc8f9d93a6b3edf9fa7eb3079e2550c0ef74d2e5e28c9560a794a40ab56c`（11,971,720 字节，sidecar `aae5ef20a537cefc8426fe26265e1bbf9fc29ddcdaf782182571a772718f56a1`），种子包 `507bd0019650dd397046b1ed2cfb735a4f840a4174487b45dab55e536e8db77f`（493,442 字节，sidecar `b80175c9d34fe426922319d5c20ff644715959f051ec256718c8df66eb4ceb69`）。附注标签 `v0.40.0`（对象 `890b21c31ae7be9177e7ff5b0e2d2da185b05891`）指向 `9b7bdaa84675fef364972240a8f3d7c7677e2361`，核对时远端 `main` 与该提交一致。
+
 ## v0.39.0（2026-11-23，打包时点）
 
 - [BUG-170](../work-items/BUG-170.md)、[BUG-166](../work-items/BUG-166.md)、[FEAT-076](../work-items/FEAT-076.md) 与 [FEAT-077](../work-items/FEAT-077.md) 交付：升级/重启后 `-4` 旧会话诊断与 `force_new_session`；跨会话恢复解死锁、新增 `abandon_unknown_recovery`、自适应/可配恢复预算与 `blocking_operation="recovery_pending"`；边选择器 `feature` 过滤与 `creo_inspect_model(near=...)`；零件 JPEG 预览隐藏基准面及更新检查 15 s 默认预算与 `advisory=true`；本机 Creo 10 实机 5/5 通过并保存重载；归档 0.36.0 反馈原件并补录 [BUG-152](../work-items/BUG-152.md) 外部确认。见[版本说明](../RELEASE_NOTES_0.39.0.md)及[发布记录](../validation/RELEASE-0.39.0.md)。
