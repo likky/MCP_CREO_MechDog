@@ -93,7 +93,11 @@ python -m venv .venv
 .\.venv\Scripts\python.exe tools\test_unit.py
 .\.venv\Scripts\python.exe tools\dev_check.py --skip-unit
 .\.venv\Scripts\python.exe tools\dev_check.py --strict --skip-unit
+.\.venv\Scripts\python.exe tools\test_mcp.py --protocol-only
+.\.venv\Scripts\python.exe tools\test_mcp.py
 ```
+
+`tools\test_mcp.py --protocol-only` 走真实 stdio 传输，核对工具清单、loft 输入 schema 与 `creo_capabilities` 契约，不需要 Creo 会话；不带参数还需已连接会话，并核验 `ready_to_build`、`connected` 与无效几何拒绝。契约期望只写在 `src/creo_mechdog/mcp_contract.py`，由 `tests/unit/test_mcp_contract.py` 守门，脚本不再自带字段断言（BUG-151）。该脚本不进入 `dev_check` 的离线脚本清单：`server.py` 的 lifespan 会启动后台协调器并触发更新检查，离线门禁不引入这类副作用。
 
 统一检查覆盖 Ruff、Python/C++ 格式、存量基线比较及全部单元，报告为 `build/development_check.json`、`build/unit_test_report.json`。`--skip-unit` 只提供语言证据，`--strict` 暴露全部欠账。[风格基线](development/style-baseline.json) 按诊断及内容身份容许存量，不能掩盖工具/配置错误、单测失败或新增问题；正常开发与 CI 不重建基线，不新增豁免。
 

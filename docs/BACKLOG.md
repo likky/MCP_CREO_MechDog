@@ -2,6 +2,8 @@
 
 2026-11-23（0.36.0 MINOR，台账 218 项）：[BUG-152](work-items/BUG-152.md)、[BUG-153](work-items/BUG-153.md)、[BUG-154](work-items/BUG-154.md) 与 [FEAT-074](work-items/FEAT-074.md) 交付本批保存、恢复和建模反馈修复。见[发布记录](validation/RELEASE-0.36.0.md)。
 
+2026-11-23（新增一项，台账 218→219）：[BUG-151](work-items/BUG-151.md) 修复自带 stdio 冒烟脚本的契约漂移。`tools/test_mcp.py` 自 `0e92ab7` 后未随 `creo_capabilities` 0.4.2 的 compact 分页契约更新，按文档运行必然 `KeyError: 'interpolation'` 且无门禁覆盖。改为 compact 只断言家庭索引、`detail="full"` 翻页（40 族 / 2 页，`loft_seed` 在第 2 页）断言细节；契约期望集中到 `src/creo_mechdog/mcp_contract.py`，由 `tests/unit/test_mcp_contract.py` 守门，脚本与单测共用同一来源。新增 `--protocol-only` 供无 Creo 环境验收；不把脚本塞进离线脚本清单（lifespan 会启动协调器并触网）。计划见 [2026-11-23 BUG-151 计划](superpowers/plans/2026-11-23-bug151-test-mcp-capabilities-drift.md)。
+
 2026-11-22（0.35.5 保存与放样反馈）：归档[报告原件](validation/feedback-0.35.5-2026-11-22/originals/save-and-loft.md)，按 [BUG-152](work-items/BUG-152.md) 核对重复保存、恢复、空 pending 和删后保存，按 [BUG-153](work-items/BUG-153.md) 核对样条切除与诊断，按 [BUG-154](work-items/BUG-154.md) 核对放样路线及种子验证。面角色与其余体验反馈见 [FEAT-074](work-items/FEAT-074.md)。
 
 2026-11-22（0.35.8 PATCH，新增一项，台账 213→214）：[BUG-150](work-items/BUG-150.md) 修复 Creo 初始实体 ID `-5778` 的切除作用域。Creo 10 有无作用域均去料 800 mm³，保存重载通过。原护卫舰无作用域零去料待复现。[发布记录](validation/RELEASE-0.35.8.md)
@@ -218,11 +220,12 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 
 诊断交付不等于根因修复；部分交付不关整卡；缺其他版本证据不自动判未修。观察项等自然新现场，不制造故障。已完成且无保留范围的行移入 [完成档案](BACKLOG_COMPLETED.md#2026-11-07dev-073-归档与历史进展)。原进展/证据保留日期，不再回填第二份待办。小修复沿用卡与证据，复杂跨模块任务才另建完整计划。
 
-当前唯一 ID **218**（BUG **103**、FEAT **71**、DEV **44**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
+当前唯一 ID **219**（BUG **104**、FEAT **71**、DEV **44**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
+
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
-| 仍需修复 | 7 |
+| 仍需修复 | 8 |
 | 待复现/待核实 | 36 |
 | 已有修复但待验收 | 41 |
 | 观察中 | 3 |
@@ -245,6 +248,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [BUG-130](work-items/BUG-130.md) | P1 | 已修复（bulb 偏差 0.0899mm 达标；旧 14m 0.1115mm 未达标） | 0.27.0（偏差子项）；旧 14m 余项下个版本 | 约14m复杂球鼻艏 `export(stl)` 两次worker `0xC0000005`，整件剖分及外层计数返回成功后退出、STL均0字节；旧同尺度球鼻艏197118片/48.85MB成功，不能仅归因尺度。2026-11-17 离线：`tools/diagnose_stl_export.py`、`STL_*` 阶段日志与防护、`native/stl_file_check.h`/`native/stl_export.h`/`native/stl_mesh_check.h`、23+19 项 native 用例。旧路径只读实机定位 `n_facets=201551` 配 `facets=null`，安全失败且源件不变；官方路径小件成功，旧 14m 同质量 600 秒未完成。重启后恢复基线，逐面导出并做 SDK 法向对齐、0.001mm 焊点与边界环质心补洞、1e-9mm 精确邻接绕序修复：`bulb_bulged` 404,652 片/82,166,002 字节、旧 14m 197,722 片/40,068,497 字节，均 succeeded、源件 SHA/revision 不变；焊接后边界边 0、非流形边 0、零面积片 0，有符号体积与原生差 0.0030%/0.0172%，包络一致；trimesh 独立复核两件 `is_watertight=true`、`is_winding_consistent=true`、`euler_number=2`。默认路径已切换为逐面，官方路径保留 `MECHDOG_STL_OFFICIAL_FILE=1` 诊断。抽样偏差实测（`MECHDOG_STL_DEVIATION=1`，每 500 片取质心/边中点投影回原生面，顶点自检 ≤0.004mm）：bulb 平均 0.0367mm、p99 0.1378mm、最大 0.1581mm；旧 14m 平均 0.0814mm、p99 0.3002mm、最大 0.3086mm，**0.1mm 目标未达成**。逐面片数回执定位根因：bulb 在 0.05 与 0.005mm 弦高下大面均为 ~204,000 片（0.005 时 203,988/204,043/1,761），单面片数上限约 20.4 万；同几何小件（未到上限）0.05→0.001mm 片数 328→1,488，证明弦高参数本身有效、不是会话缓存。Task 6 已完成：`creo_export_model(format="stl", stl_options={"chord_height_mm":…,"angle_control":…})`，仅 STL 允许，未知键/布尔/NaN/Inf/越界提交前拒绝，缺省保持 0.05/0.1，回执保留 `requested`/`passed` 并新增逐面 `surface_facets`；9 项单测通过。剩余：装配、Creo 9/10 与其他质量入口未测；受单面上限约束，逐面路径无法把大面细化到 0.1mm 以内。计划见 [bug130-stl-export](superpowers/plans/2026-11-16-bug130-stl-export.md)。 |
 | [BUG-131](work-items/BUG-131.md) | P1 | 仍需修复（取消/收尾/看门狗已实机；挂死根因未验） | 0.27.0（作业控制子项）；挂死根因未排期 | 23组件带配合总装作业 `1ce57484…` 在 `hom_1` 选择器解析挂死 60 分钟，同输入 2 组件探针 9.4 秒结构化失败；装配 `unknown_outcome` 后 reconcile 曾全不可用。已离线交付进度观测、`creo_cancel_job`（公开工具 108→109）、worker 日志停滞看门狗与 `revision==0` 新装配出口。2026-11-17 本机 Creo 12.4 临时件实机：worker 启动前取消 `cancelled`/`geometry_may_have_changed=false`，启动后取消 `unknown_outcome`/`true` 并终止 pid，两种均经 `abandon_new` 收尾；当次授权下 1 秒预算 + 500 圆孔重计划触发看门狗，`stall_watchdog` 记录 budget/silent/log_bytes/termination 并收尾。修复空 owner 误判与 stall_watchdog 未投影；`test_job_control` 19 项、投影 1 项。`revision==0` 新装配实机未复现；挂死根因仍需 Creo 10 栈/轨迹。 |
 | [BUG-132](work-items/BUG-132.md) | P1 | 仍需修复（本机 Creo 12.4 已验报错分型与 coaxial insert；Creo 10/Arm7 未验） | 0.27.0（选择器子项）；Creo 10/Arm7 未排期 | native 圆柱面拆成两半（base 198/200、hom 57/59、96/98、224/226），TXT 整圆柱锚点无法唯一命中；报错把「消歧点落在端面平面」写成「add radius_mm」。已离线交付：零/多/类型不符三种报错分型（逐项列 `id (plane|cylinder)`，说明 `radius_mm` 非类型过滤器）、组装侧选择器缺 `assembly_component` 的准入预检、仅 `insert/concentric` 可用的显式 `coaxial:"any"`（多个圆柱命中取最小 id，默认唯一性不放宽），两个测试文件 39 项通过。2026-11-17 本机 Creo 12.4：R27.5 通孔拆半 102/103，三种报错分型实机通过并 `rolled_back`；默认 insert 拒绝并列出 102/103，`coaxial:"any"` insert+mate `committed`、`underconstrained=false`、轴共线，显式保存重载 5→6。Arm7 原半圆柱与 Creo 10 未验。 |
+| [BUG-151](work-items/BUG-151.md) | P2 | 已修复待验收（离线 + 定向 66 项通过；全量单测待普通终端补齐） | 0.35.9 | 自带 stdio 冒烟脚本 `tools/test_mcp.py` 未适配 `creo_capabilities` 的 compact 分页契约（`fab8e0d` 引入，脚本停在 `0e92ab7`），任何环境运行必 `KeyError: 'interpolation'`；全量单测与 dev_check 均不覆盖。已改为 compact 只断言索引、`detail="full"` 翻页断言细节（40 族 / 2 页），期望集中 `src/creo_mechdog/mcp_contract.py` 并由 `tests/unit/test_mcp_contract.py` 守门，脚本新增 `--protocol-only`。剩：普通终端跑 `tools\test_unit.py`；`creo_session_status` 与 `--create` 路径待有会话时补。 |
 
 <a id="输入或规则待核实"></a>
 
