@@ -1,0 +1,12 @@
+{
+  "source_directory": "C:/Users/Administrator/Downloads",
+  "archived_at": "2026-11-23",
+  "files": [
+    {
+      "archive_path": "originals/test-mcp-capabilities-drift.md",
+      "source_name": "2026-11-22_CREO_0.35.8_自带stdio冒烟脚本test_mcp未适配capabilities分页API致验证必失败.md",
+      "sha256": "5944044677c36c089f182590881ee9710de44144390c57a7dd298e17698732ee"
+    }
+  ],
+  "notes": "0.35.8 外部验收与 tools/test_mcp.py 分页契约漂移反馈原件（逐字节归档）。"
+}

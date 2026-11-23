@@ -48,8 +48,8 @@
 - `.\.venv\Scripts\python.exe -m unittest discover -s tests -v`：运行单元测试。
 - `.\.venv\Scripts\python.exe tools\test_unit.py`：运行单元测试并生成 `build/unit_test_report.json`。
 - `.\.venv\Scripts\python.exe tools\test_general.py`：连接已打开的 Creo 会话，执行原生建模集成测试。
-- `.\.venv\Scripts\python.exe tools\test_mcp.py`：走真实 stdio 传输核对工具清单、输入 schema 与 `creo_capabilities` 契约；需已连接会话，可用 `--create` 追加建模。契约期望在 `src/creo_mechdog/mcp_contract.py`，由 `tests/unit/test_mcp_contract.py` 守门。
-- `.\.venv\Scripts\python.exe tools\test_mcp.py --protocol-only`：同一契约检查的无会话模式（跳过 `ready_to_build`、会话探针与建模）；不进入 `dev_check` 离线脚本清单，因为服务 lifespan 会启动后台协调器并触发更新检查。
+- `.\.venv\Scripts\python.exe tools\test_mcp.py`：走真实 stdio 传输核对工具清单、输入 schema 与 `creo_capabilities` 契约；实机模式先等待 `creo_startup_status` 就绪再探针会话，可用 `--create` / `--create --simple` 追加建模。契约期望在 `src/creo_mechdog/mcp_contract.py`，由 `tests/unit/test_mcp_contract.py` 守门。
+- `.\.venv\Scripts\python.exe tools\test_mcp.py --offline`：隔离服务端 lifespan 副作用（不拉起 Creo、不触网）的真实 stdio 契约检查，已纳入 `dev_check` 的离线验收门禁；`--protocol-only` 走真实 `server.py` 并跳过会话与建模检查。
 - `.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt`：安装锁定的运行与开发依赖；纯单元/语言检查无需 Creo SDK。
 - `.\.venv\Scripts\python.exe tools\dev_check.py`：检查新增语言问题并运行全部 Windows 单元测试，生成 `build/development_check.json`。
 - `.\.venv\Scripts\python.exe tools\dev_check.py --strict --skip-unit`：暴露全部存量语言问题；不是原生建模验收。

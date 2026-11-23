@@ -10,6 +10,10 @@ from pathlib import Path
 
 from mcp import Client
 
+import creo_startup
+
+ACTIVE_STATES = frozenset(creo_startup.ACTIVE)
+
 
 async def wait_for_startup(client: Client, report: dict, output: Path, budget: float = 130) -> dict:
     if not math.isfinite(budget) or budget <= 0:
@@ -26,12 +30,7 @@ async def wait_for_startup(client: Client, report: dict, output: Path, budget: f
             raise RuntimeError(f"MCP readiness query failed: {response}")
         if status.get("state") == "ready" and status.get("connected") is True:
             return status
-        if status.get("state") not in {
-            "checking",
-            "building_worker",
-            "starting",
-            "waiting_for_connection",
-        }:
+        if status.get("state") not in ACTIVE_STATES:
             raise RuntimeError(f"Toolkit is not ready; no modeling request submitted: {status}")
         if time.monotonic() >= deadline:
             raise TimeoutError("Toolkit readiness observation ended; no modeling request submitted")

@@ -22,6 +22,8 @@ from pathlib import Path
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 
+import creo_startup
+from creo_mechdog.mcp_contract import call_capabilities_section
 from tools.dev_check import git_state, source_hash
 from tools.test_direct_loft import Probe, circle_sections, small_solid, verify_blend
 from version import VERSION
@@ -82,16 +84,14 @@ async def run(args: argparse.Namespace) -> dict:
             probe = Probe(client, report, args.output, 900)
             startup = await probe.call("creo_startup_status", {})
             deadline = time.monotonic() + 130
-            while (
-                startup["state"]
-                in {"checking", "building_worker", "starting", "waiting_for_connection"}
-                and time.monotonic() < deadline
-            ):
+            while startup["state"] in creo_startup.ACTIVE and time.monotonic() < deadline:
                 await asyncio.sleep(1)
                 startup = await probe.call("creo_startup_status", {})
             assert startup["state"] == "ready", startup
-            cap = await probe.call("creo_capabilities", {})
-            assert Path(cap["runtime"]["resource_root"]).resolve() == ROOT.resolve()
+            runtime = await call_capabilities_section(
+                lambda arguments: probe.call("creo_capabilities", arguments), "runtime"
+            )
+            assert Path(runtime["resource_root"]).resolve() == ROOT.resolve()
             status = await probe.call("creo_callback_status", {})
             assert status["readiness"] == args.expect, status
             report["callback"] = status

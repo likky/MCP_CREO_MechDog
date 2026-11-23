@@ -17,6 +17,7 @@ from mcp.client.stdio import StdioServerParameters
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from creo_mechdog.mcp_contract import call_capabilities_section
 from version import VERSION
 
 
@@ -80,9 +81,11 @@ async def run(output: Path, rounds: int, resume_jobs: list[str]) -> dict:
                 response=data,
                 raw_content=[block.model_dump(mode="json") for block in result.content],
             )
-            if name == "creo_capabilities" and data:
-                # Full capability tables are unrelated to scheduling; retain runtime identity.
-                event["response"] = {k: data[k] for k in ("version", "runtime", "tool_count")}
+            if name == "creo_capabilities" and isinstance(data, dict):
+                # Full capability tables are unrelated to scheduling; retain summary metadata.
+                event["response"] = {
+                    k: data[k] for k in ("version", "detail", "section", "tool_count") if k in data
+                }
                 event.pop("raw_content")
             if result.is_error and not allow_error:
                 if allow_busy and data and data.get("status") == "busy":
@@ -129,8 +132,9 @@ async def run(output: Path, rounds: int, resume_jobs: list[str]) -> dict:
                 clients.append(client)
                 client_ids[id(client)] = f"client_{index + 1}"
             a, b = clients
-            cap = await call(a, "creo_capabilities", {})
-            report["runtime"] = cap["runtime"]
+            report["runtime"] = await call_capabilities_section(
+                lambda arguments: call(a, "creo_capabilities", arguments), "runtime"
+            )
             for client in clients:
                 for _ in range(120):
                     state = await call(client, "creo_startup_status", {})

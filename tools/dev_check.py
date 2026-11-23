@@ -28,6 +28,7 @@ DEFAULT_OFFLINE_TIMEOUT_SECONDS = 240
 OFFLINE_ACCEPTANCE_SCRIPTS = (
     ("test_update_check", ["tools/test_update_check.py", "--network-failure"]),
     ("test_model_reconciliation", ["tools/test_model_reconciliation.py", "--offline"]),
+    ("test_mcp", ["tools/test_mcp.py", "--offline"]),
 )
 
 

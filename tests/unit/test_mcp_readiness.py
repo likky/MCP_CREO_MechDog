@@ -23,12 +23,17 @@ class MCPReadinessTests(unittest.IsolatedAsyncioTestCase):
         self.client = SimpleNamespace(call_tool=AsyncMock())
 
     async def test_waits_for_verified_ready_using_only_public_read_queries(self):
-        self.client.call_tool.side_effect = [reply("building_worker"), reply("ready", True)]
+        self.client.call_tool.side_effect = [
+            reply("waiting_for_channel"),
+            reply("building_worker"),
+            reply("connecting"),
+            reply("ready", True),
+        ]
         report = {}
         with patch("tools.mcp_readiness.asyncio.sleep", new=AsyncMock()):
             result = await wait_for_startup(self.client, report, self.output)
         self.assertTrue(result["connected"])
-        self.assertEqual(len(report["startup_queries"]), 2)
+        self.assertEqual(len(report["startup_queries"]), 4)
         for call in self.client.call_tool.call_args_list:
             self.assertEqual(call.args, ("creo_startup_status", {}))
 

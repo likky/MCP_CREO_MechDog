@@ -344,9 +344,8 @@ class LiveRun:
         if not status.get("connected"):
             raise RuntimeError(f"session not connected; nothing submitted: {status}")
         self.report["environment"] = await self.call("creo_check_environment", {})
-        self.report["capabilities_count"] = len(
-            (await self.call("creo_capabilities", {})).get("tools", [])
-        )
+        capabilities = await self.call("creo_capabilities", {})
+        self.report["capabilities_count"] = capabilities["tool_count"]
         await self.scenario_main_path()
         await self.scenario_preexisting_same_name()
         await self.scenario_saved_model_rollback()

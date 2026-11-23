@@ -25,7 +25,9 @@ from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 
 import bridge
+import creo_startup
 import generic_bridge as general
+from creo_mechdog.mcp_contract import call_capabilities_section
 from creo_mechdog.query_client import read_full_model
 from creo_mechdog.recovery import process_identity
 from version import VERSION
@@ -177,8 +179,12 @@ async def native(report: dict, save) -> None:
                 response=data,
                 raw_content=[block.model_dump(mode="json") for block in result.content],
             )
-            if name == "creo_capabilities":
-                event["response"] = {key: data[key] for key in ("version", "runtime", "scheduling")}
+            if name == "creo_capabilities" and isinstance(data, dict):
+                event["response"] = {
+                    key: data[key]
+                    for key in ("version", "detail", "section", "scheduling", "tool_count")
+                    if key in data
+                }
                 event.pop("raw_content")
             assert allow_error or not result.is_error, event
             return data
@@ -195,13 +201,7 @@ async def native(report: dict, save) -> None:
             if state["state"] == "ready":
                 assert state["connected"] and state["verified_at"], state
                 return state
-            assert state["state"] in (
-                "checking",
-                "waiting_for_channel",
-                "building_worker",
-                "starting",
-                "waiting_for_connection",
-            ), state
+            assert state["state"] in creo_startup.ACTIVE, state
             await asyncio.sleep(0.2)
         raise TimeoutError("Real startup did not finish; no modeling submitted")
 
@@ -232,7 +232,9 @@ async def native(report: dict, save) -> None:
             for _ in range(2)
         ]
         a, b = clients
-        report["runtime"] = (await call(a, "creo_capabilities", {}))["runtime"]
+        report["runtime"] = await call_capabilities_section(
+            lambda arguments: call(a, "creo_capabilities", arguments), "runtime"
+        )
         assert not report["runtime"]["source_changed_since_startup"]
         await asyncio.gather(*(ready(client) for client in clients))
         report["session_before"] = await call(a, "creo_session_status", {})

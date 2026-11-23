@@ -23,6 +23,7 @@ if __name__ == "__main__" and not __package__:
         )
     )
 
+from creo_mechdog.mcp_contract import call_capabilities_section
 from tools.dev_check import git_state, source_hash
 from version import VERSION
 
@@ -103,9 +104,12 @@ async def run(args: argparse.Namespace) -> dict:
                 "datum_axis_feature",
                 "datum_feature",
             }
-            capabilities = await call(client, "creo_capabilities", {})
-            report["runtime"] = capabilities["runtime"]
-            report["references"] = capabilities["references"]
+            report["runtime"] = await call_capabilities_section(
+                lambda arguments: call(client, "creo_capabilities", arguments), "runtime"
+            )
+            report["references"] = await call_capabilities_section(
+                lambda arguments: call(client, "creo_capabilities", arguments), "references"
+            )
             assert Path(report["runtime"]["code_root"]) == ROOT
             assert not report["runtime"]["source_changed_since_startup"]
             assert (
@@ -113,9 +117,7 @@ async def run(args: argparse.Namespace) -> dict:
                 in report["runtime"]["source_fingerprints_at_startup"]
             )
             assert (
-                capabilities["references"]["by_tool"]["creo_axis_pattern"][
-                    "compatibility_normalized_to"
-                ]
+                report["references"]["by_tool"]["creo_axis_pattern"]["compatibility_normalized_to"]
                 == "datum_axis_feature"
             )
             invalid = await call(

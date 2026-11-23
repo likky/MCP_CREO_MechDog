@@ -24,6 +24,8 @@ from pathlib import Path
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 
+import creo_startup
+from creo_mechdog.mcp_contract import call_capabilities_section
 from creo_mechdog.query_client import read_full_model
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -258,17 +260,18 @@ async def run(args: argparse.Namespace) -> dict:
         )
         async with Client(params, read_timeout_seconds=65) as client:
             probe = Probe(client, report, args.output, args.job_budget)
-            cap = await probe.call("creo_capabilities", {})
-            assert Path(cap["runtime"]["code_root"]).resolve() == ROOT.resolve()
-            assert not cap["runtime"]["source_changed_since_startup"]
+            runtime = await call_capabilities_section(
+                lambda arguments: probe.call("creo_capabilities", arguments), "runtime"
+            )
+            seed_library = await call_capabilities_section(
+                lambda arguments: probe.call("creo_capabilities", arguments), "seeds"
+            )
+            assert Path(runtime["code_root"]).resolve() == ROOT.resolve()
+            assert not runtime["source_changed_since_startup"]
             await probe.call("creo_check_environment", {})
             status = await probe.call("creo_startup_status", {"retry": args.retry})
             deadline = time.monotonic() + 130
-            while (
-                status["state"]
-                in {"checking", "building_worker", "starting", "waiting_for_connection"}
-                and time.monotonic() < deadline
-            ):
+            while status["state"] in creo_startup.ACTIVE and time.monotonic() < deadline:
                 await asyncio.sleep(1)
                 status = await probe.call("creo_startup_status", {})
             report["startup"] = status
@@ -447,7 +450,7 @@ async def run(args: argparse.Namespace) -> dict:
                 seed = next(
                     (
                         s
-                        for s in cap["seed_library"]["seeds"]
+                        for s in seed_library["seeds"]
                         if s["section_count"] == count
                         and s["interpolation"] == mode
                         and s["available"]

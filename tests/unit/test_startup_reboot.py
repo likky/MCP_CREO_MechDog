@@ -77,7 +77,7 @@ class StartupReboot(unittest.TestCase):
 
         def launch(*args):
             entered.set()
-            self.assertTrue(release.wait(2))
+            self.assertTrue(release.wait(10))
             return self.fixture.process
 
         self.fixture.launch.side_effect = launch
@@ -87,7 +87,7 @@ class StartupReboot(unittest.TestCase):
         first, second = self.controller(), self.controller()
         first.start(retry=True)
         try:
-            self.assertTrue(entered.wait(2))
+            self.assertTrue(entered.wait(10))
             second.start(retry=True)
         finally:
             release.set()

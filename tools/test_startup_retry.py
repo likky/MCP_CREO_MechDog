@@ -25,6 +25,7 @@ from mcp.client.stdio import StdioServerParameters
 
 import bridge
 import creo_startup
+from creo_mechdog.mcp_contract import call_capabilities_section
 from version import VERSION
 
 
@@ -133,8 +134,12 @@ async def run(args) -> dict:
                 response=data,
                 raw_content=[block.model_dump(mode="json") for block in result.content],
             )
-            if name == "creo_capabilities":
-                event["response"] = {key: data[key] for key in ("version", "runtime", "scheduling")}
+            if name == "creo_capabilities" and isinstance(data, dict):
+                event["response"] = {
+                    key: data[key]
+                    for key in ("version", "detail", "section", "scheduling", "tool_count")
+                    if key in data
+                }
                 event.pop("raw_content")
             assert not result.is_error, event
             return data
@@ -183,7 +188,9 @@ async def run(args) -> dict:
                 for _ in range(2)
             ]
             first, second = clients
-            report["runtime"] = (await call(first, "creo_capabilities", {}))["runtime"]
+            report["runtime"] = await call_capabilities_section(
+                lambda arguments: call(first, "creo_capabilities", arguments), "runtime"
+            )
             assert (
                 report["runtime"]["code_root"] == str(ROOT)
                 and not report["runtime"]["source_changed_since_startup"]
