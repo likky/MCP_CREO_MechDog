@@ -75,4 +75,4 @@
 
 ## 远端核对
 
-发布后执行，当前未验证。发布后以 `tools/check_release_assets.py --tag v0.37.0` 核对四个附件、两份 sidecar 与远端摘要，并把结果回填到 `main` 的 POSTCHECK。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.37.0)
+已发布并核对（2026-11-23）。Release id `455171815`，创建于 2026-11-23T08:48:50Z；附注标签对象 `6180aed4c26c7722e6cbe3789a5d741505c81b8f` 指向 `5932e20d2eba2760325f666ed1ca5b4f9851df83`（本版合入提交），远端 `refs/heads/main` 与该提交一致。`tools/check_release_assets.py --tag v0.37.0` 返回 “four assets downloaded and verified; both sidecars match; release body self-proof verified”，四个附件与两份 sidecar 摘要一致：源码包 `94f0aa1683c0c4b32d4519669f3215b715d2cd85af40b7b6c135e0fb2ecf5ffc`，种子包 `0fe2c5fb197fedfa917843d189a9ba533b3b514af10cbf6324939d0bd33dc67b`。附件字节、摘要与环境侧发布通道见 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.37.0) 和[发布后核对](../development/RELEASE-POSTCHECK-2026-11-07.md)。
