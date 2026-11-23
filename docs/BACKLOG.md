@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-23（0.35.5 几何与装配反馈，新增 14 项，台账 219→233）：归档[报告原件](validation/feedback-0.35.5-2026-11-22/originals/geometry-and-assembly-p0.md)。P0 批次开发中：[BUG-155](work-items/BUG-155.md) 边选择器类型、[BUG-156](work-items/BUG-156.md) 嵌套装配、[BUG-157](work-items/BUG-157.md) 看门狗与装配恢复、[BUG-158](work-items/BUG-158.md) 预算披露、[BUG-159](work-items/BUG-159.md) 多半径弧、[BUG-160](work-items/BUG-160.md) 样条面积、[BUG-161](work-items/BUG-161.md) 同圆重复边；后续项 [BUG-162](work-items/BUG-162.md) 旋转正交化、[BUG-163](work-items/BUG-163.md) 圆角邻弧提示、[BUG-164](work-items/BUG-164.md) 装配阵列、[BUG-165](work-items/BUG-165.md) 样条共享顶点、[BUG-166](work-items/BUG-166.md) 恢复预算、[BUG-167](work-items/BUG-167.md) 装配换版、[BUG-168](work-items/BUG-168.md) 会话判定与只读导出。
+
 2026-11-23（0.36.0 MINOR，台账 218 项）：[BUG-152](work-items/BUG-152.md)、[BUG-153](work-items/BUG-153.md)、[BUG-154](work-items/BUG-154.md) 与 [FEAT-074](work-items/FEAT-074.md) 交付本批保存、恢复和建模反馈修复。见[发布记录](validation/RELEASE-0.36.0.md)。
 
 2026-11-23（新增一项，台账 218→219）：[BUG-151](work-items/BUG-151.md) 修复自带 stdio 冒烟脚本的契约漂移。`tools/test_mcp.py` 自 `0e92ab7` 后未随 `creo_capabilities` 0.4.2 的 compact 分页契约更新，按文档运行必然 `KeyError: 'interpolation'` 且无门禁覆盖。改为 compact 只断言家庭索引、`detail="full"` 翻页（40 族 / 2 页，`loft_seed` 在第 2 页）断言细节；契约期望集中到 `src/creo_mechdog/mcp_contract.py`，由 `tests/unit/test_mcp_contract.py` 守门，脚本与单测共用同一来源。新增 `--protocol-only` 供无 Creo 环境验收；不把脚本塞进离线脚本清单（lifespan 会启动协调器并触网）。计划见 [2026-11-23 BUG-151 计划](superpowers/plans/2026-11-23-bug151-test-mcp-capabilities-drift.md)。
@@ -220,8 +222,7 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 
 诊断交付不等于根因修复；部分交付不关整卡；缺其他版本证据不自动判未修。观察项等自然新现场，不制造故障。已完成且无保留范围的行移入 [完成档案](BACKLOG_COMPLETED.md#2026-11-07dev-073-归档与历史进展)。原进展/证据保留日期，不再回填第二份待办。小修复沿用卡与证据，复杂跨模块任务才另建完整计划。
 
-当前唯一 ID **219**（BUG **104**、FEAT **71**、DEV **44**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
-
+当前唯一 ID **233**（BUG **118**、FEAT **71**、DEV **44**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
@@ -230,10 +231,10 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 | 已有修复但待验收 | 41 |
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
-| 开发中 | 7 |
+| 开发中 | 14 |
 | 部分交付，剩余待验收 | 49 |
 | 部分交付，剩余待规划 | 7 |
-| 待规划 | 48 |
+| 待规划 | 55 |
 
 BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与真实缺口，勿重复派工。
 
@@ -376,6 +377,13 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
+| [BUG-155](work-items/BUG-155.md) | P0 | 开发中 | 未排期 | 边选择器未写 `target`，边 id 被按曲面初始化返回 -23；修 `target` 并做类型化校验，实机选择器圆角回归。 |
+| [BUG-156](work-items/BUG-156.md) | P0 | 开发中 | 未排期 | 放开装配源准入；先探针 `ProMdlnameCopy` 装配复制，必要时原地插入并记录 `source_snapshot`。 |
+| [BUG-157](work-items/BUG-157.md) | P0 | 开发中 | 未排期 | 看门狗观察 `native.log`；装配开放 `restore_baseline`，原生 `verify_mode=identity`，依赖限制在受管目录。 |
+| [BUG-158](work-items/BUG-158.md) | P0 | 开发中 | 未排期 | 回执与运行态披露作业预算、停滞预算、来源和观察文件。 |
+| [BUG-159](work-items/BUG-159.md) | P0 | 开发中 | 未排期 | 弧-弧间隙 ≤1e-6 mm 视为已接合；原生坐标草图同精度；多半径闭合轮廓实机验收。 |
+| [BUG-160](work-items/BUG-160.md) | P0 | 开发中 | 未排期 | 坐标尺寸允许 `b_spline`；不完整分析面积返回 null 并告警。 |
+| [BUG-161](work-items/BUG-161.md) | P0 | 开发中 | 未排期 | 圆角/倒角前置检测同一整圆的重复边引用并明确拒绝。 |
 | [DEV-002](work-items/DEV-002.md) | P2 | 开发中 | 未排期 | 第三批包化离线已交付，T5 实机待验；服务/启动/桥接后续分批，不关整项。 |
 | [DEV-030](work-items/DEV-030.md) | P1 | 开发中 | 未排期 | 推进 G2 底板/编辑、G3 履带/性能、G4 阵列；已放宽三键不重复调查。 |
 | [FEAT-010](work-items/FEAT-010.md) | P2 | 开发中 | 未排期 | Right ±Z 已验；倾斜 frame、保真/原53mm输入、编辑重载和投影驱动仍开放。 |
@@ -457,6 +465,13 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
+| [BUG-162](work-items/BUG-162.md) | P1 | 待规划 | 未排期 | 显式 `orthonormalize` 修正六位小数旋转矩阵，默认仍严格 1e-7。 |
+| [BUG-163](work-items/BUG-163.md) | P2 | 待规划 | 未排期 | 圆角前置读取引用边弧半径，`size >= radius` 时给出排除建议。 |
+| [BUG-164](work-items/BUG-164.md) | P2 | 待规划 | 未排期 | 装配阵列/刚性组，替代 269 个独立实例展开。 |
+| [BUG-165](work-items/BUG-165.md) | P1 | 待规划 | 未排期 | 多实体 B 样条共享顶点或合并，解决内核判未闭合。 |
+| [BUG-166](work-items/BUG-166.md) | P1 | 待规划 | 未排期 | 恢复预算按模型规模与阶段进度自适应；`identity` 已由 BUG-157 止血。 |
+| [BUG-167](work-items/BUG-167.md) | P1 | 待规划 | 未排期 | 新增 `creo_replace_component`，换版保留约束并核验体积/重载。 |
+| [BUG-168](work-items/BUG-168.md) | P1 | 待规划 | 未排期 | 统一会话真相源、`open_file` 冲突出口、只读导出不占写锁。 |
 | [FEAT-072](work-items/FEAT-072.md) | P1 | 部分交付 0.35.6；真实 ID A→A 与 Creo 9/12 未排期 | 0.35.6（选定与候选列表已交付）；余项未排期 | 只读候选列表（进程级、明确标注不可识别）+ 进程内 `session_id` 选定（无需重启、不写 config）+ 失效 ID 不回落，已随两个状态工具发布；实机已验证单会话基线、错误 ID、清除、候选列表，以及双 Creo 现场的 -36/`selection_required` 与关闭多余会话后自动恢复。剩：真实 ID 的 A→A、Creo 9/12。 |
 | [FEAT-073](work-items/FEAT-073.md) | P2 | 已交付 0.35.6 | 0.35.6（已交付）；WorkBuddy 黑盒与 Creo 9/12 未排期 | 有界批量只读质量属性，沿用单通道。2026-11-22 新增 `creo_get_mass_properties_batch`（工具 110→111）：1–16 模型、10–600 s 预算、逐项回执与 `error_kind`、坏 id/查询失败不吞掉其它项、busy/超时停止后续项；Creo 10 实机 15/15（两件 4000/1000 mm³ 一次批量、混入两个坏 id 仍保留两个好读数、17 项与重复项提交前拒绝、what-if 31.4/7.85 g、revision 不变），补验 11/11（16 项满批 131.188 s/180 s、真实 `toolkit_busy`、真实在飞超时且作业随后自行完成）。剩：120 s 全窗口超时、WorkBuddy 黑盒、Creo 9/12。 |
 | [DEV-094](work-items/DEV-094.md) | P1 | 部分交付 0.32.0（六项离线子项与 `revolve_axis_plane_relation` 已实施；同圆多弧段、容差对照、双 R20 与回转轴四档已实机回归） | 0.32.0（子项已交付） | 其余实机回归、圆弧保形、Arm7 区域切除、G2 几何证据、实体边链与嵌套子装配 |
