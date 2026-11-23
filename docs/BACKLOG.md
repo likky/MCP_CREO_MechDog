@@ -1,6 +1,6 @@
 # 统一开发台账
 
-2026-11-23（0.35.5 几何与装配反馈，新增 14 项，台账 219→233）：归档[报告原件](validation/feedback-0.35.5-2026-11-22/originals/geometry-and-assembly-p0.md)。P0 批次已实现并验证（待合入）：[BUG-155](work-items/BUG-155.md) 边选择器类型、[BUG-156](work-items/BUG-156.md) 嵌套装配、[BUG-157](work-items/BUG-157.md) 看门狗与装配恢复、[BUG-158](work-items/BUG-158.md) 预算披露、[BUG-159](work-items/BUG-159.md) 多半径弧、[BUG-160](work-items/BUG-160.md) 样条面积、[BUG-161](work-items/BUG-161.md) 同圆重复边；其中 BUG-159 的 Python 准入已修复，内核拉伸拒绝转 [BUG-165](work-items/BUG-165.md)。后续项 [BUG-162](work-items/BUG-162.md) 旋转正交化、[BUG-163](work-items/BUG-163.md) 圆角邻弧提示、[BUG-164](work-items/BUG-164.md) 装配阵列、[BUG-165](work-items/BUG-165.md) 样条共享顶点、[BUG-166](work-items/BUG-166.md) 恢复预算、[BUG-167](work-items/BUG-167.md) 装配换版、[BUG-168](work-items/BUG-168.md) 会话判定与只读导出。
+2026-11-23（0.37.0 MINOR，新增 14 项，台账 219→233，公开工具仍 111）：归档[报告原件](validation/feedback-0.35.5-2026-11-22/originals/geometry-and-assembly-p0.md)。本版交付 P0 批次：[BUG-155](work-items/BUG-155.md) 边选择器类型、[BUG-156](work-items/BUG-156.md) 嵌套装配、[BUG-157](work-items/BUG-157.md) 看门狗与装配恢复、[BUG-158](work-items/BUG-158.md) 预算披露、[BUG-159](work-items/BUG-159.md) 多半径弧准入（部分交付，内核拉伸转 [BUG-165](work-items/BUG-165.md)）、[BUG-160](work-items/BUG-160.md) 样条面积与坐标 B 样条、[BUG-161](work-items/BUG-161.md) 同圆重复边。后续项 [BUG-162](work-items/BUG-162.md) 旋转正交化、[BUG-163](work-items/BUG-163.md) 圆角邻弧提示、[BUG-164](work-items/BUG-164.md) 装配阵列、[BUG-165](work-items/BUG-165.md) 样条共享顶点、[BUG-166](work-items/BUG-166.md) 恢复预算、[BUG-167](work-items/BUG-167.md) 装配换版、[BUG-168](work-items/BUG-168.md) 会话判定与只读导出。见[版本说明](RELEASE_NOTES_0.37.0.md)与[发布记录](validation/RELEASE-0.37.0.md)。
 
 2026-11-23（0.36.0 MINOR，台账 218 项）：[BUG-152](work-items/BUG-152.md)、[BUG-153](work-items/BUG-153.md)、[BUG-154](work-items/BUG-154.md) 与 [FEAT-074](work-items/FEAT-074.md) 交付本批保存、恢复和建模反馈修复。见[发布记录](validation/RELEASE-0.36.0.md)。
 
@@ -228,11 +228,11 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 | --- | --- |
 | 仍需修复 | 8 |
 | 待复现/待核实 | 36 |
-| 已有修复但待验收 | 48 |
+| 已有修复但待验收 | 47 |
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
 | 开发中 | 7 |
-| 部分交付，剩余待验收 | 49 |
+| 部分交付，剩余待验收 | 50 |
 | 部分交付，剩余待规划 | 7 |
 | 待规划 | 55 |
 
@@ -303,13 +303,13 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [BUG-152](work-items/BUG-152.md) | P1 | 已有修复但待验收 | 0.36.0（恢复与保存修复）；原现场待原件 | 受管独立零件按目标目录原地保存，重载核对确切版本，MCP 支持客户端空 pending。原现场 Backup -1 根因待原件。 |
 | [BUG-153](work-items/BUG-153.md) | P1 | 已有修复但待验收 | 0.36.0（显式近似与诊断）；精确切除待调查 | Creo 10 实机复现闭合 B 样条零去料。显式 21 段折线近似去料与手工折线一致，保存重载通过。精确切除仍有内核边界。 |
 | [BUG-154](work-items/BUG-154.md) | P1 | 已有修复但待验收 | 0.36.0（准入披露与种子校验）；外部七截面待样件 | 回调依赖在能力摘要披露，种子读取实际截面父特征与重载几何。Creo 10 两截面三种轮廓通过，外部七截面现场待样件。 |
-| [BUG-155](work-items/BUG-155.md) | P0 | 已有修复但待验收（待合入） | 开发分支 `codex/feedback-0355-p0` | 边选择器写入 `target=edge` 并按类型校验 id；选择器与显式 id 圆角实机通过、保存重载。剩：曲面选择器回归、Creo 9 实机、WorkBuddy。 |
-| [BUG-156](work-items/BUG-156.md) | P0 | 已有修复但待验收（待合入） | 开发分支 `codex/feedback-0355-p0` | 装配源走 `ProMdlnameCopy` 快照，三级嵌套实机通过、源子装配 SHA/revision 不变。剩：原始 P05、Creo 9 实机、WorkBuddy。 |
-| [BUG-157](work-items/BUG-157.md) | P0 | 已有修复但待验收（待合入） | 开发分支 `codex/feedback-0355-p0` | 看门狗观察 `native.log`；装配 `restore_baseline` 走 identity（500 mm³ 基线实机恢复）。剩：6428 边 identity、269 组件现场、Creo 9、WorkBuddy。 |
-| [BUG-158](work-items/BUG-158.md) | P0 | 已有修复但待验收（待合入） | 开发分支 `codex/feedback-0355-p0` | 回执/运行态/compact 同源披露作业与停滞预算；实机 600/600 一致。剩：真实长作业试探、Creo 9。 |
-| [BUG-159](work-items/BUG-159.md) | P0 | 部分修复（Python 准入已验，内核拒绝转 BUG-165） | 开发分支 `codex/feedback-0355-p0` | 1e-6 mm 弧接点不再误拒，40 段弧轮廓准入通过；内核仍拒绝拉伸，共享顶点转 BUG-165。剩：Creo 9、原始 40 段输入。 |
-| [BUG-160](work-items/BUG-160.md) | P0 | 已有修复但待验收（待合入） | 开发分支 `codex/feedback-0355-p0` | 坐标尺寸接受精确 B 样条；不完整分析面积返回 null 并带 `area_status`。实机 4 条闭合 B 样条通过并保存重载。剩：原始模型、Creo 9。 |
-| [BUG-161](work-items/BUG-161.md) | P0 | 已有修复但待验收（待合入） | 开发分支 `codex/feedback-0355-p0` | 同圆重复边在建特征前明确拒绝（72/90），单边 72 成功并保存重载。剩：原始垫板 116/174、Creo 9。 |
+| [BUG-155](work-items/BUG-155.md) | P0 | 已有修复但待验收 | 0.37.0 | 边选择器写入 `target=edge` 并按类型校验 id；选择器与显式 id 圆角实机通过、保存重载。剩：曲面选择器回归、Creo 9 实机、WorkBuddy。 |
+| [BUG-156](work-items/BUG-156.md) | P0 | 已有修复但待验收 | 0.37.0 | 装配源走 `ProMdlnameCopy` 快照，三级嵌套实机通过、源子装配 SHA/revision 不变。剩：原始 P05、Creo 9 实机、WorkBuddy。 |
+| [BUG-157](work-items/BUG-157.md) | P0 | 已有修复但待验收 | 0.37.0 | 看门狗观察 `native.log`；装配 `restore_baseline` 走 identity（500 mm³ 基线实机恢复）。剩：6428 边 identity、269 组件现场、Creo 9、WorkBuddy。 |
+| [BUG-158](work-items/BUG-158.md) | P0 | 已有修复但待验收 | 0.37.0 | 回执/运行态/compact 同源披露作业与停滞预算；实机 600/600 一致。剩：真实长作业试探、Creo 9。 |
+| [BUG-159](work-items/BUG-159.md) | P0 | 部分交付 0.37.0（Python 准入已修复；内核拉伸转 BUG-165） | 0.37.0（部分交付）；内核共享顶点未排期 | 1e-6 mm 弧接点不再误拒，40 段弧轮廓准入通过；内核仍拒绝拉伸，共享顶点转 BUG-165。剩：Creo 9、原始 40 段输入。 |
+| [BUG-160](work-items/BUG-160.md) | P0 | 已有修复但待验收 | 0.37.0 | 坐标尺寸接受精确 B 样条；不完整分析面积返回 null 并带 `area_status`。实机 4 条闭合 B 样条通过并保存重载。剩：原始模型、Creo 9。 |
+| [BUG-161](work-items/BUG-161.md) | P0 | 已有修复但待验收 | 0.37.0 | 同圆重复边在建特征前明确拒绝（72/90），单边 72 成功并保存重载。剩：原始垫板 116/174、Creo 9。 |
 | [BUG-145](work-items/BUG-145.md) | P1 | 已有修复但待验收 | 0.35.6（修复已交付）；Creo Toolkit 探针与外部宿主未排期 | 真实 Explorer 的 Unicode 路径、清理异常和探针诊断离线验证通过；剩 Creo Toolkit 探针及外部宿主验收。 |
 | [DEV-078](work-items/DEV-078.md) | P2 | 离线完成；实机待样件 | 未排期 | 四边双方向填充、独立角释放/quilt成形、多段flange全部门禁已在 2026-11-08 离线交付并冻结，3031单测与SDK12.4编译通过；2026-11-17 复核无离线剩余。剩余全是真实样件/实机：Offset/PunchDie、格栅实测、保存重载/回滚、Creo9/10、非mm、WorkBuddy。 |
 | [DEV-076](work-items/DEV-076.md) | P1 | 已有修复但待验收 | 未排期 | H13 worker构建身份/动态准入、H15 overlap预算/覆盖诊断、H16 trim结果句柄与连续trim已在Creo12.4实机通过；H14交线诊断、H17 Creo10直创原件、H18 Creo10同载荷、H19旧原件仍缺；Creo9/10与远端余项见接手H10—H19。 |

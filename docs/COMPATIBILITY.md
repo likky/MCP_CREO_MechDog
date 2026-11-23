@@ -6,6 +6,8 @@
 
 0.36.1 是脚本侧 PATCH：只改自带 stdio 冒烟脚本的契约断言与门禁，公开工具、原生执行器和 Creo 侧行为与 0.36.0 相同，上一段 Creo 10 验收结论对本版继续有效；本版未做新的实机复验。见[发布记录](validation/RELEASE-0.36.1.md)。
 
+0.37.0 在 Windows x64 / Creo 12.4.0.0（release_numeric 42，安装目录 `D:\Program Files\PTC\Creo 10.0.0.0`）/ 匹配 Toolkit 实机验收边选择器圆角、同圆重复边拒绝、三级嵌套装配、装配取消后的 identity 基线恢复、预算披露与 4 条闭合 B 样条坐标草图。40 段多半径圆弧轮廓的 Python 准入已通过，但内核仍以 `ProFeatureWithoptionsCreate=-1` 拒绝拉伸，共享顶点问题转 [BUG-165](work-items/BUG-165.md)。Creo 9 与 Creo 10 现场本批未复验；Creo 9 SDK 编译与运行时验收仍未完成。见[发布记录](validation/RELEASE-0.37.0.md)。
+
 2026-11-08 DEV-076开发分支补步：0.18.3/0.18.4的手写surface_loft曾无条件包含Probbl.h，报告方Creo10 SDK因此构建失败。本分支增加头存在性门控；缺头时该操作明确SURFACE_LOFT_SDK_UNAVAILABLE，不生成特征，有头保留原实现。缺头分支以SDK无关C++夹具验证；完整Creo9/10 SDK构建及运行时不据此判通过。本批不修改已发布标签/附件。
 
 2026-11-08 DEV-080补充：`creo_surface_boundary_fill` 与 `creo_surface_loft` 同源于 `Probbl.h` 的边界混合元素树；不含该头的 Toolkit SDK（已观测：Creo 10.0.0.0）上两者均不可用。执行器在 `creo_worker.exe build-info` 自报头条件状态，Python 侧按已验证的 worker 身份在提交作业前拒绝，给出 `SURFACE_LOFT_SDK_UNAVAILABLE` 一类明确降级回执，不伪造几何，也不应被误判为安装失败；`surface_boundary_fill` 另保持能力面 GATED。缺头 SDK 的整包编译还受 `native/surface_boundary_fill.cpp` 复用 `surface_loft.cpp` 内部符号影响，根因、抽头方案与不依赖 `Probbl.h` 的等价元素树见 [DEV-080](work-items/DEV-080.md) H01；需 Creo 10 SDK 编译与实机几何验收，本机未验，不据门控夹具外推为通过。

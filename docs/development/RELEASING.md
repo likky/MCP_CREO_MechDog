@@ -15,7 +15,9 @@
 
 ## 版本约定
 
-当前版本为 0.36.1（2026-11-23 PATCH，自带 stdio 冒烟脚本的 capabilities 分页契约修复）。见[版本说明](../RELEASE_NOTES_0.36.1.md)和[发布记录](../validation/RELEASE-0.36.1.md)。
+当前版本为 0.37.0（2026-11-23 MINOR，嵌套装配源、B 样条坐标尺寸、装配 identity 恢复、预算披露与几何/选择器修复）。见[版本说明](../RELEASE_NOTES_0.37.0.md)和[发布记录](../validation/RELEASE-0.37.0.md)。
+
+此前的 0.36.1 修复自带 stdio 冒烟脚本的 capabilities 分页契约。[版本说明](../RELEASE_NOTES_0.36.1.md)和[发布记录](../validation/RELEASE-0.36.1.md)。
 
 此前的 0.36.0 交付保存与恢复、显式 B 样条近似、种子放样验证、按特征选面与 JPEG 选项。[版本说明](../RELEASE_NOTES_0.36.0.md)和[发布记录](../validation/RELEASE-0.36.0.md)。
 
