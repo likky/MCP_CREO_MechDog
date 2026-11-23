@@ -1,5 +1,7 @@
 # 开发入口
 
+2026-11-23（0.36.1 PATCH）：[BUG-151](work-items/BUG-151.md) 修复自带 stdio 冒烟脚本 `tools/test_mcp.py` 未随 `creo_capabilities` compact 分页契约更新、按文档运行必 `KeyError: 'interpolation'` 的问题。契约期望集中到 `src/creo_mechdog/mcp_contract.py`，脚本与 `tests/unit/test_mcp_contract.py` 共用同一来源；脚本新增 `--protocol-only` 供无 Creo 环境验收。见[版本说明](RELEASE_NOTES_0.36.1.md)及[发布记录](validation/RELEASE-0.36.1.md)。
+
 2026-11-23（0.36.0 MINOR）：[BUG-152](work-items/BUG-152.md) 改进受管零件保存、检查点恢复和空 pending 兼容；[BUG-153](work-items/BUG-153.md) 提供 B 样条切除的显式折线近似与失败证据；[BUG-154](work-items/BUG-154.md) 加强种子放样重载检查并披露曲面路线限制；[FEAT-074](work-items/FEAT-074.md) 支持同计划按标签选面、JPEG 视图与像素尺寸及会话清理输入。见[版本说明](RELEASE_NOTES_0.36.0.md)、[本机验收](validation/feedback-save-loft-2026-11-23.md)及[发布记录](validation/RELEASE-0.36.0.md)。
 
 2026-11-22（0.35.8 PATCH）：[BUG-150](work-items/BUG-150.md) 修复初始实体 ID `-5778` 的切除作用域。Creo 10 实机两种 800 mm³ 切除均保存重载通过。原护卫舰的无作用域零去料待复现。[版本说明](RELEASE_NOTES_0.35.8.md) · [发布记录](validation/RELEASE-0.35.8.md)
