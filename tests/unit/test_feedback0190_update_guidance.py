@@ -49,8 +49,11 @@ class UpdateGuidanceTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["stale"])
         self.assertIn("stale", result["message"])
 
-    async def test_default_network_budget_is_five_seconds(self):
-        self.assertEqual(self.checker.snapshot()["network_timeout_seconds"], 5)
+    async def test_default_network_budget_is_fifteen_seconds_and_advisory(self):
+        snap = self.checker.snapshot()
+        self.assertEqual(snap["network_timeout_seconds"], 15)
+        self.assertTrue(snap["advisory"])
+        self.assertFalse(snap["affects_version_check"])
 
 
 if __name__ == "__main__":

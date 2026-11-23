@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import math
 from collections.abc import Callable
 from typing import Any
 
@@ -264,12 +265,139 @@ def section_records(model: dict[str, Any], section: str) -> list[Any] | None:
     return values
 
 
+NEAR_SECTIONS = ("edges", "surfaces")
+
+
+def _validate_near(near: Any, max_distance_mm: Any) -> tuple[list[float], float | None]:
+    if not isinstance(near, (list, tuple)) or len(near) != 3:
+        raise ValueError("near must be a 3-element [x, y, z] coordinate in mm")
+    coords: list[float] = []
+    for index, value in enumerate(near):
+        if isinstance(value, bool) or type(value) not in (int, float):
+            raise ValueError(f"near[{index}] must be a finite number")
+        number = float(value)
+        if not math.isfinite(number):
+            raise ValueError(f"near[{index}] must be finite")
+        coords.append(number)
+    limit_dist: float | None = None
+    if max_distance_mm is not None:
+        if isinstance(max_distance_mm, bool) or type(max_distance_mm) not in (int, float):
+            raise ValueError("max_distance_mm must be a non-negative finite number")
+        limit_dist = float(max_distance_mm)
+        if not math.isfinite(limit_dist) or limit_dist < 0:
+            raise ValueError("max_distance_mm must be a non-negative finite number")
+    return coords, limit_dist
+
+
+def _point_vec(value: Any) -> tuple[float, float, float] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 3:
+        return None
+    try:
+        x, y, z = float(value[0]), float(value[1]), float(value[2])
+    except (TypeError, ValueError):
+        return None
+    if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(z)):
+        return None
+    return (x, y, z)
+
+
+def _segment_distance(
+    p: tuple[float, float, float], a: tuple[float, float, float], b: tuple[float, float, float]
+) -> float:
+    dx, dy, dz = b[0] - a[0], b[1] - a[1], b[2] - a[2]
+    len_sq = dx * dx + dy * dy + dz * dz
+    if len_sq <= 1e-18:
+        return math.dist(p, a)
+    t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy + (p[2] - a[2]) * dz) / len_sq
+    t = max(0.0, min(1.0, t))
+    closest = (a[0] + dx * t, a[1] + dy * t, a[2] + dz * t)
+    return math.dist(p, closest)
+
+
+def _arc_distance(p: tuple[float, float, float], arc: dict[str, Any]) -> float | None:
+    origin = _point_vec(arc.get("origin"))
+    v1 = _point_vec(arc.get("v1"))
+    v2 = _point_vec(arc.get("v2"))
+    try:
+        radius = float(arc["radius"])
+        start_a = float(arc.get("start_angle", 0.0))
+        end_a = float(arc.get("end_angle", 2.0 * math.pi))
+    except (KeyError, TypeError, ValueError):
+        return None
+    if origin is None or v1 is None or v2 is None or not math.isfinite(radius) or radius < 0:
+        return None
+    n1 = math.sqrt(v1[0] ** 2 + v1[1] ** 2 + v1[2] ** 2)
+    n2 = math.sqrt(v2[0] ** 2 + v2[1] ** 2 + v2[2] ** 2)
+    if n1 <= 1e-12 or n2 <= 1e-12:
+        return math.dist(p, origin)
+    u1 = (v1[0] / n1, v1[1] / n1, v1[2] / n1)
+    u2 = (v2[0] / n2, v2[1] / n2, v2[2] / n2)
+    rel = (p[0] - origin[0], p[1] - origin[1], p[2] - origin[2])
+    c1 = rel[0] * u1[0] + rel[1] * u1[1] + rel[2] * u1[2]
+    c2 = rel[0] * u2[0] + rel[1] * u2[1] + rel[2] * u2[2]
+    two_pi = 2.0 * math.pi
+    span = end_a - start_a
+    if span < 0:
+        span += two_pi
+    angle = math.atan2(c2, c1)
+    if span < two_pi - 1e-6:
+        offset = (angle - start_a) % two_pi
+        if offset > span:
+            # Clamp to closer of start_angle or end_angle
+            cand_start = (
+                origin[0] + radius * (math.cos(start_a) * u1[0] + math.sin(start_a) * u2[0]),
+                origin[1] + radius * (math.cos(start_a) * u1[1] + math.sin(start_a) * u2[1]),
+                origin[2] + radius * (math.cos(start_a) * u1[2] + math.sin(start_a) * u2[2]),
+            )
+            cand_end = (
+                origin[0] + radius * (math.cos(end_a) * u1[0] + math.sin(end_a) * u2[0]),
+                origin[1] + radius * (math.cos(end_a) * u1[1] + math.sin(end_a) * u2[1]),
+                origin[2] + radius * (math.cos(end_a) * u1[2] + math.sin(end_a) * u2[2]),
+            )
+            return min(math.dist(p, cand_start), math.dist(p, cand_end))
+    closest = (
+        origin[0] + radius * (math.cos(angle) * u1[0] + math.sin(angle) * u2[0]),
+        origin[1] + radius * (math.cos(angle) * u1[1] + math.sin(angle) * u2[1]),
+        origin[2] + radius * (math.cos(angle) * u1[2] + math.sin(angle) * u2[2]),
+    )
+    return math.dist(p, closest)
+
+
+def _record_distance(section: str, record: dict[str, Any], target: list[float]) -> float | None:
+    p = (target[0], target[1], target[2])
+    if section == "edges":
+        start = _point_vec(record.get("start"))
+        end = _point_vec(record.get("end"))
+        if start is not None and end is not None:
+            return _segment_distance(p, start, end)
+        arc = record.get("arc")
+        if isinstance(arc, dict):
+            return _arc_distance(p, arc)
+        return None
+    if section == "surfaces":
+        bbox = record.get("bbox")
+        if isinstance(bbox, (list, tuple)) and len(bbox) == 2:
+            lo = _point_vec(bbox[0])
+            hi = _point_vec(bbox[1])
+            if lo is not None and hi is not None:
+                cx = min(max(p[0], lo[0]), hi[0])
+                cy = min(max(p[1], lo[1]), hi[1])
+                cz = min(max(p[2], lo[2]), hi[2])
+                return math.dist(p, (cx, cy, cz))
+        origin = _point_vec(record.get("origin"))
+        if origin is not None:
+            return math.dist(p, origin)
+    return None
+
+
 def inspect_page(
     model: dict[str, Any],
     detail: str = "compact",
     section: str | None = None,
     limit: int = 50,
     cursor: str | None = None,
+    near: list[float] | None = None,
+    max_distance_mm: float | None = None,
 ) -> dict[str, Any]:
     if detail not in ("compact", "full"):
         raise ValueError("detail must be compact or full")
@@ -277,8 +405,18 @@ def inspect_page(
         raise ValueError("limit must be 1–200")
     if section is not None and section not in SECTIONS:
         raise ValueError("Unknown section; use " + ", ".join(SECTIONS))
-    if detail == "compact" and (section is not None or cursor is not None):
-        raise ValueError("section/cursor require detail=full")
+    if detail == "compact" and (
+        section is not None or cursor is not None or near is not None or max_distance_mm is not None
+    ):
+        raise ValueError("section/cursor/near require detail=full")
+    if max_distance_mm is not None and near is None:
+        raise ValueError("max_distance_mm requires near=[x, y, z]")
+    near_point: list[float] | None = None
+    near_limit: float | None = None
+    if near is not None:
+        if section not in NEAR_SECTIONS:
+            raise ValueError("near spatial filter requires section=" + " or ".join(NEAR_SECTIONS))
+        near_point, near_limit = _validate_near(near, max_distance_mm)
     response = model_summary(model)
     response.update(detail=detail, sections_available=list(SECTIONS), complete=detail == "compact")
     if detail == "compact":
@@ -286,16 +424,20 @@ def inspect_page(
             raise ValueError("Model summary exceeds response budget")
         return response
     token = decode_cursor(cursor)
-    identity = {
+    identity: dict[str, Any] = {
         "model_id": model["model_id"],
         "revision": model["revision"],
         "snapshot_hash": fingerprint(model),
         "section": section,
     }
+    if near_point is not None:
+        identity["near"] = near_point
+        if near_limit is not None:
+            identity["max_distance_mm"] = near_limit
     if token and any(token.get(key) != value for key, value in identity.items()):
         raise ValueError("Snapshot or query changed; restart inspection without cursor")
     # Small legacy full snapshots remain available without collection reshaping.
-    if section is None and token is None:
+    if section is None and token is None and near_point is None:
         whole = {
             **model,
             **{
@@ -345,7 +487,32 @@ def inspect_page(
         ):
             return whole
     names = [section] if section is not None else list(SECTIONS)
-    records = [(name, record) for name in names for record in (section_records(model, name) or [])]
+    if near_point is not None and section is not None:
+        raw_items = section_records(model, section) or []
+        scored: list[tuple[float, int, dict[str, Any]]] = []
+        for index, record in enumerate(raw_items):
+            if not isinstance(record, dict):
+                continue
+            dist = _record_distance(section, record, near_point)
+            if dist is None:
+                continue
+            if near_limit is not None and dist > near_limit:
+                continue
+            rec_id = record.get("id")
+            sort_id = rec_id if isinstance(rec_id, int) else index
+            scored.append((dist, sort_id, {**record, "distance_mm": round(dist, 6)}))
+        scored.sort(key=lambda item: (item[0], item[1]))
+        records = [(section, item[2]) for item in scored]
+        response["near_filter"] = {
+            "near_mm": near_point,
+            "max_distance_mm": near_limit,
+            "matched_total": len(records),
+            "scanned_total": len(raw_items),
+        }
+    else:
+        records = [
+            (name, record) for name in names for record in (section_records(model, name) or [])
+        ]
     start = token["offset"] if token else 0
     if start > len(records):
         raise ValueError("Invalid query cursor offset")

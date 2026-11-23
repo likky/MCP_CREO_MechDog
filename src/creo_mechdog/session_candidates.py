@@ -118,6 +118,8 @@ def build(snapshot: dict, selection: dict, evidence: dict | None = None) -> dict
     known = evidence.get("session_fingerprint")
     return {
         "read_only": True,
+        "diagnostic_only": True,
+        "selectable_by_pid": False,
         "available": available,
         "reason": snapshot.get("reason") if not available else None,
         "observed_at": snapshot.get("observed_at"),

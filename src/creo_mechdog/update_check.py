@@ -22,7 +22,7 @@ API_URL = f"https://api.github.com/repos/{REPOSITORY}/releases"
 RELEASE_ROOT = f"https://github.com/{REPOSITORY}/releases"
 CACHE_SECONDS = 24 * 60 * 60
 RETRY_SECONDS = 15 * 60
-NETWORK_SECONDS = 5
+NETWORK_SECONDS = 15
 MAX_PAGES = 20
 MAX_PAGE_BYTES = 4 * 1024 * 1024
 _SEMVER = re.compile(
@@ -154,7 +154,7 @@ def select_release(releases: list[dict[str, Any]], current: str) -> dict[str, An
 def _network_timeout_seconds() -> float:
     """Read process configuration once, safely rejecting invalid budgets."""
     try:
-        value = float(os.environ.get("MECHDOG_UPDATE_TIMEOUT_SECONDS", "5"))
+        value = float(os.environ.get("MECHDOG_UPDATE_TIMEOUT_SECONDS", str(NETWORK_SECONDS)))
     except (ValueError, TypeError):
         return NETWORK_SECONDS
     return value if math.isfinite(value) and 1 <= value <= 30 else NETWORK_SECONDS
@@ -239,6 +239,8 @@ class UpdateChecker:
         )
         result["retry_after_at"] = self._retry_after_at
         result["from_cache"] = from_cache
+        result["advisory"] = True
+        result["affects_version_check"] = False
         result["stale"] = bool(result["latest_version"]) and (
             monotonic() >= self._success_expires or result["error"] is not None
         )

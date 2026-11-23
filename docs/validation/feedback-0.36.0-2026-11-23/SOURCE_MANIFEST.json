@@ -1,0 +1,12 @@
+{
+  "archived_on": "2026-11-23",
+  "feedback_target_version": "0.36.0",
+  "source_environment": "Windows 10 x64 19045 / Creo Parametric 9.0.0.0 (release_numeric=41)",
+  "files": [
+    {
+      "path": "originals/upgrade-session-and-recovery-deadlock.md",
+      "original_name": "2026-11-23_CREO_0.36.0_核心问题：升级重启后旧Creo会话无法接管且unknown_outcome恢复在会话变更后被永久拒绝.md",
+      "sha256": "e196566d8bb7d0707807233a6a995d8e6c356afaa84398eb9b35dacc7813e9ba"
+    }
+  ]
+}

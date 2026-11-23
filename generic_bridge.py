@@ -444,8 +444,18 @@ def inspect_model(
     section: str | None = None,
     limit: int = 50,
     cursor: str | None = None,
+    near: list[float] | None = None,
+    max_distance_mm: float | None = None,
 ) -> dict:
-    return inspect_page(model_info(model_id), detail, section, limit, cursor)
+    return inspect_page(
+        model_info(model_id),
+        detail,
+        section,
+        limit,
+        cursor,
+        near=near,
+        max_distance_mm=max_distance_mm,
+    )
 
 
 def component_graph(source: dict, target_id: str, seen: set[str] | None = None) -> dict[str, dict]:
@@ -1351,12 +1361,29 @@ def submit(
             path = model_path(model_id)
             model = model_info(model_id)
             if model.get("pending_job") or model.get("recovery_pending"):
+                # BUG-166 (Issue C): report the actual blocking field so callers
+                # blocked by recovery_pending do not pass that id as expected_pending_job_id.
+                pending_id = model.get("pending_job")
+                recovery_id = model.get("recovery_pending")
+                blocking_op = (
+                    "recovery_pending" if recovery_id and not pending_id else "pending_job"
+                )
+                blocking_id = recovery_id or pending_id
+                busy_message = (
+                    f"Model has a pending recovery job (recovery_pending={recovery_id}; "
+                    "pending_job=null). Inspect with creo_reconcile_model and pass "
+                    "expected_pending_job_id=null when applying."
+                    if blocking_op == "recovery_pending"
+                    else "Model has a pending job"
+                )
                 raise bridge.ToolkitBusy(
-                    "Model has a pending job",
+                    busy_message,
                     holder={
-                        "job_id": model.get("recovery_pending") or model.get("pending_job"),
+                        "job_id": blocking_id,
                         "model_id": model_id,
-                        "operation": "pending_job",
+                        "operation": blocking_op,
+                        "pending_job": pending_id,
+                        "recovery_pending": recovery_id,
                     },
                 )
             if model["status"] != "ready":

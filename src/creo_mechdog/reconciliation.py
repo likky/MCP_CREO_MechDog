@@ -30,6 +30,7 @@ ACTIONS = (
     "ack_failure",
     "confirm_panel_closed",
     "abandon_stalled_recovery",
+    "abandon_unknown_recovery",
 )
 # BUG-110: actions that touch a saved model or its component ownership stay
 # limited to parts, sheetmetal and (BUG-157) assemblies; drawings are refused
@@ -73,13 +74,38 @@ def digest(value: object) -> str:
     ).hexdigest()
 
 
-def recovery_phase_seconds() -> int:
-    """BUG-157: native recovery phase budget, default 300 s within 30-900 s."""
+def recovery_phase_seconds(model: dict | None = None, budget_seconds: int | None = None) -> int:
+    """BUG-157/BUG-166: native recovery phase budget, clamped to 30-900 s.
+
+    Uses explicit per-call ``budget_seconds`` when supplied; otherwise starts
+    from ``config.json['recovery_phase_seconds']`` (default 300 s) and raises
+    the floor for high-edge models (e.g. >2,700 edges -> up to 900 s) so a
+    large model's recovery is never clipped by a fixed 90 s constant.
+    """
+    if budget_seconds is not None:
+        if isinstance(budget_seconds, bool) or not isinstance(budget_seconds, int):
+            raise ValueError(
+                f"budget_seconds must be an integer from {RECOVERY_PHASE_MIN_SECONDS} "
+                f"to {RECOVERY_PHASE_MAX_SECONDS}"
+            )
+        if not RECOVERY_PHASE_MIN_SECONDS <= budget_seconds <= RECOVERY_PHASE_MAX_SECONDS:
+            raise ValueError(
+                f"budget_seconds must be between {RECOVERY_PHASE_MIN_SECONDS} "
+                f"and {RECOVERY_PHASE_MAX_SECONDS}"
+            )
+        return budget_seconds
     try:
         value = int(bridge.config().get("recovery_phase_seconds", RECOVERY_PHASE_SECONDS))
     except (TypeError, ValueError):
         value = RECOVERY_PHASE_SECONDS
-    return min(RECOVERY_PHASE_MAX_SECONDS, max(RECOVERY_PHASE_MIN_SECONDS, value))
+    edges = 0
+    if isinstance(model, dict):
+        summary = inspection_refs.summary_of(model)
+        counts = summary.get("counts") if isinstance(summary, dict) else None
+        if isinstance(counts, dict) and isinstance(counts.get("edges"), int):
+            edges = counts["edges"]
+    adaptive_floor = min(RECOVERY_PHASE_MAX_SECONDS, 120 + edges // 15) if edges > 0 else 0
+    return min(RECOVERY_PHASE_MAX_SECONDS, max(RECOVERY_PHASE_MIN_SECONDS, value, adaptive_floor))
 
 
 def _binding(snapshot: dict) -> str:
@@ -1081,6 +1107,43 @@ def _actions(snapshot: dict, live: dict | None) -> dict:
         "stalled_intent": stalled or None,
     }
     terminal = general.CANCEL_TERMINAL_STATUSES
+    # BUG-166: operator exit when a recovery job itself ended in terminal
+    # unknown_outcome/failed/aborted/cancelled and still holds recovery_pending
+    # (for example after recovery_phase_timeout or a Creo restart), so
+    # abandon_stalled_recovery (pre-worker only) and ack_failure (requires no
+    # recovery_pending) cannot fire. Metadata-only: clears recovery_pending,
+    # never advances revision or modifies disk files, and records
+    # disk_state_verified=false / session_state_verified=false.
+    rec_job_id = model.get("recovery_pending")
+    rec_job_status = _job_status(rec_job_id) if rec_job_id else None
+    has_saved_file = bool(model.get("part_file"))
+    baseline_ok = (not has_saved_file) or (baseline.get("verified") is True)
+    unknown_rec_eligible = bool(
+        rec_job_id
+        and rec_job_status in ("failed", "unknown_outcome", "aborted", "cancelled")
+        and baseline_ok
+    )
+    states["abandon_unknown_recovery"] = {
+        "available": bool(stopped and unknown_rec_eligible),
+        "reason": (
+            "Previous runner/worker is active or cannot be proven stopped"
+            if not stopped
+            else "No recovery_pending reservation is held on this model"
+            if not rec_job_id
+            else f"Recovery job {rec_job_id} has status {rec_job_status!r}; wait until it reaches "
+            "a terminal failed/unknown_outcome/aborted/cancelled status"
+            if rec_job_status not in ("failed", "unknown_outcome", "aborted", "cancelled")
+            else "Saved baseline checkpoint hash is missing or does not match; inspect the file "
+            "before releasing recovery_pending"
+            if not baseline_ok
+            else "Explicit apply with confirm_unknown_recovery=true, matching evidence and an "
+            "idempotency key required; clears recovery_pending without advancing revision or "
+            "modifying files (disk_state_verified=false)"
+        ),
+        "recovery_job_id": rec_job_id,
+        "recovery_job_status": rec_job_status,
+        "baseline_hash_verified": baseline.get("verified") if has_saved_file else None,
+    }
     states["confirm_panel_closed"] = {
         "available": bool(
             guard.get("active")
@@ -1106,7 +1169,7 @@ def _actions(snapshot: dict, live: dict | None) -> dict:
     return states
 
 
-def _native_request(model: dict, choice: dict) -> dict:
+def _native_request(model: dict, choice: dict, budget_seconds: int | None = None) -> dict:
     # Reference-first view: a split registry record sends aliases/inspection
     # as controlled references; a legacy inline record keeps its payload
     # (BUG-077).
@@ -1122,10 +1185,11 @@ def _native_request(model: dict, choice: dict) -> dict:
         "template_file": "",
         "components": {},
         "reconciliation": choice,
-        # BUG-157: assembly dependencies are owned when they live under the
-        # managed models root; the phase budget is clamped by the executor.
+        # BUG-157/BUG-166: assembly dependencies are owned when they live under
+        # the managed models root; the phase budget adapts to edge count or an
+        # explicit per-call budget_seconds and is clamped by the executor.
         "managed_root": str(bridge.ROOT / "models"),
-        "recovery_phase_seconds": recovery_phase_seconds(),
+        "recovery_phase_seconds": recovery_phase_seconds(model, budget_seconds),
     }
 
 
@@ -1175,7 +1239,7 @@ def _native(directory: Path, manifest: dict) -> dict:
     return result
 
 
-def _live(model: dict) -> dict:
+def _live(model: dict, budget_seconds: int | None = None) -> dict:
     with bridge.toolkit_lock(operation="reconciliation_preflight", model_id=model["model_id"]):
         job_id = uuid.uuid4().hex
         directory = bridge.job_path(job_id)
@@ -1187,7 +1251,10 @@ def _live(model: dict) -> dict:
             "status": "running",
             "created_at": bridge.now(),
         }
-        bridge.write_json(directory / "request.json", _native_request(model, {"action": "inspect"}))
+        bridge.write_json(
+            directory / "request.json",
+            _native_request(model, {"action": "inspect"}, budget_seconds=budget_seconds),
+        )
         try:
             result = _native(directory, manifest)
             manifest.update(status="succeeded", result=result)
@@ -1204,9 +1271,10 @@ def _live(model: dict) -> dict:
             bridge.write_json(directory / "job.json", manifest)
 
 
-def inspect(model_id: str, live: bool = False) -> dict:
+def inspect(model_id: str, live: bool = False, budget_seconds: int | None = None) -> dict:
     snapshot = _snapshot(model_id)
-    realtime = _live(snapshot["model"]) if live else None
+    phase_budget = recovery_phase_seconds(snapshot["model"], budget_seconds)
+    realtime = _live(snapshot["model"], budget_seconds=budget_seconds) if live else None
     # A model/worker may have changed while a live query held the channel.
     if _binding(snapshot) != _binding(_snapshot(model_id)):
         raise ValueError("Evidence changed during preflight; inspect again")
@@ -1263,13 +1331,11 @@ def inspect(model_id: str, live: bool = False) -> dict:
         "budgets": {
             "snapshot_seconds": SNAPSHOT_SECONDS,
             "file_hash_seconds": HASH_SECONDS,
-            # BUG-157: the native recovery phase is no longer a fixed 90 s; the
-            # published values are the ones _native() actually applies.
-            "native_phase_seconds": recovery_phase_seconds(),
+            # BUG-157/BUG-166: native recovery phase budget adapts to edge count
+            # or an explicit per-call budget_seconds and matches _native().
+            "native_phase_seconds": phase_budget,
             "disconnect_seconds": 20,
-            "outer_seconds": max(
-                WORKER_SECONDS, recovery_phase_seconds() + RECOVERY_PHASE_MARGIN_SECONDS
-            ),
+            "outer_seconds": max(WORKER_SECONDS, phase_budget + RECOVERY_PHASE_MARGIN_SECONDS),
         },
     }
 
@@ -1570,6 +1636,105 @@ def _abandon_stalled_intent(
     return result
 
 
+def _abandon_unknown_recovery(
+    model_id: str, record: dict, idempotency_key: str, arguments: dict
+) -> dict:
+    """BUG-166: release recovery_pending after a terminal failed/unknown recovery job.
+
+    Metadata-only operator exit when a previous recovery job itself reached a
+    terminal unknown_outcome/failed/aborted/cancelled status (e.g. timeout or
+    session restart) while all recorded owners are proven stopped. Clears
+    ``recovery_pending`` and returns the model to ``ready`` when ``pending_job``
+    is null, never advancing revision or touching files, and records explicit
+    ``disk_state_verified=false`` and ``session_state_verified=false`` in the
+    reconciliation audit block.
+    """
+    snapshot = record["snapshot"]
+    job_id = snapshot["model"].get("recovery_pending")
+    if not job_id:
+        raise ValueError("No recovery_pending reservation is held on this model; inspect again")
+    rec_status = _job_status(job_id)
+    if rec_status not in ("failed", "unknown_outcome", "aborted", "cancelled"):
+        raise ValueError(
+            f"Recovery job {job_id} has status {rec_status!r}; cannot abandon until terminal"
+        )
+    baseline = snapshot.get("baseline") or {}
+    has_saved_file = bool(snapshot["model"].get("part_file"))
+    if has_saved_file and baseline.get("verified") is not True:
+        raise ValueError("Baseline file hash is not verified; inspect the file before releasing")
+    model = general.model_info(model_id)
+    if model.get("recovery_pending") != job_id:
+        raise ValueError("Recovery reservation changed; inspect again")
+    if model.get("revision") != snapshot["model"]["revision"]:
+        raise ValueError("Model revision changed after inspection; inspect again")
+    finished = bridge.now()
+    journal = _journal(model_id, idempotency_key)
+    prior_status = model.get("status")
+    next_status = (
+        "ready"
+        if model.get("pending_job") is None and prior_status in ("unknown_outcome", "ready")
+        else prior_status
+    )
+    audit = {
+        "action": "abandon_unknown_recovery",
+        "abandoned_recovery_job_id": job_id,
+        "prior_recovery_job_status": rec_status,
+        "prior_model_status": prior_status,
+        "baseline_hash_verified": baseline.get("verified") if has_saved_file else None,
+        "disk_state_verified": False,
+        "session_state_verified": False,
+        "idempotency_key": idempotency_key,
+        "at": finished,
+    }
+    released = {
+        **model,
+        "status": next_status,
+        "recovery_pending": None,
+        "reconciliation": audit,
+        "updated_at": finished,
+    }
+    model_registry.write_model(general.model_path(model_id), released)
+    result = {
+        "model_id": model_id,
+        "action": "abandon_unknown_recovery",
+        "job_id": job_id,
+        "abandoned_recovery_job_id": job_id,
+        "prior_recovery_job_status": rec_status,
+        "status": next_status,
+        "stage": "unknown_recovery_abandoned",
+        "revision": released.get("revision"),
+        "pending_job": released.get("pending_job"),
+        "recovery_pending": None,
+        "recovery_pending_released": True,
+        "baseline_hash_verified": audit["baseline_hash_verified"],
+        "disk_state_verified": False,
+        "session_state_verified": False,
+        "original_plan_replayed": False,
+        "reconciliation": audit,
+        "message": (
+            "Released recovery_pending from terminal recovery job without advancing revision or "
+            "modifying saved files (disk_state_verified=false, session_state_verified=false). "
+            "Verify the model in Creo or run creo_refresh_model before making further edits."
+        ),
+    }
+    bridge.write_json(
+        journal,
+        {
+            "state": "committed",
+            "action": "abandon_unknown_recovery",
+            "model_id": model_id,
+            "job_id": job_id,
+            "arguments": arguments,
+            "evidence": record,
+            "model_after": released,
+            "job_after": result,
+            "created_at": finished,
+        },
+        durable=True,
+    )
+    return result
+
+
 def apply(
     model_id: str,
     action: str,
@@ -1581,6 +1746,9 @@ def apply(
     confirm_failure_ack: bool = False,
     confirm_panel_closed: bool = False,
     confirm_stalled_recovery: bool = False,
+    confirm_unknown_recovery: bool = False,
+    budget_seconds: int | None = None,
+    verify_mode: str | None = None,
 ) -> dict:
     if (
         action not in ACTIONS
@@ -1616,6 +1784,21 @@ def apply(
             "failed and release recovery_pending; the model's pending job, revision, saved file and "
             "session protection are not touched."
         )
+    if action == "abandon_unknown_recovery" and confirm_unknown_recovery is not True:
+        raise ValueError(
+            "abandon_unknown_recovery releases a recovery_pending reservation held by a terminal "
+            "failed/unknown_outcome recovery job once all recorded owners are proven stopped. "
+            "Inspect the baseline file and pass confirm_unknown_recovery=true; revision and files "
+            "are not changed and disk_state_verified=false is recorded."
+        )
+    if verify_mode is not None:
+        if verify_mode not in ("identity", "full"):
+            raise ValueError("verify_mode must be 'identity' or 'full'")
+        if action != "restore_baseline":
+            raise ValueError("verify_mode is only valid with action='restore_baseline'")
+    if budget_seconds is not None:
+        # Validate budget bounds up front before touching locks or journals.
+        recovery_phase_seconds(None, budget_seconds)
     if expected_pending_job_id is not None and (
         not isinstance(expected_pending_job_id, str)
         or not bridge.JOB_ID.fullmatch(expected_pending_job_id)
@@ -1648,13 +1831,22 @@ def apply(
         arguments["confirm_panel_closed"] = True
     if action == "abandon_stalled_recovery":
         arguments["confirm_stalled_recovery"] = True
+    if action == "abandon_unknown_recovery":
+        arguments["confirm_unknown_recovery"] = True
+    if budget_seconds is not None:
+        arguments["budget_seconds"] = budget_seconds
+    if verify_mode is not None:
+        arguments["verify_mode"] = verify_mode
     file = _journal(model_id, idempotency_key)
     # A duplicate query does not contend for Toolkit or repeat native work.
     existing = _read(file)
     if existing:
         if existing["arguments"] != arguments:
             raise ValueError("Idempotency key already belongs to another recovery request")
-        if existing.get("state") == "committed" and action == "abandon_stalled_recovery":
+        if existing.get("state") == "committed" and action in (
+            "abandon_stalled_recovery",
+            "abandon_unknown_recovery",
+        ):
             # A metadata-only acknowledgement records its own result; there is no
             # native commit to resume and no job to poll.
             return existing["job_after"]
@@ -1675,6 +1867,13 @@ def apply(
             model_id, evidence_token, expected_revision, expected_pending_job_id, action
         )
         return _abandon_stalled_intent(model_id, record, idempotency_key, arguments)
+    if action == "abandon_unknown_recovery":
+        # BUG-166: metadata only, no worker or Toolkit call, so an operator can
+        # release a dead recovery_pending reservation even after a Creo restart.
+        record = _validate_evidence(
+            model_id, evidence_token, expected_revision, expected_pending_job_id, action
+        )
+        return _abandon_unknown_recovery(model_id, record, idempotency_key, arguments)
     launch_error = None
     try:
         with bridge.toolkit_lock(operation="submit_reconciliation", model_id=model_id):
@@ -1694,8 +1893,14 @@ def apply(
             directory = bridge.job_path(job_id)
             (directory / "output").mkdir(parents=True)
             choice = {"action": action}
+            # BUG-166: bind session_fingerprint only when accepting live
+            # in-memory state (accept_live) or when fresh live preflight
+            # evidence was just captured in the current session. Disk-backed
+            # restore_baseline / accept_saved and uncommitted abandon_new must
+            # remain executable after a Creo restart; native still verifies
+            # owned origin, file SHA256 and geometry before mutating anything.
             session = (record.get("live") or {}).get("session_fingerprint")
-            if not session:
+            if not session and action == "accept_live":
                 session = next(
                     (
                         owner["worker"].get("recorded", {}).get("session_fingerprint")
@@ -1709,10 +1914,9 @@ def apply(
             if action == "restore_baseline":
                 choice.update(source_file=model["part_file"])
                 choice.update(inspection_refs.request_field(model, "source_inspection"))
-                # BUG-157: a verified baseline is checked by the fast identity
-                # mode (name/type/units/feature count/volume); full mode stays
-                # available for callers that need the deep geometry comparison.
-                choice["verify_mode"] = "identity"
+                # BUG-157/BUG-166: default to fast identity mode (name/type/
+                # units/feature count/volume); callers may opt into full mode.
+                choice["verify_mode"] = verify_mode or "identity"
             elif action == "accept_saved":
                 candidate = record["snapshot"]["candidate"]
                 choice.update(source_file=candidate["identity"]["path"])
@@ -1825,7 +2029,7 @@ def apply(
                 model_registry.write_model(general.model_path(model_id), after)
                 bridge.write_json(directory / "job.json", manifest, durable=True)
                 return manifest
-            request = _native_request(model, choice)
+            request = _native_request(model, choice, budget_seconds=budget_seconds)
             intent = {
                 "state": "intent",
                 "model_id": model_id,
@@ -2122,11 +2326,14 @@ def reconcile(
     confirm_failure_ack: bool = False,
     confirm_panel_closed: bool = False,
     confirm_stalled_recovery: bool = False,
+    confirm_unknown_recovery: bool = False,
+    budget_seconds: int | None = None,
+    verify_mode: str | None = None,
 ) -> dict:
     if mode == "inspect":
         if action is not None:
             raise ValueError("Selecting an action requires mode=apply")
-        return inspect(model_id, live)
+        return inspect(model_id, live, budget_seconds=budget_seconds)
     if (
         mode != "apply"
         or action is None
@@ -2150,4 +2357,7 @@ def reconcile(
         confirm_failure_ack,
         confirm_panel_closed,
         confirm_stalled_recovery,
+        confirm_unknown_recovery,
+        budget_seconds,
+        verify_mode,
     )

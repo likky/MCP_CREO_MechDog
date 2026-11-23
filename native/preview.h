@@ -234,10 +234,10 @@ struct PreviewDatumDisplayGuard {
                                    : model_type == PRO_PART    ? "part"
                                    : model_type == PRO_DRAWING ? "drawing"
                                                                : "other";
-        // Datum-occlusion handling belongs to the correct assembly preview
-        // path; parts and drawings keep their existing capture, and the
-        // empty-model skip states of P11 stay a separate concern.
-        if (model_type != PRO_ASSEMBLY) {
+        // FEAT-077: hide datum planes/axes/points/csys during preview capture
+        // for both assemblies and parts so acceptance screenshots are not
+        // occluded by datum planes or PRT_CSYS_DEF. Drawings remain unchanged.
+        if (model_type != PRO_ASSEMBLY && model_type != PRO_PART) {
             outcome.datum_hide_status = "not_applicable";
             outcome.datum_restore_status = "not_applicable";
             return;
