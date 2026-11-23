@@ -17,9 +17,10 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-#: A compact family entry is an index. ``limits_note`` is the DEV-081/F05
-#: exception for families that must publish a limit before routing.
-FAMILY_INDEX_KEYS = frozenset({"enabled", "tool", "limits_note"})
+#: A compact family entry is an index. Two hints ride along because a client must
+#: see them before choosing a route: ``limits_note`` (DEV-081/F05) and
+#: ``runtime_admission`` (FEAT-074, the callback requirement of a direct blend).
+FAMILY_INDEX_KEYS = frozenset({"enabled", "tool", "limits_note", "runtime_admission"})
 
 SECTION = "families"
 PAGE_LIMIT = 50
@@ -91,8 +92,8 @@ def _compact_problems(compact: dict[str, Any]) -> list[str]:
         if extra:
             problems.append(
                 f"compact family {name} must stay an index "
-                f"(enabled/tool[/limits_note]); found {extra}. Read detail fields with "
-                f'detail="full" and section="{SECTION}"'
+                f"(enabled/tool plus limits_note/runtime_admission); found {extra}. "
+                f'Read detail fields with detail="full" and section="{SECTION}"'
             )
     loft = families.get(LOFT_FAMILY)
     if not isinstance(loft, dict):
