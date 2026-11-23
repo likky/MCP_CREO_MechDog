@@ -63,6 +63,41 @@ async def capability_contract_problems(
     return problems
 
 
+async def fetch_capabilities_section(fetch_page: PageFetcher, section: str) -> dict[str, Any]:
+    """Collect every entry of one ``detail="full"`` capabilities section.
+
+    Raises ``RuntimeError`` listing every pagination problem if the walk does
+    not complete cleanly, so test scripts never silently read page 1 only.
+    """
+    entries, problems = await _paged_section_entries(fetch_page, section, allow_empty=True)
+    if problems:
+        raise RuntimeError(
+            f"creo_capabilities section={section!r} pagination failed: " + "; ".join(problems)
+        )
+    return entries
+
+
+async def call_capabilities_section(
+    call_capabilities: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
+    section: str,
+    *,
+    limit: int = PAGE_LIMIT,
+) -> dict[str, Any]:
+    """Page through one ``detail="full"`` section using a tool-call wrapper."""
+
+    async def _page(cursor: str | None) -> dict[str, Any]:
+        arguments: dict[str, Any] = {
+            "detail": "full",
+            "section": section,
+            "limit": limit,
+        }
+        if cursor:
+            arguments["cursor"] = cursor
+        return await call_capabilities(arguments)
+
+    return await fetch_capabilities_section(_page, section)
+
+
 def _compact_problems(compact: dict[str, Any]) -> list[str]:
     if not isinstance(compact, dict):
         return [f"compact page is {type(compact).__name__}, expected an object"]
@@ -72,6 +107,13 @@ def _compact_problems(compact: dict[str, Any]) -> list[str]:
     count = compact.get("enabled_tool_count")
     if type(count) is not int or count <= 0:
         problems.append(f"enabled_tool_count = {count!r}, expected a positive integer")
+    tool_count = compact.get("tool_count")
+    if type(tool_count) is not int or tool_count <= 0:
+        problems.append(f"tool_count = {tool_count!r}, expected a positive integer")
+    elif type(count) is int and tool_count != count:
+        problems.append(
+            f"tool_count = {tool_count!r} disagrees with enabled_tool_count = {count!r}"
+        )
     if compact.get("disabled_tools_hidden") is not True:
         problems.append(
             f"disabled_tools_hidden = {compact.get('disabled_tools_hidden')!r}, expected True"
@@ -108,10 +150,13 @@ def _compact_problems(compact: dict[str, Any]) -> list[str]:
     return problems
 
 
-async def _families_entries(
+async def _paged_section_entries(
     fetch_page: PageFetcher,
+    section: str,
+    *,
+    allow_empty: bool = False,
 ) -> tuple[dict[str, Any], list[str]]:
-    """Walk every families page; return (name -> full entry, problems)."""
+    """Walk every page of one ``detail="full"`` section; return (key -> value, problems)."""
     entries: dict[str, Any] = {}
     problems: list[str] = []
     cursor: str | None = None
@@ -120,51 +165,68 @@ async def _families_entries(
         page = await fetch_page(cursor)
         if not isinstance(page, dict):
             problems.append(
-                f"families page {page_number} is {type(page).__name__}, expected an object"
+                f"{section} page {page_number} is {type(page).__name__}, expected an object"
             )
             return entries, problems
-        if page.get("detail") != "full" or page.get("section") != SECTION:
+        if page.get("detail") != "full" or page.get("section") != section:
             problems.append(
-                f"families page {page_number} reports detail={page.get('detail')!r} "
-                f'section={page.get("section")!r}, expected "full"/"{SECTION}"'
+                f"{section} page {page_number} reports detail={page.get('detail')!r} "
+                f'section={page.get("section")!r}, expected "full"/"{section}"'
             )
         if page.get("offset") != offset:
             problems.append(
-                f"families page {page_number} starts at offset {page.get('offset')!r}, "
+                f"{section} page {page_number} starts at offset {page.get('offset')!r}, "
                 f"expected {offset}"
             )
         returned = page.get("returned")
+        total = page.get("total")
+        if (
+            allow_empty
+            and page_number == 1
+            and returned == 0
+            and total == 0
+            and page.get("complete") is True
+        ):
+            return entries, problems
         if type(returned) is not int or returned <= 0:
-            problems.append(f"families page {page_number} returned {returned!r} entries")
+            problems.append(f"{section} page {page_number} returned {returned!r} entries")
             return entries, problems
         for item in page.get("entries") or []:
             if not isinstance(item, dict) or not isinstance(item.get("key"), str):
                 problems.append(
-                    f"families page {page_number} carries an entry without a string key"
+                    f"{section} page {page_number} carries an entry without a string key"
                 )
                 continue
             key = item["key"]
             if key in entries:
-                problems.append(f"family {key} appears more than once while paging")
+                problems.append(f"{section} entry {key} appears more than once while paging")
                 continue
             if item.get("oversize"):
                 problems.append(
-                    f"family {key} is an oversize marker; the page budget cannot carry it"
+                    f"{section} entry {key} is an oversize marker; the page budget cannot carry it"
                 )
                 continue
             entries[key] = item.get("value")
         offset += returned
-        total = page.get("total")
         if page.get("complete") is True:
             if type(total) is int and total != offset:
-                problems.append(f"families paging stopped after {offset} of {total} entries")
+                problems.append(f"{section} paging stopped after {offset} of {total} entries")
             return entries, problems
         cursor = page.get("next_cursor")
         if not isinstance(cursor, str) or not cursor:
-            problems.append(f"families page {page_number} is incomplete but carries no next_cursor")
+            problems.append(
+                f"{section} page {page_number} is incomplete but carries no next_cursor"
+            )
             return entries, problems
-    problems.append(f"families paging did not complete within {MAX_PAGES} pages")
+    problems.append(f"{section} paging did not complete within {MAX_PAGES} pages")
     return entries, problems
+
+
+async def _families_entries(
+    fetch_page: PageFetcher,
+) -> tuple[dict[str, Any], list[str]]:
+    """Walk every families page; return (name -> full entry, problems)."""
+    return await _paged_section_entries(fetch_page, SECTION, allow_empty=False)
 
 
 def _loft_detail_problems(detail: Any) -> list[str]:

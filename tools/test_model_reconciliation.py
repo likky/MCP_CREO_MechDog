@@ -29,6 +29,7 @@ import bridge
 import generic_bridge as general
 from creo_mechdog import inspection_refs
 from creo_mechdog import reconciliation as rec
+from creo_mechdog.mcp_contract import call_capabilities_section
 from tools.dev_check import git_state, source_hash
 
 
@@ -353,7 +354,10 @@ async def mcp_acceptance(directory: Path, metadata_only: bool = False) -> None:
         capability = await call("creo_capabilities", {})
         report["tool_count"] = len(tools)
         assert_tool_count_consistency(capability, tools)
-        assert Path(capability["runtime"]["job_root"]) == bridge.JOBS
+        runtime = await call_capabilities_section(
+            lambda arguments: call("creo_capabilities", arguments), "runtime"
+        )
+        assert Path(runtime["job_root"]) == bridge.JOBS
         # Public diagnostic remains accessible while the actual shared OS lock is busy.
         first = fixtures["items"][0]
         with bridge.toolkit_lock(operation="developer_busy_probe"):

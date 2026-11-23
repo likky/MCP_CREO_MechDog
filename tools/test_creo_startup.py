@@ -24,6 +24,7 @@ from mcp.client.stdio import StdioServerParameters
 
 import bridge
 import creo_startup
+from creo_mechdog.mcp_contract import call_capabilities_section
 from creo_mechdog.query_client import read_full_model
 from tools.dev_check import git_state, source_hash
 from version import VERSION
@@ -118,8 +119,9 @@ async def run(args: argparse.Namespace) -> dict:
             began = time.monotonic()
             first = await stack.enter_async_context(Client(parameters, read_timeout_seconds=30))
             first_handshake = time.monotonic() - began
-            capabilities = await call(first, "creo_capabilities", {})
-            report["runtime"] = capabilities["runtime"]
+            report["runtime"] = await call_capabilities_section(
+                lambda arguments: call(first, "creo_capabilities", arguments), "runtime"
+            )
             assert Path(report["runtime"]["server_entry"]) == ROOT / "server.py"
             assert Path(report["runtime"]["python_executable"]) == Path(sys.executable)
             assert report["runtime"]["source_changed_since_startup"] is False

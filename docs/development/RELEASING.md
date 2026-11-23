@@ -15,7 +15,9 @@
 
 ## 版本约定
 
-当前版本为 0.37.0（2026-11-23 MINOR，嵌套装配源、B 样条坐标尺寸、装配 identity 恢复、预算披露与几何/选择器修复）。见[版本说明](../RELEASE_NOTES_0.37.0.md)和[发布记录](../validation/RELEASE-0.37.0.md)。
+当前版本为 0.37.1（2026-11-23 PATCH，[BUG-151](../work-items/BUG-151.md) 收口：`tools/test_mcp.py` 补齐实机启动等待、`--offline` 进 `dev_check` 离线门禁与异常回溯输出，补齐本机 Creo 10 实机全模式与 `--create` 验收，清理其余 9 个 `tools/` 脚本的分页漂移与 `mcp_readiness` 过渡态，放宽 `test_startup_reboot` 2s 等待；公开工具仍 111）。见[版本说明](../RELEASE_NOTES_0.37.1.md)和[发布记录](../validation/RELEASE-0.37.1.md)。
+
+此前的 0.37.0（2026-11-23 MINOR，嵌套装配源、B 样条坐标尺寸、装配 identity 恢复、预算披露与几何/选择器修复）。见[版本说明](../RELEASE_NOTES_0.37.0.md)和[发布记录](../validation/RELEASE-0.37.0.md)。
 
 此前的 0.36.1 修复自带 stdio 冒烟脚本的 capabilities 分页契约。[版本说明](../RELEASE_NOTES_0.36.1.md)和[发布记录](../validation/RELEASE-0.36.1.md)。
 
