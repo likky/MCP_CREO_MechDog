@@ -8,6 +8,8 @@
 
 Windows x64 / Python 3.12.10 / Creo 10.0.0.0 release 42 / 匹配 Toolkit SDK / MSVC x64。保存重载、恢复后编辑、切除去料、种子放样的解析体积、同计划选面和 JPEG 实测见[本机验收](feedback-save-loft-2026-11-23.md)。
 
+升版前的开发工作树全量单测通过，执行 4397 项、跳过 7 项，元数据为 0.35.8。0.36.0 使用本轮候选的独立报告作为打包证据。
+
 适用门禁包括 `tools/dev_check.py --work-item BUG-152`、`bridge.py build`、种子包重复构建、`tools/check_release_records.py --version 0.36.0` 以及实际源码包独立解压后的 `tools/test_unit.py`。
 
 ## 附件
