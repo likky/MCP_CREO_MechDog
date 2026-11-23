@@ -97,7 +97,10 @@ SDK 依据：本机 `ProChamfer.h` 声明 `PRO_CHM_D1_X_D2 = 603`，该 schema �
 
 - 创建、就地编辑与同几何快捷路径共用同一坐标变换（T03 实际帧 `origin/u_axis/v_axis`）与 1e-5 mm 回读门槛；不放宽阈值、不改输入坐标、不静默降级，核验失败如实报错并回滚。
 - 中心线按**直线身份核验**：比较方向与两端点到目标无限线的偏移（日志 `COORDINATE_CENTERLINE_IDENTITY`），不依赖可能被求解器滑动的端点。轴平行中心线仍用基准投影线偏移尺寸固定；斜中心线不生成已知不稳定的端点尺寸（日志 `COORDINATE_CENTERLINE_SKEW`），仅靠核验兜底。
-- 图元集合与互斥边界不变：line/centerline/rectangle/polyline/circle/arc；显式 dimensions/constraints 与 coordinates 仍互斥；ellipse/spline 仍走 autodim，本项不扩展。
+- **共享顶点与轴对齐共坐标跳过（BUG-174 / P4）**：`dimensioning="coordinates"` 对已标注过的共享折线顶点（`COORDINATE_SHARED_VERTEX_SKIPPED`）以及轴对齐线段上与起点同轴的终点分量（`COORDINATE_AXIS_LINE_SHARED`）不重复落尺寸，以避免与内核推断的重合/水平/竖直约束冲突导致过约束。因此 4 条直线组成的轴对齐矩形只会生成 5 个独立坐标尺寸（加 2 个原点固定尺寸），**不能用原始尺寸个数判断轮廓是否完全约束**；坐标保真度一律由求解并再生后的 `geometry_deviation`（逐点最大偏差与去平移残差 ≤ 1e-5 mm）判定。
+- **三点斜基准面自动垂直锚定参考（BUG-173 / P2）**：在 `datum_plane {kind:"through_points"}` 等斜基准面上创建草图时，`ProSectionEntityFromProjection` 对不垂直于草图平面的基准面返回 `-2`（`PRO_TK_BAD_INPUTS`）。当支撑面法向恰好与某一个已有基准面垂直（`orientation_exact=true`）但模型中缺少第二个同时垂直于支撑面与 orientation 面的基准面时，执行器会在创建草图前自动补建一个过轮廓形心、法向为 `cross(support_normal, orient_normal)` 的辅助基准面（日志 `SKETCH_ANCHOR_HELPER=1`），并在同支撑面的后续草图中自动复用；无需调用方手工预建锚定面。草图回执的 `section_references` 记录 `anchor_count`、`reference_incomplete`、`helper_anchor_created` 与 `origin_pin_available`；若 `ProSectionSolve` 仍失败，报错直接给出 `ProSectionSolve` 返回码、救援 `ProSectionAutodim` 返回码及 `section_references` 摘要。
+- **盲切去料比例诊断（BUG-174 / P3）**：`extrude mode="cut"` 且 `depth_type="blind"` 成功去料时，回执附加只读的 `cut_volume_check`（`profile_area_mm2`、`effective_depth_mm`、`expected_prism_volume_mm3`、`actual_removed_mm3`、`removal_ratio`、`low_removal_warning`）。当实际去料低于解析棱柱体积 `area × depth` 的 5%（`low_removal_warning=true`）时提示核对切除 `direction` 或草图轮廓是否大部落在实体外；合法的部分交集切除仍正常提交，不因该告警回滚。
+- 图元集合与互斥边界不变：line/centerline/rectangle/polyline/circle/arc/b_spline；显式 dimensions/constraints 与 coordinates 仍互斥；ellipse/spline 仍走 autodim，本项不扩展。
 
 ## 坐标容差与旋转范围（BUG-108 / BUG-111，R13）
 

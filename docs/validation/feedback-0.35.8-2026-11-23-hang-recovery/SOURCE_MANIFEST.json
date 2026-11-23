@@ -1,0 +1,22 @@
+{
+  "archived_on": "2026-11-23",
+  "feedback_target_version": "0.35.8",
+  "source_environment": "Windows x64 / Creo Parametric 10.0.0.0 (release_numeric=42)",
+  "files": [
+    {
+      "path": "originals/verify-hang-and-recovery-90s-deadlock.md",
+      "original_name": "2026-11-23+CREO+0.35.8+验证阶段静默挂起与恢复路径90秒硬限致模型锁死.md",
+      "sha256": "9657217999750e70517dfc2c29d6b6c85b87669746587f4f691719323a0e0b57"
+    },
+    {
+      "path": "originals/three-point-plane-sketch-reference-and-autodim-misreport.md",
+      "original_name": "2026-11-23+CREO+0.35.8+三点基准面草图缺第二条参考被误报为AutodimensionSketch失败.md",
+      "sha256": "e04eb25fc6601e67bc20c605917c853b9a4cf5edc1df1b6775a2a7a67c991663"
+    },
+    {
+      "path": "originals/frigate-v4-status-and-deviations.md",
+      "original_name": "frigate_v4-状态与偏离.md",
+      "sha256": "f68ef2314643fa48cee381f4fe58bc99eab91f06a24ead310c889c539cc675b7"
+    }
+  ]
+}

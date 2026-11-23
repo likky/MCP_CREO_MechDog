@@ -54,6 +54,61 @@ from creo_mechdog.session_choice import selected as selected_session
 ROOT = Path(__file__).resolve().parent
 JOBS = ROOT / "jobs"
 HIDDEN = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+
+
+def spawn_detached_runner(command: list[str], *, cwd: Path, log_file, popen=None):
+    """BUG-174: spawn a background runner detached from the client Job Object when allowed.
+
+    On Windows, MCP stdio clients (e.g. Electron/Node wrappers) often assign the
+    server process to a Job Object with ``JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE``.
+    When that Job Object permits breakaway, passing ``CREATE_BREAKAWAY_FROM_JOB |
+    CREATE_NEW_PROCESS_GROUP`` lets the runner finish after the client disconnects.
+    When breakaway is denied (WinError 5), falls back cleanly to
+    ``CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP`` and returns
+    ``detached_from_job=False`` so the job receipt can disclose that the runner
+    depends on the client/server staying alive.
+    """
+    factory = popen or subprocess.Popen
+    if os.name != "nt":
+        proc = factory(
+            command,
+            cwd=cwd,
+            stdin=subprocess.DEVNULL,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            creationflags=0,
+            close_fds=True,
+            start_new_session=True,
+        )
+        return proc, True
+    new_group = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+    breakaway = getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0x01000000)
+    try:
+        proc = factory(
+            command,
+            cwd=cwd,
+            stdin=subprocess.DEVNULL,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            creationflags=HIDDEN | new_group | breakaway,
+            close_fds=True,
+        )
+        return proc, True
+    except OSError as exc:
+        if getattr(exc, "winerror", None) != 5 and not isinstance(exc, PermissionError):
+            raise
+        proc = factory(
+            command,
+            cwd=cwd,
+            stdin=subprocess.DEVNULL,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            creationflags=HIDDEN | new_group,
+            close_fds=True,
+        )
+        return proc, False
+
+
 JOB_ID = re.compile(r"[a-f0-9]{32}\Z")
 MODEL_NAME = re.compile(r"[a-z0-9][a-z0-9_]{0,30}\Z")
 #: FEAT-007: a job is final in these states; a long poll returns immediately.

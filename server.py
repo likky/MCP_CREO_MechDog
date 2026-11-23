@@ -580,9 +580,9 @@ async def creo_reconcile_model(
         int | None,
         Field(
             description=(
-                "Optional native recovery phase budget in seconds (30-900, BUG-166). Defaults to "
-                "config.json recovery_phase_seconds (300 s) with an automatic floor scaled by the "
-                "model's recorded edge count."
+                "Optional native recovery phase budget in seconds (30-1800, BUG-166/BUG-171). "
+                "Defaults to config.json recovery_phase_seconds (300 s) with an automatic floor "
+                "scaled by the model's recorded feature, surface and edge counts."
             ),
         ),
     ] = None,
