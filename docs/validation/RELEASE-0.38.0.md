@@ -37,7 +37,9 @@
 
 发布候选在 0.38.0 工作树上运行 `tools/test_unit.py`，全量 unittest 通过，0 失败、0 错误。下列数字取自本轮 `build/unit_test_report.json`，该报告不随源码包分发。
 
-（待全量单测完成后回填 `run_id`、项数、耗时、受测提交与源码指纹。）
+本轮 `run_id=37e4484ce94e4bf391093a84901cb3d2`，执行 4,431 项，0 失败、0 错误、6 跳过，耗时 327.33 s，报告 `version=0.38.0`、`status=completed`、`success=true`。受测提交 `6d3828206eac8b10cd4cb8201dc259be3c2a6d6d`（分支 `codex/bug169-feat075-pattern-scope`，`dirty=false`），源码指纹 `6faa86295b8bea167b4337b32370993924646cdddd27798fc0f0125f2ce442d0`，统计 670 个受 Git 跟踪的 `.py` 与原生头/源文件。后续回填本段文档不改动任何受跟踪 `.py` 或原生文件，源码指纹保持不变。跳过项为 Windows 符号链接权限、MSVC 独立辅助程序环境与未随仓库保存的历史作业证据，均不涉及本版改动。
+
+语言与格式检查以 `tools/dev_check.py --skip-unit --work-item BUG-169` 执行：`success=true`，lint 0、unformatted 0（584 个 Python、69 个 C++），离线验收 3/3 通过（`test_update_check`、`test_model_reconciliation`、`test_mcp`）。
 
 ## 未测范围
 
