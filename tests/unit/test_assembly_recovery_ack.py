@@ -98,8 +98,16 @@ class ZeroMutationAck(AckFixture):
                 actions["ack_no_mutation"]["available"],
                 f"{model_type}: {actions['ack_no_mutation']['reason']}",
             )
-            self.assertFalse(actions["restore_baseline"]["available"], model_type)
-            self.assertIn("component ownership", actions["restore_baseline"]["reason"])
+            if model_type == "assembly":
+                # BUG-157: a saved assembly with a verified baseline may be
+                # restored; BUG-131's erasure limit is a separate action.
+                self.assertTrue(
+                    actions["restore_baseline"]["available"],
+                    actions["restore_baseline"]["reason"],
+                )
+            else:
+                self.assertFalse(actions["restore_baseline"]["available"], model_type)
+                self.assertIn("component ownership", actions["restore_baseline"]["reason"])
 
     def test_confirmation_flag_is_required(self):
         token = self.inspect()["evidence_token"]

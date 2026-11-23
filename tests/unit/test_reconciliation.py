@@ -817,12 +817,23 @@ class AssemblyFailureAck(unittest.TestCase):
         popen.assert_not_called()
         return created
 
-    def test_assembly_failure_exposes_only_the_metadata_acknowledgement(self):
+    def test_assembly_failure_without_verified_baseline_exposes_only_the_metadata_acknowledgement(
+        self,
+    ):
         actions = rec.inspect(self.mid)["actions"]
         self.assertTrue(actions["ack_failure"]["available"])
-        for action in ("restore_baseline", "accept_saved", "accept_live", "abandon_new"):
+        # BUG-157: a saved assembly may be restored/live-accepted, but this
+        # fixture's baseline hash does not match and erasure stays refused.
+        self.assertFalse(actions["restore_baseline"]["available"])
+        self.assertIn("verified baseline", actions["restore_baseline"]["reason"])
+        for action in ("accept_saved", "accept_live"):
             self.assertFalse(actions[action]["available"], action)
-            self.assertIn("preserve component ownership", actions[action]["reason"])
+            self.assertIn(
+                "Required baseline/candidate/owned healthy live evidence",
+                actions[action]["reason"],
+            )
+        self.assertFalse(actions["abandon_new"]["available"])
+        self.assertIn("committed assembly", actions["abandon_new"]["reason"])
 
     def test_acknowledgement_requires_an_explicit_confirmation(self):
         with self.assertRaisesRegex(ValueError, "confirm_failure_ack"):

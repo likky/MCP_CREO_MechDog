@@ -32,13 +32,22 @@ ACTIONS = (
     "abandon_stalled_recovery",
 )
 # BUG-110: actions that touch a saved model or its component ownership stay
-# limited to parts and sheetmetal; the two acknowledgements are metadata-only.
+# limited to parts, sheetmetal and (BUG-157) assemblies; drawings are refused
+# because their component ownership cannot be reconciled here. The two
+# acknowledgements are metadata-only.
 # BUG-131 adds one exception: abandon_new is also valid for a new assembly with
 # no saved file and revision 0, because it owns nothing yet.
 COMPONENT_ACTIONS = ("restore_baseline", "accept_saved", "accept_live", "abandon_new")
 TERMINAL_FAILURE_STATUSES = ("failed", "unknown_outcome")
 TOKEN_SECONDS = 600
 WORKER_SECONDS = 115
+# BUG-157: the native recovery phase budget. restore_baseline defaults to the
+# faster identity verification; the phase itself is clamped here and again by
+# the executor, so a bad config value can neither disarm nor explode the budget.
+RECOVERY_PHASE_SECONDS = 300
+RECOVERY_PHASE_MIN_SECONDS = 30
+RECOVERY_PHASE_MAX_SECONDS = 900
+RECOVERY_PHASE_MARGIN_SECONDS = 30
 RUNNER_CHANNEL_WAIT_SECONDS = 120
 HASH_SECONDS = 8
 # BUG-146: how long a persisted recovery intent may sit before its absent
@@ -62,6 +71,15 @@ def digest(value: object) -> str:
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
+
+
+def recovery_phase_seconds() -> int:
+    """BUG-157: native recovery phase budget, default 300 s within 30-900 s."""
+    try:
+        value = int(bridge.config().get("recovery_phase_seconds", RECOVERY_PHASE_SECONDS))
+    except (TypeError, ValueError):
+        value = RECOVERY_PHASE_SECONDS
+    return min(RECOVERY_PHASE_MAX_SECONDS, max(RECOVERY_PHASE_MIN_SECONDS, value))
 
 
 def _binding(snapshot: dict) -> str:
@@ -899,12 +917,27 @@ def _actions(snapshot: dict, live: dict | None) -> dict:
     baseline = snapshot["baseline"] or {}
     candidate = snapshot["candidate"] or {}
     health = inspection_refs.summary_of(live).get("healthy") is True
-    supported = model.get("model_type", "part") in ("part", "sheetmetal")
+    model_type = model.get("model_type", "part")
+    part_family = model_type in ("part", "sheetmetal")
+    # BUG-157: an assembly may be restored to its verified baseline and may
+    # accept a saved/live state; drawings keep refusing every component action.
+    recovery_supported = part_family or model_type == "assembly"
     uncommitted = not model.get("part_file") and model.get("revision") == 0
     # BUG-131: a brand-new assembly has no committed geometry and no component
     # ownership to preserve, so erasing it is exactly abandon_new's contract.
-    # An assembly with a saved revision keeps the part/sheetmetal limit.
-    abandon_supported = supported or (model.get("model_type") == "assembly" and uncommitted)
+    # A committed assembly keeps the part/sheetmetal limit for erasure.
+    abandon_supported = part_family or (model_type == "assembly" and uncommitted)
+    # An assembly always has component dependencies, so admission reads the
+    # owned-directory answer instead of the part-level "dependency free" one.
+    dependencies_ok = (
+        (
+            bool(live.get("dependency_free"))
+            if part_family
+            else live.get("dependencies_owned") is True
+        )
+        if live
+        else False
+    )
     conditions = {
         "restore_baseline": baseline.get("verified")
         and bool(model.get("inspection") or model.get("inspection_ref")),
@@ -915,8 +948,14 @@ def _actions(snapshot: dict, live: dict | None) -> dict:
         and live.get("owned")
         and health
         and live.get("millimeter_units")
-        and live.get("dependency_free"),
+        and dependencies_ok,
         "abandon_new": uncommitted,
+    }
+    action_supported = {
+        "restore_baseline": recovery_supported,
+        "accept_saved": recovery_supported,
+        "accept_live": recovery_supported,
+        "abandon_new": abandon_supported,
     }
     if model.get("status") == "adopt_pending":
         # Adoption requires explicit confirmation, not recovery acceptance of
@@ -926,19 +965,26 @@ def _actions(snapshot: dict, live: dict | None) -> dict:
     states = {
         action: {
             "available": bool(
-                stopped
-                and (supported or (action == "abandon_new" and abandon_supported))
-                and ok
-                and model.get("status") != "abandoned"
+                stopped and action_supported[action] and ok and model.get("status") != "abandoned"
             ),
             "reason": (
                 "Previous runner/worker is active or cannot be proven stopped"
                 if not stopped
-                else "Assembly/drawing reconciliation is not supported; preserve component ownership"
-                if not supported
+                else (
+                    "Drawing reconciliation is not supported; preserve component ownership"
+                    if model_type == "drawing"
+                    else "Abandoning a committed assembly is refused; restore its verified "
+                    "baseline instead"
+                )
+                if not action_supported[action]
                 else "Model is already abandoned"
                 if model.get("status") == "abandoned"
-                else "Required baseline/candidate/owned healthy live evidence is unavailable"
+                else (
+                    "restore_baseline requires a verified baseline file and its recorded "
+                    "inspection; the current part_file does not match the baseline hash"
+                    if action == "restore_baseline" and model_type == "assembly"
+                    else "Required baseline/candidate/owned healthy live evidence is unavailable"
+                )
                 if not ok
                 else "Explicit apply with matching evidence and idempotency key required"
             ),
@@ -1076,6 +1122,10 @@ def _native_request(model: dict, choice: dict) -> dict:
         "template_file": "",
         "components": {},
         "reconciliation": choice,
+        # BUG-157: assembly dependencies are owned when they live under the
+        # managed models root; the phase budget is clamped by the executor.
+        "managed_root": str(bridge.ROOT / "models"),
+        "recovery_phase_seconds": recovery_phase_seconds(),
     }
 
 
@@ -1084,6 +1134,15 @@ def _native(directory: Path, manifest: dict) -> dict:
     exe = bridge.build_native()
     manifest.update(stage="reconciling_native_model", status="running")
     bridge.write_json(directory / "job.json", manifest, durable=True)
+    # BUG-157: the executor owns the recovery phase budget; this wrapper must
+    # not terminate a healthy worker before that budget expires.
+    timeout = WORKER_SECONDS
+    try:
+        phase = int(bridge.read_json(directory / "request.json").get("recovery_phase_seconds", 0))
+    except (OSError, ValueError, TypeError):
+        phase = 0
+    if phase > 0:
+        timeout = max(timeout, phase + RECOVERY_PHASE_MARGIN_SECONDS)
     with (directory / "worker.log").open("wb") as log:
         manifest["worker_started"] = True
         bridge.write_json(directory / "job.json", manifest, durable=True)
@@ -1093,7 +1152,7 @@ def _native(directory: Path, manifest: dict) -> dict:
             env=bridge.native_environment(),
             stdout=log,
             stderr=subprocess.STDOUT,
-            timeout=WORKER_SECONDS,
+            timeout=timeout,
             creationflags=bridge.HIDDEN,
         )
     result = _read(directory / "native_result.json")
@@ -1204,9 +1263,13 @@ def inspect(model_id: str, live: bool = False) -> dict:
         "budgets": {
             "snapshot_seconds": SNAPSHOT_SECONDS,
             "file_hash_seconds": HASH_SECONDS,
-            "native_phase_seconds": 90,
+            # BUG-157: the native recovery phase is no longer a fixed 90 s; the
+            # published values are the ones _native() actually applies.
+            "native_phase_seconds": recovery_phase_seconds(),
             "disconnect_seconds": 20,
-            "outer_seconds": WORKER_SECONDS,
+            "outer_seconds": max(
+                WORKER_SECONDS, recovery_phase_seconds() + RECOVERY_PHASE_MARGIN_SECONDS
+            ),
         },
     }
 
@@ -1646,6 +1709,10 @@ def apply(
             if action == "restore_baseline":
                 choice.update(source_file=model["part_file"])
                 choice.update(inspection_refs.request_field(model, "source_inspection"))
+                # BUG-157: a verified baseline is checked by the fast identity
+                # mode (name/type/units/feature count/volume); full mode stays
+                # available for callers that need the deep geometry comparison.
+                choice["verify_mode"] = "identity"
             elif action == "accept_saved":
                 candidate = record["snapshot"]["candidate"]
                 choice.update(source_file=candidate["identity"]["path"])
@@ -1870,12 +1937,15 @@ def _run_locked(job_id: str, manifest: dict, intent: dict, file: Path) -> dict:
         )
         # Registry keeps the summary plus the controlled reference; the aliases
         # arrive inline or as a reference and either form persists through
-        # model_registry.write_model (BUG-076/077).
-        after.pop("aliases", None)
-        after.pop("aliases_ref", None)
-        for key in ("aliases", "aliases_ref"):
-            if key in result:
-                after[key] = result[key]
+        # model_registry.write_model (BUG-076/077). BUG-157: identity recovery
+        # never claims a full inspection, so the recorded baseline
+        # inspection/aliases are preserved instead of being cleared.
+        if result.get("verification") != "identity":
+            after.pop("aliases", None)
+            after.pop("aliases_ref", None)
+            for key in ("aliases", "aliases_ref"):
+                if key in result:
+                    after[key] = result[key]
         after.update(
             {
                 key: result[key]

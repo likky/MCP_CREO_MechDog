@@ -914,8 +914,12 @@ def families() -> dict:
                 "ack_failure",
             ],
             "scope": (
-                "Owned part/sheetmetal models for native recovery; assembly/drawing rejected "
-                "there. ack_no_mutation (confirm_zero_mutation=true) is a registry-only "
+                "Owned part/sheetmetal/assembly models for native recovery; drawings rejected "
+                "there. Assembly restore_baseline requires a verified baseline whose recorded "
+                "part_file still matches and verifies by identity (name/type/units/feature "
+                "count/volume), while accept_live requires every dependency under the model "
+                "output directory or the managed models root. ack_no_mutation "
+                "(confirm_zero_mutation=true) is a registry-only "
                 "transition from failed to ready when the failed job provably changed nothing "
                 "(verified checkpoint, nothing pending, no failed rollback); ack_failure "
                 "(confirm_failure_ack=true) is the metadata-only exit for a terminal "

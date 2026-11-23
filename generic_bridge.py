@@ -1147,19 +1147,46 @@ def _watch_worker_log(
     budget = stall_watchdog_seconds()
     phase_budget = panel_phase_seconds()
     last_size = 0
+    last_worker = 0
+    last_native = 0
     last_growth = time.monotonic()
+    last_growth_source = None
     identity = _panel_wait_identity(request)
     state.setdefault("last_growth", last_growth)
     while not stop.wait(WORKER_POLL_SECONDS):
         now = time.monotonic()
         try:
-            size = (directory / "worker.log").stat().st_size
+            worker_bytes = (directory / "worker.log").stat().st_size
         except OSError:
-            size = last_size
+            worker_bytes = 0
+        try:
+            native_bytes = (directory / "native.log").stat().st_size
+        except OSError:
+            native_bytes = 0
+        # BUG-157: the native executor writes its phase/progress log to
+        # native.log; worker.log only carries stdout/stderr. Watching worker.log
+        # alone read 0 bytes for the whole run and killed healthy long jobs.
+        size = max(worker_bytes, native_bytes)
+        state["worker_log_bytes"] = worker_bytes
+        state["native_log_bytes"] = native_bytes
         if size > last_size:
             last_size = size
             last_growth = now
+            worker_grew = worker_bytes > last_worker
+            native_grew = native_bytes > last_native
+            last_growth_source = (
+                "both"
+                if worker_grew and native_grew
+                else "native.log"
+                if native_grew
+                else "worker.log"
+                if worker_grew
+                else None
+            )
+        last_worker = worker_bytes
+        last_native = native_bytes
         state["last_growth"] = last_growth
+        state["last_growth_source"] = last_growth_source
         record = None
         if identity is not None:
             candidate = panel_wait.read_marker(directory / panel_wait.WAIT_FILE)
@@ -1184,10 +1211,13 @@ def _watch_worker_log(
                 budget_seconds=budget,
                 silent_seconds=evidence.get("silent_seconds"),
                 log_bytes=last_size,
+                worker_log_bytes=state.get("worker_log_bytes"),
+                native_log_bytes=state.get("native_log_bytes"),
+                last_growth_source=state.get("last_growth_source"),
                 source="generic_stall_seconds",
                 termination=termination,
                 message=(
-                    f"Native worker log stopped growing for {evidence.get('silent_seconds')} s "
+                    f"Worker and native logs stopped growing for {evidence.get('silent_seconds')} s "
                     f"(budget {budget} s); the worker was terminated and the outcome is unknown. "
                     "Inspect the model and finish with creo_reconcile_model"
                 ),
