@@ -8,6 +8,10 @@
 - 四件附件为 `MCP_CREO_MechDog-0.39.0-source.zip`、`MCP_CREO_MechDog-0.39.0-source.zip.sha256`、`MCP_CREO_MechDog-0.39.0-seed-library.zip`、`MCP_CREO_MechDog-0.39.0-seed-library.zip.sha256`。种子包 SHA256 为 `ef3724f92156efa5b7b01df55b9019eb541fd161ea769291793e9a5b83312587`。两份同名 sidecar 分别记录对应 ZIP 的实际摘要。
 - 远端核对发布后执行，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.39.0)
 
+### 发布后核对
+
+- 2026-11-23 按 `python -X utf8 tools/check_release_assets.py --tag v0.39.0` 重新下载并重算：Release id `455465647`（`created_at=2026-11-23T13:28:09Z`、`published_at=2026-11-23T13:29:02Z`，非 draft、非 prerelease），四件附件齐全，两份 sidecar 与对应 ZIP 摘要及远端 API digest 一致，Release body 自证通过（exit 0）；源码包 `d5350f3db3e1a9c9fd3270180bd18b48a4ecb9ce1d25d2406fac1b0cf5e6af51`（11,896,705 字节，sidecar `525eae50c63ef4e026ab6ca82d68395ba85f0bea1ad9481d8bc6d230dd256151`），种子包 `ef3724f92156efa5b7b01df55b9019eb541fd161ea769291793e9a5b83312587`（493,442 字节，sidecar `fc4a178d8baac52e84d5413096023cab0bee5d862b62dd96bd56218be417d8bb`）。附注标签 `v0.39.0`（对象 `6a311eedf5b66d9e9f974806a519c46c7b5a9e6c`）指向 `7518f0fa2b60287319d2e78e26f1385c9b9ee34b`，核对时远端 `main` 与该提交一致。
+
 ## v0.38.0（2026-11-23，打包时点）
 
 - [BUG-169](../work-items/BUG-169.md) 与 [FEAT-075](../work-items/FEAT-075.md) 交付：`extrude` 等操作全量与 compact 回执统一回填 `feature_id`；`linear_pattern` 双层拒绝草图/基准及零实体面 leader（`LINEAR_PATTERN_NON_SOLID_LEADER`）与别名/原生类型冲突（`LINEAR_PATTERN_LEADER_ALIAS_MISMATCH`）并回执 `leader_kind`/`leader_surface_count`；`extrude mode="cut"` 开放单实体 `scope` 与 `through_all` 组合（含 `symmetric` 与 `-5778`）；本机 Creo 10 实机 8/8 + `test_linear_pattern` 3/3 回归全部通过并保存重载；归档 0.35.8 反馈原件并补录 [BUG-150](../work-items/BUG-150.md) 外部 `frigate_v4` 验证。见[版本说明](../RELEASE_NOTES_0.38.0.md)及[发布记录](../validation/RELEASE-0.38.0.md)。
