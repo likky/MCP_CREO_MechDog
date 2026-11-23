@@ -563,33 +563,39 @@ async def creo_reconcile_model(
             "recorded launcher stay protected."
         ),
     ),
-    confirm_unknown_recovery: bool = Field(
-        default=False,
-        description=(
-            "Apply only, action=abandon_unknown_recovery (BUG-166): set true to release a "
-            "recovery_pending reservation left by a terminal failed/unknown_outcome/aborted/"
-            "cancelled recovery job once all recorded owners are proven stopped and any saved "
-            "baseline hash matches. Metadata-only: clears recovery_pending, returns the model "
-            "to ready when pending_job is null, never advances revision or modifies disk files, "
-            "and records disk_state_verified=false and session_state_verified=false."
+    confirm_unknown_recovery: Annotated[
+        bool,
+        Field(
+            description=(
+                "Apply only, action=abandon_unknown_recovery (BUG-166): set true to release a "
+                "recovery_pending reservation left by a terminal failed/unknown_outcome/aborted/"
+                "cancelled recovery job once all recorded owners are proven stopped and any saved "
+                "baseline hash matches. Metadata-only: clears recovery_pending, returns the model "
+                "to ready when pending_job is null, never advances revision or modifies disk files, "
+                "and records disk_state_verified=false and session_state_verified=false."
+            ),
         ),
-    ),
-    budget_seconds: int | None = Field(
-        default=None,
-        description=(
-            "Optional native recovery phase budget in seconds (30-900, BUG-166). Defaults to "
-            "config.json recovery_phase_seconds (300 s) with an automatic floor scaled by the "
-            "model's recorded edge count."
+    ] = False,
+    budget_seconds: Annotated[
+        int | None,
+        Field(
+            description=(
+                "Optional native recovery phase budget in seconds (30-900, BUG-166). Defaults to "
+                "config.json recovery_phase_seconds (300 s) with an automatic floor scaled by the "
+                "model's recorded edge count."
+            ),
         ),
-    ),
-    verify_mode: Literal["identity", "full"] | None = Field(
-        default=None,
-        description=(
-            "Apply only, action=restore_baseline: 'identity' (default, fast name/type/units/"
-            "feature_count/volume verification without enumerating thousands of edges) or 'full' "
-            "(deep geometry comparison)."
+    ] = None,
+    verify_mode: Annotated[
+        Literal["identity", "full"] | None,
+        Field(
+            description=(
+                "Apply only, action=restore_baseline: 'identity' (default, fast name/type/units/"
+                "feature_count/volume verification without enumerating thousands of edges) or 'full' "
+                "(deep geometry comparison)."
+            ),
         ),
-    ),
+    ] = None,
 ) -> dict[str, Any]:
     """Inspect uncertain owned models without requiring Creo. live=true performs a bounded read-only session preflight. Apply an explicitly selected available action with the returned token, revision, pending_job (null when absent) and a unique 8–80 character idempotency_key. Poll its independent recovery job; never replay the original plan. Execution failures expose reason and failure_phase: before_native refusals release only their own recovery reservation under the channel lock; native_worker_started means dispatch may have begun and unknown_outcome protection remains. restore_baseline keeps revision (default verify_mode='identity'; cross-session safe after Creo restart); accept_saved/live increments once; abandon_new preserves files and archives the model (cross-session safe when inspect used live=false). ack_no_mutation (confirm_zero_mutation=true) records that a failed job changed nothing and returns the model to ready as a metadata transaction: no worker, no Toolkit connection, no file writes, revision unchanged, an audit block under reconciliation and no need to edit model.json by hand. It qualifies for parts, sheetmetal, assemblies and drawings when status=failed, nothing is pending, the checkpoint identity still matches and the failed job's rollback did not fail; it never re-scopes component ownership. ack_failure (confirm_failure_ack=true) is the exit for a terminal failure whose disk or component state cannot be proven: it accepts the failure and returns the model to ready without a worker, without Toolkit, without touching revision, model files or component bindings, and records prior_job_status plus outcome_uncertain (true when the last job ended as unknown_outcome) and disk_state_verified=false under reconciliation. abandon_unknown_recovery (confirm_unknown_recovery=true) releases recovery_pending left by a terminal failed/unknown_outcome recovery job once all owners are proven stopped and any saved baseline hash matches, returning to ready when pending_job is null without advancing revision or rewriting files (disk_state_verified=false). accept_live requires live preflight. Unsupported/unproven ownership is rejected; no Creo restart or user file deletion. confirm_panel_closed (confirm_panel_closed=true) is the exit for a resident panel that refuses every native job for every model: it retires that session-wide guard only after a human confirms the panel is closed, takes no Toolkit call, and leaves this model's status, revision and pending job exactly as they were. A pending job that is read-only is reported separately under readonly_pending: an inspection-only plan cannot change the model, so the exit is creo_cancel_job with that job_id (metadata only, no native work), not one of the actions here."""
     return await invoke(

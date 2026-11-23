@@ -57,11 +57,15 @@ class GeometrySelectorContractTests(unittest.TestCase):
         self.assertEqual(normalized["center_mm"], [0.0, 0.0, 7.0])
         self.assertEqual(normalized["axis_tolerance_deg"], 0.25)
 
-    def test_feature_filter_is_a_model_space_surface_label(self):
-        normalized = validate_geometry_selector(surface_selector(feature="base"))
-        self.assertEqual(normalized["feature"], "base")
+    def test_feature_filter_is_a_model_space_edge_or_surface_label(self):
+        self.assertEqual(
+            validate_geometry_selector(surface_selector(feature="base"))["feature"], "base"
+        )
+        self.assertEqual(
+            validate_geometry_selector(edge_selector(feature="base"))["feature"], "base"
+        )
         for bad in (
-            edge_selector(feature="base"),
+            edge_selector(feature="base", coordinate_space="assembly"),
             surface_selector(feature="base", coordinate_space="assembly"),
             surface_selector(feature="BASE"),
             surface_selector(feature=53),

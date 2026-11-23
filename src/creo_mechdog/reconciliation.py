@@ -1373,7 +1373,12 @@ def _finish(record: dict) -> dict:
 def resume_committed(job_id: str) -> dict | None:
     """Polling may finish a committed metadata transaction, never native execution."""
     manifest = bridge.read_json(bridge.job_path(job_id) / "job.json")
-    if manifest.get("kind") != "reconciliation" or manifest.get("status") == "succeeded":
+    if (
+        manifest.get("kind") != "reconciliation"
+        or manifest.get("status") == "succeeded"
+        or not manifest.get("model_id")
+        or not manifest.get("idempotency_key")
+    ):
         return None
     file = _journal(manifest["model_id"], manifest["idempotency_key"])
     record = _read(file)
