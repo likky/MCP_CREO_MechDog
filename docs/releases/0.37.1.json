@@ -4,7 +4,7 @@
   "previous_version": "0.37.0",
   "previous_release_tag": "v0.37.0",
   "previous_release_commit": "5932e20d2eba2760325f666ed1ca5b4f9851df83",
-  "remote_verification": "pending",
+  "remote_verification": "verified",
   "delivery_ids": [
     "BUG-151"
   ],
