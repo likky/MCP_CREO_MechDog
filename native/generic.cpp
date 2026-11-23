@@ -5008,7 +5008,77 @@ static J round_reference_application(ProFeature &f, int requested) {
         return reference_application_block(requested, nullptr, "unknown", code);
     return reference_application_block(requested, applied, "feature_tree", code);
 }
+// BUG-161: one complete circular hole can supply two 180-degree edges with
+// different ids. Each id resolves on its own, so neither the selector match nor
+// BUG-155's id/type check can see that both name one circle; the feature then
+// fails with a bare regeneration status and no ProFeatureErrorlist detail.
+// Resolve every edge reference before any element is built and refuse a plan
+// that names one circle twice, naming the participants and the id to keep.
+static void reject_duplicate_round_circles(const J &op, bool chamfer) {
+    struct CircleRef {
+        int id;
+        V center;
+        double radius;
+    };
+    // Measured centres/radii are native model units; convert the published
+    // 1e-6 mm comparison tolerance with the model's own scale and never guess
+    // it when the unit query fails.
+    const MillimeterScale scale = length_scale_to_mm((ProMdl)board, inspect_length_units(board));
+    const double tolerance = scale.known ? 1e-6 / scale.scale : 1e-6;
+    std::vector<CircleRef> circles;
+    for (const auto &refs : op["references"]) {
+        if (!refs.is_object() || !refs.contains("edge"))
+            continue;
+        ProSelection s = resolve(refs.at("edge"));
+        ProModelitem item;
+        const ProError item_code = ProSelectionModelitemGet(s, &item);
+        ProSelectionFree(&s);
+        // A non-edge selection is already refused by the feature builder; this
+        // pre-check only speaks for circle duplicates.
+        if (item_code != PRO_TK_NO_ERROR || item.type != PRO_EDGE)
+            continue;
+        ProEdge edge;
+        if (ProEdgeInit((ProSolid)board, item.id, &edge) != PRO_TK_NO_ERROR)
+            continue;
+        ProGeomitemdata *data = nullptr;
+        if (ProEdgeDataGet(edge, &data) != PRO_TK_NO_ERROR || !data)
+            continue;
+        ProCurvedata *curve = data->data.p_curve_data;
+        ProEnttype curve_type = PRO_ENT_NONE;
+        ProVector v1, v2, origin;
+        double start = 0, end = 0, radius = 0;
+        // Straight and spline edges carry no centre/radius and cannot be paired.
+        const bool circular =
+            curve && ProCurvedataTypeGet(curve, &curve_type) == PRO_TK_NO_ERROR &&
+            curve_type == PRO_ENT_ARC &&
+            ProArcdataGet(curve, v1, v2, origin, &start, &end, &radius) == PRO_TK_NO_ERROR;
+        ProGeomitemdataFree(&data);
+        if (!circular)
+            continue;
+        const V center = {origin[0], origin[1], origin[2]};
+        for (const auto &seen : circles) {
+            if (std::fabs(seen.radius - radius) > tolerance ||
+                std::fabs(seen.center[0] - center[0]) > tolerance ||
+                std::fabs(seen.center[1] - center[1]) > tolerance ||
+                std::fabs(seen.center[2] - center[2]) > tolerance)
+                continue;
+            const double report_scale = scale.known ? scale.scale : 1.0;
+            const char *unit = scale.known ? " mm" : " (model units)";
+            throw std::runtime_error(
+                std::string(chamfer ? "chamfer" : "round") + " references edges " +
+                std::to_string(seen.id) + " and " + std::to_string(item.id) +
+                " that lie on one circle (centre " + std::to_string(center[0] * report_scale) +
+                ", " + std::to_string(center[1] * report_scale) + ", " +
+                std::to_string(center[2] * report_scale) + unit + ", radius " +
+                std::to_string(radius * report_scale) + unit + "); keep the smallest id (" +
+                std::to_string(std::min(seen.id, item.id)) +
+                ") and remove the duplicate reference");
+        }
+        circles.push_back({item.id, center, radius});
+    }
+}
 static J generic_round(const J &op, bool chamfer) {
+    reject_duplicate_round_circles(op, chamfer);
     ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
     integer(root, PRO_E_FEATURE_TYPE, chamfer ? PRO_FEAT_CHAMFER : PRO_FEAT_ROUND);
     text(root, PRO_E_STD_FEATURE_NAME, wide(op.at("label")).c_str());
