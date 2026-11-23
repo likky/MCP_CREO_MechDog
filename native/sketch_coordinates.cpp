@@ -128,9 +128,33 @@ static J coordinate_dimensions(ProSection section, int origin,
                               {"xy", {arc->center[0], arc->center[1]}}}};
             row["radius"] = arc->radius;
             row["angles"] = {arc->start_angle, arc->end_angle};
+        } else if (def->type == PRO_2D_B_SPLINE) {
+            // BUG-160: an exact B-spline is defined by its control points, so
+            // coordinate dimensioning records them for the verification pass and
+            // creates no dimension; the kernel has no standard spline dimension
+            // that pins them without re-solving the curve.
+            auto bspline = (Pro2dBSplinedef *)def;
+            if (!bspline->c_pnts || bspline->num_c_points < 2)
+                throw std::runtime_error(
+                    "Coordinate dimensioning found a B-spline without control points");
+            J knots = J::array();
+            for (int i = 0; bspline->params && i < bspline->num_knots; i++)
+                knots.push_back(bspline->params[i]);
+            J control = J::array();
+            for (int i = 0; i < bspline->num_c_points; i++)
+                control.push_back({bspline->c_pnts[i][0], bspline->c_pnts[i][1]});
+            row["degree"] = bspline->degree;
+            row["knots"] = knots;
+            row["control_points_xy"] = control;
+            if (bspline->weights) {
+                J weights = J::array();
+                for (int i = 0; i < bspline->num_c_points; i++)
+                    weights.push_back(bspline->weights[i]);
+                row["weights"] = weights;
+            }
         } else
             throw std::runtime_error("Coordinate dimensioning accepts lines, polylines, "
-                                     "rectangles, circles and arcs only");
+                                     "rectangles, circles, arcs and exact B-splines only");
         snapshot.push_back(row);
     }
     // The solve treats a construction centerline as an infinite axis: it slides
@@ -179,6 +203,14 @@ static J coordinate_dimensions(ProSection section, int origin,
                 // Pin nothing here; the infinite-line verification owns the
                 // direction/offset comparison for every centerline orientation.
                 log("COORDINATE_CENTERLINE_SKEW=%s\n", prefix.c_str());
+            continue;
+        }
+        if (row["type"].get<int>() == PRO_2D_B_SPLINE) {
+            // BUG-160: exact control points carry their own coordinates; there is
+            // no point dimension to create, and the verification pass compares the
+            // stored curve instead.
+            log("COORDINATE_B_SPLINE_EXACT=%s degree=%d control_points=%d\n", prefix.c_str(),
+                row["degree"].get<int>(), (int)row["control_points_xy"].size());
             continue;
         }
         for (auto point : row["points"]) {
@@ -308,6 +340,48 @@ static J verify_coordinate_plan(ProSection section, const J &targets, int origin
             log("COORDINATE_CENTERLINE_IDENTITY=%s turn=%.12f offset=%.12f,%.12f\n",
                 row["name"].get<std::string>().c_str(), turn, off1, off2);
             deviation = std::max({deviation, turn * length, off1, off2});
+            continue;
+        }
+        if (def->type == PRO_2D_B_SPLINE) {
+            // BUG-160: no dimension pins an exact B-spline, so the verification
+            // compares the stored degree, knots and control points with the ones
+            // recorded at creation. Any solver drift is reported like a moved
+            // point instead of silently passing the sketch.
+            auto bspline = (Pro2dBSplinedef *)def;
+            const J &expected = row["control_points_xy"];
+            const J &expected_knots = row["knots"];
+            if (bspline->degree != row["degree"].get<int>() ||
+                bspline->num_c_points != (int)expected.size() ||
+                bspline->num_knots != (int)expected_knots.size())
+                throw std::runtime_error(
+                    "Coordinate dimensioning changed the B-spline degree, knots or control "
+                    "points");
+            for (int i = 0; i < bspline->num_knots; i++) {
+                double moved = fabs(bspline->params[i] - expected_knots[i].get<double>());
+                deviation = std::max(deviation, moved);
+                if (moved > 1e-9)
+                    log("COORDINATE_DEVIATION entity=%s point=knot_%d moved=%.12f\n",
+                        row["name"].get<std::string>().c_str(), i, moved);
+            }
+            for (int i = 0; i < bspline->num_c_points; i++) {
+                offsets.push_back({bspline->c_pnts[i][0] - expected[i][0].get<double>(),
+                                   bspline->c_pnts[i][1] - expected[i][1].get<double>()});
+                points++;
+                for (int axis = 0; axis < 2; axis++) {
+                    double moved = fabs(bspline->c_pnts[i][axis] - expected[i][axis].get<double>());
+                    deviation = std::max(deviation, moved);
+                    if (moved > 1e-9) {
+                        log("COORDINATE_DEVIATION entity=%s point=control_%d axis=%d "
+                            "moved=%.12f\n",
+                            row["name"].get<std::string>().c_str(), i, axis, moved);
+                        if ((int)shift_sample.size() < 20)
+                            shift_sample.push_back({{"entity", row["name"]},
+                                                    {"point", "control_" + std::to_string(i)},
+                                                    {"axis", axis},
+                                                    {"moved_mm", moved}});
+                    }
+                }
+            }
             continue;
         }
         for (auto point : row["points"]) {

@@ -16,7 +16,10 @@ from creo_mechdog.endpoint_welding import (
 )
 from creo_mechdog.schema import validate_operations
 
-GAP = 5e-7
+# BUG-159: gaps at or below 1e-6 mm are already coincident to endpoint_welding,
+# so the weld fixtures stay above that tolerance and inside the 1e-4 closure
+# diagnostic scale.
+GAP = 5e-5
 
 
 def open_chain(gap: float = GAP) -> list[dict]:

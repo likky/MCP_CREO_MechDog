@@ -355,7 +355,7 @@ class NewAssemblyExitTests(unittest.TestCase):
         }
         actions = rec._actions(snapshot(model), None)
         self.assertFalse(actions["abandon_new"]["available"])
-        self.assertIn("Assembly/drawing", actions["abandon_new"]["reason"])
+        self.assertIn("committed assembly", actions["abandon_new"]["reason"])
         self.assertFalse(actions["restore_baseline"]["available"])
 
     def test_part_with_a_terminal_pending_job_is_unchanged(self):

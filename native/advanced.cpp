@@ -2458,11 +2458,26 @@ static void assemble_component(const J &op) {
     board = owner;
     // Assembly backups change component origins. Isolate a revision snapshot so
     // inserting a component never moves the separately editable source model.
+    // BUG-156: this now applies to a nested assembly too; the copy keeps the
+    // source assembly's own file, name and component edits untouched.
     ProMdlType child_type;
     CK(ProMdlTypeGet(child, &child_type));
-    if (child_type == PRO_MDL_ASSEMBLY)
-        throw std::runtime_error(
-            "Nested assembly copying is not yet supported; insert owned part/sheetmetal models");
+    // The receipt names the measured source type and, for an assembly, the
+    // direct component count seen by the saved-inspection verification above.
+    const char *source_model_type = "other";
+    int source_component_count = 0;
+    if (child_type == PRO_MDL_ASSEMBLY) {
+        source_model_type = "assembly";
+        for (const auto &item : gfeatures)
+            if (item["type"].get<int>() == PRO_FEAT_COMPONENT)
+                source_component_count++;
+    } else if (child_type == PRO_MDL_PART) {
+        ProMdlsubtype subtype;
+        source_model_type =
+            (!ProMdlSubtypeGet(child, &subtype) && subtype == PROMDLSTYPE_PART_SHEETMETAL)
+                ? "sheetmetal"
+                : "part";
+    }
     // T13: this exact string is the copy's identity and the stem Creo writes on
     // Backup (c_<job16>_<n>.prt.N). It is captured before the copy call because
     // ProMdlnameCopy takes a non-const name buffer, and it is recorded so the
@@ -2499,13 +2514,16 @@ static void assemble_component(const J &op) {
     wcscpy_s(name, wide(op["label"]).c_str());
     CK(ProModelitemNameSet(&comp, name));
     stage_operation_result(assembly_pose_receipt(&comp, op));
-    remember(op, comp,
-             {{"source_model_id", op["source_model_id"]},
-              {"source_revision", source["revision"]},
-              {"placement", placement},
-              {"source_snapshot", true},
-              {"snapshot_name", utf8(std::filesystem::path(snapshot))},
-              {"component_aliases", source["aliases"]}});
+    J receipt = {{"source_model_id", op["source_model_id"]},
+                 {"source_revision", source["revision"]},
+                 {"source_model_type", source_model_type},
+                 {"placement", placement},
+                 {"source_snapshot", true},
+                 {"snapshot_name", utf8(std::filesystem::path(snapshot))},
+                 {"component_aliases", source["aliases"]}};
+    if (child_type == PRO_MDL_ASSEMBLY)
+        receipt["component_count"] = source_component_count;
+    remember(op, comp, receipt);
 }
 static J constraint_reference(ProSelection ref) {
     if (!ref)

@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.36.1
+# MCP_CREO_MechDog 0.37.0
 
-![version](https://img.shields.io/badge/version-0.36.1-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.37.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.36.1**（PATCH）。修复自带 stdio 冒烟脚本未适配 `creo_capabilities` compact 分页契约导致的必然失败，能力契约期望集中到单一来源并由单测守门；公开工具与建模行为不变。见 [版本说明](docs/RELEASE_NOTES_0.36.1.md) 和 [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.36.1)。
+当前正式版 **0.37.0**（MINOR）。支持嵌套装配源、坐标草图精确 B 样条、装配基线快速恢复与作业预算披露；修复边选择器类型、同圆重复边与多半径弧误拒。公开工具仍以 `creo_capabilities` 的 `tool_count` 为准。见 [版本说明](docs/RELEASE_NOTES_0.37.0.md) 和 [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.37.0)。
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 
@@ -113,7 +113,7 @@ Creo 软件、SDK、模板与许可需自行取得；MIT 只覆盖本项目原�
 
 - 不是所有参数组合与几何都已实机验证；无效轮廓、基准或特征顺序由 Creo 返回错误，AI 需自行规划。
 - Creo 9 编译探测修复已实现，但本机无 Creo 9 SDK，实机编译与建模运行时未验收；Creo 10 不再要求独立复测。
-- 钣金四壁、relief 去料、嵌套装配、面级上色等仍有明确边界；直接混合（`creo_loft`）需一次性回调注册，种子放样不需要。
+- 钣金四壁、relief 去料、装配阵列/刚性组、面级上色等仍有明确边界；直接混合（`creo_loft`）需一次性回调注册，种子放样不需要。
 - 串行单通道，无队列、FIFO 或容量保证；未测与开放项按[统一台账](docs/BACKLOG.md)跟进。
 - 不提供任意命令／代码执行，不输出许可服务器内容；正在交互建模或有模态对话框时应先处理该会话状态。
 

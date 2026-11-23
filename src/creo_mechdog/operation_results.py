@@ -494,7 +494,7 @@ def _status_core(record: dict[str, Any], *, failed: bool) -> dict[str, Any]:
         core["group"] = {key: group[key] for key in SURFACE_GROUP_OUTCOME_KEYS if key in group}
     if record.get("op") == "sketch":
         for field, scalars in (
-            ("profile", ("analysis", "closed_contour_count", "material_area_mm2")),
+            ("profile", ("analysis", "area_status", "closed_contour_count", "material_area_mm2")),
             ("native_section", ("available", "closed_contours", "open_ends", "b_spline_entities")),
             ("geometry_deviation", ("available", "max_deviation_mm", "exceeds_warning")),
         ):
@@ -948,6 +948,11 @@ def _profile_summary(entities: list[dict[str, Any]], tolerance: float | None) ->
         "closed_contour_count": report["closed_contour_count"],
         "open_contour_count": report["open_contour_count"],
         "material_area_mm2": report["material_area_mm2"],
+        "area_status": report.get(
+            "area_status", "complete" if report.get("analysis") == "complete" else "partial"
+        ),
+        "area_unavailable_reason": report.get("area_unavailable_reason"),
+        "unsupported_entities": report.get("unsupported_entities", []),
         "categories": {name: entry["count"] for name, entry in report["categories"].items()},
         "closure_tolerance_mm": report["closure_tolerance_mm"],
         "max_endpoint_gap_mm": max(

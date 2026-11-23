@@ -1430,6 +1430,24 @@ static ProSelection resolve(const J &r) {
             throw std::runtime_error(selector_outcome.error);
         }
         stage_operation_result({{"geometry_selector_resolution", selector_outcome.diagnostic}});
+        // BUG-155: validate the matched id against the type the selector asked for.
+        // Without this an id/type mismatch only surfaced later as a bare
+        // ProModelitemInit -23 with no target or id in the message.
+        if (selector_outcome.target == "edge") {
+            ProEdge edge;
+            const ProError code = ProEdgeInit((ProSolid)board, selector_outcome.id, &edge);
+            if (code != PRO_TK_NO_ERROR)
+                throw std::runtime_error("geometry_selector matched edge id " +
+                                         std::to_string(selector_outcome.id) +
+                                         " but ProEdgeInit returned " + std::to_string(code));
+        } else {
+            ProSurface surface;
+            const ProError code = ProSurfaceInit((ProSolid)board, selector_outcome.id, &surface);
+            if (code != PRO_TK_NO_ERROR)
+                throw std::runtime_error("geometry_selector matched surface id " +
+                                         std::to_string(selector_outcome.id) +
+                                         " but ProSurfaceInit returned " + std::to_string(code));
+        }
         return selection(selector_outcome.id,
                          selector_outcome.target == "edge" ? PRO_EDGE : PRO_SURFACE);
     }
@@ -4990,7 +5008,77 @@ static J round_reference_application(ProFeature &f, int requested) {
         return reference_application_block(requested, nullptr, "unknown", code);
     return reference_application_block(requested, applied, "feature_tree", code);
 }
+// BUG-161: one complete circular hole can supply two 180-degree edges with
+// different ids. Each id resolves on its own, so neither the selector match nor
+// BUG-155's id/type check can see that both name one circle; the feature then
+// fails with a bare regeneration status and no ProFeatureErrorlist detail.
+// Resolve every edge reference before any element is built and refuse a plan
+// that names one circle twice, naming the participants and the id to keep.
+static void reject_duplicate_round_circles(const J &op, bool chamfer) {
+    struct CircleRef {
+        int id;
+        V center;
+        double radius;
+    };
+    // Measured centres/radii are native model units; convert the published
+    // 1e-6 mm comparison tolerance with the model's own scale and never guess
+    // it when the unit query fails.
+    const MillimeterScale scale = length_scale_to_mm((ProMdl)board, inspect_length_units(board));
+    const double tolerance = scale.known ? 1e-6 / scale.scale : 1e-6;
+    std::vector<CircleRef> circles;
+    for (const auto &refs : op["references"]) {
+        if (!refs.is_object() || !refs.contains("edge"))
+            continue;
+        ProSelection s = resolve(refs.at("edge"));
+        ProModelitem item;
+        const ProError item_code = ProSelectionModelitemGet(s, &item);
+        ProSelectionFree(&s);
+        // A non-edge selection is already refused by the feature builder; this
+        // pre-check only speaks for circle duplicates.
+        if (item_code != PRO_TK_NO_ERROR || item.type != PRO_EDGE)
+            continue;
+        ProEdge edge;
+        if (ProEdgeInit((ProSolid)board, item.id, &edge) != PRO_TK_NO_ERROR)
+            continue;
+        ProGeomitemdata *data = nullptr;
+        if (ProEdgeDataGet(edge, &data) != PRO_TK_NO_ERROR || !data)
+            continue;
+        ProCurvedata *curve = data->data.p_curve_data;
+        ProEnttype curve_type = PRO_ENT_NONE;
+        ProVector v1, v2, origin;
+        double start = 0, end = 0, radius = 0;
+        // Straight and spline edges carry no centre/radius and cannot be paired.
+        const bool circular =
+            curve && ProCurvedataTypeGet(curve, &curve_type) == PRO_TK_NO_ERROR &&
+            curve_type == PRO_ENT_ARC &&
+            ProArcdataGet(curve, v1, v2, origin, &start, &end, &radius) == PRO_TK_NO_ERROR;
+        ProGeomitemdataFree(&data);
+        if (!circular)
+            continue;
+        const V center = {origin[0], origin[1], origin[2]};
+        for (const auto &seen : circles) {
+            if (std::fabs(seen.radius - radius) > tolerance ||
+                std::fabs(seen.center[0] - center[0]) > tolerance ||
+                std::fabs(seen.center[1] - center[1]) > tolerance ||
+                std::fabs(seen.center[2] - center[2]) > tolerance)
+                continue;
+            const double report_scale = scale.known ? scale.scale : 1.0;
+            const char *unit = scale.known ? " mm" : " (model units)";
+            throw std::runtime_error(
+                std::string(chamfer ? "chamfer" : "round") + " references edges " +
+                std::to_string(seen.id) + " and " + std::to_string(item.id) +
+                " that lie on one circle (centre " + std::to_string(center[0] * report_scale) +
+                ", " + std::to_string(center[1] * report_scale) + ", " +
+                std::to_string(center[2] * report_scale) + unit + ", radius " +
+                std::to_string(radius * report_scale) + unit + "); keep the smallest id (" +
+                std::to_string(std::min(seen.id, item.id)) +
+                ") and remove the duplicate reference");
+        }
+        circles.push_back({item.id, center, radius});
+    }
+}
 static J generic_round(const J &op, bool chamfer) {
+    reject_duplicate_round_circles(op, chamfer);
     ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
     integer(root, PRO_E_FEATURE_TYPE, chamfer ? PRO_FEAT_CHAMFER : PRO_FEAT_ROUND);
     text(root, PRO_E_STD_FEATURE_NAME, wide(op.at("label")).c_str());
@@ -7022,6 +7110,147 @@ static bool millimeter_units(ProMdl mdl) {
     return !wcscmp(unit.name, L"mm");
 }
 
+// BUG-157: an assembly always references its component models, so the plain
+// "dependency free" rule can never accept one. A dependency counts as owned
+// only when Toolkit reports it in session and its origin lies inside this
+// model's own output directory or the managed models root. Unresolved or
+// outside paths are returned with their names so the refusal can list them.
+static bool inside_managed_directory(const std::wstring &candidate, const std::wstring &root) {
+    if (candidate.empty() || root.empty())
+        return false;
+    auto normalized = [](std::wstring value) {
+        std::replace(value.begin(), value.end(), L'/', L'\\');
+        while (value.size() > 3 && value.back() == L'\\')
+            value.pop_back();
+        return value;
+    };
+    const std::wstring path_value = normalized(candidate), root_value = normalized(root);
+    if (!_wcsicmp(path_value.c_str(), root_value.c_str()))
+        return true;
+    return path_value.size() > root_value.size() &&
+           !_wcsnicmp(path_value.c_str(), root_value.c_str(), root_value.size()) &&
+           path_value[root_value.size()] == L'\\';
+}
+
+static J unowned_recovery_dependencies(const std::string &managed_root) {
+    J refused = J::array();
+    CK(ProMdlDependenciesCleanup(board));
+    ProMdlnameShortdata *names = nullptr;
+    ProMdlfileType *types = nullptr;
+    int count = 0;
+    const ProError code = ProMdlDependenciesDataList(board, &names, &types, &count);
+    const std::wstring root = wide(managed_root);
+    if (code != PRO_TK_E_NOT_FOUND)
+        for (int i = 0; i < count; ++i) {
+            ProMdl dependency = nullptr;
+            const ProError found = ProMdlnameInit(names[i].name, types[i], &dependency);
+            if (found != PRO_TK_NO_ERROR) {
+                refused.push_back(
+                    {{"name", utf8(names[i].name)},
+                     {"origin", nullptr},
+                     {"reason", "not in session; dependency ownership cannot be proven"}});
+                continue;
+            }
+            ProPath origin = {};
+            const ProError origin_code = ProMdlOriginGet(dependency, origin);
+            if (origin_code != PRO_TK_NO_ERROR) {
+                refused.push_back({{"name", utf8(names[i].name)},
+                                   {"origin", nullptr},
+                                   {"reason", "origin unreadable"},
+                                   {"origin_query_code", (int)origin_code}});
+                continue;
+            }
+            const std::wstring value(origin);
+            if (!inside_managed_directory(value, folder) && !inside_managed_directory(value, root))
+                refused.push_back(
+                    {{"name", utf8(names[i].name)},
+                     {"origin", utf8(value)},
+                     {"reason", "outside this model's output and the managed models root"}});
+        }
+    if (names)
+        ProArrayFree((ProArray *)&names);
+    if (types)
+        ProArrayFree((ProArray *)&types);
+    if (code != PRO_TK_E_NOT_FOUND)
+        check(code, "RecoveryDependencies");
+    return refused;
+}
+
+static void verify_recovery_dependencies(const J &request) {
+    if (!assembly_model()) {
+        if (!recovery_dependency_free())
+            throw std::runtime_error(
+                "Recovery refused: external dependencies require separate ownership verification");
+        return;
+    }
+    const J refused = unowned_recovery_dependencies(request.value("managed_root", std::string()));
+    if (!refused.empty())
+        throw std::runtime_error(
+            "Recovery refused: assembly dependencies outside managed directories: " +
+            refused.dump());
+}
+
+static ProError count_recovery_feature(ProFeature *, ProError status, ProAppData data) {
+    if (status == PRO_TK_NO_ERROR)
+        (*static_cast<int *>(data))++;
+    return PRO_TK_NO_ERROR;
+}
+
+// BUG-157: identity verification for restore_baseline. The two full inspections
+// and their deep comparison are the expensive part of a recovery on a large
+// model; this proves the reloaded checkpoint is this model in the recorded state
+// using name, type, units, feature count and volume only. The receipt labels the
+// weaker claim (full_inspection_verified=false) and never fabricates geometry.
+static void verify_recovery_identity(const J &expected, J &report) {
+    ProMdlName actual_name = {};
+    CK(ProMdlMdlnameGet(board, actual_name));
+    // Creo returns the stored name upper-cased while the registry keeps the
+    // generated lower-case name; the reload is the same model either way.
+    if (_wcsicmp(actual_name, model_name.c_str()))
+        throw std::runtime_error("Recovery identity check: reloaded model name changed");
+    ProMdlType type;
+    CK(ProMdlTypeGet(board, &type));
+    std::string actual_type = "part";
+    if (type == PRO_MDL_ASSEMBLY)
+        actual_type = "assembly";
+    else if (type == PRO_MDL_PART) {
+        ProMdlsubtype subtype;
+        if (!ProMdlSubtypeGet(board, &subtype) && subtype == PROMDLSTYPE_PART_SHEETMETAL)
+            actual_type = "sheetmetal";
+    }
+    if (expected.value("model_type", "part") != actual_type)
+        throw std::runtime_error("Recovery identity check: model type changed");
+    int features = 0;
+    CK(ProSolidFeatVisit((ProSolid)board, count_recovery_feature, nullptr, &features));
+    const int recorded = expected.contains("features") && expected["features"].is_array()
+                             ? (int)expected["features"].size()
+                             : -1;
+    if (recorded >= 0 && features != recorded)
+        throw std::runtime_error("Recovery identity check: feature count changed (" +
+                                 std::to_string(recorded) + " recorded, " +
+                                 std::to_string(features) + " live)");
+    J volume = nullptr;
+    if (expected.contains("volume_mm3") && expected["volume_mm3"].is_number()) {
+        ProMassProperty property;
+        const ProError code = ProSolidMassPropertyWithDensityGet(
+            (ProSolid)board, nullptr, PRO_MP_DENS_USE_ALWAYS, 1, &property);
+        if (code != PRO_TK_NO_ERROR)
+            throw std::runtime_error("Recovery identity check: volume query failed with code " +
+                                     std::to_string((int)code));
+        const auto units = inspect_length_units(board);
+        const auto measured = units.volume_mm3(property.volume);
+        if (!measured)
+            throw std::runtime_error("Recovery identity check: volume unit conversion unavailable");
+        if (fabs(*measured - expected["volume_mm3"].get<double>()) > 0.01)
+            throw std::runtime_error("Recovery identity check: volume changed");
+        volume = *measured;
+    }
+    report["verification"] = "identity";
+    report["full_inspection_verified"] = false;
+    report["feature_count"] = features;
+    report["volume_mm3"] = volume;
+}
+
 static void reconcile_native(const J &request, const std::wstring &checkpoint, J &report) {
     const J &choice = request.at("reconciliation");
     const std::string action = choice.at("action");
@@ -7057,6 +7286,12 @@ static void reconcile_native(const J &request, const std::wstring &checkpoint, J
             CK(ProUnitsystemUnitGet(&us, PRO_UNITTYPE_LENGTH, &unit));
             report["live"]["millimeter_units"] = !wcscmp(unit.name, L"mm");
             report["live"]["dependency_free"] = recovery_dependency_free();
+            // BUG-157: an assembly's components are dependencies by definition,
+            // so admission reads the directory ownership answer instead.
+            if (assembly_model())
+                report["live"]["dependencies_owned"] =
+                    unowned_recovery_dependencies(request.value("managed_root", std::string()))
+                        .empty();
             try {
                 if (request["model"].contains("inspection") ||
                     request["model"].contains("inspection_ref")) {
@@ -7099,11 +7334,25 @@ static void reconcile_native(const J &request, const std::wstring &checkpoint, J
     CK(ProUnitsystemUnitGet(&us, PRO_UNITTYPE_LENGTH, &unit));
     if (wcscmp(unit.name, L"mm"))
         throw std::runtime_error("Recovery requires millimeter model units");
-    if (!recovery_dependency_free())
-        throw std::runtime_error(
-            "Recovery refused: external dependencies require separate ownership verification");
+    verify_recovery_dependencies(request);
     generic_stage("recovery_verify_source");
     CK(ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS));
+    const std::string verify_mode = choice.value("verify_mode", "full");
+    if (verify_mode != "full" && verify_mode != "identity")
+        throw std::runtime_error("Unknown verify_mode; use 'full' or 'identity'");
+    // BUG-157: only restore_baseline has a recorded baseline state the reload
+    // can be bound to without a second full inspection.
+    if (verify_mode == "identity" && action != "restore_baseline")
+        throw std::runtime_error("verify_mode=identity is only available for restore_baseline");
+    if (verify_mode == "identity") {
+        generic_stage("recovery_identity_check");
+        verify_recovery_identity(choice_inspection(choice, "source_inspection"), report);
+        CK(ProMdlDisplay(board));
+        report.update({{"success", true},
+                       {"saved_file_reloaded_and_verified", true},
+                       {"part_file", choice.at("source_file")}});
+        return;
+    }
     J before = inspection();
     if (action != "accept_live")
         verify_recovery(choice_inspection(choice, "source_inspection"), before);
@@ -9403,7 +9652,16 @@ static int run_generic(const std::wstring &job) {
                                  created.dwLowDateTime}}))
             throw std::runtime_error("Cannot persist native process identity");
         if (request.contains("reconciliation")) {
-            recovery_deadline = std::make_unique<RecoveryDeadline>(job);
+            // BUG-157: recovery gets its own phase budget (default 300 s,
+            // clamped to 30-900) and never outlives the job's total budget.
+            double phase = request.value("recovery_phase_seconds", 300.0);
+            if (!std::isfinite(phase))
+                phase = 300.0;
+            phase = std::min(900.0, std::max(30.0, phase));
+            const double total = request.value("timeout_seconds", phase);
+            if (std::isfinite(total) && total > 0)
+                phase = std::min(phase, total);
+            recovery_deadline = std::make_unique<RecoveryDeadline>(job, (DWORD)(phase * 1000.0));
         }
         auto model = request.at("model");
         model_name = wide(model.at("model_name"));
