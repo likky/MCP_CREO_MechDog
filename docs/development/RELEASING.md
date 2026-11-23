@@ -15,7 +15,7 @@
 
 ## 版本约定
 
-当前版本为 0.38.0（2026-11-23 MINOR，交付 [BUG-169](../work-items/BUG-169.md) 与 [FEAT-075](../work-items/FEAT-075.md)：`extrude` 回执补齐 `feature_id`、`linear_pattern` 双层拒绝非实体/零面 leader 并回执 `leader_kind`/`leader_surface_count`、`extrude mode="cut"` 开放单实体 `scope` 与 `through_all` 组合；本机 Creo 10 实机 8/8 + 回归 3/3 通过并保存重载；公开工具仍 111）。见[版本说明](../RELEASE_NOTES_0.38.0.md)和[发布记录](../validation/RELEASE-0.38.0.md)。
+当前版本为 0.39.0（2026-11-23 MINOR，交付 [BUG-170](../work-items/BUG-170.md)、[BUG-166](../work-items/BUG-166.md)、[FEAT-076](../work-items/FEAT-076.md)、[FEAT-077](../work-items/FEAT-077.md)：`-4` 旧会话诊断与 `force_new_session`、跨会话恢复与 `abandon_unknown_recovery`/自适应预算/`recovery_pending` 口径、边选择器 `feature` 与 `inspect_model(near=...)`、零件预览隐藏基准与更新检查 15 s/advisory；本机 Creo 10 实机 5/5 通过并保存重载；公开工具仍 111）。见[版本说明](../RELEASE_NOTES_0.39.0.md)和[发布记录](../validation/RELEASE-0.39.0.md)。
 
 此前的 0.37.0（2026-11-23 MINOR，嵌套装配源、B 样条坐标尺寸、装配 identity 恢复、预算披露与几何/选择器修复）。见[版本说明](../RELEASE_NOTES_0.37.0.md)和[发布记录](../validation/RELEASE-0.37.0.md)。
 

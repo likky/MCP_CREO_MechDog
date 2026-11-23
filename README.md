@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.38.0
+# MCP_CREO_MechDog 0.39.0
 
-![version](https://img.shields.io/badge/version-0.38.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.39.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.38.0**（MINOR）。交付 [BUG-169](docs/work-items/BUG-169.md) 与 [FEAT-075](docs/work-items/FEAT-075.md)：`extrude` 等操作全量与 compact 回执统一回填 `feature_id`；`linear_pattern` 双层拒绝草图/基准及零实体面 leader 并回执 `leader_kind`/`leader_surface_count`；`extrude mode="cut"` 开放单实体 `scope` 与 `depth_type="through_all"` 组合（含 `symmetric` 与 `-5778`）；同步改进交叉/相切轮廓诊断文案与语法文档。公开工具仍以 `creo_capabilities` 的 `tool_count` 为准。见 [版本说明](docs/RELEASE_NOTES_0.38.0.md) 和 [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.38.0)。
+当前正式版 **0.39.0**（MINOR）。交付 [BUG-170](docs/work-items/BUG-170.md)、[BUG-166](docs/work-items/BUG-166.md)、[FEAT-076](docs/work-items/FEAT-076.md) 与 [FEAT-077](docs/work-items/FEAT-077.md)：升级/重启后 `-4` 旧会话诊断与 `force_new_session` 显式新会话入口；跨会话恢复解死锁、新增 `abandon_unknown_recovery`、自适应/可配恢复预算与 `blocking_operation="recovery_pending"`；边选择器 `feature` 过滤与 `creo_inspect_model(near=...)` 近邻查询；零件 JPEG 预览隐藏基准面及更新检查 15 s 默认预算与 `advisory` 标记。公开工具仍以 `creo_capabilities` 的 `tool_count` 为准。见 [版本说明](docs/RELEASE_NOTES_0.39.0.md) 和 [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.39.0)。
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 

@@ -59,6 +59,46 @@ FAILURE_CODES = {
 }
 
 
+def _stale_session_diagnosis(native: dict | None, observed: dict | None) -> dict | None:
+    """BUG-170: detect an alive Creo process that returns -4 / PRO_TK_BAD_CONTEXT.
+
+    Common right after an MCP upgrade or worker rebuild: the old Creo process
+    is still running, so automatic launch preserves it, while the new worker
+    cannot attach to its Toolkit context. Surface this explicitly with the
+    actionable recovery steps first.
+    """
+    if not isinstance(native, dict) or native.get("connected"):
+        return None
+    if not isinstance(observed, dict) or not observed.get("available"):
+        return None
+    procs = observed.get("processes")
+    if not isinstance(procs, list) or not any(
+        isinstance(p, dict) and p.get("matches") is not False for p in procs
+    ):
+        return None
+    code = native.get("toolkit_code")
+    conn_state = native.get("connection_state")
+    hint = str(native.get("toolkit_hint") or "")
+    if code != -4 and conn_state != "not_found_or_unreadable" and "PRO_TK_BAD_CONTEXT" not in hint:
+        return None
+    return {
+        "stale_session_detected": True,
+        "diagnosis": "stale_session_needs_restart",
+        "reason": (
+            "An existing Creo process is running, but this worker received "
+            f"toolkit_code={code!r} ({conn_state or 'PRO_TK_BAD_CONTEXT'}). "
+            "After an MCP upgrade or restart, an old Creo session often cannot be "
+            "re-adopted by the new worker."
+        ),
+        "next_steps": [
+            "Close the existing Creo window(s) and call creo_startup_status(retry=true) "
+            "(existing Creo processes are never killed automatically).",
+            "Or call creo_startup_status(retry=true, force_new_session=true) to launch "
+            "a fresh Creo session alongside the unreachable process without closing it.",
+        ],
+    }
+
+
 def _deadline_at(monotonic_deadline: float | None) -> str | None:
     """Convert a monotonic budget deadline to wall-clock ISO-8601 when known."""
     if monotonic_deadline is None:
@@ -736,8 +776,22 @@ class CreoStartup:
             return value
 
     def start(
-        self, retry: bool = False, session_id: str | None = None, *, clear_session_id: bool = False
+        self,
+        retry: bool = False,
+        session_id: str | None = None,
+        *,
+        clear_session_id: bool = False,
+        force_new_session: bool = False,
     ) -> dict:
+        if force_new_session:
+            if not retry:
+                raise ValueError(
+                    "force_new_session=true requires retry=true to probe and launch a fresh Creo session"
+                )
+            if session_id is not None or clear_session_id:
+                raise ValueError(
+                    "force_new_session=true cannot be combined with session_id or clear_session_id"
+                )
         # FEAT-072: a retry may name the session to connect to. The choice is
         # process-local, applies to every worker this service starts and never
         # lands in config.json; without a retry nothing would be re-verified, so
@@ -811,7 +865,10 @@ class CreoStartup:
                 ),
             }
             self._thread = threading.Thread(
-                target=self._run, args=(retry,), name="creo-startup", daemon=True
+                target=self._run,
+                args=(retry, force_new_session),
+                name="creo-startup",
+                daemon=True,
             )
             self._thread.start()
             return dict(self._state)
@@ -983,12 +1040,35 @@ class CreoStartup:
                 verified_at=bridge.now(),
             )
         else:
-            native["connection_guidance"] = connection_guidance(snapshot)
+            stale = _stale_session_diagnosis(native, snapshot)
+            base_guidance = connection_guidance(snapshot)
+            if stale is not None:
+                native["stale_session_detected"] = True
+                native["diagnosis"] = stale["diagnosis"]
+                native["next_steps"] = stale["next_steps"]
+                native["connection_guidance"] = stale["next_steps"][0] + " " + base_guidance
+            else:
+                native["connection_guidance"] = base_guidance
             self._publish(
                 "timeout",
-                "Toolkit connection is no longer available; inspect Creo and request creo_startup_status(retry=true)",
+                (
+                    "Existing Creo process is unreachable (toolkit_code=-4 / PRO_TK_BAD_CONTEXT); "
+                    "close Creo and call creo_startup_status(retry=true), or pass "
+                    "creo_startup_status(retry=true, force_new_session=true)"
+                    if stale is not None
+                    else "Toolkit connection is no longer available; inspect Creo and request creo_startup_status(retry=true)"
+                ),
                 shared=False,
                 native=native,
+                **(
+                    {
+                        "stale_session_detected": True,
+                        "diagnosis": stale["diagnosis"],
+                        "next_steps": stale["next_steps"],
+                    }
+                    if stale is not None
+                    else {}
+                ),
             )
         # This read-only tool can recognize a manually opened session, but must
         # not turn a failed query into an implicit GUI launch/recovery request.
@@ -1002,7 +1082,7 @@ class CreoStartup:
             **self.session_keys(snapshot),
         }
 
-    def _run(self, retry: bool) -> None:
+    def _run(self, retry: bool, force_new_session: bool = False) -> None:
         try:
             settings = Settings.load()
             self._directory = self._target_directory(settings)
@@ -1030,7 +1110,7 @@ class CreoStartup:
                             with self._mutex:
                                 self._state = {**shared, "coordinated": True}
                             return
-                        self._drive(settings, retry, deadline)
+                        self._drive(settings, retry, deadline, force_new_session=force_new_session)
                     return
                 except CoordinatorBusy:
                     state_path = self._directory / "state.json"
@@ -1314,7 +1394,14 @@ class CreoStartup:
                 return blocked(reason)
         return blocked("Startup-history reconciliation exceeded its budget or was stopped")
 
-    def _drive(self, settings: Settings, retry: bool, deadline: float) -> None:
+    def _drive(
+        self,
+        settings: Settings,
+        retry: bool,
+        deadline: float,
+        *,
+        force_new_session: bool = False,
+    ) -> None:
         state_path = self._directory / "state.json"
         previous = read_startup_state(state_path, bridge.read_json)
         self._publish(
@@ -1513,7 +1600,16 @@ class CreoStartup:
                     "Creo process identity changed during connection detection",
                 )
                 return
-            if not current["processes"] and not launched:
+            # BUG-170: allow an explicit force_new_session=true launch even when
+            # an existing Creo process is running but unreachable (-4 / no_session
+            # / not_found_or_unreadable). Existing Creo processes are preserved
+            # and never closed automatically.
+            allow_forced_launch = (
+                force_new_session
+                and bool(current["processes"])
+                and native.get("connection_state") in ("no_session", "not_found_or_unreadable")
+            )
+            if (not current["processes"] or allow_forced_launch) and not launched:
                 if not settings.auto_start:
                     self._publish(
                         "disabled",
@@ -1555,9 +1651,15 @@ class CreoStartup:
                 # leader dies in that gap, a successor cannot blindly relaunch.
                 self._publish(
                     "starting",
-                    "Launching configured Creo with its PSF",
+                    (
+                        "Launching a fresh Creo session alongside unreachable existing Creo "
+                        "process(es) per explicit force_new_session=true (existing processes preserved)"
+                        if allow_forced_launch
+                        else "Launching configured Creo with its PSF"
+                    ),
                     launch_reserved=True,
                     launch_attempt=attempt,
+                    forced_new_session=allow_forced_launch,
                 )
                 directory = bridge.ROOT / "build/creo_session"
                 directory.mkdir(parents=True, exist_ok=True)
@@ -1611,12 +1713,32 @@ class CreoStartup:
             return
         if not self._stop.is_set():
             toolkit_code = (last_native or {}).get("toolkit_code")
-            self._publish(
-                "timeout",
-                "Toolkit did not become ready within the startup budget; "
-                f"last toolkit_code={toolkit_code!r}, connect_timeout_seconds={settings.probe_timeout}. "
-                "Inspect Creo dialogs/environment, then request retry. Existing Creo processes were preserved",
-                native=last_native,
-                launch_reserved=launched or previous.get("launch_reserved", False),
-                launch_attempt=attempt,
-            )
+            final_snapshot = process_snapshot(settings)
+            stale = _stale_session_diagnosis(last_native, final_snapshot)
+            if stale is not None:
+                self._publish(
+                    "timeout",
+                    "Existing Creo process is unreachable from this worker "
+                    f"(last toolkit_code={toolkit_code!r} / PRO_TK_BAD_CONTEXT, common after "
+                    "MCP upgrade or restart). Close the existing Creo window(s) and call "
+                    "creo_startup_status(retry=true), or pass "
+                    "creo_startup_status(retry=true, force_new_session=true) to launch a fresh "
+                    "session. Existing Creo processes were preserved",
+                    native=last_native,
+                    creo_process_snapshot=final_snapshot,
+                    stale_session_detected=True,
+                    diagnosis=stale["diagnosis"],
+                    next_steps=stale["next_steps"],
+                    launch_reserved=launched or previous.get("launch_reserved", False),
+                    launch_attempt=attempt,
+                )
+            else:
+                self._publish(
+                    "timeout",
+                    "Toolkit did not become ready within the startup budget; "
+                    f"last toolkit_code={toolkit_code!r}, connect_timeout_seconds={settings.probe_timeout}. "
+                    "Inspect Creo dialogs/environment, then request retry. Existing Creo processes were preserved",
+                    native=last_native,
+                    launch_reserved=launched or previous.get("launch_reserved", False),
+                    launch_attempt=attempt,
+                )

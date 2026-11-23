@@ -1050,10 +1050,10 @@ class DatumDisplayGuardNative(unittest.TestCase):
         self.assertIn("ProConfigoptSet", restore)
         self.assertIn("previous_value.c_str()", restore)
 
-    def test_only_an_assembly_capture_hides_datums(self):
+    def test_assembly_and_part_captures_hide_datums_while_drawings_skip(self):
         hide = self.hide_block()
         self.assertIn("ProMdlTypeGet", hide)
-        self.assertIn("model_type != PRO_ASSEMBLY", hide)
+        self.assertIn("model_type != PRO_ASSEMBLY && model_type != PRO_PART", hide)
         self.assertIn('"not_applicable"', hide)
         for name in (
             "DATUM_DISPLAY",

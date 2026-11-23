@@ -1401,20 +1401,51 @@ static ProSelection resolve(const J &r) {
         J state = inspection(false);
         if (selector.contains("feature")) {
             ProFeature owner = feature(selector.at("feature"));
-            J items = J::array();
-            const ProError code =
-                ProFeatureGeomitemVisit(&owner, PRO_SURFACE, collect_geom_ids, nullptr, &items);
-            if (code != PRO_TK_E_NOT_FOUND)
-                check(code, "ProFeatureGeomitemVisit(surface selector owner)");
-            std::set<int> owned;
-            for (const auto &item : items)
-                owned.insert(item.at("id").get<int>());
-            J &surfaces = state.at("surfaces");
-            J filtered = J::array();
-            for (auto &item : surfaces)
-                if (owned.count(item.at("id").get<int>()))
-                    filtered.push_back(std::move(item));
-            surfaces = std::move(filtered);
+            J surface_items = J::array();
+            const ProError surf_code = ProFeatureGeomitemVisit(
+                &owner, PRO_SURFACE, collect_geom_ids, nullptr, &surface_items);
+            if (surf_code != PRO_TK_E_NOT_FOUND)
+                check(surf_code, "ProFeatureGeomitemVisit(selector owner surfaces)");
+            std::set<int> owned_surfaces;
+            for (const auto &item : surface_items)
+                owned_surfaces.insert(item.at("id").get<int>());
+            if (selector.at("target") == "edge") {
+                // FEAT-076: include both edges owned directly by the feature and edges
+                // bordering any surface owned by that feature (e.g. cut rims).
+                J edge_items = J::array();
+                const ProError edge_code = ProFeatureGeomitemVisit(
+                    &owner, PRO_EDGE, collect_geom_ids, nullptr, &edge_items);
+                if (edge_code != PRO_TK_E_NOT_FOUND)
+                    check(edge_code, "ProFeatureGeomitemVisit(edge selector owner)");
+                std::set<int> owned_edges;
+                for (const auto &item : edge_items)
+                    owned_edges.insert(item.at("id").get<int>());
+                J &edges = state.at("edges");
+                J filtered = J::array();
+                for (auto &item : edges) {
+                    bool belongs = owned_edges.count(item.at("id").get<int>()) > 0;
+                    if (!belongs && item.contains("adjacent_surfaces") &&
+                        item["adjacent_surfaces"].is_array()) {
+                        for (const auto &sid : item["adjacent_surfaces"]) {
+                            if (sid.is_number_integer() &&
+                                owned_surfaces.count(sid.get<int>()) > 0) {
+                                belongs = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (belongs)
+                        filtered.push_back(std::move(item));
+                }
+                edges = std::move(filtered);
+            } else {
+                J &surfaces = state.at("surfaces");
+                J filtered = J::array();
+                for (auto &item : surfaces)
+                    if (owned_surfaces.count(item.at("id").get<int>()))
+                        filtered.push_back(std::move(item));
+                surfaces = std::move(filtered);
+            }
         }
         GeometrySelectorOutcome selector_outcome =
             match_geometry_selector(selector, state, selector_scale.scale);

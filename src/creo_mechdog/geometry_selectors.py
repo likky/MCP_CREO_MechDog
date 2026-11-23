@@ -195,13 +195,13 @@ def validate_geometry_selector(value: Any, path: str = "selector") -> dict[str, 
     if "feature" in value:
         feature = value["feature"]
         if (
-            target != "surface"
+            target not in ("surface", "edge")
             or coordinate_space != "model"
             or not isinstance(feature, str)
             or re.fullmatch(r"[a-z][a-z0-9_]{0,27}", feature) is None
         ):
             raise ValueError(
-                f"{path}.feature must be a feature label on a model-space surface selector"
+                f"{path}.feature must be a feature label on a model-space edge or surface selector"
             )
         normalized["feature"] = feature
 

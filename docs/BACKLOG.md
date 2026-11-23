@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-23（0.39.0 MINOR，新增 3 项，台账 234→237，BUG 118→119 / FEAT 72→74 / DEV 44，公开工具仍 111）：归档 0.36.0 外部反馈原件 [upgrade-session-and-recovery-deadlock.md](validation/feedback-0.36.0-2026-11-23/originals/upgrade-session-and-recovery-deadlock.md) 并在 [BUG-152](work-items/BUG-152.md) 补录外部 Creo 9 连续保存/只读释放/大模型导出确认；交付 [BUG-170](work-items/BUG-170.md)、[BUG-166](work-items/BUG-166.md)、[FEAT-076](work-items/FEAT-076.md)、[FEAT-077](work-items/FEAT-077.md)（均转入“已有修复但待验收”）：① 升级/重启后旧 Creo 不可达（`-4`/`PRO_TK_BAD_CONTEXT`）诊断 `stale_session_needs_restart`、`creo_startup_status(retry=true, force_new_session=true)` 显式新会话入口与 `session_candidates.diagnostic_only=true`；② 跨会话 `restore_baseline`/`abandon_new`/`accept_saved` 不再绑定已死旧会话指纹、新增 `abandon_unknown_recovery` 运维解锁动作、恢复阶段支持单次 `budget_seconds`（30–900 s）与高边数自适应下限（6428 边 548 s）、准入准确区分 `blocking_operation="recovery_pending"` 与 `pending_job`；③ 边 `geometry_selector` 开放 `feature` 标签过滤、`creo_inspect_model` 新增 `near`/`max_distance_mm` 近邻查边/面与 `creo_round`/`creo_chamfer` 选择器说明；④ 零件 JPEG 预览放开 `PreviewDatumDisplayGuard` 隐藏并恢复基准要素、更新检查默认超时 5 s→15 s 并标明 `advisory=true`。本机 Creo 10.0.0.0（release 42）完成 5/5 实机场景验收并保存重载通过。见[版本说明](RELEASE_NOTES_0.39.0.md)与[发布记录](validation/RELEASE-0.39.0.md)。
+
 2026-11-23（0.38.0 MINOR，新增 2 项，台账 232→234，BUG 117→118 / FEAT 71→72 / DEV 44，公开工具仍 111）：归档 0.35.8 反馈原件 [linear-pattern-leader-and-through-all-scope.md](validation/feedback-0.35.8-2026-11-23/originals/linear-pattern-leader-and-through-all-scope.md) 并在 [BUG-150](work-items/BUG-150.md) 补录外部 `frigate_v4` 验证结果；交付 [BUG-169](work-items/BUG-169.md) 与 [FEAT-075](work-items/FEAT-075.md)（均转入“已有修复但待验收”）：① `extrude` 等创建特征操作在全量与 compact 回执统一回填 `feature_id`；② `linear_pattern` 在 Python 提交准入与原生 `ProPatternCreate` 前双重拒绝草图/曲线/基准及零实体面 leader（`LINEAR_PATTERN_NON_SOLID_LEADER`）与别名/原生类型冲突（`LINEAR_PATTERN_LEADER_ALIAS_MISMATCH`），回执与 compact 投影同步披露 `leader_id`/`leader_kind`/`leader_surface_count`/`member_count`；③ `extrude mode="cut"` 开放单实体 `scope` 与 `depth_type="through_all"` 组合（含 `positive`/`negative`/`symmetric` 与初始体 `-5778`）；④ 完善交叉/相切草图诊断文案（不再建议改 `closure_tolerance_mm`）及 `REFERENCE_SYNTAX.md` 切除交集/多环边界说明。本机 Creo 10.0.0.0（release 42）完成 8/8 实机场景与 `test_linear_pattern.py` 3/3 回归，全部精确匹配解析体积并保存重载通过。见[版本说明](RELEASE_NOTES_0.38.0.md)与[发布记录](validation/RELEASE-0.38.0.md)。
 
 2026-11-23（0.37.1 PATCH，台账 233→232，BUG 118→117，公开工具仍 111）：归档 0.35.8 反馈原件 [test-mcp-capabilities-drift.md](validation/feedback-0.35.8-2026-11-22/originals/test-mcp-capabilities-drift.md) 并收口 [BUG-151](work-items/BUG-151.md) 移入[完成档案](BACKLOG_COMPLETED.md)：`tools/test_mcp.py` 补齐实机启动等待、`--offline` 无副作用离线模式并纳入 `dev_check` 离线门禁、显式输出异常避免被 TaskGroup 遮蔽；`tools/mcp_readiness.py` 对齐 `creo_startup.ACTIVE`；修复其余 9 个 `tools/` 脚本的 `creo_capabilities` 分页契约漂移并加静态护栏；放宽 `test_startup_reboot` 2s 偶发等待；本机 Creo 10.0.0.0（release 42）完成 `test_mcp.py` 默认/`--classic`/`--create --simple`/`--create` 实机验收（两件零件均保存重载通过）。见[版本说明](RELEASE_NOTES_0.37.1.md)与[发布记录](validation/RELEASE-0.37.1.md)。
@@ -226,19 +228,19 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 
 诊断交付不等于根因修复；部分交付不关整卡；缺其他版本证据不自动判未修。观察项等自然新现场，不制造故障。已完成且无保留范围的行移入 [完成档案](BACKLOG_COMPLETED.md#2026-11-07dev-073-归档与历史进展)。原进展/证据保留日期，不再回填第二份待办。小修复沿用卡与证据，复杂跨模块任务才另建完整计划。
 
-当前唯一 ID **234**（BUG **118**、FEAT **72**、DEV **44**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
+当前唯一 ID **237**（BUG **119**、FEAT **74**、DEV **44**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
 | 仍需修复 | 7 |
 | 待复现/待核实 | 36 |
-| 已有修复但待验收 | 47 |
+| 已有修复但待验收 | 53 |
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
-| 开发中 | 9 |
+| 开发中 | 7 |
 | 部分交付，剩余待验收 | 50 |
 | 部分交付，剩余待规划 | 7 |
-| 待规划 | 55 |
+| 待规划 | 54 |
 
 BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与真实缺口，勿重复派工。
 
@@ -302,6 +304,10 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
+| [BUG-170](work-items/BUG-170.md) | P0 | 已有修复但待验收 | 0.39.0 | 升级/重启后 `-4`/`PRO_TK_BAD_CONTEXT` 诊断 `stale_session_needs_restart`、`force_new_session` 显式新会话入口与 `session_candidates.diagnostic_only` 离线单测与门禁全过。剩：真实 Creo 9 升级 `-4` 现场、WorkBuddy 黑盒。 |
+| [BUG-166](work-items/BUG-166.md) | P1 | 已有修复但待验收 | 0.39.0 | 跨会话 `restore_baseline`/`abandon_new` 解死锁、新增 `abandon_unknown_recovery`、单次 `budget_seconds` 与高边数自适应下限（6428 边 548 s）、`blocking_operation="recovery_pending"`；本机 Creo 10 实机 3/3 通过并保存重载。剩：原始 6428 边 M113 P05 模型、Creo 9/12、WorkBuddy 黑盒。 |
+| [FEAT-076](work-items/FEAT-076.md) | P1 | 已有修复但待验收 | 0.39.0 | 边 `geometry_selector` 支持 `feature` 标签过滤、`creo_inspect_model` 新增 `near`/`max_distance_mm` 近邻查询与 `creo_round`/`creo_chamfer` 说明同步；本机 Creo 10 实机 `near` 定位 + 按特征边圆角精确去料并保存重载。剩：原始 6428 边件、Creo 9/12、WorkBuddy 黑盒。 |
+| [FEAT-077](work-items/FEAT-077.md) | P2 | 已有修复但待验收 | 0.39.0 | 零件 JPEG 预览隐藏并恢复四项基准显示选项（不写 `config.pro`）；更新检查默认预算 5 s→15 s 且带 `advisory=true`；本机 Creo 10 实机零件预览/JPEG 导出隐藏与恢复全过。剩：Creo 9/12、WorkBuddy 黑盒。 |
 | [BUG-169](work-items/BUG-169.md) | P1 | 已有修复但待验收 | 0.38.0 | `extrude` 等操作回执补齐 `feature_id`（全量+compact）；`linear_pattern` 双层拒绝非实体/零面 leader 与别名类型冲突并输出 `leader_kind`/`leader_surface_count`；本机 Creo 10 实机 4/4 + `test_linear_pattern` 3/3 通过并保存重载。剩：原案 B025 原始请求/模型快照、Creo 9/12 实机、WorkBuddy 黑盒。 |
 | [FEAT-075](work-items/FEAT-075.md) | P1 | 已有修复但待验收 | 0.38.0 | `extrude mode="cut"` 开放单实体 `scope` 与 `through_all` 组合；本机 Creo 10 实机双体正交、三体双向对称、`-5778` 初始体及未知 ID 回滚 4/4 通过并保存重载。剩：Creo 9/12 实机、WorkBuddy 黑盒。 |
 | [BUG-150](work-items/BUG-150.md) | P1 | 已有修复但待验收 | 0.35.8（初始实体作用域） | Creo 10 实机明确 `-5778` 是初始实体 ID，有无作用域均去料 800 mm³，保存重载通过。原护卫舰无作用域零去料待原件复现。 |
@@ -474,7 +480,6 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [BUG-163](work-items/BUG-163.md) | P2 | 待规划 | 未排期 | 圆角前置读取引用边弧半径，`size >= radius` 时给出排除建议。 |
 | [BUG-164](work-items/BUG-164.md) | P2 | 待规划 | 未排期 | 装配阵列/刚性组，替代 269 个独立实例展开。 |
 | [BUG-165](work-items/BUG-165.md) | P1 | 待规划 | 未排期 | 多实体 B 样条共享顶点或合并，解决内核判未闭合。 |
-| [BUG-166](work-items/BUG-166.md) | P1 | 待规划 | 未排期 | 恢复预算按模型规模与阶段进度自适应；`identity` 已由 BUG-157 止血。 |
 | [BUG-167](work-items/BUG-167.md) | P1 | 待规划 | 未排期 | 新增 `creo_replace_component`，换版保留约束并核验体积/重载。 |
 | [BUG-168](work-items/BUG-168.md) | P1 | 待规划 | 未排期 | 统一会话真相源、`open_file` 冲突出口、只读导出不占写锁。 |
 | [FEAT-072](work-items/FEAT-072.md) | P1 | 部分交付 0.35.6；真实 ID A→A 与 Creo 9/12 未排期 | 0.35.6（选定与候选列表已交付）；余项未排期 | 只读候选列表（进程级、明确标注不可识别）+ 进程内 `session_id` 选定（无需重启、不写 config）+ 失效 ID 不回落，已随两个状态工具发布；实机已验证单会话基线、错误 ID、清除、候选列表，以及双 Creo 现场的 -36/`selection_required` 与关闭多余会话后自动恢复。剩：真实 ID 的 A→A、Creo 9/12。 |
