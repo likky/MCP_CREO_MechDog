@@ -8,6 +8,10 @@
 - 四件附件为 `MCP_CREO_MechDog-0.38.0-source.zip`、`MCP_CREO_MechDog-0.38.0-source.zip.sha256`、`MCP_CREO_MechDog-0.38.0-seed-library.zip`、`MCP_CREO_MechDog-0.38.0-seed-library.zip.sha256`。种子包 SHA256 为 `f01e832b9a8b7ea3eef7f845f53af3502c1b3656e1896a90ab02f76bb6a36223`。两份同名 sidecar 分别记录对应 ZIP 的实际摘要。
 - 远端核对发布后执行，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.38.0)
 
+### 发布后核对
+
+- 2026-11-23 按 `python -X utf8 tools/check_release_assets.py --tag v0.38.0` 重新下载并重算：Release id `455370017`（`created_at=2026-11-23T12:05:56Z`、`published_at=2026-11-23T12:06:53Z`，非 draft、非 prerelease），四件附件齐全，两份 sidecar 与对应 ZIP 摘要及远端 API digest 一致，Release body 自证通过（exit 0）；源码包 `c3de65dcccacc0e7879194b7cfcde941b1889e0a4bbd4fd4a467cbbc6d1f0e71`（11,851,768 字节，sidecar `3d785a3e88422747470f5a945e09426e18c0ed487c9de9fb822481a98dacbbd9`），种子包 `f01e832b9a8b7ea3eef7f845f53af3502c1b3656e1896a90ab02f76bb6a36223`（493,442 字节，sidecar `d587e1d0dcd5a6fe16942bd752a9fc910714ea3b92fc6c0eb4e3e65362573bb5`）。附注标签 `v0.38.0`（对象 `b7605e9d4309dbb8bfd3c2f7443898264fa48d7e`）指向 `266f8a014d60856dff598a49cac457fd24791bc7`，核对时远端 `main` 与该提交一致。
+
 ## v0.37.1（2026-11-23，打包时点）
 
 - [BUG-151](../work-items/BUG-151.md) 收口：`tools/test_mcp.py` 补齐实机启动等待、`--offline` 纳入 `dev_check` 离线门禁并完成本机 Creo 10 全模式与 `--create` 实机验收，清理其余 9 个 `tools/` 脚本的 `creo_capabilities` 分页契约漂移与 `mcp_readiness` 过渡态，放宽 `test_startup_reboot` 2 s 等待并归档 0.35.8 反馈原件。见[版本说明](../RELEASE_NOTES_0.37.1.md)及[发布记录](../validation/RELEASE-0.37.1.md)。

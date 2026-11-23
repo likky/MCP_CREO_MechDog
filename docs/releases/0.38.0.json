@@ -4,7 +4,7 @@
   "previous_version": "0.37.1",
   "previous_release_tag": "v0.37.1",
   "previous_release_commit": "87cade1e24c91140d97789516b2ff92b49518e86",
-  "remote_verification": "pending",
+  "remote_verification": "verified",
   "delivery_ids": [
     "BUG-169",
     "FEAT-075"
