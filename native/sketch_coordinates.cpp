@@ -722,6 +722,27 @@ static J geometry_deviation_stage(ProSection section, const J &targets) {
         double moved = 0;
         const char *measurement = nullptr;
         bool measured = true;
+        bool has_point_shift = false;
+        double worst_pt_mag = -1.0;
+        std::array<double, 2> worst_req = {0.0, 0.0};
+        std::array<double, 2> worst_act = {0.0, 0.0};
+        std::array<double, 2> worst_delta = {0.0, 0.0};
+        std::string worst_role;
+        auto record_point = [&](const std::string &role, double rx, double ry, double ax,
+                                double ay) {
+            double du = ax - rx;
+            double dv = ay - ry;
+            offsets.push_back({du, dv});
+            double mag = std::max(fabs(du), fabs(dv));
+            if (mag > worst_pt_mag) {
+                worst_pt_mag = mag;
+                has_point_shift = true;
+                worst_req = {rx, ry};
+                worst_act = {ax, ay};
+                worst_delta = {du, dv};
+                worst_role = role;
+            }
+        };
         if (type == PRO_2D_CENTER_LINE && row.contains("points") && row["points"].size() == 2) {
             // A construction centerline is an infinite axis: the solve may
             // slide its endpoints, so compare the line identity (direction
@@ -749,30 +770,30 @@ static J geometry_deviation_stage(ProSection section, const J &targets) {
         } else if (type == PRO_2D_LINE) {
             auto line = (Pro2dLinedef *)def;
             for (const auto &point : row["points"]) {
-                const double *actual =
-                    point["sense"].get<int>() == PRO_ENT_START ? line->end1 : line->end2;
-                offsets.push_back({actual[0] - point["xy"][0].get<double>(),
-                                   actual[1] - point["xy"][1].get<double>()});
-                for (int axis = 0; axis < 2; axis++)
-                    moved = std::max(moved, fabs(actual[axis] - point["xy"][axis].get<double>()));
+                const bool is_start = point["sense"].get<int>() == PRO_ENT_START;
+                const double *actual = is_start ? line->end1 : line->end2;
+                const double rx = point["xy"][0].get<double>();
+                const double ry = point["xy"][1].get<double>();
+                record_point(is_start ? "start" : "end", rx, ry, actual[0], actual[1]);
+                moved = std::max({moved, fabs(actual[0] - rx), fabs(actual[1] - ry)});
             }
             measurement = "endpoints";
         } else if (type == PRO_2D_CIRCLE) {
             auto circle = (Pro2dCircledef *)def;
-            offsets.push_back({circle->center[0] - row["points"][0]["xy"][0].get<double>(),
-                               circle->center[1] - row["points"][0]["xy"][1].get<double>()});
-            moved = std::max(fabs(circle->center[0] - row["points"][0]["xy"][0].get<double>()),
-                             fabs(circle->center[1] - row["points"][0]["xy"][1].get<double>()));
+            const double rx = row["points"][0]["xy"][0].get<double>();
+            const double ry = row["points"][0]["xy"][1].get<double>();
+            record_point("center", rx, ry, circle->center[0], circle->center[1]);
+            moved = std::max(fabs(circle->center[0] - rx), fabs(circle->center[1] - ry));
             const double radius = fabs(circle->radius - row["radius"].get<double>());
             non_translation = std::max(non_translation, radius);
             moved = std::max(moved, radius);
             measurement = "center_radius";
         } else if (type == PRO_2D_ARC) {
             auto arc = (Pro2dArcdef *)def;
-            offsets.push_back({arc->center[0] - row["points"][0]["xy"][0].get<double>(),
-                               arc->center[1] - row["points"][0]["xy"][1].get<double>()});
-            moved = std::max(fabs(arc->center[0] - row["points"][0]["xy"][0].get<double>()),
-                             fabs(arc->center[1] - row["points"][0]["xy"][1].get<double>()));
+            const double rx = row["points"][0]["xy"][0].get<double>();
+            const double ry = row["points"][0]["xy"][1].get<double>();
+            record_point("center", rx, ry, arc->center[0], arc->center[1]);
+            moved = std::max(fabs(arc->center[0] - rx), fabs(arc->center[1] - ry));
             const double radius = fabs(arc->radius - row["radius"].get<double>());
             non_translation = std::max(non_translation, radius);
             moved = std::max(moved, radius);
@@ -787,10 +808,10 @@ static J geometry_deviation_stage(ProSection section, const J &targets) {
             measurement = "center_radius_angles";
         } else if (type == PRO_2D_ELLIPSE) {
             auto ellipse = (Pro2dEllipsedef *)def;
-            offsets.push_back({ellipse->origin[0] - row["points"][0]["xy"][0].get<double>(),
-                               ellipse->origin[1] - row["points"][0]["xy"][1].get<double>()});
-            moved = std::max(fabs(ellipse->origin[0] - row["points"][0]["xy"][0].get<double>()),
-                             fabs(ellipse->origin[1] - row["points"][0]["xy"][1].get<double>()));
+            const double rx = row["points"][0]["xy"][0].get<double>();
+            const double ry = row["points"][0]["xy"][1].get<double>();
+            record_point("origin", rx, ry, ellipse->origin[0], ellipse->origin[1]);
+            moved = std::max(fabs(ellipse->origin[0] - rx), fabs(ellipse->origin[1] - ry));
             const double x_radius = fabs(ellipse->x_radius - row["radii"][0].get<double>());
             const double y_radius = fabs(ellipse->y_radius - row["radii"][1].get<double>());
             non_translation = std::max({non_translation, x_radius, y_radius});
@@ -804,13 +825,12 @@ static J geometry_deviation_stage(ProSection section, const J &targets) {
                 entry["reason"] = "spline point count changed during the solve";
             } else {
                 for (unsigned i = 0; spline->point_arr && i < spline->n_points; i++) {
-                    offsets.push_back(
-                        {spline->point_arr[i][0] - row["points_xy"][i][0].get<double>(),
-                         spline->point_arr[i][1] - row["points_xy"][i][1].get<double>()});
-                    moved = std::max(
-                        {moved,
-                         fabs(spline->point_arr[i][0] - row["points_xy"][i][0].get<double>()),
-                         fabs(spline->point_arr[i][1] - row["points_xy"][i][1].get<double>())});
+                    const double rx = row["points_xy"][i][0].get<double>();
+                    const double ry = row["points_xy"][i][1].get<double>();
+                    record_point("point_" + std::to_string(i), rx, ry, spline->point_arr[i][0],
+                                 spline->point_arr[i][1]);
+                    moved = std::max({moved, fabs(spline->point_arr[i][0] - rx),
+                                      fabs(spline->point_arr[i][1] - ry)});
                 }
                 measurement = "control_points";
             }
@@ -831,12 +851,12 @@ static J geometry_deviation_stage(ProSection section, const J &targets) {
                                   "during the solve";
             } else {
                 for (int i = 0; i < (int)expected_points.size(); i++) {
-                    offsets.push_back(
-                        {bspline->c_pnts[i][0] - expected_points[i][0].get<double>(),
-                         bspline->c_pnts[i][1] - expected_points[i][1].get<double>()});
-                    moved = std::max(
-                        {moved, fabs(bspline->c_pnts[i][0] - expected_points[i][0].get<double>()),
-                         fabs(bspline->c_pnts[i][1] - expected_points[i][1].get<double>())});
+                    const double rx = expected_points[i][0].get<double>();
+                    const double ry = expected_points[i][1].get<double>();
+                    record_point("control_point_" + std::to_string(i), rx, ry,
+                                 bspline->c_pnts[i][0], bspline->c_pnts[i][1]);
+                    moved = std::max({moved, fabs(bspline->c_pnts[i][0] - rx),
+                                      fabs(bspline->c_pnts[i][1] - ry)});
                 }
                 measurement = "control_points";
             }
@@ -848,6 +868,12 @@ static J geometry_deviation_stage(ProSection section, const J &targets) {
         if (measured) {
             entry["measurement"] = measurement;
             entry["deviation_mm"] = moved;
+            if (has_point_shift && worst_pt_mag > 1e-12) {
+                entry["point"] = worst_role;
+                entry["requested_mm"] = {worst_req[0], worst_req[1]};
+                entry["actual_mm"] = {worst_act[0], worst_act[1]};
+                entry["delta_mm"] = {worst_delta[0], worst_delta[1]};
+            }
             worst = std::max(worst, moved);
             any_measured = true;
         } else {

@@ -2,6 +2,12 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
+## v0.43.0（2026-11-24，打包时点）
+
+- [BUG-183](../work-items/BUG-183.md)、[FEAT-082](../work-items/FEAT-082.md)、[BUG-184](../work-items/BUG-184.md)、[FEAT-083](../work-items/FEAT-083.md) 与 [BUG-185](../work-items/BUG-185.md) 交付：原生 `solved_section_area_mm2`、闭合 B 样条草图 `b_spline_cut_risk` 与 `blind`/`symmetric` `cut_volume_check`；JPEG 全正交视图 `right`/`left`/`back`/`bottom` 与 3×3 右手正交 `view_matrix`；草图 `geometry_deviation` 逐点位移向量、`compact` 超阈 `displaced_sample` 与 `autodim` 强拒说明；`ExtrudeOp.region` 曲线感知 `interior_point_yz_mm` 内点选区；`creo_get_job` 参数 schema 前置条件与报错指引；本机 Creo 10 实机 3/3 通过并保存重载。见[版本说明](../RELEASE_NOTES_0.43.0.md)及[发布记录](../validation/RELEASE-0.43.0.md)。
+- 附件计划：`MCP_CREO_MechDog-0.43.0-source.zip`、`MCP_CREO_MechDog-0.43.0-source.zip.sha256`、`MCP_CREO_MechDog-0.43.0-seed-library.zip`、`MCP_CREO_MechDog-0.43.0-seed-library.zip.sha256`。种子包 SHA256 为 `b8b8408f614088ce1c3c67a12ea55fefe5dfe4fe19c2297e2024e2e3f0ebcc2f`。两份同名 sidecar 分别记录对应 ZIP 的实际摘要。
+- 远端核对发布后执行，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.43.0)
+
 ## v0.42.0（2026-11-24，打包时点）
 
 - [BUG-179](../work-items/BUG-179.md)、[BUG-180](../work-items/BUG-180.md)、[FEAT-080](../work-items/FEAT-080.md)、[BUG-181](../work-items/BUG-181.md)、[FEAT-081](../work-items/FEAT-081.md) 与 [BUG-182](../work-items/BUG-182.md) 交付：`ChamferOp.propagate` 与实测倒角长度/面积；单/多边 `round` 失败几何诊断与凹凸 `round_kind`；`ShellOp.body_id` 单实体抽壳、`MirrorOp` 替代指引与 `creo_inspect_model` 分页 `total_count`/`page_count`；`ExtrudeOp.region` 交点分割与精确 Boehm B 样条细分；G2 几何级 `g2_verification` 曲率验证；装配面选择器 `suggested_reference` 与 `assembly_origin_mm`/`nearest_coordinate_space`；本机 Creo 10 实机 5/5 通过并保存重载。见[版本说明](../RELEASE_NOTES_0.42.0.md)及[发布记录](../validation/RELEASE-0.42.0.md)。

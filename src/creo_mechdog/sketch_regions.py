@@ -26,7 +26,11 @@ from creo_mechdog.region_selection import (
     parse_region_signature,
     segments_match,
 )
-from creo_mechdog.sketch_region_split import split_intersecting_entities
+from creo_mechdog.sketch_region_split import (
+    clamped_uniform_knots,
+    eval_bspline,
+    split_intersecting_entities,
+)
 
 #: Endpoint clustering for loop building, in sketch-local millimetres. The TXT
 #: values are printed at six decimals, so this only absorbs representation noise;
@@ -304,14 +308,124 @@ def _closest_loop_diagnostic(
     )
 
 
-def find_region(
-    sketch: dict[str, Any],
-    signature: str,
+def _sample_entity_yz(
+    entity: dict[str, Any], frame: tuple[Any, Any, Any], steps: int = 48
+) -> list[tuple[float, float]]:
+    """Sample a boundary entity into a polyline in global (y, z) coordinates."""
+    kind = entity.get("type")
+    if kind in ("line", "centerline"):
+        return [_to_yz(entity["start"], frame), _to_yz(entity["end"], frame)]
+    if kind == "arc":
+        cx, cy = float(entity["center"][0]), float(entity["center"][1])
+        r = float(entity["radius"])
+        s_deg = float(entity["start_angle"])
+        e_deg = float(entity["end_angle"])
+        sweep_deg = entity.get("sweep_deg")
+        if isinstance(sweep_deg, (int, float)) and not isinstance(sweep_deg, bool):
+            sweep = float(sweep_deg)
+        else:
+            direction = -1.0 if entity.get("dir", entity.get("direction")) == "cw" else 1.0
+            mag = (e_deg - s_deg) % 360.0 if direction > 0 else (s_deg - e_deg) % 360.0
+            if mag <= 1e-9:
+                mag = 360.0
+            sweep = direction * mag
+        pts: list[tuple[float, float]] = []
+        for k in range(steps + 1):
+            ang = math.radians(s_deg + sweep * (k / steps))
+            pts.append(_to_yz([cx + r * math.cos(ang), cy + r * math.sin(ang)], frame))
+        return pts
+    if kind in ("polyline", "spline"):
+        return [_to_yz(pt, frame) for pt in entity["points"]]
+    if kind == "b_spline":
+        ctrl = entity["control_points"]
+        degree = int(entity.get("degree", 3))
+        knots = entity.get("knots") or clamped_uniform_knots(len(ctrl), degree)
+        weights = entity.get("weights")
+        u_min = float(knots[degree])
+        u_max = float(knots[len(ctrl)])
+        pts = []
+        for k in range(steps + 1):
+            u = u_min + (u_max - u_min) * (k / steps)
+            pt = eval_bspline(ctrl, degree, knots, u, weights)
+            pts.append(_to_yz([pt[0], pt[1]], frame))
+        return pts
+    endpoints = entity_endpoints(entity)
+    if endpoints is None:
+        return []
+    return [_to_yz(endpoints[0], frame), _to_yz(endpoints[1], frame)]
+
+
+def _polygon_area_2d(poly: list[tuple[float, float]]) -> float:
+    if len(poly) < 3:
+        return 0.0
+    total = 0.0
+    n = len(poly)
+    for i in range(n):
+        x1, y1 = poly[i]
+        x2, y2 = poly[(i + 1) % n]
+        total += x1 * y2 - x2 * y1
+    return 0.5 * abs(total)
+
+
+def _point_in_polygon_2d(point: tuple[float, float], poly: list[tuple[float, float]]) -> bool:
+    if len(poly) < 3:
+        return False
+    px, py = point
+    inside = False
+    n = len(poly)
+    j = n - 1
+    for i in range(n):
+        xi, yi = poly[i]
+        xj, yj = poly[j]
+        if ((yi > py) != (yj > py)) and (px < (xj - xi) * (py - yi) / ((yj - yi) or 1e-30) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
+def _cycle_polygon_yz(
+    cycle_entities: list[dict[str, Any]],
     frame: tuple[Any, Any, Any],
-    tolerance: float,
-) -> tuple[frozenset[int], list[dict[str, Any]]]:
-    """Return the one entity cycle whose YZ boundary equals ``signature``."""
-    expected = parse_region_signature(signature)
+) -> tuple[list[tuple[float, float]], float] | None:
+    """Order a closed cycle's sampled entities head-to-tail into a 2D (y, z) polygon."""
+    sampled = [_sample_entity_yz(ent, frame) for ent in cycle_entities]
+    if any(len(seg) < 2 for seg in sampled):
+        return None
+    used = [False] * len(sampled)
+    used[0] = True
+    poly: list[tuple[float, float]] = list(sampled[0][:-1])
+    curr = sampled[0][-1]
+    for _ in range(len(sampled) - 1):
+        best_idx = -1
+        best_rev = False
+        best_dist = float("inf")
+        for idx, seg in enumerate(sampled):
+            if used[idx]:
+                continue
+            d_fwd = math.hypot(seg[0][0] - curr[0], seg[0][1] - curr[1])
+            d_rev = math.hypot(seg[-1][0] - curr[0], seg[-1][1] - curr[1])
+            if d_fwd < best_dist:
+                best_dist = d_fwd
+                best_idx = idx
+                best_rev = False
+            if d_rev < best_dist:
+                best_dist = d_rev
+                best_idx = idx
+                best_rev = True
+        if best_idx < 0:
+            return None
+        used[best_idx] = True
+        seg = list(reversed(sampled[best_idx])) if best_rev else sampled[best_idx]
+        poly.extend(seg[:-1])
+        curr = seg[-1]
+    if len(poly) < 3:
+        return None
+    return poly, _polygon_area_2d(poly)
+
+
+def _extract_sketch_cycles(
+    sketch: dict[str, Any], tolerance: float
+) -> tuple[list[dict[str, Any]], list[int], list[frozenset[int]], bool, int]:
     source_entities = sketch["entities"]
     entities, did_split = split_intersecting_entities(source_entities)
     points: list[list[float]] = []
@@ -337,33 +451,88 @@ def find_region(
     clusters = _cluster_vertices(points, cluster_eps)
     edges = [(clusters[a], clusters[b]) for a, b in raw_edges]
     cycles = _enumerate_cycles(edges, MAX_CYCLES)
-    matches: list[tuple[frozenset[int], list[dict[str, Any]]]] = []
-    candidate_loops: list[list[Any]] = []
+    return entities, edge_owner, cycles, did_split, len(source_entities)
+
+
+def find_region(
+    sketch: dict[str, Any],
+    signature: str | None,
+    frame: tuple[Any, Any, Any],
+    tolerance: float,
+    interior_point_yz: tuple[float, float] | None = None,
+) -> tuple[frozenset[int], list[dict[str, Any]]]:
+    """Return the one entity cycle matching ``signature`` and/or ``interior_point_yz``."""
+    entities, edge_owner, cycles, did_split, source_count = _extract_sketch_cycles(
+        sketch, tolerance
+    )
+    label = sketch.get("label")
+    split_note = (
+        f" (after intersection split: {source_count}->{len(entities)} entities)"
+        if did_split
+        else ""
+    )
+
+    if signature is not None:
+        expected = parse_region_signature(signature)
+        matches: list[tuple[frozenset[int], list[dict[str, Any]]]] = []
+        candidate_loops: list[list[Any]] = []
+        for cycle in cycles:
+            names = [edge_owner[index] for index in sorted(cycle)]
+            segments = [_loop_segments(entities[index], frame) for index in names]
+            candidate_loops.append(segments)
+            if segments_match(expected, segments, tolerance):
+                matches.append((cycle, [entities[index] for index in names]))
+        if not matches:
+            diag = _closest_loop_diagnostic(expected, candidate_loops)
+            raise ValueError(
+                f"region signature matched none of {len(cycles)} closed loops in sketch "
+                f"{label!r}{split_note}; compare the YZ endpoints with the sketch frame, not "
+                f"region_index_hint; {diag}"
+            )
+        if interior_point_yz is not None and len(matches) > 1:
+            filtered: list[tuple[float, frozenset[int], list[dict[str, Any]]]] = []
+            for cycle, cycle_entities in matches:
+                poly_info = _cycle_polygon_yz(cycle_entities, frame)
+                if poly_info is not None and _point_in_polygon_2d(interior_point_yz, poly_info[0]):
+                    filtered.append((poly_info[1], cycle, cycle_entities))
+            if len(filtered) == 1:
+                return filtered[0][1], filtered[0][2]
+            if len(filtered) > 1:
+                filtered.sort(key=lambda item: item[0])
+                if filtered[1][0] - filtered[0][0] > 1e-6:
+                    return filtered[0][1], filtered[0][2]
+        if len(matches) > 1:
+            raise ValueError(
+                f"region signature matched {len(matches)} closed loops in sketch {label!r}; "
+                "pass interior_point_yz_mm to disambiguate loops sharing endpoints"
+            )
+        return matches[0]
+
+    assert interior_point_yz is not None
+    enclosing: list[tuple[float, frozenset[int], list[dict[str, Any]]]] = []
     for cycle in cycles:
         names = [edge_owner[index] for index in sorted(cycle)]
-        segments = [_loop_segments(entities[index], frame) for index in names]
-        candidate_loops.append(segments)
-        if segments_match(expected, segments, tolerance):
-            matches.append((cycle, [entities[index] for index in names]))
-    label = sketch.get("label")
-    if not matches:
-        diag = _closest_loop_diagnostic(expected, candidate_loops)
-        split_note = (
-            f" (after intersection split: {len(source_entities)}->{len(entities)} entities)"
-            if did_split
-            else ""
-        )
+        cycle_entities = [entities[index] for index in names]
+        poly_info = _cycle_polygon_yz(cycle_entities, frame)
+        if poly_info is None:
+            continue
+        poly, area = poly_info
+        if area <= 1e-9:
+            continue
+        if _point_in_polygon_2d(interior_point_yz, poly):
+            enclosing.append((area, cycle, cycle_entities))
+    if not enclosing:
         raise ValueError(
-            f"region signature matched none of {len(cycles)} closed loops in sketch "
-            f"{label!r}{split_note}; compare the YZ endpoints with the sketch frame, not "
-            f"region_index_hint; {diag}"
+            f"region.interior_point_yz_mm {list(interior_point_yz)} lies inside none of "
+            f"{len(cycles)} closed loops in sketch {label!r}{split_note}"
         )
-    if len(matches) > 1:
+    enclosing.sort(key=lambda item: item[0])
+    if len(enclosing) > 1 and abs(enclosing[1][0] - enclosing[0][0]) <= 1e-6:
         raise ValueError(
-            f"region signature matched {len(matches)} closed loops in sketch {label!r}; "
-            "a cut needs exactly one selected region"
+            f"region.interior_point_yz_mm {list(interior_point_yz)} matched multiple minimal "
+            f"loops of equal area ({enclosing[0][0]:.6f} mm^2) in sketch {label!r}"
         )
-    return matches[0]
+    return enclosing[0][1], enclosing[0][2]
 
 
 def _derived_label(source_label: str, entities: list[dict[str, Any]], used: set[str]) -> str:
@@ -458,9 +627,19 @@ def adapt_region_extrudes(
         frame = resolve_frame(selector, source)
         tolerance = _tolerance(selector)
         signature = selector.get("signature_yz_mm")
-        if not isinstance(signature, str):
+        interior_raw = selector.get("interior_point_yz_mm")
+        if signature is None and interior_raw is None:
+            raise ValueError(
+                "region requires at least one of signature_yz_mm or interior_point_yz_mm"
+            )
+        if signature is not None and not isinstance(signature, str):
             raise ValueError("region.signature_yz_mm must be a string")
-        cycle, entities = find_region(source, signature, frame, tolerance)
+        interior_pt: tuple[float, float] | None = None
+        if interior_raw is not None:
+            if not isinstance(interior_raw, (list, tuple)) or len(interior_raw) != 2:
+                raise ValueError("region.interior_point_yz_mm must be [y, z]")
+            interior_pt = (float(interior_raw[0]), float(interior_raw[1]))
+        cycle, entities = find_region(source, signature, frame, tolerance, interior_pt)
         key = (source_label, cycle)
         label = cache.get(key)
         if label is None:
@@ -468,20 +647,22 @@ def adapt_region_extrudes(
             used_labels.add(label)
             cache[key] = label
             result.append(derive_sketch(source, entities, label))
-            records.append(
-                {
-                    "source_sketch": source_label,
-                    "derived_sketch": label,
-                    "signature_sha256": hashlib.sha256(signature.encode("utf-8")).hexdigest(),
-                    "entity_names": [entity.get("name") for entity in entities],
-                    "segment_count": len(entities),
-                    "tolerance_mm": tolerance,
-                    "note": (
-                        "entities are copied unchanged from the source sketch; the region "
-                        "was resolved offline from the boundary signature"
-                    ),
-                }
-            )
+            rec: dict[str, Any] = {
+                "source_sketch": source_label,
+                "derived_sketch": label,
+                "entity_names": [entity.get("name") for entity in entities],
+                "segment_count": len(entities),
+                "tolerance_mm": tolerance,
+                "note": (
+                    "entities are copied unchanged from the source sketch; the region "
+                    "was resolved offline from the selector"
+                ),
+            }
+            if signature is not None:
+                rec["signature_sha256"] = hashlib.sha256(signature.encode("utf-8")).hexdigest()
+            if interior_pt is not None:
+                rec["interior_point_yz_mm"] = [interior_pt[0], interior_pt[1]]
+            records.append(rec)
         rewritten = dict(operation)
         rewritten["sketch"] = label
         rewritten.pop("region", None)

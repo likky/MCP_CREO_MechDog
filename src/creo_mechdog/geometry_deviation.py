@@ -97,6 +97,16 @@ def _translation_within_limit(translation: dict[str, float] | None) -> bool:
     return math.hypot(translation["u"], translation["v"]) <= RIGID_TRANSLATION_LIMIT_MM
 
 
+def _optional_point2(value: Any) -> list[float] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        return None
+    u = _finite_signed(value[0])
+    v = _finite_signed(value[1])
+    if u is None or v is None:
+        return None
+    return [u, v]
+
+
 def _normalize_sample(raw: Any) -> tuple[list[dict[str, Any]], bool]:
     entries: list[dict[str, Any]] = []
     truncated = False
@@ -114,6 +124,12 @@ def _normalize_sample(raw: Any) -> tuple[list[dict[str, Any]], bool]:
                 "deviation_mm": _finite_non_negative(item.get("deviation_mm")),
                 "reason": item.get("reason") if isinstance(item.get("reason"), str) else None,
             }
+            if isinstance(item.get("point"), str):
+                entry["point"] = item["point"]
+            for vec_key in ("requested_mm", "actual_mm", "delta_mm"):
+                vec = _optional_point2(item.get(vec_key))
+                if vec is not None:
+                    entry[vec_key] = vec
             if len(entries) < SAMPLE_LIMIT:
                 entries.append(entry)
             else:

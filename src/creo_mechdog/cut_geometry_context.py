@@ -291,6 +291,7 @@ def normalize_cut_geometry_context(block: Any) -> dict[str, Any]:
     entry["volume_change"] = _classify_volume_change(entry["volume_mm3"])
     entry["diagnosis"] = _diagnosis(entry["volume_change"], entry["volume_mm3"])
     section = block.get("native_section")
+    solved_area = _scalar(block.get("solved_section_area_mm2"))
     if isinstance(section, dict):
         entry["native_section"] = {
             key: section[key]
@@ -299,6 +300,13 @@ def normalize_cut_geometry_context(block: Any) -> dict[str, Any]:
         }
         if type(section.get("available")) is bool:
             entry["native_section"]["available"] = section["available"]
+        sec_area = _scalar(section.get("solved_section_area_mm2"))
+        if sec_area is not None:
+            entry["native_section"]["solved_section_area_mm2"] = sec_area
+            if solved_area is None:
+                solved_area = sec_area
+    if solved_area is not None:
+        entry["solved_section_area_mm2"] = solved_area
     if entry["status"] == NO_MATERIAL_REMOVED:
         entry["available"] = True
         entry["reason"] = None

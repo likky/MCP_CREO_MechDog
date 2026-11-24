@@ -195,6 +195,8 @@ OPERATION_KEYS = (
     "parameters",
     "metadata",
     "material_removed_mm3",
+    "solved_section_area_mm2",
+    "b_spline_cut_risk",
     "cut_volume_check",
     "volume_before_mm3",
     "volume_after_mm3",
