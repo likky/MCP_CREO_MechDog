@@ -170,9 +170,42 @@ class Probe:
                     "creo_get_job", {"job_id": queued["job_id"], "detail": "compact"}
                 )
                 if state["status"] not in ("queued", "running"):
+                    compact_state = state
                     state = await self.call(
                         "creo_get_job", {"job_id": queued["job_id"], "detail": "full"}
                     )
+                    if "result" not in state and "data" in state:
+                        hydrated_result = dict(compact_state.get("result") or {})
+                        insp = hydrated_result.get("inspection")
+                        if isinstance(insp, dict) and insp.get("inspection_available") is False:
+                            hydrated_result["inspection"] = None
+                        state = {**compact_state, "result": hydrated_result}
+                    if (
+                        state.get("status") == "failed"
+                        and isinstance(state.get("result"), dict)
+                        and state["result"].get("inspection") is None
+                        and isinstance(state["result"].get("inspection_summary"), dict)
+                        and state["result"]["inspection_summary"].get("inspection_available")
+                        is True
+                    ):
+                        hydrated_result = dict(state["result"])
+                        hydrated_result["inspection"] = hydrated_result["inspection_summary"]
+                        state = {**state, "result": hydrated_result}
+                    if (
+                        state.get("status") == "succeeded"
+                        and state.get("model_id")
+                        and isinstance(state.get("result"), dict)
+                        and (
+                            "inspection" not in state["result"] or "aliases" not in state["result"]
+                        )
+                    ):
+                        full_model = await read_full_model(self.call, state["model_id"])
+                        hydrated_result = dict(state["result"])
+                        if isinstance(full_model.get("inspection"), dict):
+                            hydrated_result["inspection"] = full_model["inspection"]
+                        if isinstance(full_model.get("aliases"), dict):
+                            hydrated_result["aliases"] = full_model["aliases"]
+                        state = {**state, "result": hydrated_result}
                     entry["terminal"] = state
                     if state["status"] == "unknown_outcome":
                         raise UncertainOutcome(

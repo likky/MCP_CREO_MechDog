@@ -253,6 +253,7 @@ OPERATION_KEYS = (
     "chamfered_edge_length_mm",
     "created_surface_count",
     "created_surface_area_mm2",
+    "rib_diagnostics",
     "g2_verification",
     "body_id",
     "suggested_targets",

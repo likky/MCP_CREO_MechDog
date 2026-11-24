@@ -2,6 +2,12 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
+## v0.43.1（2026-11-24，打包时点）
+
+- [BUG-017](../work-items/BUG-017.md) 阶段交付：原生 `generic_rib` 补齐逐阶段返回码/`ProErrorlist`/`feature_id`/`feature_status`/`geometry_item_count` 诊断（`rib_diagnostics`、`RIB_DIAG`）与未激活再生路径 `feature_errors`，`native/generic.cpp` 顶层 `std::exception` 同步发布 `feature_errors`，`operation_results.py`/`compact_sections.py` 透传 `rib_diagnostics`，`tools/test_direct_loft.py` 兼容当前 `creo_get_job(detail="full")` 与 `inspection_summary`，并完成 Creo 9/10 `ProRib.h` 逐行比对与本机 Creo 10 实机 17/17 验收；Creo 9 原案保留待验。见[版本说明](../RELEASE_NOTES_0.43.1.md)及[发布记录](../validation/RELEASE-0.43.1.md)。
+- 附件计划：`MCP_CREO_MechDog-0.43.1-source.zip`、`MCP_CREO_MechDog-0.43.1-source.zip.sha256`、`MCP_CREO_MechDog-0.43.1-seed-library.zip`、`MCP_CREO_MechDog-0.43.1-seed-library.zip.sha256`。种子包 SHA256 为 `ced6a484eea05be3472f3ddb1d7b59cf83d615c4908bff63086e57948c2fda41`。两份同名 sidecar 分别记录对应 ZIP 的实际摘要。
+- 远端核对发布后执行，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.43.1)
+
 ## v0.43.0（2026-11-24，打包时点）
 
 - [BUG-183](../work-items/BUG-183.md)、[FEAT-082](../work-items/FEAT-082.md)、[BUG-184](../work-items/BUG-184.md)、[FEAT-083](../work-items/FEAT-083.md) 与 [BUG-185](../work-items/BUG-185.md) 交付：原生 `solved_section_area_mm2`、闭合 B 样条草图 `b_spline_cut_risk` 与 `blind`/`symmetric` `cut_volume_check`；JPEG 全正交视图 `right`/`left`/`back`/`bottom` 与 3×3 右手正交 `view_matrix`；草图 `geometry_deviation` 逐点位移向量、`compact` 超阈 `displaced_sample` 与 `autodim` 强拒说明；`ExtrudeOp.region` 曲线感知 `interior_point_yz_mm` 内点选区；`creo_get_job` 参数 schema 前置条件与报错指引；本机 Creo 10 实机 3/3 通过并保存重载。见[版本说明](../RELEASE_NOTES_0.43.0.md)及[发布记录](../validation/RELEASE-0.43.0.md)。

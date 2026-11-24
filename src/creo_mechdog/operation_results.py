@@ -411,6 +411,7 @@ OUTCOME_OPERATION_KEYS = (
     "leader_kind",
     "leader_surface_count",
     "member_count",
+    "rib_diagnostics",
 )
 
 #: Failure diagnostics kept in full on the failed record itself. A per-record
@@ -433,6 +434,7 @@ FAILED_EVIDENCE_KEYS = (
     "failed_reference",
     "round_failure",
     "suggested_targets",
+    "rib_diagnostics",
 )
 
 

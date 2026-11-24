@@ -119,3 +119,14 @@ references/creo13.4.0.0-sdk/includes/** -text -diff
 references/creo13.4.0.0-sdk/includes.zip -text -diff
 references/creo13.4.0.0-sdk/README.md text eol=lf
 references/creo13.4.0.0-sdk/manifest.json text eol=lf
+
+# BUG-017: preserve PTC Toolkit reference bytes and keep them out of source archives.
+/references/creo9.0.0.0-sdk export-ignore
+/references/creo9.0.0.0-sdk/** export-ignore
+references/creo9.0.0.0-sdk/includes/** -text -diff
+references/creo9.0.0.0-sdk/includes.zip -text -diff
+/references/creo10.0.0.0-sdk export-ignore
+/references/creo10.0.0.0-sdk/** export-ignore
+references/creo10.0.0.0-sdk/includes/** -text -diff
+references/creo9.0.0.0-sdk/README.md text eol=lf
+references/creo10.0.0.0-sdk/README.md text eol=lf
