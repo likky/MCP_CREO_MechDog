@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.43.2
+# MCP_CREO_MechDog 0.44.0
 
-![version](https://img.shields.io/badge/version-0.43.2-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.44.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.43.2**（PATCH）。BUG-175 让普通启动与显式强制启动的单测共用可控时钟和模拟等待。测试分别确认陈旧会话诊断和强制启动一次后就绪，并隔离 Toolkit 锁和运行目录。公开工具以 `creo_capabilities` 的 `tool_count` 为准。[版本说明](docs/RELEASE_NOTES_0.43.2.md) · [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.43.2)
+当前正式版 **0.44.0**（MINOR）。交付钣金法兰厚度侧与组合法兰宽向控制（BUG-186/FEAT-084/FEAT-089）、STL 单次超时与 6 阶段进度（BUG-130）、边选择器面过滤与唯一最近匹配（FEAT-085）、草图 `closure_tolerance_mm` 焊合与开放端定位/显式 `v_axis`/构造圆（DEV-100/BUG-187/BUG-188）、旋转两点轴与弧度入口、装配 `packaged` 无约束放置（FEAT-088）、未知工具参数拒绝（BUG-189）与 `creo_get_job` 失败诊断透传（BUG-190）。公开工具以 `creo_capabilities` 的 `tool_count` 为准。[版本说明](docs/RELEASE_NOTES_0.44.0.md) · [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.44.0)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 

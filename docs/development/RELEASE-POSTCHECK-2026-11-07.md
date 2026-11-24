@@ -2,6 +2,12 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
+## v0.44.0（2026-11-24，打包时点）
+
+- 交付 [BUG-186](../work-items/BUG-186.md)、[FEAT-084](../work-items/FEAT-084.md)、[FEAT-085](../work-items/FEAT-085.md)、[BUG-187](../work-items/BUG-187.md)、[BUG-188](../work-items/BUG-188.md)、[BUG-189](../work-items/BUG-189.md)、[BUG-190](../work-items/BUG-190.md)、[FEAT-088](../work-items/FEAT-088.md)、[FEAT-089](../work-items/FEAT-089.md) 及 [DEV-100](../work-items/DEV-100.md)/[BUG-130](../work-items/BUG-130.md) 补项。环境为 Windows x64 / Python 3.12.10 / Creo 10.0.0.0（release 42）。[版本说明](../RELEASE_NOTES_0.44.0.md) · [发布记录](../validation/RELEASE-0.44.0.md)
+- 附件计划为 `MCP_CREO_MechDog-0.44.0-source.zip`、`MCP_CREO_MechDog-0.44.0-source.zip.sha256`、`MCP_CREO_MechDog-0.44.0-seed-library.zip` 和 `MCP_CREO_MechDog-0.44.0-seed-library.zip.sha256`。种子包 SHA256 为 `cfc72a788053ce067feb90021d6558a1c1db1f5f5002edcca341d779edc7a791`。两份同名 sidecar 分别记录对应 ZIP 的实际摘要。
+- 远端核对发布后执行，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.44.0)
+
 ## v0.43.2（2026-11-24，打包时点）
 
 - 交付 [BUG-175](../work-items/BUG-175.md) 启动单测补修。环境为 Windows x64 / Python 3.12.10。[版本说明](../RELEASE_NOTES_0.43.2.md) · [发布记录](../validation/RELEASE-0.43.2.md)

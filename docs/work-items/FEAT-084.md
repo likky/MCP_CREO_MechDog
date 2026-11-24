@@ -1,6 +1,6 @@
 # FEAT-084 为组合法兰提供可指定的宽度方向
 
-分类：**已有修复但待验收**。功能，P1，目标版本未排期。
+分类：**已有修复但待验收**。功能，P1，目标版本 0.44.0。
 
 来源为 [0.43.0 机械臂反馈](../validation/feedback-0.43.0-2026-11-24-arm/originals/arm-sheetmetal-stl-and-edge-selectors.md) §1.3。当前组合法兰宽度沿命名草图面的 v 轴，Arm2 需沿世界 X。[BUG-129](BUG-129.md) 的 `expected_width_direction_world` 保留断言语义。
 

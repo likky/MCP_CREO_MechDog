@@ -1,5 +1,7 @@
 # 开发入口
 
+2026-11-24（0.44.0 MINOR）交付 [BUG-186](work-items/BUG-186.md)、[FEAT-084](work-items/FEAT-084.md)、[FEAT-085](work-items/FEAT-085.md)、[BUG-187](work-items/BUG-187.md)、[BUG-188](work-items/BUG-188.md)、[BUG-189](work-items/BUG-189.md)、[BUG-190](work-items/BUG-190.md)、[FEAT-088](work-items/FEAT-088.md)、[FEAT-089](work-items/FEAT-089.md) 及 [BUG-130](work-items/BUG-130.md) 导出预算/阶段进度与 [DEV-100](work-items/DEV-100.md) 草图闭合/旋转两点轴与弧度收敛；本机 Creo 10.0.0.0 实机验收与保存重载全部通过。[版本说明](RELEASE_NOTES_0.44.0.md) · [发布记录](validation/RELEASE-0.44.0.md)
+
 2026-11-24（0.43.2 PATCH）交付 [BUG-175](work-items/BUG-175.md) 启动单测补修，两种启动场景共享可控时钟。[版本说明](RELEASE_NOTES_0.43.2.md) · [发布记录](validation/RELEASE-0.43.2.md)
 
 2026-11-24（0.43.1 PATCH）：阶段交付 [BUG-017](work-items/BUG-017.md)：原生 `generic_rib` 补齐逐阶段返回码/`ProErrorlist`/`feature_id`/`feature_status`/`geometry_item_count` 诊断（`rib_diagnostics`、`RIB_DIAG`）与“API 返回 0 但特征未激活”路径的 `feature_errors` 回执，`native/generic.cpp` 在 `std::exception` 出口同步发布顶层 `feature_errors`，`operation_results.py`/`compact_sections.py` 透传 `rib_diagnostics`，`tools/test_direct_loft.py` 兼容当前 `creo_get_job(detail="full")` 与 `inspection_summary`；逐行核对用户提供的 Creo 9/10 `ProRib.h`（完全一致，目录已 `export-ignore`）。本机 Creo 10.0.0.0（release 42）完成 `test_p1_modeling.py --cases ribs,negative_geometry,unavailable_and_nonintersecting` 17/17 实机作业、单变量外表面/材料侧对照及 Creo 9 历史夹具复现；Creo 9 原案保留待验。见[版本说明](RELEASE_NOTES_0.43.1.md)及[发布记录](validation/RELEASE-0.43.1.md)。
