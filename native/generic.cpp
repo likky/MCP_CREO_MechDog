@@ -1744,11 +1744,35 @@ static ProSelection resolve(const J &r) {
             match_geometry_selector(selector, state, selector_scale.scale);
         if (selector.contains("feature"))
             selector_outcome.diagnostic["feature"] = selector["feature"];
-        // DEV-098: keep the caller's coordinate space visible. The diagnostic
-        // below carries measurements in the component frame, so without this the
-        // reader cannot tell an assembly-space anchor from a model-space one.
-        if (selector_space == "assembly")
+        // DEV-098 / BUG-182: keep the caller's coordinate space visible and project
+        // nearest_surfaces back into assembly coordinates so callers do not have to
+        // guess which frame origin_mm/normal belong to.
+        if (selector_space == "assembly") {
             selector_outcome.diagnostic["requested_coordinate_space"] = "assembly";
+            selector_outcome.diagnostic["nearest_coordinate_space"] = "component";
+            if (selector_outcome.diagnostic.contains("nearest_surfaces") &&
+                selector_outcome.diagnostic["nearest_surfaces"].is_array()) {
+                for (auto &item : selector_outcome.diagnostic["nearest_surfaces"]) {
+                    item["coordinate_space"] = "component";
+                    if (item.contains("origin_mm"))
+                        item["assembly_origin_mm"] =
+                            model_point_to_assembly(item["origin_mm"], occurrence_placement);
+                    if (item.contains("normal"))
+                        item["assembly_normal"] =
+                            model_vector_to_assembly(item["normal"], occurrence_placement);
+                    if (item.contains("axis"))
+                        item["assembly_axis"] =
+                            model_vector_to_assembly(item["axis"], occurrence_placement);
+                }
+            }
+            if (!selector_outcome.matched) {
+                selector_outcome.error +=
+                    " (requested coordinate_space='assembly' was transformed into the placed "
+                    "component's model frame to search component faces; nearest_surfaces carries "
+                    "component origin_mm/normal alongside assembly_origin_mm/assembly_normal and "
+                    "copyable suggested_reference).";
+            }
+        }
         if (!selector_outcome.matched) {
             stage_operation_result({{"geometry_selector_diagnostic", selector_outcome.diagnostic}});
             throw std::runtime_error(selector_outcome.error);
@@ -5260,7 +5284,8 @@ static J generic_hole(const J &op) {
         throw;
     }
 }
-static void curve_collection(ProElement element, const J &refs) {
+static void curve_collection_with_propagation(ProElement element, const J &refs,
+                                              bool propagate_chain) {
     ProCollection coll;
     CK(ProCrvcollectionAlloc(&coll));
     for (auto item : refs) {
@@ -5274,8 +5299,17 @@ static void curve_collection(ProElement element, const J &refs) {
         CK(ProCrvcollinstrFree(instr));
         ProSelectionFree(&s);
     }
+    if (propagate_chain) {
+        ProCrvcollinstr tan_instr;
+        CK(ProCrvcollinstrAlloc(PRO_CURVCOLL_ADD_TANGENT_INSTR, &tan_instr));
+        CK(ProCrvcollectionInstructionAdd(coll, tan_instr));
+        CK(ProCrvcollinstrFree(tan_instr));
+    }
     CK(ProElementCollectionSet(element, coll));
     CK(ProCollectionFree(&coll));
+}
+static void curve_collection(ProElement element, const J &refs) {
+    curve_collection_with_propagation(element, refs, false);
 }
 // FEAT-051: per-operation material evidence for round/chamfer/draft. The two
 // probes reuse the lightweight mass-property query the cut path already takes
@@ -5617,28 +5651,540 @@ static J probe_round_references(const J &op, TreeBuilder &&build_tree) {
     return report;
 }
 
+static const char *round_surface_type_name(ProSrftype t) {
+    switch (t) {
+    case PRO_SRF_PLANE:
+        return "plane";
+    case PRO_SRF_CYL:
+        return "cylinder";
+    case PRO_SRF_CONE:
+        return "cone";
+    case PRO_SRF_TORUS:
+        return "torus";
+    case PRO_SRF_B_SPL:
+        return "b_spline";
+    case PRO_SRF_SPL:
+        return "spline";
+    case PRO_SRF_FIL:
+        return "fillet";
+    case PRO_SRF_RUL:
+        return "ruled";
+    case PRO_SRF_REV:
+        return "revolved";
+    case PRO_SRF_TABCYL:
+        return "tabulated_cylinder";
+    default:
+        return "non_analytic";
+    }
+}
+
+static const char *round_feat_status_name(ProFeatStatus st) {
+    switch (st) {
+    case PRO_FEAT_ACTIVE:
+        return "active";
+    case PRO_FEAT_SUPPRESSED:
+        return "suppressed";
+    case PRO_FEAT_UNREGENERATED:
+        return "unregenerated";
+    case PRO_FEAT_INVALID:
+        return "invalid";
+    default:
+        return "other";
+    }
+}
+
+static bool eval_surface_normal_at_point(ProSurface srf, const double pt[3], double out_n[3]) {
+    ProUvParam uv = {0.0, 0.0};
+    if (ProSurfaceParamEval((ProSolid)board, srf, const_cast<double *>(pt), uv) != PRO_TK_NO_ERROR)
+        return false;
+    ProVector xyz = {}, d1[2] = {}, d2[3] = {}, n = {};
+    if (ProSurfaceXyzdataEval(srf, uv, xyz, d1, d2, n) != PRO_TK_NO_ERROR)
+        return false;
+    const double len = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+    if (len <= 1e-12)
+        return false;
+    out_n[0] = n[0] / len;
+    out_n[1] = n[1] / len;
+    out_n[2] = n[2] / len;
+    return true;
+}
+
+// BUG-180: collect geometric diagnostics for referenced round/chamfer edges so
+// single-edge and multi-edge failures expose adjacent surface types, dihedral
+// angle, and vertex sliver/tangent neighbors instead of a bare regen status.
+static J diagnose_round_edges(const J &refs, double mm_scale) {
+    struct EdgeSample {
+        int id = -1;
+        double len_mm = 0.0;
+        double p0[3] = {};
+        double p1[3] = {};
+        double t0[3] = {};
+        double t1[3] = {};
+        bool has_ends = false;
+    };
+    std::vector<EdgeSample> all_edges;
+    std::set<int> seen_edge_ids;
+    struct CollectCtx {
+        double scale;
+        std::vector<EdgeSample> *edges;
+        std::set<int> *seen;
+        ProSurface current_srf = nullptr;
+    } collect_ctx = {mm_scale, &all_edges, &seen_edge_ids, nullptr};
+    ProSolidSurfaceVisit((ProSolid)board,
+                         [](ProSurface srf, ProError, ProAppData data) -> ProError {
+                             auto *ctx = (CollectCtx *)data;
+                             ctx->current_srf = srf;
+                             ProSurfaceContourVisit(
+                                 srf,
+                                 [](ProContour cntr, ProError, ProAppData d2) -> ProError {
+                                     auto *ctx2 = (CollectCtx *)d2;
+                                     ProContourEdgeVisit(
+                                         ctx2->current_srf, cntr,
+                                         [](ProEdge edge, ProError, ProAppData d3) -> ProError {
+                                             auto *ctx = (CollectCtx *)d3;
+                                             int eid = -1;
+                                             if (ProEdgeIdGet(edge, &eid) != PRO_TK_NO_ERROR ||
+                                                 !ctx->seen->insert(eid).second)
+                                                 return PRO_TK_NO_ERROR;
+                                             EdgeSample s;
+                                             s.id = eid;
+                                             double len = 0.0;
+                                             if (ProEdgeLengthEval(edge, &len) == PRO_TK_NO_ERROR)
+                                                 s.len_mm = len * ctx->scale;
+                                             ProVector d1 = {}, d2v = {}, dir = {};
+                                             if (ProEdgeXyzdataEval(edge, 0.0, s.p0, d1, d2v,
+                                                                    s.t0) == PRO_TK_NO_ERROR &&
+                                                 ProEdgeXyzdataEval(edge, 1.0, s.p1, d1, d2v,
+                                                                    s.t1) == PRO_TK_NO_ERROR)
+                                                 s.has_ends = true;
+                                             ctx->edges->push_back(s);
+                                             return PRO_TK_NO_ERROR;
+                                         },
+                                         nullptr, d2);
+                                     return PRO_TK_NO_ERROR;
+                                 },
+                                 nullptr, data);
+                             return PRO_TK_NO_ERROR;
+                         },
+                         nullptr, &collect_ctx);
+
+    const double pi = 3.14159265358979323846;
+    const double vtx_tol_native = mm_scale > 0.0 ? 0.05 / mm_scale : 0.05;
+    auto vertex_info = [&](int self_id, const double pt[3], const double self_tan[3]) -> J {
+        int adj_count = 0;
+        double min_len = -1.0;
+        J tangent_ids = J::array();
+        const double st_len = std::sqrt(self_tan[0] * self_tan[0] + self_tan[1] * self_tan[1] +
+                                        self_tan[2] * self_tan[2]);
+        for (const auto &e : all_edges) {
+            if (e.id == self_id || !e.has_ends)
+                continue;
+            const double d0 = std::sqrt((e.p0[0] - pt[0]) * (e.p0[0] - pt[0]) +
+                                        (e.p0[1] - pt[1]) * (e.p0[1] - pt[1]) +
+                                        (e.p0[2] - pt[2]) * (e.p0[2] - pt[2]));
+            const double d1 = std::sqrt((e.p1[0] - pt[0]) * (e.p1[0] - pt[0]) +
+                                        (e.p1[1] - pt[1]) * (e.p1[1] - pt[1]) +
+                                        (e.p1[2] - pt[2]) * (e.p1[2] - pt[2]));
+            if (d0 > vtx_tol_native && d1 > vtx_tol_native)
+                continue;
+            adj_count++;
+            if (min_len < 0.0 || e.len_mm < min_len)
+                min_len = e.len_mm;
+            const double *other_tan = (d0 <= d1) ? e.t0 : e.t1;
+            const double ot_len =
+                std::sqrt(other_tan[0] * other_tan[0] + other_tan[1] * other_tan[1] +
+                          other_tan[2] * other_tan[2]);
+            if (st_len > 1e-12 && ot_len > 1e-12) {
+                double cos_a = std::fabs((self_tan[0] * other_tan[0] + self_tan[1] * other_tan[1] +
+                                          self_tan[2] * other_tan[2]) /
+                                         (st_len * ot_len));
+                cos_a = std::min(1.0, std::max(0.0, cos_a));
+                if (std::acos(cos_a) * 180.0 / pi <= 1.0 && tangent_ids.size() < 8)
+                    tangent_ids.push_back(e.id);
+            }
+        }
+        return {{"adjacent_edge_count", adj_count},
+                {"min_adjacent_edge_mm", min_len >= 0.0 ? J(min_len) : J(nullptr)},
+                {"tangent_adjacent_edge_ids", tangent_ids}};
+    };
+
+    J diagnostics = J::array();
+    const size_t limit = std::min<size_t>(refs.size(), 10);
+    for (size_t i = 0; i < limit; ++i) {
+        if (!refs[i].is_object() || !refs[i].contains("edge"))
+            continue;
+        try {
+            ProSelection sel = resolve(refs[i].at("edge"));
+            ProModelitem mi = {};
+            ProError ic = ProSelectionModelitemGet(sel, &mi);
+            ProSelectionFree(&sel);
+            if (ic != PRO_TK_NO_ERROR || mi.type != PRO_EDGE)
+                continue;
+            ProEdge edge = nullptr;
+            if (ProEdgeInit((ProSolid)board, mi.id, &edge) != PRO_TK_NO_ERROR)
+                continue;
+            J entry = {{"reference_index", (int)i}, {"edge_id", mi.id}};
+            double len = 0.0;
+            if (ProEdgeLengthEval(edge, &len) == PRO_TK_NO_ERROR)
+                entry["length_mm"] = len * mm_scale;
+            ProVector p0 = {}, p1 = {}, pm = {}, d1 = {}, d2 = {}, t0 = {}, t1 = {}, tm = {};
+            const bool has_mid = ProEdgeXyzdataEval(edge, 0.5, pm, d1, d2, tm) == PRO_TK_NO_ERROR;
+            if (ProEdgeXyzdataEval(edge, 0.0, p0, d1, d2, t0) == PRO_TK_NO_ERROR)
+                entry["start_vertex"] = vertex_info(mi.id, p0, t0);
+            if (ProEdgeXyzdataEval(edge, 1.0, p1, d1, d2, t1) == PRO_TK_NO_ERROR)
+                entry["end_vertex"] = vertex_info(mi.id, p1, t1);
+            ProEdge n1 = nullptr, n2 = nullptr;
+            ProSurface s1 = nullptr, s2 = nullptr;
+            if (ProEdgeNeighborsGet(edge, &n1, &n2, &s1, &s2) == PRO_TK_NO_ERROR) {
+                J adj_surfs = J::array();
+                double normals[2][3] = {};
+                int normal_count = 0;
+                ProSurface pair_s[2] = {s1, s2};
+                for (int k = 0; k < 2; ++k) {
+                    if (!pair_s[k])
+                        continue;
+                    int sid = -1;
+                    ProSurfaceIdGet(pair_s[k], &sid);
+                    ProSrftype stype = PRO_SRF_NONE;
+                    ProSurfaceTypeGet(pair_s[k], &stype);
+                    J srec = {{"id", sid},
+                              {"type", (int)stype},
+                              {"type_name", round_surface_type_name(stype)}};
+                    double area = 0.0;
+                    if (ProSurfaceAreaEval(pair_s[k], &area) == PRO_TK_NO_ERROR && area >= 0.0)
+                        srec["area_mm2"] = area * mm_scale * mm_scale;
+                    if (has_mid &&
+                        eval_surface_normal_at_point(pair_s[k], pm, normals[normal_count])) {
+                        srec["normal_at_midpoint"] =
+                            J::array({normals[normal_count][0], normals[normal_count][1],
+                                      normals[normal_count][2]});
+                        normal_count++;
+                    }
+                    adj_surfs.push_back(std::move(srec));
+                }
+                entry["adjacent_surfaces"] = std::move(adj_surfs);
+                if (normal_count == 2) {
+                    double dot_n = normals[0][0] * normals[1][0] + normals[0][1] * normals[1][1] +
+                                   normals[0][2] * normals[1][2];
+                    dot_n = std::max(-1.0, std::min(1.0, dot_n));
+                    entry["dihedral_angle_deg"] = std::acos(std::fabs(dot_n)) * 180.0 / pi;
+                }
+            }
+            diagnostics.push_back(std::move(entry));
+        } catch (...) {
+        }
+    }
+    return diagnostics;
+}
+
+// BUG-179: measure actual created surface count, total area, and chamfered edge
+// length directly from the created feature's owned surfaces.
+static J collect_created_surface_metrics(ProFeature &f, double mm_scale, bool is_chamfer) {
+    J out = J::object();
+    if (f.id <= 0 || mm_scale <= 0.0)
+        return out;
+    J srf_ids = J::array();
+    if (ProFeatureGeomitemVisit(&f, PRO_SURFACE, collect_geom_ids, nullptr, &srf_ids) !=
+        PRO_TK_NO_ERROR)
+        return out;
+    int count = 0;
+    double total_area_mm2 = 0.0;
+    double total_chamfer_len_mm = 0.0;
+    for (const auto &id_val : srf_ids) {
+        int sid = -1;
+        if (id_val.is_number_integer())
+            sid = id_val.get<int>();
+        else if (id_val.is_object() && id_val.contains("id") && id_val["id"].is_number_integer())
+            sid = id_val["id"].get<int>();
+        else
+            continue;
+        ProSurface srf = nullptr;
+        if (ProSurfaceInit((ProSolid)board, sid, &srf) != PRO_TK_NO_ERROR)
+            continue;
+        count++;
+        double area = 0.0;
+        if (ProSurfaceAreaEval(srf, &area) == PRO_TK_NO_ERROR && area >= 0.0)
+            total_area_mm2 += area * mm_scale * mm_scale;
+        if (is_chamfer) {
+            struct MaxEdgeCtx {
+                ProSurface srf = nullptr;
+                double max_len = 0.0;
+            } mctx = {srf, 0.0};
+            ProSurfaceContourVisit(
+                srf,
+                [](ProContour cntr, ProError, ProAppData d) -> ProError {
+                    auto *c0 = (MaxEdgeCtx *)d;
+                    ProContourEdgeVisit(
+                        c0->srf, cntr,
+                        [](ProEdge edge, ProError, ProAppData d2) -> ProError {
+                            auto *c = (MaxEdgeCtx *)d2;
+                            double len = 0.0;
+                            if (ProEdgeLengthEval(edge, &len) == PRO_TK_NO_ERROR &&
+                                len > c->max_len)
+                                c->max_len = len;
+                            return PRO_TK_NO_ERROR;
+                        },
+                        nullptr, d);
+                    return PRO_TK_NO_ERROR;
+                },
+                nullptr, &mctx);
+            total_chamfer_len_mm += mctx.max_len * mm_scale;
+        }
+    }
+    out["created_surface_count"] = count;
+    out["created_surface_area_mm2"] = total_area_mm2;
+    if (is_chamfer)
+        out["chamfered_edge_length_mm"] = total_chamfer_len_mm;
+    return out;
+}
+
+// FEAT-081: geometry-level G2 curvature verification across shared boundary
+// edges between newly created G2 round surfaces and adjacent support surfaces.
+static bool eval_normal_curvature_along_dir(ProSurface srf, const double pt[3],
+                                            const double tangent_edge[3], double mm_scale,
+                                            const double *ref_normal, double *out_normal,
+                                            double *out_kappa_inv_mm) {
+    ProUvParam uv = {0.0, 0.0};
+    if (ProSurfaceParamEval((ProSolid)board, srf, const_cast<double *>(pt), uv) != PRO_TK_NO_ERROR)
+        return false;
+    ProVector xyz = {}, d1[2] = {}, d2[3] = {}, n = {};
+    if (ProSurfaceXyzdataEval(srf, uv, xyz, d1, d2, n) != PRO_TK_NO_ERROR)
+        return false;
+    const double nlen = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+    if (nlen <= 1e-12)
+        return false;
+    double un[3] = {n[0] / nlen, n[1] / nlen, n[2] / nlen};
+    if (ref_normal) {
+        double dn = un[0] * ref_normal[0] + un[1] * ref_normal[1] + un[2] * ref_normal[2];
+        if (dn < 0.0) {
+            un[0] = -un[0];
+            un[1] = -un[1];
+            un[2] = -un[2];
+        }
+    }
+    out_normal[0] = un[0];
+    out_normal[1] = un[1];
+    out_normal[2] = un[2];
+
+    // Cross-boundary tangent direction d = normalize(un x tangent_edge).
+    double cross[3] = {un[1] * tangent_edge[2] - un[2] * tangent_edge[1],
+                       un[2] * tangent_edge[0] - un[0] * tangent_edge[2],
+                       un[0] * tangent_edge[1] - un[1] * tangent_edge[0]};
+    const double clen = std::sqrt(cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]);
+    if (clen <= 1e-12)
+        return false;
+    cross[0] /= clen;
+    cross[1] /= clen;
+    cross[2] /= clen;
+
+    const auto dot3 = [](const double a[3], const double b[3]) {
+        return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    };
+    const double E = dot3(d1[0], d1[0]);
+    const double F = dot3(d1[0], d1[1]);
+    const double G = dot3(d1[1], d1[1]);
+    const double det = E * G - F * F;
+    if (std::fabs(det) <= 1e-18)
+        return false;
+    const double rhs_u = dot3(cross, d1[0]);
+    const double rhs_v = dot3(cross, d1[1]);
+    const double a = (G * rhs_u - F * rhs_v) / det;
+    const double b = (E * rhs_v - F * rhs_u) / det;
+    const double first_form = E * a * a + 2.0 * F * a * b + G * b * b;
+    if (first_form <= 1e-18)
+        return false;
+    // ProSurfaceXyzdataEval deriv2[3]: [0]=r_uu, [1]=r_vv, [2]=r_uv
+    const double L = dot3(d2[0], un);
+    const double N = dot3(d2[1], un);
+    const double M = dot3(d2[2], un);
+    const double second_form = L * a * a + 2.0 * M * a * b + N * b * b;
+    const double kappa_native = second_form / first_form;
+    *out_kappa_inv_mm = kappa_native / mm_scale;
+    return std::isfinite(*out_kappa_inv_mm);
+}
+
+static J measure_g2_round_verification(ProFeature &f, double mm_scale) {
+    J out = {{"requested_curvature_continuous", true},
+             {"native_conic_type", nullptr},
+             {"native_conic_value", nullptr},
+             {"sampled_edges", 0},
+             {"sampled_points", 0},
+             {"max_tangent_angle_deg", nullptr},
+             {"max_curvature_gap_inv_mm", nullptr},
+             {"tolerance_inv_mm", 0.002},
+             {"verdict", "unsupported"},
+             {"reason", nullptr}};
+    // Read back native conic type & value from feature tree.
+    ProElement tree = nullptr;
+    if (ProFeatureElemtreeExtract(&f, nullptr, PRO_FEAT_EXTRACT_NO_OPTS, &tree) ==
+        PRO_TK_NO_ERROR) {
+        struct ConicRead {
+            bool has_type = false;
+            int type_val = 0;
+            bool has_val = false;
+            double conic_val = 0.0;
+        } cread;
+        ProElemtreeElementVisit(
+            tree, nullptr, nullptr,
+            [](ProElement, ProElement elem, ProElempath, ProAppData data) -> ProError {
+                auto *c = (ConicRead *)data;
+                ProElemId id = (ProElemId)0;
+                if (ProElementIdGet(elem, &id) != PRO_TK_NO_ERROR)
+                    return PRO_TK_NO_ERROR;
+                if ((int)id == PRO_E_RNDCH_CONIC_TYPE && !c->has_type) {
+                    if (ProElementIntegerGet(elem, nullptr, &c->type_val) == PRO_TK_NO_ERROR)
+                        c->has_type = true;
+                } else if ((int)id == PRO_E_RNDCH_CONIC_VALUE && !c->has_val) {
+                    if (ProElementDoubleGet(elem, nullptr, &c->conic_val) == PRO_TK_NO_ERROR)
+                        c->has_val = true;
+                }
+                return PRO_TK_NO_ERROR;
+            },
+            &cread);
+        ProFeatureElemtreeFree(&f, tree);
+        if (cread.has_type)
+            out["native_conic_type"] = cread.type_val;
+        if (cread.has_val)
+            out["native_conic_value"] = cread.conic_val;
+    }
+
+    if (mm_scale <= 0.0) {
+        out["reason"] = "unknown_length_unit_scale";
+        return out;
+    }
+    J srf_ids_json = J::array();
+    if (ProFeatureGeomitemVisit(&f, PRO_SURFACE, collect_geom_ids, nullptr, &srf_ids_json) !=
+            PRO_TK_NO_ERROR ||
+        srf_ids_json.empty()) {
+        out["reason"] = "no_round_surfaces_found";
+        return out;
+    }
+    std::set<int> round_srf_ids;
+    for (const auto &v : srf_ids_json) {
+        if (v.is_number_integer())
+            round_srf_ids.insert(v.get<int>());
+        else if (v.is_object() && v.contains("id") && v["id"].is_number_integer())
+            round_srf_ids.insert(v["id"].get<int>());
+    }
+
+    const double pi = 3.14159265358979323846;
+    struct G2Ctx {
+        const std::set<int> *round_ids;
+        double mm_scale;
+        double pi;
+        std::set<int> seen_edges;
+        int sampled_edges = 0;
+        int sampled_points = 0;
+        double max_tan_deg = 0.0;
+        double max_curv_gap = 0.0;
+        ProSurface current_srf = nullptr;
+    } g2ctx = {&round_srf_ids, mm_scale, pi, {}, 0, 0, 0.0, 0.0, nullptr};
+
+    for (int sid : round_srf_ids) {
+        ProSurface rsrf = nullptr;
+        if (ProSurfaceInit((ProSolid)board, sid, &rsrf) != PRO_TK_NO_ERROR)
+            continue;
+        g2ctx.current_srf = rsrf;
+        ProSurfaceContourVisit(
+            rsrf,
+            [](ProContour cntr, ProError, ProAppData d) -> ProError {
+                auto *c0 = (G2Ctx *)d;
+                ProContourEdgeVisit(
+                    c0->current_srf, cntr,
+                    [](ProEdge edge, ProError, ProAppData d2) -> ProError {
+                        auto *c = (G2Ctx *)d2;
+                        int eid = -1;
+                        if (ProEdgeIdGet(edge, &eid) != PRO_TK_NO_ERROR ||
+                            !c->seen_edges.insert(eid).second)
+                            return PRO_TK_NO_ERROR;
+                        ProEdge n1 = nullptr, n2 = nullptr;
+                        ProSurface s1 = nullptr, s2 = nullptr;
+                        if (ProEdgeNeighborsGet(edge, &n1, &n2, &s1, &s2) != PRO_TK_NO_ERROR ||
+                            !s1 || !s2)
+                            return PRO_TK_NO_ERROR;
+                        int id1 = -1, id2 = -1;
+                        ProSurfaceIdGet(s1, &id1);
+                        ProSurfaceIdGet(s2, &id2);
+                        const bool in1 = c->round_ids->count(id1) > 0;
+                        const bool in2 = c->round_ids->count(id2) > 0;
+                        if (in1 == in2)
+                            return PRO_TK_NO_ERROR;
+                        ProSurface rnd_s = in1 ? s1 : s2;
+                        ProSurface adj_s = in1 ? s2 : s1;
+                        int pts_on_edge = 0;
+                        const double ts[3] = {0.25, 0.5, 0.75};
+                        for (double t : ts) {
+                            ProVector pt = {}, d1 = {}, d2v = {}, dir = {};
+                            if (ProEdgeXyzdataEval(edge, t, pt, d1, d2v, dir) != PRO_TK_NO_ERROR)
+                                continue;
+                            double n_rnd[3] = {}, n_adj[3] = {};
+                            double k_rnd = 0.0, k_adj = 0.0;
+                            if (!eval_normal_curvature_along_dir(rnd_s, pt, dir, c->mm_scale,
+                                                                 nullptr, n_rnd, &k_rnd))
+                                continue;
+                            if (!eval_normal_curvature_along_dir(adj_s, pt, dir, c->mm_scale, n_rnd,
+                                                                 n_adj, &k_adj))
+                                continue;
+                            double cos_a = std::max(-1.0, std::min(1.0, n_rnd[0] * n_adj[0] +
+                                                                            n_rnd[1] * n_adj[1] +
+                                                                            n_rnd[2] * n_adj[2]));
+                            double angle_deg = std::acos(cos_a) * 180.0 / c->pi;
+                            // Skip sharp end-cap boundary edges (> 5 deg); only measure
+                            // tangent seam edges where the G2 round blends into support faces.
+                            if (angle_deg > 5.0)
+                                continue;
+                            double gap = std::fabs(k_rnd - k_adj);
+                            if (angle_deg > c->max_tan_deg)
+                                c->max_tan_deg = angle_deg;
+                            if (gap > c->max_curv_gap)
+                                c->max_curv_gap = gap;
+                            pts_on_edge++;
+                            c->sampled_points++;
+                        }
+                        if (pts_on_edge > 0)
+                            c->sampled_edges++;
+                        return PRO_TK_NO_ERROR;
+                    },
+                    nullptr, d);
+                return PRO_TK_NO_ERROR;
+            },
+            nullptr, &g2ctx);
+    }
+
+    out["sampled_edges"] = g2ctx.sampled_edges;
+    out["sampled_points"] = g2ctx.sampled_points;
+    if (g2ctx.sampled_points == 0) {
+        out["verdict"] = "unsupported";
+        out["reason"] = "no_tangent_seam_samples_evaluated";
+        return out;
+    }
+    out["max_tangent_angle_deg"] = g2ctx.max_tan_deg;
+    out["max_curvature_gap_inv_mm"] = g2ctx.max_curv_gap;
+    const double tol = 0.002;
+    if (g2ctx.max_curv_gap <= tol && g2ctx.max_tan_deg <= 0.5) {
+        out["verdict"] = "pass";
+        out["reason"] = "seam_curvature_gap_within_tolerance";
+    } else {
+        out["verdict"] = "fail";
+        out["reason"] = "seam_curvature_gap_exceeds_tolerance";
+    }
+    return out;
+}
+
 static J generic_round(const J &op, bool chamfer) {
     reject_duplicate_round_circles(op, chamfer);
     const bool angle_chamfer = chamfer && op.contains("angle_deg");
     const bool two_distance_chamfer = chamfer && op.contains("distance_1");
     const bool curvature_continuous = !chamfer && op.value("curvature_continuous", false);
+    const bool propagate_chain = chamfer && op.value("propagate", "single") == "chain";
     const bool multi_ref = op.at("references").size() > 1;
+    const MillimeterScale rnd_scale =
+        length_scale_to_mm((ProMdl)board, inspect_length_units(board));
+    const double mm_scale = rnd_scale.known ? rnd_scale.scale : 1.0;
     auto build_round_tree = [&](const std::string &feat_name, const J &refs_array) -> ProElement {
         ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
         integer(root, PRO_E_FEATURE_TYPE, chamfer ? PRO_FEAT_CHAMFER : PRO_FEAT_ROUND);
         text(root, PRO_E_STD_FEATURE_NAME, wide(feat_name).c_str());
-        // DEV-089 T6a: PRO_CHM_ANG_X_D needs both legs plus the reference face the
-        // angle and the leg distance are measured on (ProChamfer.h Table: LEG2
-        // required for AnglexD, PRO_E_RNDCH_REFERENCE_SURFACE required for that
-        // schema). The angle is written in degrees like PRO_E_DRAFT_ANGLE_1; which
-        // leg carries it is a live measurement recorded in docs/work-items/DEV-089.md.
-        // FEAT-071: D1xD2 requires an explicit reference face and both distance
-        // legs. The SDK does not bind D1 to one adjacent face, so no direction is
-        // inferred here from the edge or face-pair ordering.
-        // DEV-090 G2 probe: PRO_ROUND_CURV_CONTINUOUS is documented for round
-        // creation in the installed SDK help; the value is opt-in and this branch
-        // writes no CONIC_VALUE/CONIC_DEP_OPT (the help only requires those for
-        // PRO_ROUND_CONIC_ENABLE). Chamfer has no conic concept.
         ProElement sets = node(root, PRO_E_RNDCH_SETS);
         for (const auto &refs : refs_array) {
             ProElement set = node(sets, PRO_E_RNDCH_SET);
@@ -5669,8 +6215,8 @@ static J generic_round(const J &op, bool chamfer) {
                 integer(r, PRO_E_RNDCH_REFERENCE_TYPE, PRO_ROUND_REF_EDGE);
                 ProSelection e = resolve(refs.at("edge"));
                 ProSelectionFree(&e);
-                curve_collection(node(r, PRO_E_STD_CURVE_COLLECTION_APPL),
-                                 J::array({refs.at("edge")}));
+                curve_collection_with_propagation(node(r, PRO_E_STD_CURVE_COLLECTION_APPL),
+                                                  J::array({refs.at("edge")}), propagate_chain);
             }
             if (angle_chamfer || two_distance_chamfer) {
                 ProSelection face =
@@ -5681,11 +6227,6 @@ static J generic_round(const J &op, bool chamfer) {
             ProElement radius = node(node(set, PRO_E_RNDCH_RADII), PRO_E_RNDCH_RADIUS),
                        leg = node(radius, PRO_E_RNDCH_LEG1);
             integer(leg, PRO_E_RNDCH_LEG_TYPE, PRO_ROUND_RADIUS_TYPE_VALUE);
-            // Live evidence (job 2089d13d..., docs/work-items/DEV-089.md): for
-            // PRO_CHM_ANG_X_D Creo reads LEG1 as the linear distance and LEG2 as the
-            // angle. Writing the angle into LEG1 produced d11=70.0 carried as a
-            // linear dimension and d12=3.0 carried as an angle (type 21), and the
-            // feature then failed regeneration with status 6.
             if (two_distance_chamfer)
                 real(leg, PRO_E_RNDCH_LEG_VALUE, op.at("distance_1"));
             else
@@ -5716,17 +6257,29 @@ static J generic_round(const J &op, bool chamfer) {
     ProElementFree(&root);
     bool healthy = created_ok && feature_is_healthy_active(&f);
     if (!healthy && created_ok) {
-        // Regenerate once to confirm feature status (some round failures only
-        // surface after ProSolidRegenerate).
         ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS);
         healthy = feature_is_healthy_active(&f);
     }
     if (!healthy) {
+        J diag = J::object();
+        if (f.id > 0) {
+            ProFeatStatus st = PRO_FEAT_INVALID;
+            ProBoolean inc = PRO_B_FALSE;
+            if (ProFeatureStatusGet(&f, &st) == PRO_TK_NO_ERROR) {
+                diag["feature_status"] = (int)st;
+                diag["feature_status_name"] = round_feat_status_name(st);
+            }
+            if (ProFeatureIsIncomplete(&f, &inc) == PRO_TK_NO_ERROR)
+                diag["feature_incomplete"] = (inc == PRO_B_TRUE);
+            delete_feature_quiet(f.id);
+        }
+        J edge_diags = diagnose_round_edges(op.at("references"), mm_scale);
+        if (!edge_diags.empty())
+            diag["edge_diagnostics"] = std::move(edge_diags);
         if (multi_ref) {
-            if (f.id > 0)
-                delete_feature_quiet(f.id);
             J probe = probe_round_references(op, build_round_tree);
-            J staged = {{"round_failure", probe}};
+            diag.update(probe);
+            J staged = {{"round_failure", diag}};
             std::string suffix;
             if (probe.contains("failed_reference_index")) {
                 staged["failed_reference_index"] = probe["failed_reference_index"];
@@ -5746,14 +6299,21 @@ static J generic_round(const J &op, bool chamfer) {
                     : create_err;
             throw std::runtime_error(base + suffix);
         }
-        if (!create_err.empty())
-            throw std::runtime_error(create_err);
-        throw std::runtime_error(std::string(chamfer ? "chamfer" : "round") +
-                                 " feature failed regeneration");
+        stage_operation_result({{"round_failure", diag}});
+        std::string base = create_err.empty() ? std::string(chamfer ? "chamfer" : "round") +
+                                                    " feature failed regeneration"
+                                              : create_err;
+        if (diag.contains("edge_diagnostics") && !diag["edge_diagnostics"].empty()) {
+            const J &e0 = diag["edge_diagnostics"][0];
+            base += " (edge " + std::to_string(e0.value("edge_id", -1)) +
+                    ", length_mm=" + std::to_string(e0.value("length_mm", 0.0));
+            if (e0.contains("dihedral_angle_deg"))
+                base += ", dihedral_deg=" + std::to_string(e0["dihedral_angle_deg"].get<double>());
+            base += "; see round_failure.edge_diagnostics)";
+        }
+        throw std::runtime_error(base);
     }
     remember(op, f);
-    // Echo the applied leg values so callers can compare them with their input,
-    // and report the tree-proven set application beside the requested count.
     J details = J::object();
     if (two_distance_chamfer) {
         details["chamfer_type"] = "d1_d2";
@@ -5768,18 +6328,34 @@ static J generic_round(const J &op, bool chamfer) {
             details["chamfer_type"] = "equal_distance";
         }
     }
-    if (!chamfer && curvature_continuous)
+    if (chamfer && op.contains("propagate"))
+        details["propagate"] = op["propagate"];
+    if (!chamfer && curvature_continuous) {
         details["curvature_continuous"] = true;
+        details["g2_verification"] = measure_g2_round_verification(f, mm_scale);
+    }
+    details.update(collect_created_surface_metrics(f, mm_scale, chamfer));
     details["reference_application"] = round_reference_application(f, (int)op["references"].size());
     return details;
 }
-static void generic_shell(const J &op) {
+static J generic_shell(const J &op) {
     ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
     integer(root, PRO_E_FEATURE_TYPE, PRO_FEAT_SHELL);
     text(root, PRO_E_STD_FEATURE_NAME, wide(op.at("label")).c_str());
     ProElement b = node(root, PRO_E_BODY);
     integer(b, PRO_E_BODY_USE, PRO_BODY_USE_SELECTED);
-    ProSelection body = resolve({{"kind", "body"}});
+    int resolved_body_id = 0;
+    ProSelection body = nullptr;
+    if (op.contains("body_id") && !op["body_id"].is_null()) {
+        resolved_body_id = op["body_id"].get<int>();
+        require_scopable_body(resolved_body_id);
+        body = selection(resolved_body_id, PRO_BODY);
+    } else {
+        ProSolidBody def_body;
+        CK(ProSolidDefaultBodyGet((ProSolid)board, &def_body));
+        resolved_body_id = def_body.id;
+        body = selection(resolved_body_id, PRO_BODY);
+    }
     ref(b, PRO_E_BODY_SELECT, body);
     ProSelectionFree(&body);
     real(root, PRO_E_SHELL_THICK, op.at("thickness"));
@@ -5790,6 +6366,7 @@ static void generic_shell(const J &op) {
     ProFeature f = create(root);
     CK(ProElementFree(&root));
     remember(op, f);
+    return {{"body_id", resolved_body_id}};
 }
 static ProElement tree_from_json(const J &spec, ProElement parent = nullptr, int depth = 0) {
     if (depth > 40)
@@ -6700,7 +7277,7 @@ static void execute_operation_body(const J &op) {
     else if (kind == "round" || kind == "chamfer")
         details = generic_round(op, kind == "chamfer");
     else if (kind == "shell")
-        generic_shell(op);
+        details = generic_shell(op);
     else if (kind == "dimension_pattern")
         generic_pattern(op);
     else if (kind == "mirror")
@@ -7036,9 +7613,21 @@ static void execute_operation_body(const J &op) {
                 result["feature_id"] = entry->at("feature_id");
         }
     }
-    if (material_op)
-        result.update(material_observation_json(material_probe_before, true, probe_volume(),
-                                                !post_has_solid));
+    if (material_op) {
+        J mat =
+            material_observation_json(material_probe_before, true, probe_volume(), !post_has_solid);
+        result.update(mat);
+        if (kind == "round") {
+            const J &delta = mat["material_delta_mm3"];
+            result["volume_delta_mm3"] = delta;
+            if (delta.is_number()) {
+                const double dv = delta.get<double>();
+                result["round_kind"] = dv < -1e-6 ? "convex" : (dv > 1e-6 ? "concave" : "neutral");
+            } else {
+                result["round_kind"] = "unknown";
+            }
+        }
+    }
     result.update({{"op", kind},
                    {"index", operation_position},
                    {"label", op.value("label", "")},

@@ -22,6 +22,8 @@ async def read_full_model(
             "next_cursor",
             "offset",
             "returned_count",
+            "page_count",
+            "total_count",
             "unavailable_sections",
             "section",
         )

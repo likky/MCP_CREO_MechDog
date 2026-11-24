@@ -1,0 +1,19 @@
+{
+  "batch": "feedback-0.40.0-2026-11-24",
+  "archived_date": "2026-11-24",
+  "source_version": "0.40.0",
+  "files": [
+    {
+      "original_filename": "2026-11-24+CREO+0.40.0+chamfer沿切向链延伸吃掉后续特征边与round失败无诊断.md",
+      "archived_path": "originals/frigate-chamfer-tangent-chain-and-round-diagnostics.md",
+      "bytes": 19393,
+      "sha256": "02e0149e78d92b6f9311e60da338e5d52e8195201b22c9bd84502183cfa92019"
+    },
+    {
+      "original_filename": "2026-11-24-CREO-0.40.0-Arm7区域切除仍零命中_G2仍无几何级验证_全量60条配合仍在arm2_1零命中.md",
+      "archived_path": "originals/arm7-region-cut-g2-verification-and-mated-assembly.md",
+      "bytes": 14000,
+      "sha256": "0689eb6e7a937fd7afa04c308590ccfcfb2b86b2a96bedab84c5dc4fade10347"
+    }
+  ]
+}

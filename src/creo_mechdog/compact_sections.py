@@ -246,6 +246,13 @@ OPERATION_KEYS = (
     "failed_reference_index",
     "failed_reference",
     "round_failure",
+    "round_kind",
+    "volume_delta_mm3",
+    "chamfered_edge_length_mm",
+    "created_surface_count",
+    "created_surface_area_mm2",
+    "g2_verification",
+    "body_id",
     "suggested_targets",
     "auto_included_dependencies",
 )
