@@ -495,7 +495,14 @@ class SketchConstraint(StrictModel):
 class SketchOp(StrictModel):
     op: Literal["sketch"]
     label: Label
-    plane: Literal["XY", "XZ", "YZ"] | dict[str, Any] = "XY"
+    plane: Literal["XY", "XZ", "YZ"] | dict[str, Any] = Field(
+        default="XY",
+        description=(
+            "Named principal plane or a dict with a verified support reference "
+            "(reference/origin/u_axis/v_axis/flip). An explicit v_axis pins the "
+            "sketch frame; flip reverses the support normal without moving the plane."
+        ),
+    )
     offset: float = Field(
         default=0,
         description=(
@@ -1018,16 +1025,58 @@ class ExtrudeOp(StrictModel):
         return self
 
 
+REVOLVE_FULL_CIRCLE_CLAMP_DEG = 1e-3
+
+
 class RevolveOp(StrictModel):
     op: Literal["revolve"]
     label: Label
     sketch: SketchRef
-    angle: Annotated[float, Field(gt=0, le=360)] = 360
+    angle: float | None = None
+    angle_rad: Annotated[float | None, Field(default=None, exclude=True)] = None
+    angle_clamped_from_deg: float | None = None
     mode: Literal["add", "cut", "surface"] = "add"
     direction: Literal["positive", "negative", "symmetric"] = "positive"
     axis: RevolveAxis | None = None
     new_body: bool = False
     thin: float | None = Field(default=None, gt=0)
+
+    @field_validator("angle", "angle_rad", "angle_clamped_from_deg", mode="before")
+    @classmethod
+    def _reject_bool_angle(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            raise ValueError("Revolve angle must be a finite positive number, not a boolean")
+        return value
+
+    @model_validator(mode="after")
+    def _normalize_angle(self):
+        if self.angle is not None and self.angle_rad is not None:
+            raise ValueError(
+                "Provide either angle (degrees) or angle_rad (radians) for revolve, not both"
+            )
+        if self.angle_rad is not None:
+            if not math.isfinite(self.angle_rad) or self.angle_rad <= 0:
+                raise ValueError("Revolve angle_rad must be a finite positive number of radians")
+            deg = math.degrees(self.angle_rad)
+        elif self.angle is not None:
+            if not math.isfinite(self.angle) or self.angle <= 0:
+                raise ValueError("Revolve angle must be a finite positive number of degrees")
+            deg = float(self.angle)
+        else:
+            deg = 360.0
+        if deg > 360.0:
+            if deg <= 360.0 + REVOLVE_FULL_CIRCLE_CLAMP_DEG:
+                self.angle_clamped_from_deg = deg
+                deg = 360.0
+            else:
+                raise ValueError(
+                    f"Revolve angle {deg:.6g} deg exceeds 360 deg "
+                    f"(full-circle clamp tolerance is {REVOLVE_FULL_CIRCLE_CLAMP_DEG:g} deg)"
+                )
+        self.angle = deg
+        return self
 
 
 class Counterbore(StrictModel):
@@ -1458,6 +1507,15 @@ class PlaneOp(StrictModel):
     offset: float = 0
     angle: float | None = Field(default=None, ge=-360, le=360)
     axis: dict[str, Any] | None = None
+    flip: bool = Field(
+        default=False,
+        strict=True,
+        description=(
+            "Reverse the created plane's normal without moving it. Applies to offset, "
+            "angled and through_points forms; sketches attached later follow the "
+            "published normal and v_axis."
+        ),
+    )
 
     @model_validator(mode="after")
     def datum_plane_contract(self):
@@ -3624,6 +3682,10 @@ def validate_operations(operations: list[dict]) -> list[dict]:
                     # is validated by PlaneOp and its producers by the plan-level
                     # check below; nothing else accepts this kind.
                     pass
+                elif k == "sketch_points":
+                    # DEV-100 (§8): two 2D points in the revolve sketch frame.
+                    # Validated by RevolveAxis / normalize_revolve_axis.
+                    pass
                 elif k == "edge_geometry":
                     # R10: a flange attachment edge named by its two current
                     # endpoints. Shape and bounds are enforced by
@@ -3688,9 +3750,23 @@ def validate_operations(operations: list[dict]) -> list[dict]:
         ):
             source = sketches.get(operation["sketch"])
             if source:
+                entities_to_check = source["entities"]
+                if source.get("snap_endpoints"):
+                    from creo_mechdog import endpoint_welding
+
+                    preview = endpoint_welding.prepare_endpoint_weld(
+                        source["entities"],
+                        policy=source.get("endpoint_policy", "report"),
+                        max_move_mm=source.get("max_endpoint_move_mm"),
+                        snap=True,
+                        cluster_tolerance_mm=source.get("closure_tolerance_mm"),
+                    )
+                    snapped = preview.get("_snapped_entities")
+                    if isinstance(snapped, list):
+                        entities_to_check = snapped
                 try:
                     validate_solid_profile(
-                        source["entities"],
+                        entities_to_check,
                         source.get("dimensioning", "auto"),
                         operation["op"],
                         source.get("closure_tolerance_mm") or CLOSURE_TOLERANCE_MM,

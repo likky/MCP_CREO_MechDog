@@ -1196,9 +1196,12 @@ async def creo_update_sketch_geometry(
         float | None,
         Field(
             description=(
-                "Optional hard post-solve deviation cap in mm. Enforced as a rejection gate in "
-                "BOTH coordinates and autodim modes (including autodim fallback); omitting it "
-                "keeps coordinates=1e-5 mm rejection and autodim=1e-3 mm warning-only."
+                "Optional hard post-solve deviation cap in mm. Enforced as a rejection gate "
+                "(enforced=true) in BOTH coordinates and autodim modes (including autodim "
+                "fallback). Omitting it keeps mode defaults: dimensioning='auto' picks "
+                "autodim for <10 entities (warn-only >1e-3 mm) and coordinates for >=10 "
+                "entities (hard reject >1e-5 mm); omit this field on small sketches if you "
+                "want autodim's warn-only default."
             )
         ),
     ] = None,
@@ -1386,9 +1389,12 @@ async def creo_create_sketch(
         float | None,
         Field(
             description=(
-                "Optional hard post-solve deviation cap in mm. Enforced as a rejection gate in "
-                "BOTH coordinates and autodim modes (including autodim fallback); omitting it "
-                "keeps coordinates=1e-5 mm rejection and autodim=1e-3 mm warning-only."
+                "Optional hard post-solve deviation cap in mm. Enforced as a rejection gate "
+                "(enforced=true) in BOTH coordinates and autodim modes (including autodim "
+                "fallback). Omitting it keeps mode defaults: dimensioning='auto' picks "
+                "autodim for <10 entities (warn-only >1e-3 mm) and coordinates for >=10 "
+                "entities (hard reject >1e-5 mm); omit this field on small sketches if you "
+                "want autodim's warn-only default."
             )
         ),
     ] = None,
@@ -1402,6 +1408,9 @@ async def creo_create_sketch(
              and direction="negative" moves toward +Y!)
       - YZ: origin=[offset, 0, 0], normal=[+1, 0, 0] (+X), u_axis=+Y, v_axis=+Z
     Coordinates are in the chosen plane's (u,v) frame (u = +first axis, v = +second axis).
+    A dictionary plane may pin v_axis or set flip=true; without them the frame follows the
+    selected support normal, so read back normal/u_axis/v_axis instead of assuming the
+    principal-plane table above.
     Arc angles are degrees CCW; arcs also accept signed sweep_deg instead of end_angle
     to express >180 deg major arcs directly.
     Rectangle/polyline expand to named lines e.g. box_0, box_1. spline fits an
@@ -1512,7 +1521,8 @@ async def creo_revolve(
     expected_revision: int,
     label: str,
     sketch: str | int,
-    angle: float = 360,
+    angle: float | None = None,
+    angle_rad: float | None = None,
     mode: Literal["add", "cut", "surface"] = "add",
     direction: Literal["positive", "negative", "symmetric"] = "positive",
     axis: RevolveAxis | None = None,
@@ -1520,22 +1530,33 @@ async def creo_revolve(
     thin: float | None = None,
 ) -> dict[str, Any]:
     """Create native revolve/revolved cut from an arbitrary sketch, about its centerline or an external axis.
+    Supply angle (degrees) OR angle_rad (radians), not both; omitting both defaults to 360 deg.
+    Angles in (360, 360.001] deg (e.g. rounded 2*pi such as 6.28319 rad) clamp to 360 deg and
+    report angle_clamped_from_deg; larger values are rejected.
     Omit axis (or pass null) to revolve about the sketch's construction centerline; that sketch must
     contain exactly one centerline. An explicit axis is a bare selection: {kind:'datum_axis_feature',
     label:'axis_label'} for a datum axis feature created earlier in the same model (create it first,
-    e.g. with creo_datum_axis), or {kind:'axis',id:N} from model inspection. Structures without kind
-    (including {entity:'ax'}), empty objects, non-axis kinds and missing id/label are rejected before
-    a job is dispatched; the axis_pattern datum_feature alias does not apply here.
+    e.g. with creo_datum_axis), {kind:'axis',id:N} from model inspection, or
+    {kind:'sketch_points',start_mm:[u1,v1],end_mm:[u2,v2]} (shorthand {start_mm,end_mm}) in the
+    sketch (u,v) frame so the executor adds or reuses a matching construction centerline in that
+    sketch. Structures without a valid kind or start_mm/end_mm pair (including {entity:'ax'}),
+    empty objects, non-axis kinds and missing id/label are rejected before a job is dispatched;
+    the axis_pattern datum_feature alias does not apply here.
     A cut that removes no material fails and rolls back; a successful cut reports material_removed_mm3."""
-    op = {
+    op: dict[str, Any] = {
         "op": "revolve",
         "label": label,
         "sketch": sketch,
-        "angle": angle,
         "mode": mode,
         "direction": direction,
         "new_body": new_body,
     }
+    if angle is not None:
+        op["angle"] = angle
+    if angle_rad is not None:
+        op["angle_rad"] = angle_rad
+    if angle is None and angle_rad is None:
+        op["angle"] = 360
     if axis is not None:
         op["axis"] = axis
     if thin is not None:
@@ -1713,6 +1734,7 @@ async def creo_datum_plane(
     offset: float = 0,
     angle: float | None = None,
     axis: dict[str, Any] | None = None,
+    flip: bool = False,
 ) -> dict[str, Any]:
     """Create an offset/angled/three-point datum plane. reference accepts datum_plane
     geometry ID from inspect_model(datum_planes), planar surface ID, datum_feature
@@ -1725,6 +1747,8 @@ async def creo_datum_plane(
     selects the explicit angle mode and requires axis; combining angle with a nonzero
     offset is rejected before a job is dispatched instead of silently dropping the
     offset - create the angled plane first, then a second datum_plane offset from it.
+    flip reverses the created plane's normal without moving it; use it when a sketch
+    attached to the plane must keep a predictable v_axis and extrusion direction.
     axis accepts {kind:'axis',id:N} from model inspection or
     {kind:'datum_axis_feature',label:'axis_label'} created earlier in the same model;
     a plane reference or datum_feature plane label is not a rotation axis. Missing
@@ -1739,7 +1763,14 @@ async def creo_datum_plane(
     form. The job result reports the created plane's read-back frame
     (plane_frame.normal/origin) and verification evidence.
     """
-    op = {"op": "datum_plane", "label": label, "reference": reference, "offset": offset}
+    op = {
+        "op": "datum_plane",
+        "label": label,
+        "reference": reference,
+        "offset": offset,
+    }
+    if flip:
+        op["flip"] = True
     if angle is not None:
         op["angle"] = angle
     if axis is not None:

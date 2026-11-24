@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Annotated, Any
 
@@ -77,13 +78,30 @@ PatternAxis = Annotated[
 
 REVOLVE_AXIS_DESCRIPTION = (
     "Bare axis selection: {kind:'datum_axis_feature',label:'axis_label'} referencing a datum "
-    "axis feature created earlier in the same model, or {kind:'axis',id:N} from model "
-    "inspection. Omit axis (or pass null) to revolve about the sketch's own construction "
-    "centerline; that sketch must contain exactly one centerline. Objects without a kind key "
-    "(including {entity:'ax'}), empty objects, non-axis kinds and missing id/label are rejected. "
-    "The axis_pattern-only datum_feature alias does not apply here; do not wrap the selection "
-    "in reference/entity/edge containers."
+    "axis feature created earlier in the same model, {kind:'axis',id:N} from model inspection, "
+    "or {kind:'sketch_points',start_mm:[u1,v1],end_mm:[u2,v2]} (shorthand {start_mm:[u1,v1],"
+    "end_mm:[u2,v2]}) specifying two 2D points in the sketch's (u,v) frame so the executor adds "
+    "or reuses a matching construction centerline in that sketch. Omit axis (or pass null) to "
+    "revolve about the sketch's own construction centerline; that sketch must contain exactly "
+    "one centerline. Objects without a valid kind or start_mm/end_mm pair (including "
+    "{entity:'ax'}), empty objects, non-axis kinds and missing id/label are rejected. The "
+    "axis_pattern-only datum_feature alias does not apply here; do not wrap the selection in "
+    "reference/entity/edge containers."
 )
+
+
+def _finite_point2(value: Any) -> list[float] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        return None
+    out: list[float] = []
+    for item in value:
+        if isinstance(item, bool) or not isinstance(item, (int, float)):
+            return None
+        fval = float(item)
+        if not math.isfinite(fval):
+            return None
+        out.append(fval)
+    return out
 
 
 def normalize_revolve_axis(value: Any) -> dict[str, Any]:
@@ -94,17 +112,33 @@ def normalize_revolve_axis(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict) or not value:
         raise error
     kind = value.get("kind")
+    if kind is None and set(value.keys()) == {"start_mm", "end_mm"}:
+        kind = "sketch_points"
     if not isinstance(kind, str):
         raise error
     if kind == "axis":
         if type(value.get("id")) is not int or value["id"] < 0:
             raise error
-    elif kind == "datum_axis_feature":
+        return dict(value)
+    if kind == "datum_axis_feature":
         if not isinstance(value.get("label"), str) or not value["label"]:
             raise error
-    else:
-        raise error
-    return dict(value)
+        return dict(value)
+    if kind == "sketch_points":
+        allowed = {"kind", "start_mm", "end_mm"}
+        if not set(value.keys()).issubset(allowed):
+            raise error
+        start = _finite_point2(value.get("start_mm"))
+        end = _finite_point2(value.get("end_mm"))
+        if start is None or end is None:
+            raise error
+        if math.dist(start, end) < 1e-6:
+            raise ValueError(
+                "Revolve axis sketch_points start_mm and end_mm must be distinct (>= 1e-6 mm). "
+                + REVOLVE_AXIS_DESCRIPTION
+            )
+        return {"kind": "sketch_points", "start_mm": start, "end_mm": end}
+    raise error
 
 
 def validate_planar_reference(value: dict[str, Any], path: str) -> None:
@@ -260,7 +294,7 @@ def validate_sketch_plane_frame(value: dict[str, Any], path: str) -> None:
     reference = value.get("reference")
     if not isinstance(reference, dict) or not isinstance(reference.get("kind"), str):
         raise ValueError(f"{path}.reference requires a {{kind:...}} support selection")
-    for key in ("origin", "u_axis"):
+    for key in ("origin", "u_axis", "v_axis"):
         if key not in value:
             continue
         vector = value[key]
@@ -270,8 +304,19 @@ def validate_sketch_plane_frame(value: dict[str, Any], path: str) -> None:
             or any(type(item) not in (int, float) for item in vector)
         ):
             raise ValueError(f"{path}.{key} requires a numeric 3D vector")
-        if key == "u_axis" and sum(item * item for item in vector) < 1e-18:
-            raise ValueError(f"{path}.u_axis must be a nonzero direction vector")
+        if key in ("u_axis", "v_axis") and sum(item * item for item in vector) < 1e-18:
+            raise ValueError(f"{path}.{key} must be a nonzero direction vector")
+    if "flip" in value and not isinstance(value["flip"], bool):
+        raise ValueError(f"{path}.flip requires a boolean")
+    u_axis, v_axis = value.get("u_axis"), value.get("v_axis")
+    if isinstance(u_axis, list) and isinstance(v_axis, list):
+        # BUG-187: an explicit frame must be orthonormal; otherwise the native
+        # side would silently renormalize one axis and flip the other.
+        dot = sum(a * b for a, b in zip(u_axis, v_axis))
+        nu = sum(a * a for a in u_axis) ** 0.5
+        nv = sum(b * b for b in v_axis) ** 0.5
+        if abs(dot) > 1e-6 * nu * nv:
+            raise ValueError(f"{path}.u_axis and {path}.v_axis must be orthogonal")
 
 
 _REVOLVE_AXIS_SCHEMA = {
@@ -289,6 +334,25 @@ _REVOLVE_AXIS_SCHEMA = {
                 "label": {"type": "string", "minLength": 1},
             },
             "required": ["kind", "label"],
+        },
+        {
+            "type": "object",
+            "properties": {
+                "kind": {"const": "sketch_points"},
+                "start_mm": {
+                    "type": "array",
+                    "items": {"type": "number"},
+                    "minItems": 2,
+                    "maxItems": 2,
+                },
+                "end_mm": {
+                    "type": "array",
+                    "items": {"type": "number"},
+                    "minItems": 2,
+                    "maxItems": 2,
+                },
+            },
+            "required": ["kind", "start_mm", "end_mm"],
         },
     ],
 }

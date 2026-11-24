@@ -127,10 +127,24 @@ def _arc_consistent(first, second, tolerance: float) -> bool:
     return abs(first.sweep) > 0.0 and abs(second.sweep) > 0.0
 
 
+def _effective_cluster_tolerance(cluster_tolerance_mm: float | None) -> tuple[float, str]:
+    if cluster_tolerance_mm is None:
+        return CLUSTER_TOLERANCE_MM, "closure_diagnostic_cluster"
+    if isinstance(cluster_tolerance_mm, bool) or not isinstance(cluster_tolerance_mm, (int, float)):
+        raise ValueError("closure_tolerance_mm must be a finite positive number of millimeters")
+    value = float(cluster_tolerance_mm)
+    if not math.isfinite(value) or value <= 0.0:
+        raise ValueError("closure_tolerance_mm must be a finite positive number of millimeters")
+    return value, "closure_tolerance_mm"
+
+
 def _plan(
-    entities: list[dict[str, Any]], max_move_mm: float | None
+    entities: list[dict[str, Any]],
+    max_move_mm: float | None,
+    cluster_tolerance_mm: float | None = None,
 ) -> tuple[list, list[dict], list[dict], list[dict]]:
     """The shared candidate/accepted/refused decision used by every entry."""
+    tolerance, _source = _effective_cluster_tolerance(cluster_tolerance_mm)
     curves, _names = _expand(entities)
     ends = _endpoints(curves)
     # BUG-159: chain through the same near-coincident tolerance used below. With
@@ -147,7 +161,7 @@ def _plan(
             # A candidate is a pair inside the closure diagnostic scale. The
             # 2026-11-05 live measurement showed the sketch epsilon is not the
             # coincidence tolerance, so a bound alone cannot widen this.
-            if gap <= ARC_COINCIDENT_TOLERANCE_MM or gap > CLUSTER_TOLERANCE_MM:
+            if gap <= ARC_COINCIDENT_TOLERANCE_MM or gap > tolerance:
                 # An exact or near-coincident join is already one point, not a
                 # candidate weld.
                 continue
@@ -163,7 +177,7 @@ def _plan(
                     "entity_b": curves[second["curve"]].name,
                     "same_chain": chain_of[first["curve"]] == chain_of[second["curve"]],
                     "arc_consistent": _arc_consistent(
-                        curves[first["curve"]], curves[second["curve"]], CLUSTER_TOLERANCE_MM
+                        curves[first["curve"]], curves[second["curve"]], tolerance
                     ),
                 }
             )
@@ -234,19 +248,23 @@ def _closed_chains(ends: list[dict], chain_of: dict[int, int]) -> dict[int, bool
 
 
 def weld_eligibility(
-    entities: list[dict[str, Any]], max_move_mm: float | None = None
+    entities: list[dict[str, Any]],
+    max_move_mm: float | None = None,
+    cluster_tolerance_mm: float | None = None,
 ) -> dict[str, Any]:
     """Whether the policy layer can actually deliver what weld/snap promise.
 
     This is the single qualification shared by the admission message
     (``profile_diagnostics.validate_solid_profile``) and the submission gate
-    (``prepare_operations``). Being inside ``CLUSTER_TOLERANCE_MM`` only makes a
-    pair a *candidate*; a pair is blocked when welding it would move an arc off
-    its circle, exceed the caller's bound, or bridge an already closed contour.
-    A join between two open chains stays ``unresolved``: the exact chain union
-    cannot prove it, so the kernel owns the answer.
+    (``prepare_operations``). Being inside ``CLUSTER_TOLERANCE_MM`` (or an
+    explicit ``closure_tolerance_mm``) only makes a pair a *candidate*; a pair
+    is blocked when welding it would move an arc off its circle, exceed the
+    caller's bound, or bridge an already closed contour. A join between two open
+    chains stays ``unresolved``: the exact chain union cannot prove it, so the
+    kernel owns the answer.
     """
-    curves, _candidates, accepted, refused = _plan(entities, max_move_mm)
+    tolerance, _source = _effective_cluster_tolerance(cluster_tolerance_mm)
+    curves, _candidates, accepted, refused = _plan(entities, max_move_mm, cluster_tolerance_mm)
     ends = _endpoints(curves)
     chain_of = _chains(curves, ends, ARC_COINCIDENT_TOLERANCE_MM)
     closed = _closed_chains(ends, chain_of)
@@ -294,6 +312,7 @@ def weld_eligibility(
     moves = [pair["required_move_mm"] for pair in accepted]
     return {
         "verdict": verdict,
+        "threshold_mm": tolerance,
         "candidate_pairs": len(accepted) + len(refused),
         "accepted_pairs": len(accepted),
         "blocking_pairs": len(blocking),
@@ -402,12 +421,57 @@ def _snap_entities(
     return result, applied, None
 
 
+def _open_chain_snap_pairs(
+    curves: list,
+    accepted: list[dict],
+    refused: list[dict],
+    max_move_mm: float | None,
+) -> list[dict]:
+    """Select unambiguous open-chain pairs for explicit snap_endpoints requests.
+
+    A profile with more than one micro-gap (for example several arc-line seams
+    each 4e-4 mm wide) splits into separate open chains under the 1e-6 mm union.
+    When the caller explicitly requests ``snap_endpoints=True``, bridge open
+    chains greedily by smallest gap while refusing any pair that touches an
+    already closed contour, violates ``arc_consistent``, or exceeds
+    ``max_move_mm``.
+    """
+    ends = _endpoints(curves)
+    chain_of = _chains(curves, ends, ARC_COINCIDENT_TOLERANCE_MM)
+    closed = _closed_chains(ends, chain_of)
+    used: set[tuple[int, str]] = set()
+    for pair in accepted:
+        used.add((pair["curve_a"], pair["end_a"]))
+        used.add((pair["curve_b"], pair["end_b"]))
+    extra: list[dict] = []
+    for pair in refused:
+        if pair.get("reason") != "separate_loops":
+            continue
+        if not pair.get("arc_consistent", True):
+            continue
+        if max_move_mm is not None and pair["required_move_mm"] > max_move_mm:
+            continue
+        if closed.get(chain_of[pair["curve_a"]], False) or closed.get(
+            chain_of[pair["curve_b"]], False
+        ):
+            continue
+        key_a = (pair["curve_a"], pair["end_a"])
+        key_b = (pair["curve_b"], pair["end_b"])
+        if key_a in used or key_b in used:
+            continue
+        used.add(key_a)
+        used.add(key_b)
+        extra.append(pair)
+    return extra
+
+
 def prepare_endpoint_weld(
     entities: list[dict[str, Any]],
     *,
     policy: str = "report",
     max_move_mm: float | None = None,
     snap: bool = False,
+    cluster_tolerance_mm: float | None = None,
 ) -> dict[str, Any]:
     """Describe which endpoint pairs may be welded.
 
@@ -430,16 +494,17 @@ def prepare_endpoint_weld(
             raise ValueError("max_move_mm must be a number")
         if not math.isfinite(float(max_move_mm)) or max_move_mm <= 0.0:
             raise ValueError("max_move_mm must be a finite number greater than 0")
+    tolerance, tolerance_source = _effective_cluster_tolerance(cluster_tolerance_mm)
 
-    curves, candidates, accepted, refused = _plan(entities, max_move_mm)
+    curves, candidates, accepted, refused = _plan(entities, max_move_mm, cluster_tolerance_mm)
 
     receipt: dict[str, Any] = {
         "policy": policy,
         "applied": False,
         "applied_by": None,
         "native_applied": False,
-        "threshold_mm": CLUSTER_TOLERANCE_MM,
-        "threshold_source": "closure_diagnostic_cluster",
+        "threshold_mm": tolerance,
+        "threshold_source": tolerance_source,
         "kernel_weld_bound_mm": EXACT_TOLERANCE_MM,
         "kernel_weld_bound_source": "creo_mechdog.profile_diagnostics.EXACT_TOLERANCE_MM",
         "observed_kernel_weld_mm": OBSERVED_KERNEL_WELD_MM,
@@ -510,12 +575,16 @@ def prepare_endpoint_weld(
     if snap:
         if policy == "reject":
             raise ValueError("snap_endpoints cannot be combined with endpoint_policy=reject")
-        if accepted:
-            snapped, applied_pairs, failure = _snap_entities(entities, curves, accepted)
+        snap_pairs = accepted + _open_chain_snap_pairs(curves, accepted, refused, max_move_mm)
+        if snap_pairs:
+            snapped, applied_pairs, failure = _snap_entities(entities, curves, snap_pairs)
             if failure is not None:
                 receipt["snap"]["failure_reason"] = failure
             else:
-                residual = _plan(snapped, max_move_mm)[2]
+                residual_plan = _plan(snapped, max_move_mm, cluster_tolerance_mm)
+                residual = residual_plan[2] + _open_chain_snap_pairs(
+                    residual_plan[0], residual_plan[2], residual_plan[3], max_move_mm
+                )
                 rules = sorted({entry["anchor"] for entry in applied_pairs})
                 receipt["snap"].update(
                     {
@@ -566,17 +635,21 @@ def prepare_operations(operations: list[dict[str, Any]]) -> list[dict[str, Any]]
         snap = bool(operation.get("snap_endpoints"))
         if policy == "report" and not snap:
             continue
+        cluster_tol = operation.get("closure_tolerance_mm")
         receipt = prepare_endpoint_weld(
             operation.get("entities", []),
             policy=policy,
             max_move_mm=operation.get("max_endpoint_move_mm"),
             snap=snap,
+            cluster_tolerance_mm=cluster_tol,
         )
         snapped = receipt.pop("_snapped_entities", None)
         # FEAT-039: the same qualification the admission message quotes decides
         # whether the requested policy can be delivered at all.
         eligibility = weld_eligibility(
-            operation.get("entities", []), operation.get("max_endpoint_move_mm")
+            operation.get("entities", []),
+            operation.get("max_endpoint_move_mm"),
+            cluster_tolerance_mm=cluster_tol,
         )
         snap_failure = (receipt.get("snap") or {}).get("failure_reason")
         if snap and snap_failure:
@@ -646,6 +719,7 @@ def annotate_result(result: dict[str, Any], operations: list[dict[str, Any]]) ->
                 operation.get("entities", []),
                 policy=policy,
                 max_move_mm=operation.get("max_endpoint_move_mm"),
+                cluster_tolerance_mm=operation.get("closure_tolerance_mm"),
             )
         if (
             policy == "report"

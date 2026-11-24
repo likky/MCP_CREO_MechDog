@@ -842,7 +842,9 @@ def validate_solid_profile(
             )
         details.append(f"[{name}] {detail} ({names}){where}" if names else f"[{name}] {detail}")
     weld_advice = (
-        " " + _weld_verdict(entities) if {"open", "near_tolerance"}.intersection(problems) else ""
+        " " + _weld_verdict(entities, tolerance=tolerance)
+        if {"open", "near_tolerance"}.intersection(problems)
+        else ""
     )
     if {"intersecting", "tangent"}.intersection(problems) and not {
         "open",
@@ -878,7 +880,7 @@ def validate_solid_profile(
     )
 
 
-def _weld_verdict(entities: list) -> str:
+def _weld_verdict(entities: list, tolerance: float | None = None) -> str:
     """Quote what welding can actually do, so the advice is not self-contradictory.
 
     ``endpoint_welding`` imports this module, so the qualification is imported
@@ -888,5 +890,5 @@ def _weld_verdict(entities: list) -> str:
         from creo_mechdog import endpoint_welding
     except ImportError:  # pragma: no cover - defensive, the module is a sibling
         return ""
-    eligibility = endpoint_welding.weld_eligibility(entities)
+    eligibility = endpoint_welding.weld_eligibility(entities, cluster_tolerance_mm=tolerance)
     return "For this profile: " + endpoint_welding.eligibility_summary(eligibility)
