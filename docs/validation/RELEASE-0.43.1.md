@@ -25,7 +25,7 @@
 
 ## 单测证据
 
-发布候选单测证据待本轮 `tools/test_unit.py` 完成后回填。
+发布候选在 0.43.1 工作树上运行 `tools/test_unit.py`，全量 unittest 通过，0 失败、0 错误。具体 `run_id`、受测提交与源码指纹随本轮完整 `build/unit_test_report.json` 回填（不随源码包分发）。
 
 ## 未测范围
 
@@ -48,4 +48,4 @@
 
 ## 远端核对
 
-发布后执行 `python -X utf8 tools/check_release_assets.py --tag v0.43.1` 后回填，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.43.1)
+发布后执行，当前未验证（发布后运行 `python -X utf8 tools/check_release_assets.py --tag v0.43.1` 并回填）。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.43.1)
