@@ -63,7 +63,11 @@ class ProductRulesMCPTests(unittest.IsolatedAsyncioTestCase):
             [{"code": "missing_capability", "capability": "extrude"}],
         )
         with patch.object(server, "REGISTERED_OPERATIONS", ("sketch",)):
-            result = await self.call(capability_snapshot={"operations": ["sketch", "extrude"]})
+            # BUG-189: forged unknown arguments like capability_snapshot are rejected
+            # at the MCP boundary instead of being silently ignored.
+            with self.assertRaises(ToolError):
+                await self.call(capability_snapshot={"operations": ["sketch", "extrude"]})
+            result = await self.call()
         self.assertFalse(result.structured_content["executable"])
 
     async def test_invalid_inputs_and_budget_are_mcp_errors(self):

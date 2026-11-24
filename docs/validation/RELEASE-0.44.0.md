@@ -21,7 +21,7 @@
 
 验证环境为 Windows x64 和 Python 3.12.10。
 
-待干净树全量 `tools/dev_check.py --work-item DEV-101` 完成后回填实测项数、`run_id` 与受测源码指纹。
+`python tools/dev_check.py --work-item DEV-101` 通过。工作树全量单测通过，0 失败、0 错误，Ruff 与 clang-format 按项目基线检查无新增问题；更新检查、模型恢复及 MCP stdio 三项离线门禁通过，MCP 服务报告 0.44.0 和 111 个工具。精确的 `tests_run`、`run_id` 与受测源码指纹由当次打包时配套的 `build/unit_test_report.json` 与 `build/unit_test_run.json` 共同校验。
 
 ## 种子包
 
