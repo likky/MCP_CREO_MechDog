@@ -30,6 +30,10 @@
 
 发布候选在 0.43.0 工作树上运行 `tools/test_unit.py`，全量 unittest 通过，0 失败、0 错误。下列数字取自本轮 `build/unit_test_report.json`，该报告不随源码包分发。
 
+本轮 `run_id=a8242666aa154b65bf874d7eedf5c500`，执行 4,491 项，0 失败、0 错误、6 跳过，耗时 344.91 s，报告 `version=0.43.0`、`status=completed`、`success=true`。受测提交 `2a1ae671bf94818635cd0203f84853a118196959`（分支 `codex/feedback-0400-bspline-view-0430`，`dirty=false`），源码指纹 `c3ae6bcccd897ecfa2c6a4f5e175057b6a318cd3bf4995b459fe69e4ef7cb14b`，统计 681 个受 Git 跟踪的 `.py` 与原生头/源文件。后续回填本段文档不改动任何受跟踪 `.py` 或原生文件，源码指纹保持不变。跳过项为 Windows 符号链接权限、MSVC 独立辅助程序环境与未随仓库保存的历史作业证据，均不涉及本版改动。
+
+语言与格式检查以 `tools/dev_check.py --work-item BUG-183` 执行：`success=true`，lint 0、unformatted 0（595 个 Python、69 个 C++），离线验收 3/3 通过（`test_update_check`、`test_model_reconciliation`、`test_mcp`）。
+
 ## 未测范围
 
 - Creo 9/12、原 Arm7 完整工程与 `a7_s5` 吸附实机复现、装配体多视角 JPEG 与 WorkBuddy 外部黑盒验收未执行。
