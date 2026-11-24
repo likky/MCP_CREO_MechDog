@@ -15,7 +15,9 @@
 
 ## 版本约定
 
-当前版本为 0.43.1（2026-11-24 PATCH，阶段交付 [BUG-017](../work-items/BUG-017.md)：原生 `generic_rib` 逐阶段返回码/`ProErrorlist`/`feature_id`/`feature_status`/`geometry_item_count` 诊断 `rib_diagnostics` 与 `RIB_DIAG`、未激活再生路径 `feature_errors` 与顶层 `std::exception` 发布、`operation_results`/`compact_sections` 透传、`test_direct_loft.py` 回读兼容，以及 Creo 9/10 `ProRib.h` 逐行比对；本机 Creo 10 实机 `ribs,negative_geometry,unavailable_and_nonintersecting` 17/17 通过并保存重载/回滚，Creo 9 运行时原案保留待验；公开工具仍 111）。见[版本说明](../RELEASE_NOTES_0.43.1.md)和[发布记录](../validation/RELEASE-0.43.1.md)。
+当前版本为 0.43.2（2026-11-24 PATCH，交付 [BUG-175](../work-items/BUG-175.md) 启动单测补修，公开工具 111）。[版本说明](../RELEASE_NOTES_0.43.2.md) · [发布记录](../validation/RELEASE-0.43.2.md)
+
+此前的 0.43.1（2026-11-24 PATCH，阶段交付 [BUG-017](../work-items/BUG-017.md)：原生 `generic_rib` 逐阶段返回码/`ProErrorlist`/`feature_id`/`feature_status`/`geometry_item_count` 诊断 `rib_diagnostics` 与 `RIB_DIAG`、未激活再生路径 `feature_errors` 与顶层 `std::exception` 发布、`operation_results`/`compact_sections` 透传、`test_direct_loft.py` 回读兼容，以及 Creo 9/10 `ProRib.h` 逐行比对；本机 Creo 10 实机 `ribs,negative_geometry,unavailable_and_nonintersecting` 17/17 通过并保存重载/回滚，Creo 9 运行时原案保留待验；公开工具仍 111）。见[版本说明](../RELEASE_NOTES_0.43.1.md)和[发布记录](../validation/RELEASE-0.43.1.md)。
 
 此前的 0.43.0（2026-11-24 MINOR，交付 [BUG-183](../work-items/BUG-183.md)、[FEAT-082](../work-items/FEAT-082.md)、[BUG-184](../work-items/BUG-184.md)、[FEAT-083](../work-items/FEAT-083.md)、[BUG-185](../work-items/BUG-185.md)：原生 `solved_section_area_mm2`、闭合 B 样条草图 `b_spline_cut_risk` 与 `blind`/`symmetric` `cut_volume_check`；JPEG 全正交视图 `right`/`left`/`back`/`bottom` 与 3×3 右手正交 `view_matrix`；草图 `geometry_deviation` 逐点位移向量、`compact` 超阈 `displaced_sample` 与 `autodim` 强拒说明；`ExtrudeOp.region` 曲线感知 `interior_point_yz_mm` 内点选区；`creo_get_job` 参数 schema 前置条件与报错指引；本机 Creo 10 实机 3/3 通过并保存重载；公开工具仍 111）。见[版本说明](../RELEASE_NOTES_0.43.0.md)和[发布记录](../validation/RELEASE-0.43.0.md)。
 

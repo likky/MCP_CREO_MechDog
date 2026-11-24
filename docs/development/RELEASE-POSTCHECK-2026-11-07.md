@@ -2,6 +2,12 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
+## v0.43.2（2026-11-24，打包时点）
+
+- 交付 [BUG-175](../work-items/BUG-175.md) 启动单测补修。环境为 Windows x64 / Python 3.12.10。[版本说明](../RELEASE_NOTES_0.43.2.md) · [发布记录](../validation/RELEASE-0.43.2.md)
+- 附件计划为 `MCP_CREO_MechDog-0.43.2-source.zip`、`MCP_CREO_MechDog-0.43.2-source.zip.sha256`、`MCP_CREO_MechDog-0.43.2-seed-library.zip` 和 `MCP_CREO_MechDog-0.43.2-seed-library.zip.sha256`。种子包 SHA256 为 `fece0e88c0c55828f9776944ad2196215e43077fcd1b3c7e62103e9d16891c52`。两份同名 sidecar 分别记录对应 ZIP 的实际摘要。
+- 远端核对发布后执行，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.43.2)
+
 ## v0.43.1（2026-11-24，打包时点）
 
 - [BUG-017](../work-items/BUG-017.md) 阶段交付：原生 `generic_rib` 补齐逐阶段返回码/`ProErrorlist`/`feature_id`/`feature_status`/`geometry_item_count` 诊断（`rib_diagnostics`、`RIB_DIAG`）与未激活再生路径 `feature_errors`，`native/generic.cpp` 顶层 `std::exception` 同步发布 `feature_errors`，`operation_results.py`/`compact_sections.py` 透传 `rib_diagnostics`，`tools/test_direct_loft.py` 兼容当前 `creo_get_job(detail="full")` 与 `inspection_summary`，并完成 Creo 9/10 `ProRib.h` 逐行比对与本机 Creo 10 实机 17/17 验收；Creo 9 原案保留待验。见[版本说明](../RELEASE_NOTES_0.43.1.md)及[发布记录](../validation/RELEASE-0.43.1.md)。

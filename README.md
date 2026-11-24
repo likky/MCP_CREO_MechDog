@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.43.1
+# MCP_CREO_MechDog 0.43.2
 
-![version](https://img.shields.io/badge/version-0.43.1-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.43.2-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.43.1**（PATCH）。阶段交付 [BUG-017](docs/work-items/BUG-017.md)：原生 `generic_rib` 补齐逐阶段返回码/`ProErrorlist`/`feature_id`/`feature_status`/`geometry_item_count` 结构化诊断（`rib_diagnostics` 与 `RIB_DIAG`），在“创建/重定义返回 0 但最终特征未激活”路径发布 `feature_errors`（`failed_stage="rib_regeneration"`），`native/generic.cpp` 在 `std::exception` 出口同步发布顶层 `feature_errors`，`operation_results`/`compact_sections` 透传 `rib_diagnostics`，并修复 `tools/test_direct_loft.py` 对当前 `creo_get_job(detail="full")` 的回读兼容；同步登记用户提供的 Creo 9/10 参考头文件并完成 `ProRib.h` 逐行比对（完全一致，均受 `export-ignore` 排除不入源码包）。Creo 9.0.0.0 运行时实测仍保留待验。公开工具仍以 `creo_capabilities` 的 `tool_count` 为准。见 [版本说明](docs/RELEASE_NOTES_0.43.1.md) 和 [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.43.1)。
+当前正式版 **0.43.2**（PATCH）。BUG-175 让普通启动与显式强制启动的单测共用可控时钟和模拟等待。测试分别确认陈旧会话诊断和强制启动一次后就绪，并隔离 Toolkit 锁和运行目录。公开工具以 `creo_capabilities` 的 `tool_count` 为准。[版本说明](docs/RELEASE_NOTES_0.43.2.md) · [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.43.2)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 
