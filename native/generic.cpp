@@ -11467,6 +11467,8 @@ static int run_generic(const std::wstring &job) {
         if (std::string(error.what()).find("model_reconciliation_required:") == 0)
             report["code"] = "model_reconciliation_required";
         report["toolkit_code"] = PRO_TK_GENERAL_ERROR;
+        if (!last_feature_error_report.is_null())
+            report["feature_errors"] = last_feature_error_report;
         log("BUILD_FAILED=%s\n", error.what());
     }
     // BUG-109: the completed verify_model sub-stages ride both outcomes, so a

@@ -363,12 +363,52 @@ static void generic_boolean(const J &op) {
     ProElementFree(&root);
     remember(op, f);
 }
+static J rib_element_errors_snapshot() {
+    J sample = J::array();
+    for (const auto &entry : feature_error_entries)
+        sample.push_back(
+            {{"element", entry.element}, {"type", entry.type}, {"error", entry.error}});
+    return {{"total", feature_error_total},
+            {"truncated", feature_error_total > (int)feature_error_entries.size()},
+            {"sample", sample}};
+}
 static void generic_rib(const J &op) {
+    const std::string side = op["side"];
+    const bool flip = op.value("flip", false);
+    const int side_opt = side == "symmetric"  ? PRO_RIB_SYMMETRIC
+                         : side == "positive" ? PRO_RIB_SIDE_ONE
+                                              : PRO_RIB_SIDE_TWO;
+    const int matrlside = flip ? PRO_RIB_SEC_SIDE_TWO : PRO_RIB_SEC_SIDE_ONE;
+    J rib_diag = {{"failed_stage", nullptr},
+                  {"sketch_id", nullptr},
+                  {"target_body_id", nullptr},
+                  {"thickness_mm", op["thickness"]},
+                  {"side", side},
+                  {"side_opts_value", side_opt},
+                  {"flip", flip},
+                  {"matrlside_value", matrlside},
+                  {"create_code", nullptr},
+                  {"create_element_errors", nullptr},
+                  {"feature_id", nullptr},
+                  {"extract_code", nullptr},
+                  {"matrlside_set_code", nullptr},
+                  {"redefine_code", nullptr},
+                  {"redefine_element_errors", nullptr},
+                  {"status_code", nullptr},
+                  {"feature_status", nullptr},
+                  {"geometry_visit_code", nullptr},
+                  {"geometry_item_count", nullptr},
+                  {"geometry_items_sample", J::array()}};
+
     J state = inspection();
-    if (!state["has_solid"].get<bool>())
+    if (!state["has_solid"].get<bool>()) {
+        rib_diag["failed_stage"] = "precheck_no_solid";
+        stage_operation_result({{"rib_diagnostics", rib_diag}});
         throw std::runtime_error(
             "Rib requires an existing solid body and an intersecting open profile");
+    }
     int sketch_id = feature_id(op["sketch"]);
+    rib_diag["sketch_id"] = sketch_id;
     for (const auto &meta : aliases) {
         if (meta.value("feature_id", -1) != sketch_id || !meta.contains("geometry"))
             continue;
@@ -377,39 +417,166 @@ static void generic_rib(const J &op) {
                 continue;
             std::string kind = entity.value("type", "");
             if (kind == "circle" || kind == "ellipse" || kind == "rectangle" ||
-                ((kind == "polyline" || kind == "spline") && entity.value("closed", false)))
+                ((kind == "polyline" || kind == "spline") && entity.value("closed", false))) {
+                rib_diag["failed_stage"] = "precheck_closed_profile";
+                stage_operation_result({{"rib_diagnostics", rib_diag}});
                 throw std::runtime_error(
                     "Rib requires an open profile; closed sketch contours are not accepted");
+            }
         }
     }
+    ProSolidBody default_body = {};
+    if (ProSolidDefaultBodyGet((ProSolid)board, &default_body) == PRO_TK_NO_ERROR)
+        rib_diag["target_body_id"] = default_body.id;
+
     ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
     integer(root, PRO_E_FEATURE_TYPE, PRO_FEAT_RIB);
     integer(root, PRO_E_FEATURE_FORM, PRO_EXTRUDE);
     text(root, PRO_E_STD_FEATURE_NAME, wide(op["label"]).c_str());
     body_options(root, op);
     ProElement section = node(root, PRO_E_RIB_SECTION_COMP);
-    ProSelection s = selection(feature_id(op["sketch"]), PRO_FEATURE);
+    ProSelection s = selection(sketch_id, PRO_FEATURE);
     ref(node(section, PRO_E_STD_SECTION), PRO_E_SEC_USE_SKETCH, s);
     ProSelectionFree(&s);
     // ProRib.h: material side is ignored until the standard section is fully
     // defined. Apply the requested side to the extracted native section below.
     real(root, PRO_E_RIB_THICKNESS, op["thickness"]);
-    std::string side = op["side"];
-    integer(root, PRO_E_RIB_SIDE_OPTS,
-            side == "symmetric"  ? PRO_RIB_SYMMETRIC
-            : side == "positive" ? PRO_RIB_SIDE_ONE
-                                 : PRO_RIB_SIDE_TWO);
-    ProFeature f = create(root, PRO_FEAT_CR_INCOMPLETE_FEAT);
+    integer(root, PRO_E_RIB_SIDE_OPTS, side_opt);
+
+    ProModelitem mi = {};
+    CK(ProMdlToModelitem(board, &mi));
+    ProSelection model_sel = nullptr;
+    CK(ProSelectionAlloc(nullptr, &mi, &model_sel));
+    ProFeatureCreateOptions *cr_opts = nullptr;
+    CK(ProArrayAlloc(1, sizeof(ProFeatureCreateOptions), 1, (ProArray *)&cr_opts));
+    cr_opts[0] = PRO_FEAT_CR_INCOMPLETE_FEAT;
+    ProFeature f = {};
+    ProErrorlist create_es = {};
+    ProError create_err =
+        ProFeatureWithoptionsCreate(model_sel, root, cr_opts, PRO_REGEN_NO_FLAGS, &f, &create_es);
+    errors(create_es);
+    ProArrayFree((ProArray *)&cr_opts);
+    ProSelectionFree(&model_sel);
     ProElementFree(&root);
-    CK(ProFeatureElemtreeExtract(&f, nullptr, PRO_FEAT_EXTRACT_NO_OPTS, &root));
-    CK(ProElementIntegerSet(get(root, {PRO_E_RIB_SECTION_COMP, PRO_E_STD_MATRLSIDE}),
-                            op.value("flip", false) ? PRO_RIB_SEC_SIDE_TWO : PRO_RIB_SEC_SIDE_ONE));
-    redefine(&f, root);
-    CK(ProFeatureElemtreeFree(&f, root));
-    ProFeatStatus status;
-    CK(ProFeatureStatusGet(&f, &status));
-    if (status != PRO_FEAT_ACTIVE)
-        throw std::runtime_error("Rib regeneration failed on the requested material side; check "
-                                 "profile/body intersection, flip and thickness side");
+
+    const int create_err_total = feature_error_total;
+    rib_diag["create_code"] = (int)create_err;
+    rib_diag["create_element_errors"] = rib_element_errors_snapshot();
+    rib_diag["feature_id"] = f.id > 0 ? J(f.id) : J(nullptr);
+    log("ProFeatureWithoptionsCreate=%d\n", (int)create_err);
+    if (create_err != PRO_TK_NO_ERROR) {
+        rib_diag["failed_stage"] = "rib_create";
+        stage_operation_result(
+            {{"feature_id", f.id > 0 ? J(f.id) : J(nullptr)}, {"rib_diagnostics", rib_diag}});
+        last_feature_error_report =
+            feature_error_report("ProFeatureWithoptionsCreate", create_err, "rib_create");
+        log("RIB_DIAG stage=rib_create feature_id=%d create_code=%d create_errs=%d\n", f.id,
+            (int)create_err, create_err_total);
+        check(create_err, "ProFeatureWithoptionsCreate");
+    }
+    log("created_feature_id=%d\n", f.id);
+
+    ProElement extracted = nullptr;
+    ProError extract_err =
+        ProFeatureElemtreeExtract(&f, nullptr, PRO_FEAT_EXTRACT_NO_OPTS, &extracted);
+    rib_diag["extract_code"] = (int)extract_err;
+    log("ProFeatureElemtreeExtract(&f, nullptr, PRO_FEAT_EXTRACT_NO_OPTS, &extracted)=%d\n",
+        (int)extract_err);
+    if (extract_err != PRO_TK_NO_ERROR) {
+        rib_diag["failed_stage"] = "rib_extract_tree";
+        stage_operation_result({{"feature_id", f.id}, {"rib_diagnostics", rib_diag}});
+        last_feature_error_report =
+            feature_error_report("ProFeatureElemtreeExtract", extract_err, "rib_extract_tree");
+        log("RIB_DIAG stage=rib_extract_tree feature_id=%d create_code=%d extract_code=%d\n", f.id,
+            (int)create_err, (int)extract_err);
+        check(extract_err, "ProFeatureElemtreeExtract");
+    }
+
+    ProElement matrl_elem = get(extracted, {PRO_E_RIB_SECTION_COMP, PRO_E_STD_MATRLSIDE});
+    ProError matrl_err = ProElementIntegerSet(matrl_elem, matrlside);
+    rib_diag["matrlside_set_code"] = (int)matrl_err;
+    log("ProElementIntegerSet(PRO_E_STD_MATRLSIDE, %d)=%d\n", matrlside, (int)matrl_err);
+    if (matrl_err != PRO_TK_NO_ERROR) {
+        ProFeatureElemtreeFree(&f, extracted);
+        rib_diag["failed_stage"] = "rib_set_matrlside";
+        stage_operation_result({{"feature_id", f.id}, {"rib_diagnostics", rib_diag}});
+        last_feature_error_report =
+            feature_error_report("ProElementIntegerSet", matrl_err, "rib_set_matrlside");
+        log("RIB_DIAG stage=rib_set_matrlside feature_id=%d create_code=%d extract_code=%d "
+            "matrlside_set_code=%d\n",
+            f.id, (int)create_err, (int)extract_err, (int)matrl_err);
+        check(matrl_err, "ProElementIntegerSet");
+    }
+
+    ProFeatureCreateOptions *rd_opts = nullptr;
+    CK(ProArrayAlloc(1, sizeof(ProFeatureCreateOptions), 1, (ProArray *)&rd_opts));
+    rd_opts[0] = PRO_FEAT_CR_NO_OPTS;
+    ProErrorlist redefine_es = {};
+    ProError redefine_err = ProFeatureWithoptionsRedefine(nullptr, &f, extracted, rd_opts,
+                                                          PRO_REGEN_NO_FLAGS, &redefine_es);
+    errors(redefine_es);
+    ProArrayFree((ProArray *)&rd_opts);
+    CK(ProFeatureElemtreeFree(&f, extracted));
+
+    const int redefine_err_total = feature_error_total;
+    rib_diag["redefine_code"] = (int)redefine_err;
+    rib_diag["redefine_element_errors"] = rib_element_errors_snapshot();
+    log("CompleteFeature=%d\n", (int)redefine_err);
+    if (redefine_err != PRO_TK_NO_ERROR) {
+        rib_diag["failed_stage"] = "rib_redefine";
+        stage_operation_result({{"feature_id", f.id}, {"rib_diagnostics", rib_diag}});
+        last_feature_error_report =
+            feature_error_report("ProFeatureWithoptionsRedefine", redefine_err, "rib_redefine");
+        log("RIB_DIAG stage=rib_redefine feature_id=%d create_code=%d extract_code=%d "
+            "matrlside_set_code=%d redefine_code=%d redefine_errs=%d\n",
+            f.id, (int)create_err, (int)extract_err, (int)matrl_err, (int)redefine_err,
+            redefine_err_total);
+        check(redefine_err, "CompleteFeature");
+    }
+
+    ProFeatStatus status = PRO_FEAT_INVALID;
+    ProError status_err = ProFeatureStatusGet(&f, &status);
+    rib_diag["status_code"] = (int)status_err;
+    if (status_err == PRO_TK_NO_ERROR)
+        rib_diag["feature_status"] = (int)status;
+
+    J geometry = J::array();
+    ProError geom_visit_err =
+        ProFeatureGeomitemVisit(&f, PRO_TYPE_UNUSED, collect_geom_ids, nullptr, &geometry);
+    rib_diag["geometry_visit_code"] = (int)geom_visit_err;
+    rib_diag["geometry_item_count"] = (int)geometry.size();
+    J geom_sample = J::array();
+    for (size_t i = 0; i < geometry.size() && i < 20; ++i)
+        geom_sample.push_back(geometry[i]);
+    rib_diag["geometry_items_sample"] = geom_sample;
+
+    log("RIB_DIAG feature_id=%d create_code=%d extract_code=%d matrlside_set_code=%d "
+        "redefine_code=%d status_code=%d feature_status=%d geom_items=%d geom_visit_code=%d "
+        "create_errs=%d redefine_errs=%d\n",
+        f.id, (int)create_err, (int)extract_err, (int)matrl_err, (int)redefine_err, (int)status_err,
+        (int)status, (int)geometry.size(), (int)geom_visit_err, create_err_total,
+        redefine_err_total);
+
+    if (status_err != PRO_TK_NO_ERROR) {
+        rib_diag["failed_stage"] = "rib_status_query";
+        stage_operation_result({{"feature_id", f.id}, {"rib_diagnostics", rib_diag}});
+        last_feature_error_report =
+            feature_error_report("ProFeatureStatusGet", status_err, "rib_status_query");
+        check(status_err, "ProFeatureStatusGet");
+    }
+    if (status != PRO_FEAT_ACTIVE) {
+        rib_diag["failed_stage"] = "rib_regeneration";
+        stage_operation_result({{"feature_id", f.id}, {"rib_diagnostics", rib_diag}});
+        last_feature_error_report =
+            feature_error_report("ProFeatureStatusGet", (ProError)status, "rib_regeneration");
+        throw std::runtime_error(
+            "Rib regeneration failed on the requested material side (feature_id=" +
+            std::to_string(f.id) + ", feature_status=" + std::to_string((int)status) +
+            ", geometry_items=" + std::to_string((int)geometry.size()) +
+            ", create_code=" + std::to_string((int)create_err) +
+            ", redefine_code=" + std::to_string((int)redefine_err) +
+            "); check profile/body intersection, both-end solid bounding, flip and thickness side");
+    }
+    stage_operation_result({{"feature_id", f.id}, {"rib_diagnostics", rib_diag}});
     remember(op, f);
 }
