@@ -7,6 +7,14 @@
 - 交付 [BUG-186](../work-items/BUG-186.md)、[FEAT-084](../work-items/FEAT-084.md)、[FEAT-085](../work-items/FEAT-085.md)、[BUG-187](../work-items/BUG-187.md)、[BUG-188](../work-items/BUG-188.md)、[BUG-189](../work-items/BUG-189.md)、[BUG-190](../work-items/BUG-190.md)、[FEAT-088](../work-items/FEAT-088.md)、[FEAT-089](../work-items/FEAT-089.md) 及 [DEV-100](../work-items/DEV-100.md)/[BUG-130](../work-items/BUG-130.md) 补项。环境为 Windows x64 / Python 3.12.10 / Creo 10.0.0.0（release 42）。[版本说明](../RELEASE_NOTES_0.44.0.md) · [发布记录](../validation/RELEASE-0.44.0.md)
 - 附件计划为 `MCP_CREO_MechDog-0.44.0-source.zip`、`MCP_CREO_MechDog-0.44.0-source.zip.sha256`、`MCP_CREO_MechDog-0.44.0-seed-library.zip` 和 `MCP_CREO_MechDog-0.44.0-seed-library.zip.sha256`。种子包 SHA256 为 `cfc72a788053ce067feb90021d6558a1c1db1f5f5002edcca341d779edc7a791`。两份同名 sidecar 分别记录对应 ZIP 的实际摘要。
 - 远端核对发布后执行，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.44.0)
+- **发布后远端核对（2026-11-24）**：Release id `456813362`（创建 `2026-11-24T13:36:26Z`、发布 `2026-11-24T13:36:42Z`，非 draft、非 prerelease），附注标签 `v0.44.0`（对象 `65432651419f5be3a9ff2acfafc18693ecacd5b4`）指向 `main` 提交 `08c88a77d87dd58dc0552536bfc10999874c3f8d`。干净主干全量单测 `4,524` 项通过（0 失败、0 错误、6 跳过，`run_id=2cb32159893b496bb707cf78d2368132`，受测源码指纹 `da38a34c4bdbb9c278739fd817a52be150d18834f4c982775180df5c8b9f8415`）。`python -X utf8 tools/check_release_assets.py --tag v0.44.0` 返回 exit 0（四附件下载核验、两份 sidecar 与正文自证全部一致）：
+
+| 附件 | 字节数 | SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.44.0-source.zip` | 12,244,423 | `099a2e57964b8fdd2f0fac6672783499f2038017b565195db8da70f98cdcc9e1` |
+| `MCP_CREO_MechDog-0.44.0-source.zip.sha256` | 101 | `9108068e6f6ac9d0b6161a8e58f69cebe0f5b340a4573816972895151b58d749` |
+| `MCP_CREO_MechDog-0.44.0-seed-library.zip` | 493,442 | `cfc72a788053ce067feb90021d6558a1c1db1f5f5002edcca341d779edc7a791` |
+| `MCP_CREO_MechDog-0.44.0-seed-library.zip.sha256` | 107 | `dbd9c3082ceb256ff4a3b03478efae8b1b7e313e76da4533c0a1b711ae1b6a7e` |
 
 ## v0.43.2（2026-11-24，打包时点）
 

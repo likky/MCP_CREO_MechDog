@@ -4,7 +4,7 @@
   "previous_version": "0.43.2",
   "previous_release_tag": "v0.43.2",
   "previous_release_commit": "a6769c3cc2507e9bb69fc26651d45050e2d2d27a",
-  "remote_verification": "pending",
+  "remote_verification": "verified",
   "delivery_ids": [
     "BUG-186",
     "FEAT-084",
