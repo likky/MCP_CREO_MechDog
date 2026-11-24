@@ -2504,7 +2504,9 @@ static void assemble_component(const J &op) {
         fix_component(&comp);
     else if (placement == "constraints")
         component_constraints(&comp, op["constraints"]);
-    else {
+    else if (placement == "packaged") {
+        // FEAT-088: keep the supplied transform from ProAsmcompAssemble with no constraints.
+    } else {
         ProAsmcompconstraint *list = nullptr;
         CK(ProArrayAlloc(1, sizeof(ProAsmcompconstraint), 1, (ProArray *)&list));
         CK(ProAsmcompconstraintAlloc(&list[0]));
@@ -2516,7 +2518,21 @@ static void assemble_component(const J &op) {
     ProName name;
     wcscpy_s(name, wide(op["label"]).c_str());
     CK(ProModelitemNameSet(&comp, name));
-    stage_operation_result(assembly_pose_receipt(&comp, op));
+    J pose_receipt = assembly_pose_receipt(&comp, op);
+    pose_receipt["placement"] = placement;
+    {
+        ProAsmcompconstraint *actual_cs = nullptr;
+        int actual_count = 0;
+        ProError cs_code = ProAsmcompConstraintsWithDtmOrientGet(&comp, &actual_cs);
+        if (cs_code == PRO_TK_NO_ERROR && actual_cs) {
+            ProArraySizeGet((ProArray)actual_cs, &actual_count);
+            ProAsmcompconstraintArrayFree(actual_cs);
+        } else if (cs_code == PRO_TK_E_NOT_FOUND) {
+            actual_count = 0;
+        }
+        pose_receipt["constraint_count"] = actual_count;
+    }
+    stage_operation_result(pose_receipt);
     J receipt = {{"source_model_id", op["source_model_id"]},
                  {"source_revision", source["revision"]},
                  {"source_model_type", source_model_type},

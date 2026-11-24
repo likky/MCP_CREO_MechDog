@@ -2417,7 +2417,7 @@ class AssembleOp(AssemblyPose):
     op: Literal["assemble_component"]
     label: Label
     source_model_id: Annotated[str, Field(pattern=r"^[a-f0-9]{32}$")]
-    placement: Literal["fixed", "default", "constraints"] = "fixed"
+    placement: Literal["fixed", "default", "constraints", "packaged"] = "fixed"
     constraints: list[AssemblyConstraint] = Field(
         default=[],
         description=(

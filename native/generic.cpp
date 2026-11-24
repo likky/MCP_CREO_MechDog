@@ -2291,8 +2291,9 @@ static Frame sketch_frame(const J &op) {
     f.v = normalized(cross(f.n, f.u));
     if (!p.is_string() && p.contains("v_axis")) {
         // BUG-187: pin the sketch v_axis instead of accepting whatever the
-        // support normal implies. An explicit v_axis must lie in the plane and
-        // be consistent with u_axis when both are given.
+        // support normal implies. When both u_axis and v_axis are supplied,
+        // verify orthogonality in the plane and derive normal = u_axis x v_axis
+        // so an inverted support normal cannot silently flip v_axis.
         V requested_v = vec(p["v_axis"]);
         double v_magnitude = sqrt(dot(requested_v, requested_v));
         if (v_magnitude < 1e-9)
@@ -2301,12 +2302,13 @@ static Frame sketch_frame(const J &op) {
         if (sqrt(dot(v_in_plane, v_in_plane)) < 1e-9 * v_magnitude)
             throw std::runtime_error("Sketch v_axis is parallel to the support plane normal");
         f.v = normalized(v_in_plane);
-        f.u = normalized(cross(f.v, f.n));
         if (p.contains("u_axis")) {
-            V requested_u = normalized(vec(p["u_axis"]));
-            if (dot(requested_u, f.u) < 1.0 - 1e-6)
+            if (fabs(dot(f.u, f.v)) > 1e-6)
                 throw std::runtime_error(
-                    "Sketch u_axis and v_axis are inconsistent: v_axis must equal normal x u_axis");
+                    "Sketch u_axis and v_axis must be orthogonal in the plane");
+            f.n = normalized(cross(f.u, f.v));
+        } else {
+            f.u = normalized(cross(f.v, f.n));
         }
     }
     double best = 10;
@@ -6753,7 +6755,8 @@ static J generic_round(const J &op, bool chamfer) {
                     ", length_mm=" + std::to_string(e0.value("length_mm", 0.0));
             if (e0.contains("dihedral_angle_deg"))
                 base += ", dihedral_deg=" + std::to_string(e0["dihedral_angle_deg"].get<double>());
-            base += "; see round_failure.edge_diagnostics)";
+            base += "; see operations[" + std::to_string(operation_position) +
+                    "].round_failure.edge_diagnostics in native_result.json)";
         }
         throw std::runtime_error(base);
     }

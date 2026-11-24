@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 from typing import Any
 
 from mcp.server import MCPServer
@@ -93,6 +94,29 @@ class ValidationMCPServer(MCPServer):
     """
 
     async def call_tool(self, name: str, arguments: dict[str, Any], context: Any = None) -> Any:
+        # BUG-189: reject unknown tool arguments instead of silently dropping them.
+        if isinstance(arguments, dict) and arguments:
+            tool = self._tool_manager.get_tool(name)
+            params = getattr(tool, "parameters", None) if tool is not None else None
+            properties = params.get("properties") if isinstance(params, dict) else None
+            if isinstance(properties, dict) and params.get("additionalProperties") is not True:
+                allowed = sorted(properties.keys())
+                unknown = sorted(k for k in arguments if k not in properties)
+                if unknown:
+                    hints = []
+                    for key in unknown[:5]:
+                        close = difflib.get_close_matches(key, allowed, n=1, cutoff=0.6)
+                        if close:
+                            hints.append(f"unknown argument '{key}'; did you mean '{close[0]}'?")
+                        else:
+                            hints.append(f"unknown argument '{key}'")
+                    valid_list = ", ".join(allowed[:20])
+                    if len(allowed) > 20:
+                        valid_list += f", ... ({len(allowed)} total)"
+                    raise ToolError(
+                        f"Error executing tool {name}: {'; '.join(hints)}. "
+                        f"Valid arguments: {valid_list}"
+                    ) from None
         try:
             return await super().call_tool(name, arguments, context)
         except UnexpectedToolError:
