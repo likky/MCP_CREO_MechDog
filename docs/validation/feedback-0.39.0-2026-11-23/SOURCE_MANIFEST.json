@@ -1,0 +1,19 @@
+{
+  "batch": "feedback-0.39.0-2026-11-23",
+  "archived_date": "2026-11-24",
+  "source_version": "0.39.0",
+  "files": [
+    {
+      "original_filename": "2026-11-23CREO10.0.0.0-0.39.0-新增BUG170单测固定03秒deadline导致官方包随机失败.md",
+      "archived_path": "originals/bug170-unit-test-fixed-deadline-flaky.md",
+      "bytes": 8940,
+      "sha256": "8cdfbceae8b54ea73bfdd5a72c8e83fb4665408abde2355dc9c7a2552cc3e32e"
+    },
+    {
+      "original_filename": "2026-11-23_CREO_v0.39.0_全圆边选择器无法唯一命中与面积不可测量.md",
+      "archived_path": "originals/creo9-full-circle-edge-selector-and-area-inspection.md",
+      "bytes": 14598,
+      "sha256": "174de538e660918071d21c4dfce2c7cbfb1f99c05ba24036c25ff455b8497560"
+    }
+  ]
+}

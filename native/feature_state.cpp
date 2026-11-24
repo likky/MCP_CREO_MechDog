@@ -191,9 +191,19 @@ static J generic_feature_state(const J &op) {
         requested.push_back(target);
     }
 
+    const bool include_dependencies = op.value("include_dependencies", false);
+    J auto_included = J::array();
+    auto build_suggested_targets = [&](const std::vector<int> &extra_ids) -> J {
+        J suggested = op.at("targets");
+        for (int extra : extra_ids)
+            suggested.push_back(extra);
+        return suggested;
+    };
+
     // Dependency coverage: every affected descendant must be an explicit
-    // target. Grouped members cannot be listed individually, so they follow
-    // their header instead of being required as separate targets.
+    // target unless include_dependencies=true is explicitly requested (BUG-178).
+    // Grouped members cannot be listed individually, so they follow their header
+    // instead of being required as separate targets.
     std::set<int> missing;
     if (action == "delete" || action == "suppress") {
         for (int id : ids) {
@@ -228,8 +238,14 @@ static J generic_feature_state(const J &op) {
     }
     if (!missing.empty()) {
         J listed = J::array();
-        for (int id : missing) {
+        std::vector<int> missing_vec(missing.begin(), missing.end());
+        for (int id : missing_vec) {
             const J &feature = by_id.at(id);
+            if (include_dependencies && feature.value("system_required", false))
+                throw std::runtime_error(
+                    "feature_state include_dependencies=true cannot include system-required "
+                    "feature " +
+                    std::to_string(id));
             listed.push_back(
                 {{"feature_id", id},
                  {"label", feature_state_label_for(id).empty() ? J(nullptr)
@@ -238,13 +254,28 @@ static J generic_feature_state(const J &op) {
                  {"type_name", feature.value("type_name", "")},
                  {"status", feature.value("status", PRO_FEAT_INVALID)}});
         }
-        log("FEATURE_STATE_MISSING_DEPENDENCIES=%s\n", listed.dump().c_str());
-        throw std::runtime_error(
-            "feature_state targets do not cover every affected dependency; list these feature "
-            "IDs explicitly (no automatic cascade): " +
-            listed.dump() +
-            ". Append the feature_id values above to targets and resubmit the same action; "
-            "auto-created support datums carry no label, so their ids only appear here");
+        if (include_dependencies) {
+            for (int id : missing_vec) {
+                target_set.insert(id);
+                ids.push_back(id);
+                labels.push_back(feature_state_label_for(id));
+                requested.push_back(id);
+            }
+            for (const auto &entry : listed)
+                auto_included.push_back(entry);
+        } else {
+            J suggested = build_suggested_targets(missing_vec);
+            stage_operation_result({{"suggested_targets", suggested}});
+            log("FEATURE_STATE_MISSING_DEPENDENCIES=%s\n", listed.dump().c_str());
+            throw std::runtime_error(
+                "feature_state targets do not cover every affected dependency; list these feature "
+                "IDs explicitly (no automatic cascade): " +
+                listed.dump() +
+                ". Append the feature_id values above to targets (or pass "
+                "include_dependencies=true) and resubmit the same action; auto-created support "
+                "datums carry no label, so their ids only appear here; suggested_targets=" +
+                suggested.dump());
+        }
     }
 
     J before = J::array();
@@ -311,6 +342,11 @@ static J generic_feature_state(const J &op) {
                 const J &feature = action == "delete"
                                        ? by_id.at(id)
                                        : (by_id.count(id) ? by_id.at(id) : after_by_id.at(id));
+                if (include_dependencies && feature.value("system_required", false))
+                    throw std::runtime_error(
+                        "feature_state include_dependencies=true cannot include system-required "
+                        "feature " +
+                        std::to_string(id));
                 listed.push_back({{"feature_id", id},
                                   {"label", feature_state_label_for(id).empty()
                                                 ? J(nullptr)
@@ -319,12 +355,29 @@ static J generic_feature_state(const J &op) {
                                   {"type_name", feature.value("type_name", "")},
                                   {"status", feature.value("status", PRO_FEAT_INVALID)}});
             }
-            log("FEATURE_STATE_UNLISTED_AFFECTED=%s\n", listed.dump().c_str());
-            throw std::runtime_error(
-                "feature_state targets do not cover every affected dependency; Creo also " +
-                std::string(action == "delete" ? "deleted" : "suppressed") +
-                " these features; list them explicitly (no automatic cascade): " + listed.dump() +
-                ". Append the feature_id values above to targets and resubmit the same action");
+            if (include_dependencies) {
+                for (int id : affected) {
+                    target_set.insert(id);
+                    ids.push_back(id);
+                    labels.push_back(feature_state_label_for(id));
+                    requested.push_back(id);
+                    before.push_back(feature_state_snapshot(&by_id.at(id)));
+                }
+                for (const auto &entry : listed)
+                    auto_included.push_back(entry);
+            } else {
+                J suggested = build_suggested_targets(affected);
+                stage_operation_result({{"suggested_targets", suggested}});
+                log("FEATURE_STATE_UNLISTED_AFFECTED=%s\n", listed.dump().c_str());
+                throw std::runtime_error(
+                    "feature_state targets do not cover every affected dependency; Creo also " +
+                    std::string(action == "delete" ? "deleted" : "suppressed") +
+                    " these features; list them explicitly (no automatic cascade): " +
+                    listed.dump() +
+                    ". Append the feature_id values above to targets (or pass "
+                    "include_dependencies=true) and resubmit the same action; suggested_targets=" +
+                    suggested.dump());
+            }
         }
     }
 
@@ -379,13 +432,17 @@ static J generic_feature_state(const J &op) {
     }
 
     log("FEATURE_STATE=%s targets=%s\n", action.c_str(), details.dump().c_str());
-    return {{"feature_state",
-             {{"action", action},
-              {"applied", (int)ids.size()},
-              {"explicit_targets", requested},
-              {"tombstone_count", (int)feature_tombstones.size()},
-              {"suppressed_count", (int)suppressed_features.size()}}},
-            {"targets", details},
-            {"feature_tombstones", feature_tombstones},
-            {"suppressed_features", suppressed_features}};
+    J out = {{"feature_state",
+              {{"action", action},
+               {"applied", (int)ids.size()},
+               {"explicit_targets", requested},
+               {"include_dependencies", include_dependencies},
+               {"tombstone_count", (int)feature_tombstones.size()},
+               {"suppressed_count", (int)suppressed_features.size()}}},
+             {"targets", details},
+             {"feature_tombstones", feature_tombstones},
+             {"suppressed_features", suppressed_features}};
+    if (!auto_included.empty())
+        out["auto_included_dependencies"] = auto_included;
+    return out;
 }

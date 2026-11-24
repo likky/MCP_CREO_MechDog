@@ -429,6 +429,10 @@ FAILED_EVIDENCE_KEYS = (
     "cut_geometry_context",
     "failed_loft_input",
     "failed_boundary_condition",
+    "failed_reference_index",
+    "failed_reference",
+    "round_failure",
+    "suggested_targets",
 )
 
 

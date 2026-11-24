@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "version": "0.41.0",
+  "previous_version": "0.40.0",
+  "previous_release_tag": "v0.40.0",
+  "previous_release_commit": "9b7bdaa84675fef364972240a8f3d7c7677e2361",
+  "remote_verification": "pending",
+  "delivery_ids": [
+    "BUG-175",
+    "BUG-176",
+    "FEAT-078",
+    "FEAT-079",
+    "BUG-177",
+    "BUG-178"
+  ],
+  "frozen_on": "2026-11-24"
+}

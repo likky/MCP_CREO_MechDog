@@ -292,11 +292,19 @@ SDK 依据：本机 `ProChamfer.h` 声明 `PRO_CHM_D1_X_D2 = 603`，该 schema �
 
 `offset` 是 `plane_coordinate`：主平面在自身轴上的**全局坐标值，不是沿法向的位移**；`direction`（extrude/revolve）才是相对该法向的 `positive`/`negative`。
 
-| plane | origin | normal | offset 所在的全局轴 |
-| --- | --- | --- | --- |
-| XY | `[0, 0, offset]` | `[0, 0, 1]` | Z |
-| YZ | `[offset, 0, 0]` | `[1, 0, 0]` | X |
-| XZ | `[0, offset, 0]` | `[0, -1, 0]` | Y（negative Y） |
+| plane | origin | normal | u_axis | v_axis | offset 所在的全局轴 |
+| --- | --- | --- | --- | --- | --- |
+| XY | `[0, 0, offset]` | `[0, 0, 1]` | `+X` | `+Y` | Z |
+| YZ | `[offset, 0, 0]` | `[1, 0, 0]` | `+Y` | `+Z` | X |
+| XZ | `[0, offset, 0]` | `[0, -1, 0]` | `+X` | `+Z` | Y（negative Y，`direction="negative"` 向 +Y） |
+
+### 0.41.0 新增几何选择、巡检与可用性约定（BUG-176 / FEAT-078 / FEAT-079 / BUG-177 / BUG-178）
+
+- **整圆棱边选择（BUG-176）**：Creo 将整圆拆分为两段半圆弧。在圆形边选择器（`center_mm` + `radius_mm` + 可选 `axis`）上设 `"full_circle": true` 可确定性选中该圆的最小边 ID（`round`/`chamfer` 会自动沿整圆传播）；若携带 `point_mm` 且点落在两段半圆弧的公共接缝/象限极值点上，同样确定性取最小边 ID（诊断输出 `seam_point_resolved=true`）；仅传 `point_mm` 的单点边选择器同时匹配有限直边与圆弧边。
+- **巡检面积、包围盒与合并计数（FEAT-078）**：`creo_inspect_model` 摘要直接返回 `total_surface_area_mm2`、`bounding_box_mm`（`min`/`max`/`size`，零件与装配均支持）、`merged_counts`（将同轴拆半圆柱面与同圆拆半圆弧边分组计数）与 `counts_convention`；`detail="full", section="surfaces"` 逐面返回 `area_mm2`。
+- **多集圆角/倒角失败定位（FEAT-079）**：多引用 `round`/`chamfer` 再生失败时，原生在安全上限（前 20 集）内逐集探测并清理探针，失败回执输出 `failed_reference_index`、`failed_reference` 与 `round_failure`，事务仍完整回滚。
+- **优弧张角与样条面积（BUG-177）**：草图 `arc` 支持有符号 `sweep_deg`（`0 < |sweep_deg| < 360`）替代 `end_angle` 表达 >180° 优弧；含 `spline` 的闭合草图通过平滑插值采样给出数值 `material_area_mm2`；`coordinates` 模式超差拒绝消息附带 `shifted_sample`。
+- **特征状态依赖展开（BUG-178）**：`feature_state` 支持显式 `"include_dependencies": true`（默认 `false` 不变），自动纳入非系统必需的受影响子特征/伴随基准并记录 `auto_included_dependencies`；默认 `false` 缺依赖拒绝时在回执与消息中给出可直接复制的 `suggested_targets`。
 
 XZ 的法向是 negative Y，因此 `direction="positive"` 会让实体向更小的 Y 增长；切料方向与草图全局位置必须同时核对。字典引用内部的 `offset`（平面筛选条件，见上文）与本表的 `plane_coordinate` 不是同一个字段。
 

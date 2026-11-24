@@ -83,6 +83,170 @@ def body_counts(value: Any) -> dict[str, Any] | None:
     return counts
 
 
+COUNTS_CONVENTION = (
+    "Creo reports full cylindrical faces as 2 half-cylinders and full circular edges as 2 "
+    "semicircular arcs (plus seam edges). merged_counts groups coaxial split cylindrical faces "
+    "and co-circular split circular edges into logical counts."
+)
+
+
+def _vec_norm(v: Any) -> float:
+    if not isinstance(v, (list, tuple)) or len(v) != 3:
+        return 0.0
+    return (float(v[0]) ** 2 + float(v[1]) ** 2 + float(v[2]) ** 2) ** 0.5
+
+
+def _vec_dot(a: list[float], b: list[float]) -> float:
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+
+def _vec_cross(a: list[float], b: list[float]) -> list[float]:
+    return [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+
+
+def _axis_distance(point: list[float], origin: list[float], axis: list[float]) -> float:
+    dx, dy, dz = point[0] - origin[0], point[1] - origin[1], point[2] - origin[2]
+    along = dx * axis[0] + dy * axis[1] + dz * axis[2]
+    px, py, pz = dx - axis[0] * along, dy - axis[1] * along, dz - axis[2] * along
+    return (px * px + py * py + pz * pz) ** 0.5
+
+
+def _merged_topology_counts(state: dict[str, Any]) -> dict[str, Any] | None:
+    """Group coaxial split cylinders and co-circular split arcs into logical counts (FEAT-078)."""
+    surfaces = state.get("surfaces")
+    edges = state.get("edges")
+    if not isinstance(surfaces, list) and not isinstance(edges, list):
+        return state.get("merged_counts") if isinstance(state.get("merged_counts"), dict) else None
+
+    merged_surfaces: int | None = None
+    cyl_groups = 0
+    if isinstance(surfaces, list):
+        # Cylinder type in Creo is PRO_SRF_CYL (36), identified by having axis + radius + origin.
+        non_cyl = 0
+        groups: list[tuple[list[float], list[float], float, list[list[float]]]] = []
+        for srf in surfaces:
+            if not isinstance(srf, dict):
+                continue
+            axis_raw = srf.get("axis")
+            origin_raw = srf.get("origin")
+            radius_raw = srf.get("radius")
+            if (
+                isinstance(axis_raw, list)
+                and len(axis_raw) == 3
+                and isinstance(origin_raw, list)
+                and len(origin_raw) == 3
+                and isinstance(radius_raw, (int, float))
+                and not isinstance(radius_raw, bool)
+            ):
+                norm = _vec_norm(axis_raw)
+                if norm <= 1e-9:
+                    non_cyl += 1
+                    continue
+                axis = [float(x) / norm for x in axis_raw]
+                origin = [float(x) for x in origin_raw]
+                radius = float(radius_raw)
+                bbox = srf.get("bbox")
+                matched = False
+                for g_axis, g_origin, g_radius, g_bboxes in groups:
+                    if abs(_vec_dot(axis, g_axis)) < 0.99996:  # ~0.5 deg
+                        continue
+                    if abs(radius - g_radius) > 1e-4:
+                        continue
+                    if _axis_distance(origin, g_origin, g_axis) > 1e-4:
+                        continue
+                    # Also check axial overlap if bboxes are available so two separate
+                    # coaxial cylinders along the same shaft are not merged.
+                    if (
+                        isinstance(bbox, list)
+                        and len(bbox) == 2
+                        and g_bboxes
+                        and all(isinstance(b, list) and len(b) == 2 for b in g_bboxes)
+                    ):
+                        p0 = _vec_dot([float(x) for x in bbox[0]], g_axis)
+                        p1 = _vec_dot([float(x) for x in bbox[1]], g_axis)
+                        lo, hi = min(p0, p1), max(p0, p1)
+                        overlaps = False
+                        for gb in g_bboxes:
+                            q0 = _vec_dot([float(x) for x in gb[0]], g_axis)
+                            q1 = _vec_dot([float(x) for x in gb[1]], g_axis)
+                            glo, ghi = min(q0, q1), max(q0, q1)
+                            if hi >= glo - 1e-3 and ghi >= lo - 1e-3:
+                                overlaps = True
+                                break
+                        if not overlaps:
+                            continue
+                    if isinstance(bbox, list) and len(bbox) == 2:
+                        g_bboxes.append(bbox)
+                    matched = True
+                    break
+                if not matched:
+                    groups.append(
+                        (
+                            axis,
+                            origin,
+                            radius,
+                            [bbox] if isinstance(bbox, list) and len(bbox) == 2 else [],
+                        )
+                    )
+            else:
+                non_cyl += 1
+        cyl_groups = len(groups)
+        merged_surfaces = non_cyl + cyl_groups
+
+    merged_edges: int | None = None
+    circle_groups = 0
+    if isinstance(edges, list):
+        non_arc = 0
+        c_groups: list[tuple[list[float], list[float], float]] = []
+        for edge in edges:
+            if not isinstance(edge, dict):
+                continue
+            arc = edge.get("arc")
+            if (
+                isinstance(arc, dict)
+                and isinstance(arc.get("origin"), list)
+                and len(arc["origin"]) == 3
+                and isinstance(arc.get("v1"), list)
+                and isinstance(arc.get("v2"), list)
+                and isinstance(arc.get("radius"), (int, float))
+            ):
+                normal = _vec_cross([float(x) for x in arc["v1"]], [float(x) for x in arc["v2"]])
+                norm = _vec_norm(normal)
+                if norm <= 1e-9:
+                    non_arc += 1
+                    continue
+                normal = [x / norm for x in normal]
+                center = [float(x) for x in arc["origin"]]
+                radius = float(arc["radius"])
+                matched = False
+                for g_normal, g_center, g_radius in c_groups:
+                    if abs(_vec_dot(normal, g_normal)) < 0.99996:
+                        continue
+                    if abs(radius - g_radius) > 1e-4:
+                        continue
+                    if max(abs(center[i] - g_center[i]) for i in range(3)) > 1e-4:
+                        continue
+                    matched = True
+                    break
+                if not matched:
+                    c_groups.append((normal, center, radius))
+            else:
+                non_arc += 1
+        circle_groups = len(c_groups)
+        merged_edges = non_arc + circle_groups
+
+    return {
+        "surfaces": merged_surfaces,
+        "edges": merged_edges,
+        "cylindrical_face_groups": cyl_groups,
+        "circular_edge_groups": circle_groups,
+    }
+
+
 def inspection_summary(inspection: Any) -> dict[str, Any]:
     """Summarize an inspection payload without changing its meaning.
 
@@ -102,7 +266,7 @@ def inspection_summary(inspection: Any) -> dict[str, Any]:
             if type(value) is int and value >= 0
             else None
         )
-    return {
+    summary = {
         **{
             key: state[key]
             for key in (
@@ -115,6 +279,8 @@ def inspection_summary(inspection: Any) -> dict[str, Any]:
                 "model_type",
                 "volume_mm3",
                 "volume_query_code",
+                "total_surface_area_mm2",
+                "bounding_box_mm",
                 "inspection_source",
                 "inspection_available",
                 "verified_feature_counts",
@@ -125,6 +291,11 @@ def inspection_summary(inspection: Any) -> dict[str, Any]:
         "body_counts": body_counts(state.get("body_counts")),
         "inspection_available": bool(state) and state.get("inspection_available", True),
     }
+    merged = _merged_topology_counts(state)
+    if merged is not None:
+        summary["merged_counts"] = merged
+        summary["counts_convention"] = COUNTS_CONVENTION
+    return summary
 
 
 def model_summary(model: dict[str, Any]) -> dict[str, Any]:

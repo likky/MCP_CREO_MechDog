@@ -485,6 +485,14 @@ static J verify_coordinate_plan(ProSection section, const J &targets, int origin
                        " v=" + std::to_string(mean_v) +
                        " mm, beyond the rigid translation limit of " +
                        std::to_string(RIGID_TRANSLATION_LIMIT_MM) + " mm; it was not re-solved)";
+        else if (!shift_sample.empty()) {
+            // BUG-177: include top deviating entities/points in the rejection message so
+            // callers immediately see which seam drifted before commit.
+            J top = J::array();
+            for (size_t i = 0; i < shift_sample.size() && i < 3; ++i)
+                top.push_back(shift_sample[i]);
+            message += "; shifted_sample=" + top.dump();
+        }
         throw std::runtime_error(message);
     }
     if (deviation > tolerance_mm)

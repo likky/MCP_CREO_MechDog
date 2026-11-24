@@ -88,6 +88,50 @@ def _cross(a: Point, b: Point, c: Point) -> float:
     return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
 
 
+def _sample_catmull_rom(
+    points: list[Point], closed: bool = False, steps_per_seg: int = 8
+) -> list[Point]:
+    """Sample an interpolating spline through points using centripetal Catmull-Rom (BUG-177)."""
+    n = len(points)
+    if n < 2:
+        return list(points)
+    if n == 2:
+        return list(points)
+    sampled: list[Point] = []
+    seg_count = n if closed else n - 1
+    for i in range(seg_count):
+        if closed:
+            p0 = points[(i - 1) % n]
+            p1 = points[i % n]
+            p2 = points[(i + 1) % n]
+            p3 = points[(i + 2) % n]
+        else:
+            p1 = points[i]
+            p2 = points[i + 1]
+            p0 = points[i - 1] if i > 0 else (2.0 * p1[0] - p2[0], 2.0 * p1[1] - p2[1])
+            p3 = points[i + 2] if i + 2 < n else (2.0 * p2[0] - p1[0], 2.0 * p2[1] - p1[1])
+        if i == 0:
+            sampled.append(p1)
+        for s in range(1, steps_per_seg + 1):
+            t = s / steps_per_seg
+            t2 = t * t
+            t3 = t2 * t
+            x = 0.5 * (
+                (2.0 * p1[0])
+                + (-p0[0] + p2[0]) * t
+                + (2.0 * p0[0] - 5.0 * p1[0] + 4.0 * p2[0] - p3[0]) * t2
+                + (-p0[0] + 3.0 * p1[0] - 3.0 * p2[0] + p3[0]) * t3
+            )
+            y = 0.5 * (
+                (2.0 * p1[1])
+                + (-p0[1] + p2[1]) * t
+                + (2.0 * p0[1] - 5.0 * p1[1] + 4.0 * p2[1] - p3[1]) * t2
+                + (-p0[1] + 3.0 * p1[1] - 3.0 * p2[1] + p3[1]) * t3
+            )
+            sampled.append((x, y))
+    return sampled
+
+
 def _expand(entities: list[dict]) -> tuple[list[Curve], list[str]]:
     curves: list[Curve] = []
     unsupported: list[str] = []
@@ -167,8 +211,23 @@ def _expand(entities: list[dict]) -> tuple[list[Curve], list[str]]:
                         end=points[(index + 1) % len(points)],
                     )
                 )
+        elif kind == "spline":
+            # BUG-177: sample interpolating spline points smoothly so closed
+            # profiles containing splines still yield numerical material_area_mm2.
+            points = [_point(value) for value in entity["points"]]
+            closed = bool(entity.get("closed"))
+            sampled = _sample_catmull_rom(points, closed=closed)
+            for index in range(len(sampled) - 1):
+                curves.append(
+                    Curve(
+                        f"{name}_{index}",
+                        "line",
+                        start=sampled[index],
+                        end=sampled[index + 1],
+                    )
+                )
         else:
-            # Ellipse/spline topology is checked by the native solver; a static
+            # Ellipse/b_spline topology is checked by the native solver; a static
             # verdict here would be a guess.
             unsupported.append(name)
     return curves, unsupported
