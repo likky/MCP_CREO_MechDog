@@ -24,6 +24,8 @@ native/constants.inc
 !docs/validation/feedback-0.10.0-2026-11-01/originals/*.zip
 # DEV-092: user-supplied SDK reference archive, explicitly requested on 2026-11-19.
 !references/creo13.4.0.0-sdk/includes.zip
+# BUG-017: retain the user-supplied Creo 9 reference archive.
+!references/creo9.0.0.0-sdk/includes.zip
 .pytest_cache/
 .ruff_cache/
 open_file/
