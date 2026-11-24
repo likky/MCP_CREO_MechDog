@@ -2601,7 +2601,49 @@ struct SectionEdge {
     int entity;
     int first;
     int second;
+    std::vector<std::array<double, 2>> samples;
 };
+static double polygon_signed_area_2d(const std::vector<std::array<double, 2>> &poly) {
+    if (poly.size() < 3)
+        return 0.0;
+    double sum = 0.0;
+    for (size_t i = 0; i < poly.size(); i++) {
+        const auto &a = poly[i];
+        const auto &b = poly[(i + 1) % poly.size()];
+        sum += a[0] * b[1] - b[0] * a[1];
+    }
+    return 0.5 * sum;
+}
+static bool point_in_polygon_2d(const std::array<double, 2> &p,
+                                const std::vector<std::array<double, 2>> &poly) {
+    if (poly.size() < 3)
+        return false;
+    bool inside = false;
+    for (size_t i = 0, j = poly.size() - 1; i < poly.size(); j = i++) {
+        double xi = poly[i][0], yi = poly[i][1];
+        double xj = poly[j][0], yj = poly[j][1];
+        bool intersect = ((yi > p[1]) != (yj > p[1])) &&
+                         (p[0] < (xj - xi) * (p[1] - yi) / ((yj - yi) + 1e-30) + xi);
+        if (intersect)
+            inside = !inside;
+    }
+    return inside;
+}
+static bool sample_section_entity_2d(ProSection section, int entity, int steps,
+                                     std::vector<std::array<double, 2>> &out) {
+    out.clear();
+    out.reserve((size_t)steps + 1);
+    for (int k = 0; k <= steps; k++) {
+        double t = (double)k / (double)steps;
+        ProVector pt = {0.0, 0.0, 0.0};
+        if (ProSectionEntityEval(section, entity, t, pt, nullptr, nullptr) != PRO_TK_NO_ERROR)
+            return false;
+        if (!std::isfinite(pt[0]) || !std::isfinite(pt[1]))
+            return false;
+        out.push_back({pt[0], pt[1]});
+    }
+    return out.size() >= 2;
+}
 static J section_profile_summary(ProSection section, const char *phase) {
     J summary = {{"available", false}, {"query_code", 0}};
     ProIntlist ids = nullptr;
@@ -2617,6 +2659,8 @@ static J section_profile_summary(ProSection section, const char *phase) {
     std::vector<std::vector<int>> members;
     std::vector<int> node_entity;
     std::vector<SectionEdge> edges;
+    std::vector<std::pair<std::vector<std::array<double, 2>>, double>> closed_geom;
+    bool area_available = true;
     int curves = 0, standalone = 0, construction = 0, references = 0, unsupported = 0, bsplines = 0;
     auto node = [&](const std::array<double, 2> &point, int entity) {
         for (size_t index = 0; index < representatives.size(); index++) {
@@ -2635,9 +2679,18 @@ static J section_profile_summary(ProSection section, const char *phase) {
         node_entity.push_back(entity);
         return (int)representatives.size() - 1;
     };
-    auto edge = [&](int entity, const std::array<double, 2> &a, const std::array<double, 2> &b) {
+    auto edge = [&](int entity, const std::array<double, 2> &a, const std::array<double, 2> &b,
+                    std::vector<std::array<double, 2>> samples) {
         curves++;
-        edges.push_back({entity, node(a, entity), node(b, entity)});
+        if (samples.size() >= 2) {
+            double d_fwd = hypot(samples.front()[0] - a[0], samples.front()[1] - a[1]) +
+                           hypot(samples.back()[0] - b[0], samples.back()[1] - b[1]);
+            double d_rev = hypot(samples.front()[0] - b[0], samples.front()[1] - b[1]) +
+                           hypot(samples.back()[0] - a[0], samples.back()[1] - a[1]);
+            if (d_rev < d_fwd)
+                std::reverse(samples.begin(), samples.end());
+        }
+        edges.push_back({entity, node(a, entity), node(b, entity), std::move(samples)});
     };
     for (int index = 0; index < count; index++) {
         int entity = ids[index];
@@ -2659,26 +2712,61 @@ static J section_profile_summary(ProSection section, const char *phase) {
             continue; // Construction axis for revolve; never a profile boundary.
         if (def->type == PRO_2D_LINE) {
             auto line = (Pro2dLinedef *)def;
-            edge(entity, {line->end1[0], line->end1[1]}, {line->end2[0], line->end2[1]});
+            std::array<double, 2> a = {line->end1[0], line->end1[1]};
+            std::array<double, 2> b = {line->end2[0], line->end2[1]};
+            edge(entity, a, b, {a, b});
         } else if (def->type == PRO_2D_ARC) {
             auto arc = (Pro2dArcdef *)def;
             auto at = [&](double angle) {
                 return std::array<double, 2>{arc->center[0] + arc->radius * cos(angle),
                                              arc->center[1] + arc->radius * sin(angle)};
             };
-            edge(entity, at(arc->start_angle), at(arc->end_angle));
-        } else if (def->type == PRO_2D_CIRCLE || def->type == PRO_2D_ELLIPSE) {
+            std::vector<std::array<double, 2>> samples;
+            if (!sample_section_entity_2d(section, entity, 48, samples))
+                area_available = false;
+            edge(entity, at(arc->start_angle), at(arc->end_angle), std::move(samples));
+        } else if (def->type == PRO_2D_CIRCLE) {
             standalone++;
+            auto circle = (Pro2dCircledef *)def;
+            double r = fabs(circle->radius);
+            std::vector<std::array<double, 2>> poly;
+            poly.reserve(64);
+            const double two_pi = 2.0 * acos(-1.0);
+            for (int k = 0; k < 64; k++) {
+                double ang = two_pi * (double)k / 64.0;
+                poly.push_back(
+                    {circle->center[0] + r * cos(ang), circle->center[1] + r * sin(ang)});
+            }
+            closed_geom.push_back({std::move(poly), acos(-1.0) * r * r});
+        } else if (def->type == PRO_2D_ELLIPSE) {
+            standalone++;
+            auto ellipse = (Pro2dEllipsedef *)def;
+            std::vector<std::array<double, 2>> poly;
+            if (!sample_section_entity_2d(section, entity, 64, poly))
+                area_available = false;
+            else
+                closed_geom.push_back(
+                    {std::move(poly), acos(-1.0) * fabs(ellipse->x_radius * ellipse->y_radius)});
         } else if (def->type == PRO_2D_SPLINE) {
             auto spline = (Pro2dSplinedef *)def;
             if (spline->n_points < 2)
                 unsupported++;
-            else if (spline->tangency_type == PRO_2D_SPLINE_TAN_PERIODIC)
+            else if (spline->tangency_type == PRO_2D_SPLINE_TAN_PERIODIC) {
                 standalone++;
-            else
+                std::vector<std::array<double, 2>> poly;
+                if (!sample_section_entity_2d(section, entity, 64, poly))
+                    area_available = false;
+                else
+                    closed_geom.push_back({poly, fabs(polygon_signed_area_2d(poly))});
+            } else {
+                std::vector<std::array<double, 2>> samples;
+                if (!sample_section_entity_2d(section, entity, 64, samples))
+                    area_available = false;
                 edge(entity, {spline->point_arr[0][0], spline->point_arr[0][1]},
                      {spline->point_arr[spline->n_points - 1][0],
-                      spline->point_arr[spline->n_points - 1][1]});
+                      spline->point_arr[spline->n_points - 1][1]},
+                     std::move(samples));
+            }
         } else if (def->type == PRO_2D_B_SPLINE) {
             bsplines++;
             // FEAT-066: a clamped B-spline interpolates its first and last
@@ -2686,18 +2774,29 @@ static J section_profile_summary(ProSection section, const char *phase) {
             auto bspline = (Pro2dBSplinedef *)def;
             if (bspline->num_c_points < 2 || !bspline->c_pnts)
                 unsupported++;
-            else
+            else {
+                std::vector<std::array<double, 2>> samples;
+                if (!sample_section_entity_2d(section, entity, 64, samples))
+                    area_available = false;
                 edge(entity, {bspline->c_pnts[0][0], bspline->c_pnts[0][1]},
                      {bspline->c_pnts[bspline->num_c_points - 1][0],
-                      bspline->c_pnts[bspline->num_c_points - 1][1]});
+                      bspline->c_pnts[bspline->num_c_points - 1][1]},
+                     std::move(samples));
+            }
         } else if (def->type == PRO_2D_POLYLINE) {
             auto polyline = (Pro2dPolylinedef *)def;
             if (polyline->n_points < 2)
                 unsupported++;
-            else
+            else {
+                std::vector<std::array<double, 2>> samples;
+                samples.reserve((size_t)polyline->n_points);
+                for (int k = 0; k < polyline->n_points; k++)
+                    samples.push_back({polyline->point_arr[k][0], polyline->point_arr[k][1]});
                 edge(entity, {polyline->point_arr[0][0], polyline->point_arr[0][1]},
                      {polyline->point_arr[polyline->n_points - 1][0],
-                      polyline->point_arr[polyline->n_points - 1][1]});
+                      polyline->point_arr[polyline->n_points - 1][1]},
+                     std::move(samples));
+            }
         }
     }
     std::vector<int> degrees(representatives.size(), 0);
@@ -2749,11 +2848,87 @@ static J section_profile_summary(ProSection section, const char *phase) {
             } else if (degrees[current] > 2)
                 branched++;
         }
-        if (all_closed)
+        if (all_closed) {
             closed++;
+            if (area_available && !component_edges.empty()) {
+                std::vector<bool> walked(edges.size(), false);
+                std::vector<std::array<double, 2>> poly;
+                int start_edge = component_edges[0];
+                walked[start_edge] = true;
+                int curr_node = edges[start_edge].second;
+                const auto &s0 = edges[start_edge].samples;
+                if (s0.size() < 2) {
+                    area_available = false;
+                } else {
+                    for (size_t k = 0; k + 1 < s0.size(); k++)
+                        poly.push_back(s0[k]);
+                    size_t walked_count = 1;
+                    while (walked_count < component_edges.size()) {
+                        int next_edge = -1;
+                        bool forward = true;
+                        for (auto neighbour : adjacency[curr_node]) {
+                            if (!walked[neighbour.first]) {
+                                next_edge = neighbour.first;
+                                forward = (edges[next_edge].first == curr_node);
+                                break;
+                            }
+                        }
+                        if (next_edge < 0) {
+                            area_available = false;
+                            break;
+                        }
+                        walked[next_edge] = true;
+                        walked_count++;
+                        const auto &sk = edges[next_edge].samples;
+                        if (sk.size() < 2) {
+                            area_available = false;
+                            break;
+                        }
+                        if (forward) {
+                            for (size_t k = 0; k + 1 < sk.size(); k++)
+                                poly.push_back(sk[k]);
+                            curr_node = edges[next_edge].second;
+                        } else {
+                            for (size_t k = sk.size() - 1; k > 0; k--)
+                                poly.push_back(sk[k]);
+                            curr_node = edges[next_edge].first;
+                        }
+                    }
+                    if (area_available && poly.size() >= 3) {
+                        double area = fabs(polygon_signed_area_2d(poly));
+                        if (std::isfinite(area))
+                            closed_geom.push_back({std::move(poly), area});
+                        else
+                            area_available = false;
+                    }
+                }
+            }
+        }
     }
     contours += standalone;
     closed += standalone;
+    bool has_solved_area = false;
+    double solved_section_area_mm2 = 0.0;
+    if (area_available && unsupported == 0 && !closed_geom.empty()) {
+        double total_area = 0.0;
+        for (size_t i = 0; i < closed_geom.size(); i++) {
+            int depth = 0;
+            const auto &probe = closed_geom[i].first[0];
+            for (size_t j = 0; j < closed_geom.size(); j++) {
+                if (i == j)
+                    continue;
+                if (closed_geom[i].second >= closed_geom[j].second - 1e-9)
+                    continue;
+                if (point_in_polygon_2d(probe, closed_geom[j].first))
+                    depth++;
+            }
+            total_area += closed_geom[i].second * (depth % 2 == 0 ? 1.0 : -1.0);
+        }
+        if (std::isfinite(total_area) && total_area > 0.0) {
+            has_solved_area = true;
+            solved_section_area_mm2 = total_area;
+        }
+    }
     // BUG-049/N03: bounded endpoint-gap diagnostics for the two-stage
     // comparison (input analysis vs solved section). The clustering tolerance
     // above is this diagnostic's own sampling value; it is never claimed to be
@@ -2797,24 +2972,26 @@ static J section_profile_summary(ProSection section, const char *phase) {
         else
             open_samples_truncated = true;
     }
-    summary = {{"available", true},
-               {"entities", curves + standalone},
-               {"curves", curves},
-               {"standalone_curves", standalone},
-               {"contours", contours},
-               {"closed_contours", closed},
-               {"b_spline_entities", bsplines},
-               {"open_ends", open_ends},
-               {"branched_points", branched},
-               {"construction_entities", construction},
-               {"reference_entities", references},
-               {"unsupported_entities", unsupported},
-               {"tolerance_mm", tolerance},
-               {"tolerance_scope", "diagnostic_endpoint_clustering"},
-               {"max_cluster_spread_mm", max_cluster_spread},
-               {"max_endpoint_gap_mm", max_endpoint_gap},
-               {"open_end_samples", open_samples},
-               {"open_end_samples_truncated", open_samples_truncated}};
+    summary = {
+        {"available", true},
+        {"entities", curves + standalone},
+        {"curves", curves},
+        {"standalone_curves", standalone},
+        {"contours", contours},
+        {"closed_contours", closed},
+        {"b_spline_entities", bsplines},
+        {"solved_section_area_mm2", has_solved_area ? J(solved_section_area_mm2) : J(nullptr)},
+        {"open_ends", open_ends},
+        {"branched_points", branched},
+        {"construction_entities", construction},
+        {"reference_entities", references},
+        {"unsupported_entities", unsupported},
+        {"tolerance_mm", tolerance},
+        {"tolerance_scope", "diagnostic_endpoint_clustering"},
+        {"max_cluster_spread_mm", max_cluster_spread},
+        {"max_endpoint_gap_mm", max_endpoint_gap},
+        {"open_end_samples", open_samples},
+        {"open_end_samples_truncated", open_samples_truncated}};
     log("SECTION_PROFILE phase=%s entities=%d curves=%d standalone=%d contours=%d closed=%d "
         "open_ends=%d branched=%d construction=%d references=%d unsupported=%d tolerance_mm=%.9g "
         "cluster_spread_mm=%.9g endpoint_gap_mm=%.9g\n",
@@ -4127,12 +4304,15 @@ static J cut_geometry_context(const J &op, bool revolve, int direction_sign, dou
             throw;
         }
         CK(ProSectionFree(&section));
-        for (const char *key :
-             {"available", "query_code", "b_spline_entities", "closed_contours", "open_ends"})
+        for (const char *key : {"available", "query_code", "b_spline_entities", "closed_contours",
+                                "open_ends", "solved_section_area_mm2"})
             if (summary.contains(key))
                 context["native_section"][key] = summary[key];
-    } else
+        context["solved_section_area_mm2"] = summary.value("solved_section_area_mm2", J(nullptr));
+    } else {
         context["native_section"] = {{"available", false}, {"query_code", copied}};
+        context["solved_section_area_mm2"] = nullptr;
+    }
     return context;
 }
 // The text stays a readable summary; the structured block is the receipt.
@@ -4821,6 +5001,25 @@ static J extrude_or_revolve(const J &op, bool revolve) {
             throw std::runtime_error(cut_no_material_failure(revolve, context));
         }
         details["material_removed_mm3"] = removed;
+        ProSection cut_sec = nullptr;
+        if (ProFeatureSectionCopy(&sketch_f, 0, &cut_sec) == PRO_TK_NO_ERROR) {
+            J sec_summary;
+            try {
+                sec_summary = section_profile_summary(cut_sec, "cut_success");
+            } catch (...) {
+                ProSectionFree(&cut_sec);
+                throw;
+            }
+            CK(ProSectionFree(&cut_sec));
+            details["solved_section_area_mm2"] =
+                sec_summary.value("solved_section_area_mm2", J(nullptr));
+            J compact_sec = J::object();
+            for (const char *key : {"available", "b_spline_entities", "closed_contours",
+                                    "open_ends", "solved_section_area_mm2"})
+                if (sec_summary.contains(key))
+                    compact_sec[key] = sec_summary[key];
+            details["native_section"] = std::move(compact_sec);
+        }
     }
     int active = active_body_count();
     if (active == 1 && !op.value("skip_empty_body_cleanup", false))
@@ -7523,15 +7722,39 @@ static void execute_operation_body(const J &op) {
                 const int width = options.value("width_px", 800);
                 const int height = options.value("height_px", 600);
                 ProMatrix front = {{1, 0, 0, 0}, {0, 0, -1, 0}, {0, 1, 0, 0}, {0, 0, 0, 1}};
+                ProMatrix back = {{-1, 0, 0, 0}, {0, 0, 1, 0}, {0, 1, 0, 0}, {0, 0, 0, 1}};
                 ProMatrix top = {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}};
-                auto matrix = view == "front" ? front
-                              : view == "top" ? top
-                                              : preview_isometric_view;
+                ProMatrix bottom = {{1, 0, 0, 0}, {0, -1, 0, 0}, {0, 0, -1, 0}, {0, 0, 0, 1}};
+                ProMatrix right = {{0, 0, 1, 0}, {1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 0, 1}};
+                ProMatrix left = {{0, 0, -1, 0}, {-1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 0, 1}};
+                ProMatrix custom = {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}};
+                bool use_custom = false;
+                if (options.contains("view_matrix") && options["view_matrix"].is_array() &&
+                    options["view_matrix"].size() == 3) {
+                    use_custom = true;
+                    for (int r = 0; r < 3; r++) {
+                        for (int c = 0; c < 3; c++)
+                            custom[r][c] = options["view_matrix"][r][c].get<double>();
+                        custom[r][3] = 0.0;
+                    }
+                    custom[3][0] = custom[3][1] = custom[3][2] = 0.0;
+                    custom[3][3] = 1.0;
+                }
+                auto matrix = use_custom         ? custom
+                              : view == "front"  ? front
+                              : view == "back"   ? back
+                              : view == "top"    ? top
+                              : view == "bottom" ? bottom
+                              : view == "right"  ? right
+                              : view == "left"   ? left
+                                                 : preview_isometric_view;
                 PreviewStepOutcome preview = capture_preview(
                     board, generic_job + L"\\output\\" + model_name + wide(extension), true,
                     width / 100.0, height / 100.0, PRORASTERTYPE_JPEG, matrix);
                 J preview_json = preview_outcome_json(preview);
-                preview_json["requested_view"] = view;
+                preview_json["requested_view"] = use_custom ? "custom_matrix" : view;
+                if (use_custom)
+                    preview_json["requested_view_matrix"] = options["view_matrix"];
                 preview_json["requested_size_px"] = {width, height};
                 log("PREVIEW=%s\n", preview_json.dump().c_str());
                 export_result["preview_code"] = preview.raster_code;

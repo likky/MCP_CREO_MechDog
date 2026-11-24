@@ -2065,7 +2065,10 @@ def _read_job(
         # so a rejected selection never touches the job (read-only query).
         sections = resolve_sections(sections)
     if detail == "compact" and (section is not None or cursor is not None):
-        raise ValueError("section/cursor require detail=full")
+        raise ValueError(
+            'section/cursor require detail=full (pass detail="full" alongside section/cursor, '
+            'or use sections=[...] with detail="compact")'
+        )
     directory = job_path(job_id)
     if not (directory / "job.json").exists():
         raise ValueError("Unknown job_id")

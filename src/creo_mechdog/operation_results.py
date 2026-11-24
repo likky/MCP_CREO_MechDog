@@ -506,12 +506,46 @@ def _status_core(record: dict[str, Any], *, failed: bool) -> dict[str, Any]:
     if record.get("op") == "sketch":
         for field, scalars in (
             ("profile", ("analysis", "area_status", "closed_contour_count", "material_area_mm2")),
-            ("native_section", ("available", "closed_contours", "open_ends", "b_spline_entities")),
-            ("geometry_deviation", ("available", "max_deviation_mm", "exceeds_warning")),
+            (
+                "native_section",
+                (
+                    "available",
+                    "closed_contours",
+                    "open_ends",
+                    "b_spline_entities",
+                    "solved_section_area_mm2",
+                ),
+            ),
+            (
+                "geometry_deviation",
+                (
+                    "available",
+                    "max_deviation_mm",
+                    "warning_threshold_mm",
+                    "exceeds_warning",
+                    "enforced",
+                    "tolerance_source",
+                ),
+            ),
         ):
             block = record.get(field)
             if isinstance(block, dict):
                 core[field] = {key: block[key] for key in scalars if key in block}
+                if field == "geometry_deviation" and block.get("exceeds_warning") is True:
+                    raw_sample = block.get("sample")
+                    if isinstance(raw_sample, list):
+                        moved_items = [
+                            item
+                            for item in raw_sample
+                            if isinstance(item, dict)
+                            and isinstance(item.get("deviation_mm"), (int, float))
+                            and item["deviation_mm"] > 0
+                        ]
+                        moved_items.sort(key=lambda item: float(item["deviation_mm"]), reverse=True)
+                        if moved_items:
+                            core[field]["displaced_sample"] = moved_items[:5]
+        if isinstance(record.get("b_spline_cut_risk"), dict):
+            core["b_spline_cut_risk"] = record["b_spline_cut_risk"]
     core["detail_truncated"] = True
     return core
 
@@ -876,13 +910,14 @@ def annotate_native_result(
 def annotate_cut_volume_check(
     result: dict[str, Any], inputs: list[dict[str, Any]]
 ) -> dict[str, Any]:
-    """BUG-174: compare blind cut material_removed_mm3 against analytic prism volume.
+    """BUG-174/BUG-183: compare finite cut removal against analytic or solved prism volume.
 
     Advisory diagnostic only (never fails or rolls back a partial-overlap cut).
-    Flags ``low_removal_warning=true`` when a blind cut removes less than 5% of
-    ``profile.material_area_mm2 * effective_depth_mm``, which typically means
-    the cut direction points into empty space or the profile sits mostly outside
-    the target body.
+    Flags ``low_removal_warning=true`` when a blind or symmetric cut removes less
+    than 5% of ``section_area_mm2 * effective_depth_mm`` (using analytic
+    ``profile.material_area_mm2`` or native ``solved_section_area_mm2`` fallback
+    for B-spline sections). Also annotates closed B-spline sketches with an
+    advisory ``b_spline_cut_risk`` receipt.
     """
     operations = result.get("operations")
     if not isinstance(operations, list) or not isinstance(inputs, list):
@@ -890,6 +925,8 @@ def annotate_cut_volume_check(
     from creo_mechdog import profile_checks
 
     sketch_areas: dict[str, float] = {}
+    sketch_solved_areas: dict[str, float] = {}
+    sketch_bsplines: dict[str, int] = {}
     for record in operations:
         if not isinstance(record, dict) or record.get("op") != "sketch":
             continue
@@ -898,6 +935,33 @@ def annotate_cut_volume_check(
         area = profile.get("material_area_mm2") if isinstance(profile, dict) else None
         if isinstance(label, str) and label and type(area) in (int, float) and area > 0:
             sketch_areas[label] = float(area)
+        native_sec = record.get("native_section")
+        if isinstance(native_sec, dict):
+            solved_area = _finite_number(native_sec.get("solved_section_area_mm2"))
+            if isinstance(label, str) and label and solved_area is not None and solved_area > 0:
+                sketch_solved_areas[label] = solved_area
+            bspline_count = native_sec.get("b_spline_entities")
+            closed_count = native_sec.get("closed_contours")
+            if isinstance(bspline_count, int) and bspline_count > 0:
+                if isinstance(label, str) and label:
+                    sketch_bsplines[label] = bspline_count
+                if isinstance(closed_count, int) and closed_count > 0:
+                    record.setdefault(
+                        "b_spline_cut_risk",
+                        {
+                            "risk": "creo_bspline_cut_zero_or_undercut",
+                            "b_spline_entities": bspline_count,
+                            "closed_contours": closed_count,
+                            "advisory": True,
+                            "advice": (
+                                "Closed sketch contains B-spline entities. Creo can report zero "
+                                "removal or silent under-cut when extrude mode='cut' consumes a "
+                                "closed B-spline section; verify cut_volume_check and "
+                                "solved_section_area_mm2 after cutting, or create the B-spline "
+                                "with approximation_segments if an approximation is acceptable."
+                            ),
+                        },
+                    )
     aliases = result.get("aliases")
     if isinstance(aliases, dict):
         for label, entry in aliases.items():
@@ -933,33 +997,65 @@ def annotate_cut_volume_check(
             if isinstance(depth_block, dict)
             else _finite_number(source.get("depth"))
         )
-        if depth_type != "blind" or depth is None or depth <= 0:
+        if depth_type not in ("blind", "symmetric") or depth is None or depth <= 0:
             continue
         sketch_ref = source.get("sketch")
-        area = sketch_areas.get(sketch_ref) if isinstance(sketch_ref, str) else None
-        if area is None or area <= 0:
+        analytic_area = sketch_areas.get(sketch_ref) if isinstance(sketch_ref, str) else None
+        rec_native_sec = record.get("native_section")
+        solved_area = _finite_number(record.get("solved_section_area_mm2"))
+        if solved_area is None and isinstance(rec_native_sec, dict):
+            solved_area = _finite_number(rec_native_sec.get("solved_section_area_mm2"))
+        if solved_area is None and isinstance(sketch_ref, str):
+            solved_area = sketch_solved_areas.get(sketch_ref)
+        if analytic_area is not None and analytic_area > 0:
+            area = analytic_area
+            area_source = "analytic_profile"
+        elif solved_area is not None and solved_area > 0:
+            area = solved_area
+            area_source = "native_solved_section"
+        else:
             continue
         expected = area * depth
         if expected <= 0 or not math.isfinite(expected):
             continue
         ratio = removed / expected
         low = ratio < 0.05
-        record["cut_volume_check"] = {
+        bsplines = 0
+        if isinstance(rec_native_sec, dict) and isinstance(
+            rec_native_sec.get("b_spline_entities"), int
+        ):
+            bsplines = rec_native_sec["b_spline_entities"]
+        elif isinstance(sketch_ref, str):
+            bsplines = sketch_bsplines.get(sketch_ref, 0)
+        note = (
+            "Cut removed less than 5% of the expected prism volume "
+            "(profile_area_mm2 * effective_depth_mm); verify cut direction and "
+            "whether the sketch profile overlaps the solid body"
+            if low
+            else "Cut removal ratio is within normal partial/full intersection range"
+        )
+        if bsplines > 0:
+            note += (
+                "; section contains B-spline entities (Creo can silently under-cut closed "
+                "B-spline profiles — compare solved_section_area_mm2 against actual_removed_mm3 / "
+                "effective_depth_mm or use approximation_segments)"
+            )
+        check_block: dict[str, Any] = {
             "profile_area_mm2": area,
+            "area_source": area_source,
+            "solved_section_area_mm2": solved_area,
             "effective_depth_mm": depth,
             "expected_prism_volume_mm3": expected,
             "actual_removed_mm3": removed,
             "removal_ratio": ratio,
             "low_removal_warning": low,
             "warning_threshold_ratio": 0.05,
-            "note": (
-                "Blind cut removed less than 5% of the analytic prism volume "
-                "(profile_area_mm2 * effective_depth_mm); verify cut direction and "
-                "whether the sketch profile overlaps the solid body"
-                if low
-                else "Blind cut removal ratio is within normal partial/full intersection range"
-            ),
+            "note": note,
         }
+        if bsplines > 0:
+            check_block["b_spline_entities"] = bsplines
+            check_block["b_spline_cut_risk"] = True
+        record["cut_volume_check"] = check_block
     return result
 
 

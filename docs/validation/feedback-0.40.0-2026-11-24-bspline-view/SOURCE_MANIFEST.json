@@ -1,0 +1,13 @@
+{
+  "batch": "feedback-0.40.0-2026-11-24-bspline-view",
+  "archived_date": "2026-11-24",
+  "source_version": "0.40.0",
+  "files": [
+    {
+      "original_filename": "2026-11-24-CREO-0.40.0-B样条除料零除料与无剖面正视图.md",
+      "archived_path": "originals/bspline-cut-zero-removal-and-section-view.md",
+      "bytes": 9950,
+      "sha256": "ca5008894c14c4e7311cc8a855b1d0f4065fc200bb6c7dc002a3ee2da7ac862b"
+    }
+  ]
+}

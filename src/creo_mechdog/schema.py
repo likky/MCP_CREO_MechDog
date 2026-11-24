@@ -930,21 +930,26 @@ class ExtrudeScope(StrictModel):
 
 
 class SketchRegionSelector(StrictModel):
-    """P1/FEAT-069: one closed region of an earlier sketch, by boundary signature.
+    """P1/FEAT-069 + FEAT-083: one closed region of an earlier sketch.
 
-    The plan adapter resolves the signature to exactly one loop of the named
-    sketch, copies that loop's entities unchanged into a derived sketch, and
-    points the extrude at it. ``frame`` is the sketch's local-to-world basis
-    (``origin + u*xdir + v*ydir``); it may be omitted for a named YZ plane.
+    Selects one closed loop by ``signature_yz_mm`` (boundary endpoint pairs), by
+    ``interior_point_yz_mm`` (a 2D ``[y, z]`` point inside the desired loop,
+    evaluated against exact sampled lines, arcs and B-splines), or by both
+    together (using the interior point to disambiguate loops sharing endpoints).
+    ``frame`` is the sketch's local-to-world basis (``origin + u*xdir + v*ydir``);
+    it may be omitted for a named YZ plane.
     """
 
-    signature_yz_mm: str
+    signature_yz_mm: str | None = None
+    interior_point_yz_mm: list[float] | None = None
     frame: dict[str, Any] | None = None
     tolerance_mm: Annotated[float, Field(gt=0, le=10)] | None = None
 
     @field_validator("signature_yz_mm")
     @classmethod
     def signature_parses(cls, value: Any) -> Any:
+        if value is None:
+            return None
         if not isinstance(value, str):
             raise ValueError("region.signature_yz_mm must be a string")
         try:
@@ -952,6 +957,31 @@ class SketchRegionSelector(StrictModel):
         except ValueError as error:
             raise ValueError(f"region.signature_yz_mm is not usable: {error}") from None
         return value
+
+    @field_validator("interior_point_yz_mm", mode="before")
+    @classmethod
+    def interior_point_valid(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if not isinstance(value, (list, tuple)) or len(value) != 2:
+            raise ValueError("region.interior_point_yz_mm must be [y, z]")
+        parsed: list[float] = []
+        for idx, item in enumerate(value):
+            if isinstance(item, bool) or not isinstance(item, (int, float)):
+                raise ValueError(f"region.interior_point_yz_mm[{idx}] must be a finite number")
+            num = float(item)
+            if not math.isfinite(num):
+                raise ValueError(f"region.interior_point_yz_mm[{idx}] must be finite")
+            parsed.append(num)
+        return parsed
+
+    @model_validator(mode="after")
+    def require_selector_mode(self):
+        if self.signature_yz_mm is None and self.interior_point_yz_mm is None:
+            raise ValueError(
+                "region requires at least one of signature_yz_mm or interior_point_yz_mm"
+            )
+        return self
 
 
 class ExtrudeOp(StrictModel):
@@ -2793,10 +2823,57 @@ class StlOptions(StrictModel):
     angle_control: Annotated[float, BeforeValidator(_stl_angle_control)] = 0.1
 
 
+def _validate_view_matrix(value: Any) -> list[list[float]] | None:
+    if value is None:
+        return None
+    if not isinstance(value, (list, tuple)) or len(value) != 3:
+        raise ValueError("jpeg_options.view_matrix must be a 3x3 rotation matrix")
+    rows: list[list[float]] = []
+    for r_idx, row in enumerate(value):
+        if not isinstance(row, (list, tuple)) or len(row) != 3:
+            raise ValueError(f"jpeg_options.view_matrix[{r_idx}] must have 3 finite numbers")
+        parsed_row: list[float] = []
+        for c_idx, item in enumerate(row):
+            if isinstance(item, bool) or not isinstance(item, (int, float)):
+                raise ValueError(
+                    f"jpeg_options.view_matrix[{r_idx}][{c_idx}] must be a finite number"
+                )
+            num = float(item)
+            if not math.isfinite(num):
+                raise ValueError(f"jpeg_options.view_matrix[{r_idx}][{c_idx}] must be finite")
+            parsed_row.append(num)
+        rows.append(parsed_row)
+    for i in range(3):
+        for j in range(3):
+            dot_val = sum(rows[i][k] * rows[j][k] for k in range(3))
+            target = 1.0 if i == j else 0.0
+            if abs(dot_val - target) > 1e-4:
+                raise ValueError(
+                    "jpeg_options.view_matrix must be orthonormal (M * M^T = I within 1e-4)"
+                )
+    det = (
+        rows[0][0] * (rows[1][1] * rows[2][2] - rows[1][2] * rows[2][1])
+        - rows[0][1] * (rows[1][0] * rows[2][2] - rows[1][2] * rows[2][0])
+        + rows[0][2] * (rows[1][0] * rows[2][1] - rows[1][1] * rows[2][0])
+    )
+    if abs(det - 1.0) > 1e-4:
+        raise ValueError(
+            f"jpeg_options.view_matrix must be right-handed (det=+1 within 1e-4, got {det:.6f})"
+        )
+    return rows
+
+
 class JpegOptions(StrictModel):
-    view: Literal["isometric", "front", "top"] = "isometric"
+    view: Literal["isometric", "front", "back", "top", "bottom", "left", "right"] = "isometric"
+    view_matrix: Annotated[list[list[float]] | None, BeforeValidator(_validate_view_matrix)] = None
     width_px: Annotated[int, Field(strict=True, ge=200, le=2400)] = 800
     height_px: Annotated[int, Field(strict=True, ge=200, le=2400)] = 600
+
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        data = super().model_dump(**kwargs)
+        if data.get("view_matrix") is None:
+            data.pop("view_matrix", None)
+        return data
 
 
 class ExportOp(StrictModel):

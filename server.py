@@ -453,11 +453,43 @@ async def creo_create_plate(
 @mcp.tool(annotations=READ)
 async def creo_get_job(
     job_id: str,
-    detail: Literal["compact", "full"] = "full",
-    section: str | None = None,
+    detail: Annotated[
+        Literal["compact", "full"],
+        Field(
+            description=(
+                'Response detail level: "full" (default) supports section/limit/cursor pagination; '
+                '"compact" stays within 32 KiB and supports sections block filtering.'
+            )
+        ),
+    ] = "full",
+    section: Annotated[
+        str | None,
+        Field(
+            description=(
+                'Full-detail pagination section ("operations_input", "operations_result", or '
+                '"result_entries"). Requires detail="full" (rejected when detail="compact").'
+            )
+        ),
+    ] = None,
     limit: int = Field(default=50, ge=1, le=200),
-    cursor: str | None = None,
-    sections: list[str] | None = None,
+    cursor: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Opaque pagination cursor from a previous full-detail page. "
+                'Requires detail="full" (rejected when detail="compact").'
+            )
+        ),
+    ] = None,
+    sections: Annotated[
+        list[str] | None,
+        Field(
+            description=(
+                'Compact-only list of result block names to retain (e.g. ["operations", "preview"]). '
+                'Requires detail="compact" (rejected when detail="full").'
+            )
+        ),
+    ] = None,
     wait_seconds: Annotated[
         int,
         Field(
@@ -1160,7 +1192,16 @@ async def creo_update_sketch_geometry(
     sketch: str,
     entities: list[Entity],
     dimensioning: Literal["auto", "autodim", "coordinates"] = "auto",
-    geometry_tolerance_mm: float | None = None,
+    geometry_tolerance_mm: Annotated[
+        float | None,
+        Field(
+            description=(
+                "Optional hard post-solve deviation cap in mm. Enforced as a rejection gate in "
+                "BOTH coordinates and autodim modes (including autodim fallback); omitting it "
+                "keeps coordinates=1e-5 mm rejection and autodim=1e-3 mm warning-only."
+            )
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Replace native sketch geometry in place, preserving sketch feature ID. Expanded entity names/types must match; centerline entities are supported for revolve sketches. Clears old named dimensions/constraints. Arc and ellipse editing are experimental and need local validation. On any valid sketch plane, "auto" and "autodim" edits of supported entity types use exact coordinate dimensions (solver info reports requested vs used); "autodim" alone stays on its native route, where a failed edit rolls back cleanly.
     geometry_deviation reports the post-solve fidelity at both verification points (SectionRegenerate and CompleteFeature): unavailable values are null with a reason, never zero. Omitting geometry_tolerance_mm keeps the mode default (coordinates rejects above 1e-5 mm, autodim warns above 1e-3 mm); an explicit positive value enforces that cap and rejects unmeasurable geometry. sketch_shifted states the post-solve movement at the top level (detected, rigid, translation_mm, max_point_mm, bounded sample); geometry_tolerance_mm is an acceptance threshold, not a solve precision, so accepted_by_request=true means an explicit tolerance let a moved sketch through and the solve was not exact. The solver receipt reports requested/used mode, selection_reason and individual solve/autodimension/regenerate codes; an initial solve error may recover, so use completed and the final operation outcome. Missing historical stages remain null."""
@@ -1341,7 +1382,16 @@ async def creo_create_sketch(
     dimensions: list[SketchDimension] | None = None,
     constraints: list[SketchConstraint] | None = None,
     dimensioning: Literal["auto", "autodim", "coordinates"] = "auto",
-    geometry_tolerance_mm: float | None = None,
+    geometry_tolerance_mm: Annotated[
+        float | None,
+        Field(
+            description=(
+                "Optional hard post-solve deviation cap in mm. Enforced as a rejection gate in "
+                "BOTH coordinates and autodim modes (including autodim fallback); omitting it "
+                "keeps coordinates=1e-5 mm rejection and autodim=1e-3 mm warning-only."
+            )
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Create an independent native dimensioned sketch of arbitrary supported entities.
 
@@ -2917,8 +2967,13 @@ async def creo_export_model(
     jpeg_options: Annotated[
         dict[str, Any] | None,
         Field(
-            description="Part and assembly JPEG only: view is isometric, front or top. "
-            "width_px and height_px each accept 200–2400 pixels."
+            description=(
+                "Part and assembly JPEG only: view is isometric, front, back, top, bottom, "
+                "left, or right (right views the YZ plane along -X). Optional view_matrix accepts "
+                "a 3x3 right-handed orthonormal rotation matrix (row-major, v_screen = v_model * M) "
+                "for arbitrary datum-plane or custom views. width_px and height_px each accept "
+                "200–2400 pixels."
+            )
         ),
     ] = None,
 ) -> dict[str, Any]:
