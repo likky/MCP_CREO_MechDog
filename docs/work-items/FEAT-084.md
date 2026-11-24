@@ -22,3 +22,7 @@ Arm2 毛坯使用 Y=0 支撑、`origin=[10,0,12]`、`u_axis=[0,0,-1]`。实际 v
 独立验收依据为反馈中的毛坯目标及宽度 20 mm 乘 L 形截面面积 42.5093 mm²。当前验收覆盖法兰毛坯，报告中的三个孔、四个圆角、展开型式和总装未测。
 
 环境为 Windows x64 / Python 3.12.10 / Creo 10.0.0.0（release numeric 42）和匹配 SDK。命令 `python bridge.py build`、`python build/bug186/acceptance.py`。受测基点 `1e2cea90d3337a6401760bf50b7b07a05944f7f5`，dirty=true，源码指纹 `4d143313ef2a134b418b4907b61fc94b93e3829431732a78245f73f60adf6dfe`。本机 `build/bug186/acceptance.json` SHA256 为 `8e83f42abc9307958a1264152067f939178437e4510baf7b03aea9b989ed26ad`。Creo 9/12 与其他取向待验。
+
+## 2026-11-24 新反馈补充
+
+0.43.2 报告 §2.2 的 base flange 场景同时涉及宽度方向与第二腿朝向；`expected_width_direction_world` 仍只是断言不是旋转控制（BUG-129）。附着与第二腿方向复核见 [FEAT-089](FEAT-089.md)。来源见 [DEV-101](DEV-101.md)。

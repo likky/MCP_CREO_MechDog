@@ -368,3 +368,7 @@ DEV-071补齐aliases-only的miter_cuts/adjacent_bend_ends_allowed到公开操作
 **仍未交付（本轮只记录）**：连续多边折边（非矩形链、切角量/角部间隙未定标）、corner relief、百叶/成形/hem/jog、格栅孔（只能 cut）、凸台/铰链/门板耳、Creo 9/10 实机、非 mm 与其他板厚/几何、WorkBuddy。
 
 验证：`bridge.py build` 退出 0；定向单测与 `ruff check` / `ruff format --check` 仅覆盖本轮改动文件；未新增 C++ 文件。
+
+## 2026-11-24 新反馈补充
+
+0.43.2 报告 §3.3：负 body ID 仍被布尔路径拒绝；切到正 ID 的 conversion 模板后 Creo 10 `boolean_bodies(union)` 仍 `ProFeatureWithoptionsCreate=-1` 并回滚。本卡只做 SDK 可行性与口径复核，不承诺实现。来源见 [DEV-101](DEV-101.md)。

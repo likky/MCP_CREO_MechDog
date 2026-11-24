@@ -122,6 +122,14 @@ static J coordinate_dimensions(ProSection section, int origin,
         Pro2dEntdef *def = nullptr;
         CK(ProSectionEntityGet(section, item.second, &def));
         J row = {{"name", item.first}, {"id", item.second}, {"type", (int)def->type}};
+        // BUG-188: construction geometry is part of the solved section but not of
+        // the profile. Keep it in the snapshot and mark it so callers can tell it
+        // apart from profile curves; it still receives the same point dimensions.
+        ProBoolean is_construction = PRO_B_FALSE;
+        if (ProSectionEntityIsConstruction(section, item.second, &is_construction) ==
+                PRO_TK_NO_ERROR &&
+            is_construction == PRO_B_TRUE)
+            row["construction"] = true;
         if (def->type == PRO_2D_LINE || def->type == PRO_2D_CENTER_LINE) {
             auto line = (Pro2dLinedef *)def;
             row["points"] = {
@@ -129,7 +137,7 @@ static J coordinate_dimensions(ProSection section, int origin,
                  {"key", "start"},
                  {"xy", {line->end1[0], line->end1[1]}}},
                 {{"sense", PRO_ENT_END}, {"key", "end"}, {"xy", {line->end2[0], line->end2[1]}}}};
-        } else if (def->type == PRO_2D_CIRCLE) {
+        } else if (def->type == PRO_2D_CIRCLE || def->type == PRO_2D_CONSTR_CIRCLE) {
             auto circle = (Pro2dCircledef *)def;
             row["points"] = {{{"sense", PRO_ENT_CENTER},
                               {"key", "center"},
@@ -400,7 +408,7 @@ static J verify_coordinate_plan(ProSection section, const J &targets, int origin
         }
         for (auto point : row["points"]) {
             double *actual = nullptr;
-            if (def->type == PRO_2D_CIRCLE)
+            if (def->type == PRO_2D_CIRCLE || def->type == PRO_2D_CONSTR_CIRCLE)
                 actual = ((Pro2dCircledef *)def)->center;
             else if (def->type == PRO_2D_ARC)
                 actual = ((Pro2dArcdef *)def)->center;
@@ -571,6 +579,8 @@ static const char *entity_kind_name(int type) {
         return "centerline";
     case PRO_2D_CIRCLE:
         return "circle";
+    case PRO_2D_CONSTR_CIRCLE:
+        return "construction_circle";
     case PRO_2D_ARC:
         return "arc";
     case PRO_2D_ELLIPSE:
@@ -595,6 +605,14 @@ static J section_target_snapshot(ProSection section, const std::map<std::string,
         Pro2dEntdef *def = nullptr;
         CK(ProSectionEntityGet(section, item.second, &def));
         J row = {{"name", item.first}, {"id", item.second}, {"type", (int)def->type}};
+        // BUG-188: construction geometry is part of the solved section but not of
+        // the profile. Keep it in the snapshot and mark it so callers can tell it
+        // apart from profile curves; it still receives the same point dimensions.
+        ProBoolean is_construction = PRO_B_FALSE;
+        if (ProSectionEntityIsConstruction(section, item.second, &is_construction) ==
+                PRO_TK_NO_ERROR &&
+            is_construction == PRO_B_TRUE)
+            row["construction"] = true;
         if (def->type == PRO_2D_LINE || def->type == PRO_2D_CENTER_LINE) {
             auto line = (Pro2dLinedef *)def;
             row["points"] = {
@@ -602,7 +620,7 @@ static J section_target_snapshot(ProSection section, const std::map<std::string,
                  {"key", "start"},
                  {"xy", {line->end1[0], line->end1[1]}}},
                 {{"sense", PRO_ENT_END}, {"key", "end"}, {"xy", {line->end2[0], line->end2[1]}}}};
-        } else if (def->type == PRO_2D_CIRCLE) {
+        } else if (def->type == PRO_2D_CIRCLE || def->type == PRO_2D_CONSTR_CIRCLE) {
             auto circle = (Pro2dCircledef *)def;
             row["points"] = {{{"sense", PRO_ENT_CENTER},
                               {"key", "center"},
@@ -778,7 +796,7 @@ static J geometry_deviation_stage(ProSection section, const J &targets) {
                 moved = std::max({moved, fabs(actual[0] - rx), fabs(actual[1] - ry)});
             }
             measurement = "endpoints";
-        } else if (type == PRO_2D_CIRCLE) {
+        } else if (type == PRO_2D_CIRCLE || type == PRO_2D_CONSTR_CIRCLE) {
             auto circle = (Pro2dCircledef *)def;
             const double rx = row["points"][0]["xy"][0].get<double>();
             const double ry = row["points"][0]["xy"][1].get<double>();
