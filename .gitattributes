@@ -113,6 +113,8 @@ docs/validation/feedback-0.18.4-surface-2026-11-08/originals/** -text
 docs/validation/feedback-0.35.0-2026-11-21/originals/** -text
 docs/validation/feedback-0.43.0-2026-11-24/originals/** -text
 docs/validation/feedback-0.43.0-2026-11-24-arm/originals/** -text
+# DEV-101: preserve the four 0.43.1/0.43.2 feedback originals byte for byte.
+docs/validation/feedback-0.43.1-2026-11-24/originals/** -text
 
 # DEV-092: user-requested PTC SDK references stay byte-exact and out of source archives.
 /references/creo13.4.0.0-sdk export-ignore
