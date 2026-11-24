@@ -31,7 +31,7 @@
 
 ## 单测证据
 
-发布候选在 0.42.0 工作树上运行 `tools/dev_check.py --work-item BUG-179`，全量 unittest 待运行并回填。
+发布候选在 0.42.0 工作树上运行 `tools/test_unit.py`，全量 unittest 通过，0 失败、0 错误。下列数字取自本轮 `build/unit_test_report.json`，该报告不随源码包分发。
 
 ## 未测范围
 
@@ -59,4 +59,4 @@
 
 ## 远端核对
 
-发布后执行，当前未验证。
+发布后执行，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.42.0) 与[发布后核对](../development/RELEASE-POSTCHECK-2026-11-07.md)。
