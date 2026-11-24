@@ -463,12 +463,12 @@ Creo 10 的部分闭合 B 样条轮廓会生成切除特征但量测去料为零
 
 ## 零匹配边选择器的诊断范围（DEV-098）
 
-`{"kind":"geometry_selector","target":"edge",...}` 零匹配或多匹配都拒绝。失败回执给出 `candidate_count`、`matched_ids`、`tolerance_mm`；**零匹配**时 `geometry_selector_diagnostic.nearest_edges` 另列最多 5 条最近的可匹配边，按误差再按 id 升序：
+`{"kind":"geometry_selector","target":"edge",...}` 零匹配时拒绝，多匹配按默认要求或显式消歧规则处理。失败回执给出 `candidate_count`、`matched_ids`、`tolerance_mm`；**零匹配**时 `geometry_selector_diagnostic.nearest_edges` 另列最多 5 条最近的可匹配边，按误差再按 id 升序：
 
 - 端点/点形式：`id`、`endpoints_mm`（模型坐标换算后的毫米端点）、`error_mm`；端点形式另有 `endpoint_errors_mm`，带 `point_mm` 时另有 `point_error_mm`。
 - 圆形式：`id`、`center_mm`、`radius_mm`、`radius_error_mm`、`center_error_mm`、`error_mm`；带 `axis` 过滤时另有 `axis_error_deg`。
 
-最近候选**只是诊断**：匹配器不会自动选中，严格匹配与唯一性判定不变；坐标与 ID 随模型重建变化，重试前应重新 `creo_inspect_model(section="edges")` 或改用当前巡检的 `{kind:"edge",id:N}`。多匹配时仍只给 `matched_ids`，不列最近候选。`sheetmetal_flange` 旧 `edge_geometry` 路径继续使用 `edge_geometry_diagnostic`（字段见上文 DEV-074 增量）。
+零命中时的 `nearest_edges` 只供诊断。模型空间边选择器可传 `on_face:{"kind":"surface","id":N}`，使用本次巡检的面 ID，只保留与该面相邻的边。仅含单点锚 `point_mm` 的模型空间边选择器可显式传 `ambiguity:"nearest"`，按点到有限直线或圆弧的距离选取容差内的唯一最近边。第一与第二近的差不超过 1e-6 mm 则拒绝。成功回执 `geometry_selector_resolution` 给出选中的边及消歧信息，失败回执保留 `matched_ids`。特征重建可替换边或面；重新巡检当前几何，再提交当前面 ID 或边 ID。`sheetmetal_flange` 旧 `edge_geometry` 路径继续使用 `edge_geometry_diagnostic`（字段见上文 DEV-074 增量）。
 
 `{"kind":"geometry_selector","target":"surface",...}` 零匹配时同样给出 `geometry_selector_diagnostic.nearest_surfaces`（最多 5 条，按误差再按 id 升序，只列可命名的 planar/cylindrical 面）：每条含 `id`、`type`（`plane`/`cylinder`）、`origin_mm`、`normal` 或 `axis`、`error_mm`；带 `axis` 过滤时另有 `axis_error_deg`，带 `radius_mm` 时另有 `radius_mm`/`radius_error_mm`，带 `center_mm` 时另有 `center_axis_distance_mm`，带 `points_mm` 时另有 `points_offset_mm`。`radius_mm`/`center_mm` 只适用于圆柱面，方向正确但类型不符的面仍只出现在 `type_rejected_ids`。该列表同样是诊断，不会自动选中。
 

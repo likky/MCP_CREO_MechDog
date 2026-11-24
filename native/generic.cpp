@@ -739,13 +739,16 @@ static ProError inspect_edge(ProEdge edge, ProError status, ProAppData) {
         }
         ProGeomitemdataFree(&data);
     }
-    ProEdge ea, eb;
-    ProSurface sa, sb;
-    if (!ProEdgeNeighborsGet(edge, &ea, &eb, &sa, &sb)) {
-        int a, b;
-        ProSurfaceIdGet(sa, &a);
-        ProSurfaceIdGet(sb, &b);
-        item["adjacent_surfaces"] = J::array({a, b});
+    ProEdge ea = nullptr, eb = nullptr;
+    ProSurface sa = nullptr, sb = nullptr;
+    if (ProEdgeNeighborsGet(edge, &ea, &eb, &sa, &sb) == PRO_TK_NO_ERROR) {
+        J adjacent = J::array();
+        for (ProSurface surface : {sa, sb}) {
+            int face_id = -1;
+            if (surface && ProSurfaceIdGet(surface, &face_id) == PRO_TK_NO_ERROR && face_id >= 0)
+                adjacent.push_back(face_id);
+        }
+        item["adjacent_surfaces"] = std::move(adjacent);
     }
     // P08/FEAT-014 candidate-edge discovery: one read-only contour query per
     // edge on sheetmetal parts. PRO_TK_NO_ERROR means the edge lies on a
