@@ -6,7 +6,19 @@
 
 - 交付 [BUG-175](../work-items/BUG-175.md) 启动单测补修。环境为 Windows x64 / Python 3.12.10。[版本说明](../RELEASE_NOTES_0.43.2.md) · [发布记录](../validation/RELEASE-0.43.2.md)
 - 附件计划为 `MCP_CREO_MechDog-0.43.2-source.zip`、`MCP_CREO_MechDog-0.43.2-source.zip.sha256`、`MCP_CREO_MechDog-0.43.2-seed-library.zip` 和 `MCP_CREO_MechDog-0.43.2-seed-library.zip.sha256`。种子包 SHA256 为 `fece0e88c0c55828f9776944ad2196215e43077fcd1b3c7e62103e9d16891c52`。两份同名 sidecar 分别记录对应 ZIP 的实际摘要。
-- 远端核对发布后执行，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.43.2)
+- 对实际发布源码 ZIP 解包验收。独立 Python 3.12.10 环境安装 `requirements-dev.txt`，以 editable 模式从解包副本加载，`pip check` 和离线 MCP 契约通过。解包本地配置关闭 Creo 自动启动并接入 x64 MSVC 供独立 C++ 单测使用，未加载 Creo。解包 `tools/test_unit.py` 执行 4,495 项，0 失败、0 错误、10 跳过，`run_id=acfc1953490643b9b350333c30590b8f`，`git_status=unavailable`，受测源码指纹 `39dc811996cc648bb0b5bb342f777527ebc8b40b7dc6858b50f37ee36f3efa10`。BUG-175 专项重复 60/60，注入 1.1 秒延迟后重复 3/3。
+- 实际核对时间为 `2026-11-24T10:46:13+00:00`（UTC）及 `2026-11-24T18:46:13+08:00`（北京时间）。Release ID `456623289`，创建于 `2026-11-24T10:44:58Z`，正式发布于 `2026-11-24T10:45:31Z`，最新正式版。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.43.2)
+- 本地与远端附注标签 `v0.43.2` 的对象为 `7193687b1cb8738399ac93a4a370fb2f00480755`，指向 `a6769c3cc2507e9bb69fc26651d45050e2d2d27a`。核对时远端 `main` 同指该发布提交。发布后本段回填到主干，标签与附件维持冻结。
+- `python tools/check_release_assets.py --tag v0.43.2` 退出码 0。通过 `gh release download` 另行下载四件附件，独立实算 SHA256，与本地上传文件和 GitHub API digest 一致。两份 sidecar 的内容均为 ASCII + LF，文件名及 ZIP 摘要与对应下载实算、API digest 和 Release 正文一致。
+
+| 附件 | 字节数 | 下载后实算 SHA256 | GitHub API digest |
+| --- | ---: | --- | --- |
+| `MCP_CREO_MechDog-0.43.2-source.zip` | 12,144,663 | `08c33a7ea98538cc1e5fcd25d99494e97bff40d3c400ad142c2c38ca5fb0d4b0` | `sha256:08c33a7ea98538cc1e5fcd25d99494e97bff40d3c400ad142c2c38ca5fb0d4b0` |
+| `MCP_CREO_MechDog-0.43.2-source.zip.sha256` | 101 | `9d51ee13cbadbff3d917772f7ac751d6645debce0ba46e874ccfca97081f57d9` | `sha256:9d51ee13cbadbff3d917772f7ac751d6645debce0ba46e874ccfca97081f57d9` |
+| `MCP_CREO_MechDog-0.43.2-seed-library.zip` | 493,442 | `fece0e88c0c55828f9776944ad2196215e43077fcd1b3c7e62103e9d16891c52` | `sha256:fece0e88c0c55828f9776944ad2196215e43077fcd1b3c7e62103e9d16891c52` |
+| `MCP_CREO_MechDog-0.43.2-seed-library.zip.sha256` | 107 | `1931291e6b95eba200e51ec20688c608909230d987a1bbfe6c6ed8df9e0e1b1c` | `sha256:1931291e6b95eba200e51ec20688c608909230d987a1bbfe6c6ed8df9e0e1b1c` |
+
+冻结源码包内的交付快照记录 `remote_verification=pending`，工作树交付快照与本段记录发布后的远端事实。
 
 ## v0.43.1（2026-11-24，打包时点）
 
