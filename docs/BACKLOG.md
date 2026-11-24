@@ -323,7 +323,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [BUG-181](work-items/BUG-181.md) | P1 | 已有修复但待验收 | 0.42.0 | `ExtrudeOp.region` 新增交点分割与精确 Boehm B 样条节点插入及零命中 `closest_loop` 诊断；本机 Creo 10 实机含两相交三次 B 样条 YZ 草图子区域切除（300.0 mm³）通过并保存重载。剩：Creo 9/12、原 Arm7 完整工程、WorkBuddy 黑盒。 |
 | [FEAT-081](work-items/FEAT-081.md) | P2 | 已有修复但待验收 | 0.42.0 | G2 圆角新增几何级 `g2_verification`（沿相切边界边求法向夹角与跨边界法曲率差）；本机 Creo 10 实机 R10 G2 圆角实测 `max_curvature_gap_inv_mm=0.0`、`verdict="pass"` 并保存重载。剩：Creo 9/12、非解析面 G2、WorkBuddy 黑盒。 |
 | [BUG-182](work-items/BUG-182.md) | P1 | 已有修复但待验收 | 0.42.0 | 装配面/边选择器零命中每条候选新增 `suggested_reference`、报错直出最近候选、`assembly` 空间标注 `nearest_coordinate_space="component"` 与 `assembly_origin_mm`/`assembly_normal`；本机 Creo 10 实机验证通过。剩：Creo 9/12、全量 60 配合装配、WorkBuddy 黑盒。 |
-| [BUG-175](work-items/BUG-175.md) | P1 | 已有修复但待验收 | 0.41.0 | `test_feedback0360_fixes.py` BUG-170 单测改用可控假时钟消除 0.3 s 墙钟竞争（50/50 确定性通过）。剩：外部干净源码包复测。 |
+| [BUG-175](work-items/BUG-175.md) | P1 | 已有修复但待验收 | 未排期 | 0.41.0 修复第一段，0.43.0 外部干净包复测发现同一用例的强制启动分支仍会误超时。本轮补齐共享假时钟及夹具隔离，解包 120/120、慢探测 3/3、统一开发检查通过。待随新版本交付并由报告方复测。 |
 | [BUG-176](work-items/BUG-176.md) | P1 | 已有修复但待验收 | 0.41.0 | 圆形边选择器新增 `full_circle:true`、接缝/极值 `point_mm` 确定性取最小边 ID、单点 `point_mm` 支持圆弧边；本机 Creo 10 实机三组整圆圆角/倒角全部通过并保存重载。剩：Creo 9 原始发动机零件、Creo 12、WorkBuddy 黑盒。 |
 | [FEAT-078](work-items/FEAT-078.md) | P1 | 已有修复但待验收 | 0.41.0 | `creo_inspect_model` 新增 `total_surface_area_mm2`、`surfaces[].area_mm2`、`bounding_box_mm`、`merged_counts` 与 `counts_convention`；本机 Creo 10 实机零件与装配面积/包围盒精确吻合。剩：Creo 9/12、WorkBuddy 黑盒。 |
 | [FEAT-079](work-items/FEAT-079.md) | P1 | 已有修复但待验收 | 0.41.0 | 多引用 `round`/`chamfer` 失败时逐集探测定位 `failed_reference_index`/`failed_reference`/`round_failure` 并保持回滚；本机 Creo 10 实机精准定位索引 1 并完整回滚。剩：Creo 9/12、WorkBuddy 黑盒。 |

@@ -101,71 +101,65 @@ class Bug170StaleSessionAndForceNewTests(unittest.TestCase):
                 "connection_state": "not_found_or_unreadable",
                 "toolkit_hint": "PRO_TK_BAD_CONTEXT",
             }
-            # Without force_new_session: never launches, publishes stale diagnosis.
-            # BUG-175: drive with a deterministic fake clock so preparation file I/O
-            # cannot exhaust a short wall-clock deadline before the first -4 probe.
-            coord1 = creo_startup.CreoStartup(directory=root / "s1")
-            coord1._directory = root / "s1"
-            (root / "s1").mkdir(parents=True)
-            fake_now = [100.0]
+            good_probe = {"connected": True, "toolkit_code": 0}
+            fake_now = 100.0
 
-            def fake_monotonic() -> float:
-                return fake_now[0]
-
-            def probe_then_expire(*_args, **_kwargs):
-                fake_now[0] += 1.0
-                return bad_probe
-
-            def wait_then_expire(timeout=None) -> bool:
-                fake_now[0] += max(0.5, float(timeout or 0.5))
+            def advance_clock(timeout: float) -> bool:
+                nonlocal fake_now
+                fake_now += timeout
                 return False
 
+            # BUG-175: only retry waits consume the simulated budget in either scenario.
             with (
-                patch.object(creo_startup.time, "monotonic", side_effect=fake_monotonic),
-                patch.object(coord1._stop, "wait", side_effect=wait_then_expire),
+                patch.object(creo_startup, "time", wraps=creo_startup.time) as startup_time,
                 patch.object(creo_startup, "inventory", return_value=alive_inv),
                 patch.object(
                     creo_startup,
                     "process_snapshot",
                     return_value={"available": True, "processes": alive_inv["processes"]},
                 ),
+                patch.object(bridge, "ROOT", root),
+                patch.object(bridge, "toolkit_lock"),
                 patch.object(bridge, "build_native", return_value=exe),
-                patch.object(bridge, "session_status", side_effect=probe_then_expire),
-                patch.object(creo_startup, "launch_creo") as launcher,
             ):
-                coord1._drive(settings, True, fake_now[0] + 0.3)
-                launcher.assert_not_called()
-            st1 = coord1.status()
-            self.assertEqual(st1["state"], "timeout")
-            self.assertTrue(st1.get("stale_session_detected"))
-            self.assertEqual(st1.get("diagnosis"), "stale_session_needs_restart")
-
-            # With force_new_session=True: launches fresh session and connects!
-            coord2 = creo_startup.CreoStartup(directory=root / "s2")
-            coord2._directory = root / "s2"
-            (root / "s2").mkdir(parents=True)
-            probes = [bad_probe, {"connected": True, "toolkit_code": 0}]
-            with (
-                patch.object(creo_startup, "inventory", return_value=alive_inv),
-                patch.object(
-                    creo_startup,
-                    "process_snapshot",
-                    return_value={"available": True, "processes": alive_inv["processes"]},
-                ),
-                patch.object(bridge, "build_native", return_value=exe),
-                patch.object(bridge, "session_status", side_effect=probes),
-                patch.object(
-                    creo_startup, "launch_creo", return_value=creo_startup.DesktopLaunch()
-                ) as launcher,
-            ):
-                coord2._drive(
-                    settings, True, creo_startup.time.monotonic() + 5.0, force_new_session=True
-                )
-                launcher.assert_called_once()
-            st2 = coord2.status()
-            self.assertEqual(st2["state"], "ready")
-            self.assertTrue(st2.get("connected"))
-            self.assertEqual(st2.get("launch_attempt"), 1)
+                startup_time.monotonic.side_effect = lambda: fake_now
+                for force_new_session in (False, True):
+                    with self.subTest(force_new_session=force_new_session):
+                        directory = root / ("forced" if force_new_session else "stale")
+                        directory.mkdir()
+                        coord = creo_startup.CreoStartup(directory=directory)
+                        coord._directory = directory
+                        with (
+                            patch.object(coord._stop, "wait", side_effect=advance_clock),
+                            patch.object(
+                                bridge,
+                                "session_status",
+                                return_value=bad_probe,
+                                side_effect=[bad_probe, good_probe] if force_new_session else None,
+                            ),
+                            patch.object(
+                                creo_startup,
+                                "launch_creo",
+                                return_value=creo_startup.DesktopLaunch(),
+                            ) as launcher,
+                        ):
+                            coord._drive(
+                                settings,
+                                True,
+                                fake_now + settings.total_budget,
+                                force_new_session=force_new_session,
+                            )
+                        status = coord.status()
+                        if force_new_session:
+                            launcher.assert_called_once()
+                            self.assertEqual(status["state"], "ready")
+                            self.assertTrue(status["connected"])
+                            self.assertEqual(status["launch_attempt"], 1)
+                        else:
+                            launcher.assert_not_called()
+                            self.assertEqual(status["state"], "timeout")
+                            self.assertTrue(status["stale_session_detected"])
+                            self.assertEqual(status["diagnosis"], "stale_session_needs_restart")
 
 
 class Bug166RecoveryAndBlockingTests(unittest.TestCase):
