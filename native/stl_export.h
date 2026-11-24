@@ -52,6 +52,13 @@ struct StlExportOptions {
     std::uint64_t refine_max_output_facets = 1500000;
     std::uint64_t refine_max_new_vertices = 250000;
     int refine_max_rounds = 6;
+
+    void (*progress)(const char *) = nullptr;
+
+    void stage(const char *name) const {
+        if (progress)
+            progress(name);
+    }
 };
 
 struct StlExportReport {
@@ -207,6 +214,7 @@ inline StlExportReport write_stl_file(ProMdl model, const std::filesystem::path 
         report.directory_restore_code = restore.restore();
         return report;
     }
+    options.stage("stl_toolkit_export");
     report.api_code = ProIntfSliceFileWithOptionsMdlnameExport(
         model, name, PRO_SLA_ASCII_FILE, values, PRO_FACET_STEP_SIZE_OFF, nullptr, nullptr);
     report.parameter_free_code = ProArrayFree(&parameters);
@@ -225,6 +233,7 @@ inline StlExportReport write_stl_file(ProMdl model, const std::filesystem::path 
         report.error = "the export API reported success but wrote no staging file";
         return report;
     }
+    options.stage("stl_validate_mesh");
     try {
         report.file = validate_ascii_stl(staging_file, limits);
     } catch (const StlFileError &error) {
@@ -237,6 +246,7 @@ inline StlExportReport write_stl_file(ProMdl model, const std::filesystem::path 
         report.error = "cannot create the STL output directory: " + output_error.message();
         return report;
     }
+    options.stage("stl_publish_verified_mesh");
     const std::string publish_error = publish(staging_file, destination);
     if (!publish_error.empty()) {
         report.error = publish_error;
@@ -1495,6 +1505,7 @@ inline StlPerSurfaceReport write_stl_per_surface(ProMdl model,
     report.refine_enabled = context.refine_enabled;
     report.refine_target_native = context.refine_target;
 
+    options.stage("stl_collect_surfaces");
     ProSolidBody *bodies = nullptr;
     ProError code = ProSolidBodiesCollect((ProSolid)model, &bodies);
     if (code != PRO_TK_NO_ERROR || !bodies) {
@@ -1528,6 +1539,7 @@ inline StlPerSurfaceReport write_stl_per_surface(ProMdl model,
         }
     }
     context.refine_surface_total = surface_total;
+    options.stage("stl_tessellate_and_write");
     for (int index = 0; index < body_count; ++index) {
         ProSolidBodyState state;
         code = ProSolidBodyStateGet(&bodies[index], &state);
@@ -1606,6 +1618,7 @@ inline StlPerSurfaceReport write_stl_per_surface(ProMdl model,
         }
     }
     if (options.stitch_seams) {
+        options.stage("stl_stitch_mesh");
         code = stitch_boundaries(context);
         if (code != PRO_TK_NO_ERROR) {
             report.error = context.error;
@@ -1657,6 +1670,7 @@ inline StlPerSurfaceReport write_stl_per_surface(ProMdl model,
     // here merges genuinely distinct vertices (observed at 5e-4 mm apart) and
     // hides winding conflicts that external tools still see.
     constexpr double winding_weld_tolerance = 1.0e-9;
+    options.stage("stl_repair_winding");
     if (!fix_staged_winding(staging_file, winding_weld_tolerance, winding_error,
                             report.winding_flipped_facets, report.winding_conflicts, fixed_volume,
                             global_flipped)) {
@@ -1665,6 +1679,7 @@ inline StlPerSurfaceReport write_stl_per_surface(ProMdl model,
     }
     report.signed_volume_mm3 = fixed_volume;
     report.global_flipped = global_flipped;
+    options.stage("stl_validate_mesh");
     try {
         report.file = validate_ascii_stl(staging_file, limits);
     } catch (const StlFileError &error) {
@@ -1677,6 +1692,7 @@ inline StlPerSurfaceReport write_stl_per_surface(ProMdl model,
         report.error = "cannot create the STL output directory: " + output_error.message();
         return report;
     }
+    options.stage("stl_publish_verified_mesh");
     const std::string publish_error = publish(staging_file, destination);
     if (!publish_error.empty()) {
         report.error = publish_error;

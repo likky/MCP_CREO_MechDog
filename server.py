@@ -13,7 +13,7 @@ from typing import Annotated, Any, Literal
 
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, TextContent, ToolAnnotations
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 import bridge
 import creo_startup
@@ -2169,10 +2169,12 @@ async def creo_sheetmetal_base_flange(
     thickness: float,
     radius: float = 1.0,
     k_factor: float = 0.5,
-    plane: Literal["XY", "XZ", "YZ"] = "XY",
+    plane: Literal["XY", "XZ", "YZ"] | dict[str, Any] = "XY",
     origin: list[float] | None = None,
     expected_width_direction_world: list[float] | None = None,
     width_direction_tolerance_deg: float = 0.5,
+    direction: Literal["positive", "negative"] = "positive",
+    flip_thickness: StrictBool = False,
 ) -> dict[str, Any]:
     """Create a first sheetmetal wall from an open two-line (90 degree) chain, as two features.
 
@@ -2183,7 +2185,7 @@ async def creo_sheetmetal_base_flange(
     becomes a 90 degree flange (label_leg2) attached to that wall's free end edge - the edge is
     found by geometry from the wall's own measured frame, never by a guessed element id.
 
-    Measured contract (Creo 12.4.0.0, DEV-089 T3):
+    Default contract (Creo 12.4.0.0, DEV-089 T3):
     - the sheet is thickened one-sided along +normal; the flange grows on the opposite side of
       the plate and its gauge stays inside the plate's end face;
     - `second_leg_mm` is the free second leg measured from the plate's outer face, so the native
@@ -2202,6 +2204,11 @@ async def creo_sheetmetal_base_flange(
     features with their ids), first_leg_mm/second_leg_mm/width_mm/thickness_mm/radius_mm/
     k_factor/y_factor, volume_mm3 against expected_volume_mm3, and envelope.u/v/n.
 
+    A dictionary plane sets a verified support reference and optional origin/u_axis;
+    width runs along the resulting v axis, including model X on a suitable frame.
+    direction selects the initial wall's signed gauge side. flip_thickness=true
+    extends the flange gauge past the first wall's free end by the sheet thickness.
+
     expected_width_direction_world / width_direction_tolerance_deg are the same assertion
     creo_execute_plan accepts (BUG-129): when the measured width direction differs from the
     expected world vector by more than the tolerance, the job fails and rolls back. They only
@@ -2219,6 +2226,10 @@ async def creo_sheetmetal_base_flange(
         "k_factor": k_factor,
         "origin": list(origin) if origin is not None else [0.0, 0.0],
     }
+    if direction != "positive":
+        operation["direction"] = direction
+    if flip_thickness is not False:
+        operation["flip_thickness"] = flip_thickness
     if expected_width_direction_world is not None:
         operation["expected_width_direction_world"] = list(expected_width_direction_world)
         operation["width_direction_tolerance_deg"] = width_direction_tolerance_deg
@@ -2296,12 +2307,15 @@ async def creo_sheetmetal_flange(
             )
         ),
     ] = None,
+    flip_thickness: StrictBool = False,
 ) -> dict[str, Any]:
     """Attach a native bent flange to a sheetmetal edge. The section exposes named height for dimension edits.
 
-    flip=false (the default) bends out of the face the edge belongs to; flip=true bends to
-    the opposite, material side. The side is relative to the attachment face, not to a
-    global axis. A wall whose attachment-edge end is adjacent to an existing bend is
+    flip reverses the flange's extension relative to the attachment face.
+    flip_thickness=true places the flange gauge past the free end of the parent wall
+    on the validated straight 90-degree route. By default the gauge stays within the
+    end face. Both directions are relative to the attachment. A wall whose attachment-edge
+    end is adjacent to an existing bend is
     rejected before creation (failure_reason=adjacent_bend_ends) unless the request
     carries miter_cuts; that explicit native miter request releases the guard and lets
     Creo cut the end overlap (four-wall boxes use this route).
@@ -2331,6 +2345,8 @@ async def creo_sheetmetal_flange(
         "flip": flip,
         "y_factor": y_factor,
     }
+    if flip_thickness is not False:
+        operation["flip_thickness"] = flip_thickness
     if relief is not None:
         operation["relief"] = relief
     if end_trim_mm is not None:
@@ -2976,6 +2992,11 @@ async def creo_export_model(
             )
         ),
     ] = None,
+    timeout_seconds: Annotated[
+        int,
+        Field(strict=True, ge=60, le=7200, description="Optional hard executor budget in seconds"),
+    ]
+    | None = None,
 ) -> dict[str, Any]:
     """Export STEP/STL/IGES/JPEG, drawing PDF/JPEG, or an explicit native assembly bundle.
 
@@ -2990,14 +3011,29 @@ async def creo_export_model(
     ``stl_options`` is accepted only with ``format="stl"``. Unknown keys,
     booleans, NaN/Inf, a non-positive chord height, or an angle control outside
     ``0.0..1.0`` are rejected before submission. Omitting it keeps the previous
-    behavior (0.05 mm chord height, 0.1 angle control).
+    behavior (0.05 mm chord height, 0.1 angle control). timeout_seconds selects the
+    same per-job executor budget as creo_execute_plan (60–7200 seconds). Omit it for
+    the server budget. Poll creo_get_job for budgets and native_progress.sub_stage.
+    A timed-out or cancelled job can have an unverified staging file; use only a
+    completed export artifact.
     """
     operation: dict[str, Any] = {"op": "export", "format": format}
     if stl_options is not None:
         operation["stl_options"] = stl_options
     if jpeg_options is not None:
         operation["jpeg_options"] = jpeg_options
-    return await invoke(general.submit, [operation], model_id, None, None, None, True)
+    if timeout_seconds is None:
+        return await invoke(general.submit, [operation], model_id, None, None, None, True)
+    return await invoke(
+        general.submit,
+        [operation],
+        model_id,
+        None,
+        None,
+        None,
+        True,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 @mcp.tool(annotations=READ)

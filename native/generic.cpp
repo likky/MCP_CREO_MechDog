@@ -6865,6 +6865,7 @@ static J write_stl(ProMdl model, const std::wstring &destination, const StlExpor
     const std::wstring staging_name =
         L"stl_" + std::to_wstring(generated_identity_index()) + L".stl";
     StlExportOptions effective = options;
+    effective.progress = [](const char *name) { generic_substage(name); };
     // Diagnostic quality override for deviation studies; the public export
     // operation still requests the fixed default.
     const char *chord_probe = std::getenv("MECHDOG_STL_CHORD_MM");
@@ -6970,8 +6971,10 @@ static J write_stl(ProMdl model, const std::wstring &destination, const StlExpor
     }
     result["length_unit"] = length_unit_json(units, scale);
     log("STL_EXPORT_REPORT=%s\n", result.dump().c_str());
-    if (!failure.empty())
+    if (!failure.empty()) {
+        stage_operation_result({{"stl_export", result}});
         throw std::runtime_error(failure);
+    }
     return result;
 }
 static void generic_pattern(const J &op) {

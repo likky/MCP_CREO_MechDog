@@ -236,16 +236,16 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 
 诊断交付不等于根因修复；部分交付不关整卡；缺其他版本证据不自动判未修。观察项等自然新现场，不制造故障。已完成且无保留范围的行移入 [完成档案](BACKLOG_COMPLETED.md#2026-11-07dev-073-归档与历史进展)。原进展/证据保留日期，不再回填第二份待办。小修复沿用卡与证据，复杂跨模块任务才另建完整计划。
 
-当前唯一 ID **258**（BUG **134**、FEAT **80**、DEV **44**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
+当前唯一 ID **261**（BUG **135**、FEAT **81**、DEV **45**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
 | 仍需修复 | 7 |
 | 待复现/待核实 | 36 |
-| 已有修复但待验收 | 74 |
+| 已有修复但待验收 | 76 |
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
-| 开发中 | 7 |
+| 开发中 | 8 |
 | 部分交付，剩余待验收 | 50 |
 | 部分交付，剩余待规划 | 7 |
 | 待规划 | 54 |
@@ -312,6 +312,8 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
+| [BUG-186](work-items/BUG-186.md) | P1 | 已有修复但待验收 | 未排期 | 截面伸展与厚度分别控制，四组合在 Creo 10 实测和保存重载通过。其它角度与报告方环境待验。 |
+| [FEAT-084](work-items/FEAT-084.md) | P1 | 已有修复但待验收 | 未排期 | 独立组合法兰支持字典平面与首壁厚度方向，Arm2 钣金毛坯 X 宽 20 mm，保存重载和负例回滚通过。完整零件与外部环境待验。 |
 | [BUG-183](work-items/BUG-183.md) | P1 | 已有修复但待验收 | 0.43.0 | 原生 `section_profile_summary` 计算 `solved_section_area_mm2` 并随草图/零切/成功切除回执发布，闭合 B 样条草图附 `b_spline_cut_risk`，`cut_volume_check` 支持 `blind`/`symmetric` 并回落至 `solved_section_area_mm2`；本机 Creo 10 实机 `100.0 mm²` / `299.9997 mm³` 通过并保存重载。剩：Creo 9/12、原 Arm7 工程、WorkBuddy 黑盒。 |
 | [FEAT-082](work-items/FEAT-082.md) | P1 | 已有修复但待验收 | 0.43.0 | `JpegOptions` 新增 `right`/`left`/`back`/`bottom` 正交视图与 3×3 右手正交 `view_matrix`；本机 Creo 10 实机 3 mm YZ 薄板四视角渲染 `view_matrix_matches=true`，`right` 呈完整 60×40 轮廓。剩：Creo 9/12、装配多视角、WorkBuddy 黑盒。 |
 | [BUG-184](work-items/BUG-184.md) | P2 | 已有修复但待验收 | 0.43.0 | 草图 `geometry_deviation` 补逐点 `point`/`requested_mm`/`actual_mm`/`delta_mm`，compact 超阈保留前 5 条 `displaced_sample`，明确 `geometry_tolerance_mm` 在 `autodim` 同样硬拒绝；单测与原生编译通过。剩：原 Arm7 `a7_s5` 实机复现、Creo 9/12、WorkBuddy 黑盒。 |
@@ -424,6 +426,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
+| [DEV-100](work-items/DEV-100.md) | P1 | 开发中 | 未排期 | 归档 0.43.0 机械臂反馈，逐项核对并分批验收。 |
 | [DEV-002](work-items/DEV-002.md) | P2 | 开发中 | 未排期 | 第三批包化离线已交付，T5 实机待验；服务/启动/桥接后续分批，不关整项。 |
 | [DEV-030](work-items/DEV-030.md) | P1 | 开发中 | 未排期 | 推进 G2 底板/编辑、G3 履带/性能、G4 阵列；已放宽三键不重复调查。 |
 | [FEAT-010](work-items/FEAT-010.md) | P2 | 开发中 | 未排期 | Right ±Z 已验；倾斜 frame、保真/原53mm输入、编辑重载和投影驱动仍开放。 |

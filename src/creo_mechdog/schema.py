@@ -1898,7 +1898,7 @@ class SheetmetalBaseFlangeOp(StrictModel):
     leg). It is deliberately not one base-flange feature: the job result lists
     `composed_features` and both features stay addressable by label.
 
-    Contract, measured on Creo 12.4.0.0 (2026-11-15):
+    Default contract, measured on Creo 12.4.0.0 (2026-11-15):
     - the sheet is thickened one-sided along +normal (the wall spans
       0..thickness) and the flange grows on the opposite side of the plate;
     - `second_leg_mm` is the free leg measured from the plate's outer face, so
@@ -1909,7 +1909,10 @@ class SheetmetalBaseFlangeOp(StrictModel):
       job receipt's `width_direction_world` is the measured axis and
       `expected_width_direction_world` only asserts it; neither rotates the
       rectangle (BUG-129, docs/REFERENCE_SYNTAX.md);
-    - this batch composes exactly two perpendicular lines. The drawn
+    A dictionary plane can set the sketch frame and thus align width with model X.
+    `direction` selects the initial wall gauge side of that frame. `flip_thickness`
+    extends the flange gauge past the wall end, independently of the initial side.
+    The composition uses exactly two perpendicular lines. The drawn
       coordinates contribute their lengths only; `origin` shifts the whole
       rectangle in the sketch frame like `sheetmetal_planar_wall`.
     """
@@ -1920,6 +1923,8 @@ class SheetmetalBaseFlangeOp(StrictModel):
     section: list[dict[str, Any]]
     width: Positive
     thickness: Positive
+    direction: Literal["positive", "negative"] = "positive"
+    flip_thickness: StrictBool = False
     radius: Positive = 1.0
     k_factor: Annotated[float, Field(gt=0, le=1)] = 0.5
     origin: list[float] = Field(default_factory=lambda: [0.0, 0.0])
@@ -2087,6 +2092,7 @@ class SheetmetalFlangeOp(StrictModel):
     angle: Annotated[float, Field(gt=0, lt=180)] = 90
     radius: Positive = 1
     flip: bool = False
+    flip_thickness: StrictBool = False
     y_factor: Annotated[float, Field(gt=0, le=1)] = 0.5
     relief: FlangeRelief | None = None
     # FEAT-014: optional native miter cuts on the same flange feature. An explicit

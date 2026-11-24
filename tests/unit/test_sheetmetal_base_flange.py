@@ -352,10 +352,26 @@ class BaseFlangeToolSchemaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(operation["expected_width_direction_world"], [0.0, 0.0, 1.0])
         self.assertEqual(operation["width_direction_tolerance_deg"], 0.25)
 
+    async def test_explicit_frame_and_thickness_sides_reach_the_plan(self):
+        frame = {
+            "reference": {"kind": "datum_plane", "axis": "y", "offset": 0},
+            "origin": [10, 0, 12],
+            "u_axis": [0, 0, -1],
+        }
+        operation = await self.submit(plane=frame, direction="negative", flip_thickness=True)
+        parsed = SheetmetalBaseFlangeOp.model_validate(operation)
+        self.assertEqual(parsed.plane, frame)
+        self.assertEqual(parsed.direction, "negative")
+        self.assertIs(parsed.flip_thickness, True)
+        with self.assertRaises(ValidationError):
+            SheetmetalBaseFlangeOp.model_validate({**operation, "flip_thickness": "true"})
+
     async def test_omitted_assertion_keeps_the_old_payload(self):
         operation = await self.submit()
         self.assertNotIn("expected_width_direction_world", operation)
         self.assertNotIn("width_direction_tolerance_deg", operation)
+        self.assertNotIn("direction", operation)
+        self.assertNotIn("flip_thickness", operation)
 
 
 if __name__ == "__main__":

@@ -1925,7 +1925,7 @@ static void generic_sheetmetal_flange(const J &input_op) {
     // sweeps the section along the edge, sketch +x is the direction normal to the parent
     // wall and sketch +y lies inside the parent wall. Angle 90 therefore needs the leg on
     // sketch +x, and angle 0 is a straight in-plane continuation. The drawn sign does not
-    // pick the bend side (Creo normalises it); PRO_E_SMT_FLANGE_SEC_FLIP does, see below.
+    // pick the extension direction (Creo normalises it); PRO_E_SMT_FLANGE_SEC_FLIP does.
     J profile;
     if (profile_candidate)
         profile = candidate_section;
@@ -1970,10 +1970,9 @@ static void generic_sheetmetal_flange(const J &input_op) {
     // 22:06 run produced identical bbox, identical volume and the same side, and
     // ProSmtFlangeWall.h lists only PRO_B_TRUE/PRO_B_FALSE for this element, so -1 is not
     // a usable second value. It stays at the stock NO_FLIP like ptu_featcreat's
-    // UgSmtFlgWallCreate.c. PRO_E_SMT_FLANGE_SEC_FLIP is what moves the bend, measured on
-    // the same h80/R2.54/Y0.5 flange: top edge FALSE -> down, TRUE -> up; bottom edge
-    // FALSE -> up, TRUE -> down. The rule is relative to the attachment face, so TRUE is
-    // "out of the face you selected" and is the default; `flip` asks for the material side.
+    // UgSmtFlgWallCreate.c. PRO_E_SMT_FLANGE_SEC_FLIP sets the section extension
+    // relative to the attachment face. The separate WALL_THICKNESS_FLIP moves
+    // the flange gauge across the free end of the parent wall (BUG-186).
     integer(root, PRO_E_SMT_FLANGE_TRAJ_CRV_NORM, PRO_FLANGE_TRAJ_NORM_NO_FLIP);
     ProElement sec = node(root, PRO_E_STD_SECTION);
     integer(sec, PRO_E_STD_SEC_METHOD, PRO_SEC_SKETCH);
@@ -2022,7 +2021,9 @@ static void generic_sheetmetal_flange(const J &input_op) {
     real(fillet, PRO_E_SMT_FILLETS_VALUE, op["radius"]);
     integer(node(root, PRO_E_SMT_WALL_HEIGHT), PRO_E_SMT_WALL_HEIGHT_TYPE,
             PRO_SMT_WALL_HEIGHT_NONE);
-    integer(root, PRO_E_SMT_WALL_THICKNESS_FLIP, PRO_B_FALSE);
+    const bool flip_thickness = op.value("flip_thickness", false);
+    integer(root, PRO_E_SMT_WALL_THICKNESS_FLIP, flip_thickness ? PRO_B_TRUE : PRO_B_FALSE);
+    log("FLANGE_THICKNESS_FLIP requested=%d\n", flip_thickness ? 1 : 0);
     ProElement relief = node(root, PRO_E_SMT_BEND_RELIEF);
     flange_relief_side(relief, PRO_E_SMT_BEND_RELIEF_SIDE1, relief_request.side1,
                        relief_request.width, relief_request.depth);
@@ -2115,6 +2116,8 @@ static void generic_sheetmetal_flange(const J &input_op) {
                                {"side2_depth_type", PRO_WALL_LEN_TYPE_BLIND}};
     extra["bend_side"] = sec_flip == PRO_B_TRUE ? "outward" : "inward";
     extra["sec_flip_element"] = sec_flip;
+    if (flip_thickness)
+        extra["flip_thickness"] = true;
     extra["flip_input"] = op.value("flip", false);
     if (op.contains("relief") && !op.at("relief").is_null())
         extra["relief"] = flange_relief_record(op, relief_request);

@@ -112,6 +112,8 @@ static void generic_sheetmetal_base_flange(const J &op) {
             "perpendicular, so a collinear chain or another bend angle has no composed "
             "counterpart in this batch");
 
+    const std::string direction = op.value("direction", "positive");
+    const bool flip_thickness = op.value("flip_thickness", false);
     double width = op["width"].get<double>();
     double thickness = op["thickness"].get<double>();
     double radius = op.value("radius", 1.0);
@@ -136,7 +138,7 @@ static void generic_sheetmetal_base_flange(const J &op) {
                  {"length", first_leg},
                  {"width", width},
                  {"thickness", thickness},
-                 {"direction", "positive"},
+                 {"direction", direction},
                  {"origin", op.value("origin", J::array({0.0, 0.0}))}};
     try {
         generic_sheetmetal_planar_wall(wall_op);
@@ -174,7 +176,8 @@ static void generic_sheetmetal_base_flange(const J &op) {
         {"angle", 90.0},
         {"radius", radius},
         {"y_factor", y_factor},
-        {"flip", false}};
+        {"flip", false},
+        {"flip_thickness", flip_thickness}};
     try {
         generic_sheetmetal_flange(flange_op);
     } catch (const std::exception &error) {
@@ -186,7 +189,8 @@ static void generic_sheetmetal_base_flange(const J &op) {
     //    sheetmetal body and the signed frame envelope.
     J state = inspection();
     double measured = planar_wall_measured_volume(state);
-    double straight = (first_leg + second_leg) * width * thickness;
+    const double first_extent = first_leg + (flip_thickness ? thickness : 0.0);
+    double straight = (first_extent + second_leg) * width * thickness;
     double removed = (1.0 - acos(-1.0) / 4.0) *
                      ((radius + thickness) * (radius + thickness) - radius * radius) * width;
     double expected = straight - removed;
@@ -213,8 +217,10 @@ static void generic_sheetmetal_base_flange(const J &op) {
         const char *axis;
         double low;
         double high;
-    } extents[3] = {
-        {"u", u0, u0 + first_leg}, {"v", v0, v0 + width}, {"n", -second_leg, thickness}};
+    } extents[3] = {{"u", u0, u0 + first_extent},
+                    {"v", v0, v0 + width},
+                    {"n", direction == "negative" ? -thickness : -second_leg,
+                     direction == "negative" ? second_leg : thickness}};
     for (const auto &want : extents) {
         const J &entry = envelope[want.axis];
         double low = entry["min"].get<double>(), high = entry["max"].get<double>();
@@ -286,6 +292,8 @@ static void generic_sheetmetal_base_flange(const J &op) {
          {"y_factor", y_factor},
          {"bend_angle_deg", 90.0},
          {"flange_height_mm", second_leg + thickness},
+         {"direction", direction},
+         {"flip_thickness", flip_thickness},
          {"volume_mm3", measured},
          {"expected_volume_mm3", expected},
          {"volume_delta_mm3", measured - expected},
