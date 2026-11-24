@@ -49,10 +49,10 @@ The frozen batch-1 vocabulary is deliberately narrow:
   ``component_reference`` are refused rather than resolved against a guessed
   position.
 
-Zero or multiple matches are always refused. The native executor enumerates the
-current model, reports the candidate count and matched IDs, and never falls back
-to "the first candidate". Nothing here decides which candidate is "the" one:
-this module only validates the request shape before dispatch.
+Zero matches are refused. Multiple matches are refused unless a documented
+resolution rule applies. With point-only nearest matching, ties still require
+an explicit face or edge. The native executor decides the match; this module
+validates the request shape before dispatch.
 """
 
 from __future__ import annotations
@@ -85,6 +85,8 @@ _ALLOWED_KEYS = frozenset(
         "coaxial",
         "full_circle",
         "feature",
+        "on_face",
+        "ambiguity",
     }
 )
 
@@ -100,6 +102,9 @@ DESCRIPTION = (
     "It must match exactly one current model item (or one split circle when full_circle:true or "
     "point_mm hits the seam between complementary arcs of one circle); zero or multiple matches "
     "are refused. "
+    "A model-space edge selector may constrain on_face:{kind:'surface',id:N}. "
+    "A model-space point_mm-only edge anchor may opt into ambiguity:'nearest', which still "
+    "refuses tied distances. "
     "coordinate_space is 'model' (default) or 'assembly'; an assembly-space selector is only "
     "valid on the assembly side of a component constraint that names the placed "
     "assembly_component and is mapped into that component's frame by the executor. "
@@ -213,6 +218,34 @@ def validate_geometry_selector(value: Any, path: str = "selector") -> dict[str, 
                 f"{path}.feature must be a feature label on a model-space edge or surface selector"
             )
         normalized["feature"] = feature
+
+    if "on_face" in value:
+        face = value["on_face"]
+        if target != "edge" or coordinate_space != "model":
+            raise ValueError(f"{path}.on_face requires a model-space edge selector")
+        if (
+            not isinstance(face, dict)
+            or set(face) != {"kind", "id"}
+            or face["kind"] != "surface"
+            or type(face["id"]) is not int
+            or not 0 <= face["id"] < 2**31
+        ):
+            raise ValueError(
+                f"{path}.on_face requires {{kind:'surface',id:N}} from current inspection"
+            )
+        normalized["on_face"] = {"kind": "surface", "id": face["id"]}
+    if "ambiguity" in value:
+        if (
+            value["ambiguity"] != "nearest"
+            or target != "edge"
+            or coordinate_space != "model"
+            or "point_mm" not in value
+            or {"endpoints_mm", "center_mm", "radius_mm"} & value.keys()
+        ):
+            raise ValueError(
+                f"{path}.ambiguity='nearest' requires a model-space point_mm-only edge anchor"
+            )
+        normalized["ambiguity"] = "nearest"
 
     if target == "edge":
         if "points_mm" in value:

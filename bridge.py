@@ -2175,6 +2175,59 @@ def _read_job(
             "stall_watchdog_source": manifest.get("stall_watchdog_source"),
             "watch_files": manifest.get("watch_files"),
         }
+    # BUG-190: surface structured failure coordinates and native_result.json path
+    # at top level on failed / unknown_outcome jobs; keep successful jobs clean.
+    if manifest.get("status") in ("failed", "unknown_outcome"):
+        res = manifest.get("result") if isinstance(manifest.get("result"), dict) else {}
+        failed_op = (
+            res.get("failed_operation") if isinstance(res.get("failed_operation"), dict) else {}
+        )
+        f_idx = res.get("failed_operation_index")
+        if f_idx is None:
+            f_idx = failed_op.get("index")
+        if f_idx is not None:
+            manifest["failed_operation_index"] = f_idx
+        f_stage = res.get("failed_stage") or failed_op.get("stage") or manifest.get("stage")
+        if f_stage is not None:
+            manifest["failed_stage"] = f_stage
+        if not manifest.get("failure_phase") and f_stage is not None:
+            manifest["failure_phase"] = f_stage
+        native_result_file = directory / "native_result.json"
+        if native_result_file.exists():
+            manifest["native_result_path"] = str(native_result_file)
+        ops_list = res.get("operations") if isinstance(res.get("operations"), list) else []
+        rf = None
+        if (
+            isinstance(f_idx, int)
+            and 0 <= f_idx < len(ops_list)
+            and isinstance(ops_list[f_idx], dict)
+        ):
+            rf = ops_list[f_idx].get("round_failure")
+        if isinstance(rf, dict):
+            summary_rf: dict = {}
+            if "failed_reference_index" in rf:
+                summary_rf["failed_reference_index"] = rf["failed_reference_index"]
+            edge_diags = rf.get("edge_diagnostics")
+            if isinstance(edge_diags, list):
+                min_adj = []
+                for ed in edge_diags[:5]:
+                    if not isinstance(ed, dict):
+                        continue
+                    v_mins = []
+                    for vkey in ("start_vertex", "end_vertex"):
+                        v = ed.get(vkey)
+                        if isinstance(v, dict) and v.get("min_adjacent_edge_mm") is not None:
+                            v_mins.append(v["min_adjacent_edge_mm"])
+                    min_adj.append(
+                        {
+                            "edge_id": ed.get("edge_id"),
+                            "min_adjacent_edge_mm": v_mins,
+                        }
+                    )
+                if min_adj:
+                    summary_rf["edge_min_adjacent_mm"] = min_adj
+            if summary_rf:
+                manifest["round_failure_summary"] = summary_rf
     if detail == "compact":
         manifest = compact_job(manifest, sections)
         return manifest
@@ -2229,6 +2282,10 @@ def compact_job(manifest: dict, sections: list[str] | None = None) -> dict:
         "failure_read_budget_exceeded",
         "commit_read_budget_exceeded",
         "failure_phase",
+        "failed_operation_index",
+        "failed_stage",
+        "native_result_path",
+        "round_failure_summary",
         "recovery_pending_released",
         "recovery_pending_cleanup_error",
         "channel_finalization_error",

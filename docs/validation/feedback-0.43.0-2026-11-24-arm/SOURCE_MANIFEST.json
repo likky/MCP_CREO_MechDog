@@ -1,0 +1,13 @@
+{
+  "batch": "feedback-0.43.0-2026-11-24-arm",
+  "archived_date": "2026-11-24",
+  "source_version": "0.43.0",
+  "files": [
+    {
+      "original_filename": "2026-11-24CREO10.0.0.0-0.43.0-钣金法兰材料侧不可控致Arm2无法按TXT成形与选边消歧弧度契约通道超时共11项.md",
+      "archived_path": "originals/arm-sheetmetal-stl-and-edge-selectors.md",
+      "bytes": 20758,
+      "sha256": "281e62e9e61b46791dc1a516de1607b2c02195e3bcdc1745c6fdad557ffa4422"
+    }
+  ]
+}

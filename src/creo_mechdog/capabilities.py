@@ -647,15 +647,14 @@ KNOWN_LIMITATIONS = (
     {
         "id": "edge_selector_nearest_scope",
         "condition": "a geometry_selector edge reference matches zero or several edges",
-        "release": "DEV-074 and 0.33.0 feedback; DEV-098 nearest list",
-        "evidence": "DEV-098 native/geometry_selectors.cpp zero-match diagnostic",
-        "configurable": False,
-        "effect": "a zero-match geometry_selector edge refuses the job but reports "
-        "geometry_selector_diagnostic.nearest_edges (at most 5, ordered by error then id; "
-        "straight forms carry endpoints_mm/error_mm and circular forms carry "
-        "center_mm/radius_mm/errors); several matches still report only candidate_count and "
-        "matched_ids; a nearest candidate is never selected automatically, and callers must "
-        "re-read creo_inspect_model edges or pass {kind:'edge',id:N}",
+        "release": "DEV-098 nearest list; FEAT-085 optional edge disambiguation",
+        "evidence": "native/geometry_selectors.cpp measured edge candidates",
+        "configurable": True,
+        "effect": "zero matches refuse the job and may include up to five candidates in "
+        "geometry_selector_diagnostic.nearest_edges. For model-space anchors, on_face can "
+        "restrict the current surface and a "
+        "point_mm-only anchor can opt into ambiguity:'nearest'. Only a unique minimum distance "
+        "inside tolerance is selected. A tie within 1e-6 mm requires a face or a current edge ID.",
     },
     {
         "id": "surface_selector_nearest_scope",

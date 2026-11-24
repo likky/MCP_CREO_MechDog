@@ -25,3 +25,7 @@
   - `S4`（2 实例圆柱装配 `bb95aca5bdef4d40abfb1dd37d217fe2`）：`total_surface_area_mm2 = 14555.486 mm²`、`bounding_box_mm = {min: [-20,-20,0], max: [120,20,40], size: [140, 40, 40]}`。
 - 单元测试：`tests/unit/test_feedback0390_fixes.py::Feat078InspectAreaBboxAndMergedCountsTests` 全部通过。
 - 未验范围：Creo 9/12 与 WorkBuddy 黑盒。
+
+## 2026-11-24 新反馈补充
+
+0.43.1 报告 §8/§9 与 0.43.0 报告 N3：同一几何的 bbox 比源件大 0.004—0.006 mm；`bounding_box_mm.min[2]=-910.0` 与 964 条 `surfaces[].bbox` 并集 `-885.0` 差 25 mm。待办：注明 bbox 精度量级与来源，排查两套口径是否应分字段命名，并补“面数只比类型+半径分组、不比张数”的验收指引。来源见 [DEV-101](DEV-101.md)。

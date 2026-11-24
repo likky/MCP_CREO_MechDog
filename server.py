@@ -13,7 +13,7 @@ from typing import Annotated, Any, Literal
 
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, TextContent, ToolAnnotations
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 import bridge
 import creo_startup
@@ -1196,9 +1196,12 @@ async def creo_update_sketch_geometry(
         float | None,
         Field(
             description=(
-                "Optional hard post-solve deviation cap in mm. Enforced as a rejection gate in "
-                "BOTH coordinates and autodim modes (including autodim fallback); omitting it "
-                "keeps coordinates=1e-5 mm rejection and autodim=1e-3 mm warning-only."
+                "Optional hard post-solve deviation cap in mm. Enforced as a rejection gate "
+                "(enforced=true) in BOTH coordinates and autodim modes (including autodim "
+                "fallback). Omitting it keeps mode defaults: dimensioning='auto' picks "
+                "autodim for <10 entities (warn-only >1e-3 mm) and coordinates for >=10 "
+                "entities (hard reject >1e-5 mm); omit this field on small sketches if you "
+                "want autodim's warn-only default."
             )
         ),
     ] = None,
@@ -1386,9 +1389,12 @@ async def creo_create_sketch(
         float | None,
         Field(
             description=(
-                "Optional hard post-solve deviation cap in mm. Enforced as a rejection gate in "
-                "BOTH coordinates and autodim modes (including autodim fallback); omitting it "
-                "keeps coordinates=1e-5 mm rejection and autodim=1e-3 mm warning-only."
+                "Optional hard post-solve deviation cap in mm. Enforced as a rejection gate "
+                "(enforced=true) in BOTH coordinates and autodim modes (including autodim "
+                "fallback). Omitting it keeps mode defaults: dimensioning='auto' picks "
+                "autodim for <10 entities (warn-only >1e-3 mm) and coordinates for >=10 "
+                "entities (hard reject >1e-5 mm); omit this field on small sketches if you "
+                "want autodim's warn-only default."
             )
         ),
     ] = None,
@@ -1402,6 +1408,9 @@ async def creo_create_sketch(
              and direction="negative" moves toward +Y!)
       - YZ: origin=[offset, 0, 0], normal=[+1, 0, 0] (+X), u_axis=+Y, v_axis=+Z
     Coordinates are in the chosen plane's (u,v) frame (u = +first axis, v = +second axis).
+    A dictionary plane may pin v_axis or set flip=true; without them the frame follows the
+    selected support normal, so read back normal/u_axis/v_axis instead of assuming the
+    principal-plane table above.
     Arc angles are degrees CCW; arcs also accept signed sweep_deg instead of end_angle
     to express >180 deg major arcs directly.
     Rectangle/polyline expand to named lines e.g. box_0, box_1. spline fits an
@@ -1512,7 +1521,8 @@ async def creo_revolve(
     expected_revision: int,
     label: str,
     sketch: str | int,
-    angle: float = 360,
+    angle: float | None = None,
+    angle_rad: float | None = None,
     mode: Literal["add", "cut", "surface"] = "add",
     direction: Literal["positive", "negative", "symmetric"] = "positive",
     axis: RevolveAxis | None = None,
@@ -1520,22 +1530,33 @@ async def creo_revolve(
     thin: float | None = None,
 ) -> dict[str, Any]:
     """Create native revolve/revolved cut from an arbitrary sketch, about its centerline or an external axis.
+    Supply angle (degrees) OR angle_rad (radians), not both; omitting both defaults to 360 deg.
+    Angles in (360, 360.001] deg (e.g. rounded 2*pi such as 6.28319 rad) clamp to 360 deg and
+    report angle_clamped_from_deg; larger values are rejected.
     Omit axis (or pass null) to revolve about the sketch's construction centerline; that sketch must
     contain exactly one centerline. An explicit axis is a bare selection: {kind:'datum_axis_feature',
     label:'axis_label'} for a datum axis feature created earlier in the same model (create it first,
-    e.g. with creo_datum_axis), or {kind:'axis',id:N} from model inspection. Structures without kind
-    (including {entity:'ax'}), empty objects, non-axis kinds and missing id/label are rejected before
-    a job is dispatched; the axis_pattern datum_feature alias does not apply here.
+    e.g. with creo_datum_axis), {kind:'axis',id:N} from model inspection, or
+    {kind:'sketch_points',start_mm:[u1,v1],end_mm:[u2,v2]} (shorthand {start_mm,end_mm}) in the
+    sketch (u,v) frame so the executor adds or reuses a matching construction centerline in that
+    sketch. Structures without a valid kind or start_mm/end_mm pair (including {entity:'ax'}),
+    empty objects, non-axis kinds and missing id/label are rejected before a job is dispatched;
+    the axis_pattern datum_feature alias does not apply here.
     A cut that removes no material fails and rolls back; a successful cut reports material_removed_mm3."""
-    op = {
+    op: dict[str, Any] = {
         "op": "revolve",
         "label": label,
         "sketch": sketch,
-        "angle": angle,
         "mode": mode,
         "direction": direction,
         "new_body": new_body,
     }
+    if angle is not None:
+        op["angle"] = angle
+    if angle_rad is not None:
+        op["angle_rad"] = angle_rad
+    if angle is None and angle_rad is None:
+        op["angle"] = 360
     if axis is not None:
         op["axis"] = axis
     if thin is not None:
@@ -1713,6 +1734,7 @@ async def creo_datum_plane(
     offset: float = 0,
     angle: float | None = None,
     axis: dict[str, Any] | None = None,
+    flip: bool = False,
 ) -> dict[str, Any]:
     """Create an offset/angled/three-point datum plane. reference accepts datum_plane
     geometry ID from inspect_model(datum_planes), planar surface ID, datum_feature
@@ -1725,6 +1747,8 @@ async def creo_datum_plane(
     selects the explicit angle mode and requires axis; combining angle with a nonzero
     offset is rejected before a job is dispatched instead of silently dropping the
     offset - create the angled plane first, then a second datum_plane offset from it.
+    flip reverses the created plane's normal without moving it; use it when a sketch
+    attached to the plane must keep a predictable v_axis and extrusion direction.
     axis accepts {kind:'axis',id:N} from model inspection or
     {kind:'datum_axis_feature',label:'axis_label'} created earlier in the same model;
     a plane reference or datum_feature plane label is not a rotation axis. Missing
@@ -1739,7 +1763,14 @@ async def creo_datum_plane(
     form. The job result reports the created plane's read-back frame
     (plane_frame.normal/origin) and verification evidence.
     """
-    op = {"op": "datum_plane", "label": label, "reference": reference, "offset": offset}
+    op = {
+        "op": "datum_plane",
+        "label": label,
+        "reference": reference,
+        "offset": offset,
+    }
+    if flip:
+        op["flip"] = True
     if angle is not None:
         op["angle"] = angle
     if axis is not None:
@@ -2169,10 +2200,12 @@ async def creo_sheetmetal_base_flange(
     thickness: float,
     radius: float = 1.0,
     k_factor: float = 0.5,
-    plane: Literal["XY", "XZ", "YZ"] = "XY",
+    plane: Literal["XY", "XZ", "YZ"] | dict[str, Any] = "XY",
     origin: list[float] | None = None,
     expected_width_direction_world: list[float] | None = None,
     width_direction_tolerance_deg: float = 0.5,
+    direction: Literal["positive", "negative"] = "positive",
+    flip_thickness: StrictBool = False,
 ) -> dict[str, Any]:
     """Create a first sheetmetal wall from an open two-line (90 degree) chain, as two features.
 
@@ -2183,7 +2216,7 @@ async def creo_sheetmetal_base_flange(
     becomes a 90 degree flange (label_leg2) attached to that wall's free end edge - the edge is
     found by geometry from the wall's own measured frame, never by a guessed element id.
 
-    Measured contract (Creo 12.4.0.0, DEV-089 T3):
+    Default contract (Creo 12.4.0.0, DEV-089 T3):
     - the sheet is thickened one-sided along +normal; the flange grows on the opposite side of
       the plate and its gauge stays inside the plate's end face;
     - `second_leg_mm` is the free second leg measured from the plate's outer face, so the native
@@ -2202,6 +2235,11 @@ async def creo_sheetmetal_base_flange(
     features with their ids), first_leg_mm/second_leg_mm/width_mm/thickness_mm/radius_mm/
     k_factor/y_factor, volume_mm3 against expected_volume_mm3, and envelope.u/v/n.
 
+    A dictionary plane sets a verified support reference and optional origin/u_axis;
+    width runs along the resulting v axis, including model X on a suitable frame.
+    direction selects the initial wall's signed gauge side. flip_thickness=true
+    extends the flange gauge past the first wall's free end by the sheet thickness.
+
     expected_width_direction_world / width_direction_tolerance_deg are the same assertion
     creo_execute_plan accepts (BUG-129): when the measured width direction differs from the
     expected world vector by more than the tolerance, the job fails and rolls back. They only
@@ -2219,6 +2257,10 @@ async def creo_sheetmetal_base_flange(
         "k_factor": k_factor,
         "origin": list(origin) if origin is not None else [0.0, 0.0],
     }
+    if direction != "positive":
+        operation["direction"] = direction
+    if flip_thickness is not False:
+        operation["flip_thickness"] = flip_thickness
     if expected_width_direction_world is not None:
         operation["expected_width_direction_world"] = list(expected_width_direction_world)
         operation["width_direction_tolerance_deg"] = width_direction_tolerance_deg
@@ -2296,12 +2338,15 @@ async def creo_sheetmetal_flange(
             )
         ),
     ] = None,
+    flip_thickness: StrictBool = False,
 ) -> dict[str, Any]:
     """Attach a native bent flange to a sheetmetal edge. The section exposes named height for dimension edits.
 
-    flip=false (the default) bends out of the face the edge belongs to; flip=true bends to
-    the opposite, material side. The side is relative to the attachment face, not to a
-    global axis. A wall whose attachment-edge end is adjacent to an existing bend is
+    flip reverses the flange's extension relative to the attachment face.
+    flip_thickness=true places the flange gauge past the free end of the parent wall
+    on the validated straight 90-degree route. By default the gauge stays within the
+    end face. Both directions are relative to the attachment. A wall whose attachment-edge
+    end is adjacent to an existing bend is
     rejected before creation (failure_reason=adjacent_bend_ends) unless the request
     carries miter_cuts; that explicit native miter request releases the guard and lets
     Creo cut the end overlap (four-wall boxes use this route).
@@ -2331,6 +2376,8 @@ async def creo_sheetmetal_flange(
         "flip": flip,
         "y_factor": y_factor,
     }
+    if flip_thickness is not False:
+        operation["flip_thickness"] = flip_thickness
     if relief is not None:
         operation["relief"] = relief
     if end_trim_mm is not None:
@@ -2443,7 +2490,7 @@ async def creo_assemble_component(
     source_model_id: str,
     translation: list[float] | None = None,
     rotation: list[float] | None = None,
-    placement: Literal["fixed", "default", "constraints"] = "fixed",
+    placement: Literal["fixed", "default", "constraints", "packaged"] = "fixed",
     constraints: list[dict[str, Any]] | None = None,
     rotation_matrix: RotationMatrix | None = None,
 ) -> dict[str, Any]:
@@ -2454,7 +2501,7 @@ async def creo_assemble_component(
     p_parent = p_local * rotation_matrix + translation. Matrix and explicit Euler
     are mutually exclusive; matrix must be finite, orthogonal and det +1 within 1e-7.
     Sources must be ready and saved; later source edits do not update the component snapshot.
-    Native placement can be fixed, default or mate/align/insert/csys constraints. A managed assembly may also be a source: it is copied like a part, so its own file and components are never moved, and the receipt names source_model_type, source_snapshot and component_count (drawings are refused).
+    Native placement can be fixed, packaged (positioned at the given transform with zero constraints), default or mate/align/insert/csys constraints. A managed assembly may also be a source: it is copied like a part, so its own file and components are never moved, and the receipt names source_model_type, source_snapshot and component_count (drawings are refused).
     """
     return await invoke(
         general.submit,
@@ -2976,6 +3023,11 @@ async def creo_export_model(
             )
         ),
     ] = None,
+    timeout_seconds: Annotated[
+        int,
+        Field(strict=True, ge=60, le=7200, description="Optional hard executor budget in seconds"),
+    ]
+    | None = None,
 ) -> dict[str, Any]:
     """Export STEP/STL/IGES/JPEG, drawing PDF/JPEG, or an explicit native assembly bundle.
 
@@ -2990,14 +3042,29 @@ async def creo_export_model(
     ``stl_options`` is accepted only with ``format="stl"``. Unknown keys,
     booleans, NaN/Inf, a non-positive chord height, or an angle control outside
     ``0.0..1.0`` are rejected before submission. Omitting it keeps the previous
-    behavior (0.05 mm chord height, 0.1 angle control).
+    behavior (0.05 mm chord height, 0.1 angle control). timeout_seconds selects the
+    same per-job executor budget as creo_execute_plan (60–7200 seconds). Omit it for
+    the server budget. Poll creo_get_job for budgets and native_progress.sub_stage.
+    A timed-out or cancelled job can have an unverified staging file; use only a
+    completed export artifact.
     """
     operation: dict[str, Any] = {"op": "export", "format": format}
     if stl_options is not None:
         operation["stl_options"] = stl_options
     if jpeg_options is not None:
         operation["jpeg_options"] = jpeg_options
-    return await invoke(general.submit, [operation], model_id, None, None, None, True)
+    if timeout_seconds is None:
+        return await invoke(general.submit, [operation], model_id, None, None, None, True)
+    return await invoke(
+        general.submit,
+        [operation],
+        model_id,
+        None,
+        None,
+        None,
+        True,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 @mcp.tool(annotations=READ)

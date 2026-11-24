@@ -97,6 +97,14 @@ class ExportToolPassThroughTest(unittest.TestCase):
     def test_default_export_keeps_the_old_operation_shape(self) -> None:
         self.assertEqual(self.submit(), [{"op": "export", "format": "step"}])
 
+    def test_explicit_budget_is_forwarded_as_readonly_job_metadata(self) -> None:
+        with mock.patch.object(server, "invoke", new_callable=mock.AsyncMock) as invoke:
+            asyncio.run(server.creo_export_model("model", format="stl", timeout_seconds=90))
+        call = invoke.await_args
+        self.assertEqual(call.args[1], [{"op": "export", "format": "stl"}])
+        self.assertIs(call.args[6], True)
+        self.assertEqual(call.kwargs, {"timeout_seconds": 90})
+
     def test_stl_options_are_forwarded(self) -> None:
         operations = self.submit(
             format="stl", stl_options={"chord_height_mm": 0.02, "angle_control": 0.05}

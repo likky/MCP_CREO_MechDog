@@ -257,6 +257,7 @@ SDK 依据：本机 `ProChamfer.h` 声明 `PRO_CHM_D1_X_D2 = 603`，该 schema �
 | sheetmetal_flange.edge | 裸引用（计划路径 `operations[i].edge`），两种形态：`{"kind":"edge","id":N}`，`id` 取当前 `creo_inspect_model` 的边 ID；或 `{"kind":"edge_geometry","endpoints_mm":[[x,y,z],[x,y,z]],"tolerance_mm":1e-6}`，用当前模型坐标毫米的两端点点名一条直线边，原生在执行每个 op 时重查当前几何、要求无向唯一匹配，因此计划可跨边 ID 重排。`tolerance_mm` 可省略（默认 1e-6，范围 1e-9..1000），不接受单位字段；0/多候选、非有限坐标、退化边或无法换算模型长度单位时明确拒绝。两种形态都不得再加 edge/reference 包装。首壁来源为 `native_planar` 时，报错只指向 `creo_sheetmetal_planar_wall` 的 frame/envelope；只有 `sheetmetal_wall` 转换首壁才引用 `wall_contract`；来源未知不给旧首壁配方 |
 | sheetmetal_base_flange.section | 由两条直线组成的开口 90° 折线：`[{"type":"line","start":[u,v,0],"end":[u,v,0]}, {...}]`，必须按给定顺序 end-to-start 连续、两段互相垂直、条数恰为 2；其余条数、非 90° 折角、共线折返与断链在入口（schema）就拒绝。只取两段长度和 90° 折角：第一段是有标签的 `native_planar` 矩形平面壁（同时生成 `<label>_sk`），第二段挂在壁自由端的 90° 法兰（`<label>_leg2`）。因此这是**两个特征**，结果 `composed_features` 逐一列出两者的特征 ID 与参数，不声称单特征基体法兰，也不等价于 0.24.1 反馈里那个中面加厚的原生基体法兰（体积口径不同）。单侧加厚：板沿 +normal 占 0..thickness，折弯腿在板的另一侧；`second_leg_mm` 是自板外表面起算的自由腿长，故原生法兰高 = `second_leg + thickness`；包络为 `first_leg × width × (second_leg + thickness)`，体积上界 = `(first+second)×width×thickness − (1−π/4)((R+t)²−R²)×width`，实测偏离超过 1 mm³ 或 0.5% 即失败。`radius` 为内半径，`k_factor` ∈ (0,1] 且 Y = K·π/2；`origin=[u0,v0]` 与 `sheetmetal_planar_wall` 同义；label ≤ 22 字符（要留出两个后缀）。实测（Creo 12.4.0.0，2026-11-15）：腿 8/12、t=2、宽 20、R=0.7366、K=0.5 得到 770.1858 mm³、包络 8×20×14，与上界差 6.4e-6 mm³，保存重载核验通过 |
 | sheetmetal_unbend/flat_pattern/bend_back.fixed_surface | 裸面引用，如 `{"kind":"surface","id":N}`，取自当前巡检；`references` 省略时作用全部折弯，能否固定由原生执行判定 |
+| sheetmetal_flange.flip_thickness | 布尔值，缺省 false。独立于改变伸展方向的 `flip`，启用后在已实测的直边 90° 法兰上让板厚向首壁自由端以外延伸。以包络、弯曲半径、体积及保存重载回执验证几何。 |
 | sheetmetal_flange.relief | 可选对象 `{type:"none"\|"rectangular", ends:"both"\|"side1"\|"side2", width:>0, depth:>=0}`；省略等于 `none`（两端保持 `PRO_BEND_RLF_NONE`）。宽深是**绝对模型单位**、不按板厚缩放；`rip`/`stretch`/`obround`/`param`、角部释放与边撕裂不支持。这是 **bend-end relief**，不是 corner relief 或斜接，当前未证明能解决角部重叠；传入它也不会跳过 `adjacent_bend_ends` 创建前拒绝。释放是创建期属性，改它要删除/抑制折边后重建，没有就地改释放的入口 |
 | sheetmetal_flange.end_trim_mm | 可选正数（`>0`，上限 100000，布尔拒绝），模型单位；省略时元素树与旧行为逐字一致。**Creo 把它读作「距链端各内缩 setback」还是「自截面起算的壁长」尚未实机确认**，属诊断参数：先在自由壁上用实测体积分类再依赖修剪几何（开发分支未发布） |
 | sheetmetal_flange.miter_cuts | 可选对象 `{width:>0, offset:>=0}`（模型单位，布尔拒绝；`offset` 省略时等于 `width`）。写入折边自身 `PRO_E_SMT_MTR_CUTS` 的 **BLIND（`PRO_DIM_ENTER`）数值**宽度/偏移，创建时由 Creo 切掉墙端与相邻折弯的重叠。**这是 `adjacent_bend_ends` 创建前拒绝的唯一放行方式**：不传 `miter_cuts` 的请求照旧被拒；传入后放行并回显 `miter_cuts` 与放行证据 `adjacent_bend_ends_allowed`。实测（2026-11-06）：GAP 型会被 Creo 重置为 PARAM 且值清 0，故改用 BLIND；四壁盒子四墙均建成并保存重载，但 1 mm 宽度/偏移在自由首壁探针上无可测体积变化，切角量尚未定标 |
@@ -277,6 +278,8 @@ SDK 依据：本机 `ProChamfer.h` 声明 `PRO_CHM_D1_X_D2 = 603`，该 schema �
 执行器先限定到该标签特征直接拥有的原生面，再按几何条件选取唯一匹配。使用当前仍存在的特征标签。需选择多张面时，在 `surfaces` 分别给出选择器。
 
 ### 钣金首壁的 width 作用轴（BUG-129）
+
+`creo_sheetmetal_base_flange` 和计划均可使用字典 `plane` 为宽度选择真实支撑面、世界原点与 u 方向。宽度沿解析得到的 v 轴。若支撑法向为 +Y，取 `plane={"reference":{"kind":"datum_plane","axis":"y","offset":0},"origin":[10,0,12],"u_axis":[0,0,-1]}`，宽度沿 −X。首壁可传 `direction:"negative"` 沿 −Y 加厚，`flip_thickness:true` 将折弯厚度伸出首壁自由端。局部 u 包络比原第一腿多一个板厚，体积验收增加 `width × thickness²`。方向断言仍只检查方向，平行或反平行均可匹配。
 
 `sheetmetal_base_flange.width` 固定沿草图 v 轴。命名字典平面的默认帧如下（u 为第一段长度方向，v 为宽度方向）：
 
@@ -419,6 +422,8 @@ executable 仅表示静态能力/schema 准入；native/saved_reload 恒为 not_
 
 ## JPEG 导出视图（FEAT-074）
 
+`creo_export_model` 可选 `timeout_seconds`（整数 60–7200 秒）。作业预算与独立停滞预算见 `creo_get_job.budgets`。STL 执行阶段见 `native_progress.sub_stage`。网格通过校验后才发布，超时留下的未校验暂存文件不可作交付件。
+
 零件和装配可用 `creo_export_model(format="jpeg", jpeg_options={"view":"top","width_px":1600,"height_px":900})` 单独导出预览。视图支持 `isometric`、`front` 和 `top`，每边可选 200–2400 像素。一次作业输出一张图，沿用当前模型 revision。
 
 ## 精确 NURBS 草图实体（b_spline，FEAT-066）
@@ -458,12 +463,12 @@ Creo 10 的部分闭合 B 样条轮廓会生成切除特征但量测去料为零
 
 ## 零匹配边选择器的诊断范围（DEV-098）
 
-`{"kind":"geometry_selector","target":"edge",...}` 零匹配或多匹配都拒绝。失败回执给出 `candidate_count`、`matched_ids`、`tolerance_mm`；**零匹配**时 `geometry_selector_diagnostic.nearest_edges` 另列最多 5 条最近的可匹配边，按误差再按 id 升序：
+`{"kind":"geometry_selector","target":"edge",...}` 零匹配时拒绝，多匹配按默认要求或显式消歧规则处理。失败回执给出 `candidate_count`、`matched_ids`、`tolerance_mm`；**零匹配**时 `geometry_selector_diagnostic.nearest_edges` 另列最多 5 条最近的可匹配边，按误差再按 id 升序：
 
 - 端点/点形式：`id`、`endpoints_mm`（模型坐标换算后的毫米端点）、`error_mm`；端点形式另有 `endpoint_errors_mm`，带 `point_mm` 时另有 `point_error_mm`。
 - 圆形式：`id`、`center_mm`、`radius_mm`、`radius_error_mm`、`center_error_mm`、`error_mm`；带 `axis` 过滤时另有 `axis_error_deg`。
 
-最近候选**只是诊断**：匹配器不会自动选中，严格匹配与唯一性判定不变；坐标与 ID 随模型重建变化，重试前应重新 `creo_inspect_model(section="edges")` 或改用当前巡检的 `{kind:"edge",id:N}`。多匹配时仍只给 `matched_ids`，不列最近候选。`sheetmetal_flange` 旧 `edge_geometry` 路径继续使用 `edge_geometry_diagnostic`（字段见上文 DEV-074 增量）。
+零命中时的 `nearest_edges` 只供诊断。模型空间边选择器可传 `on_face:{"kind":"surface","id":N}`，使用本次巡检的面 ID，只保留与该面相邻的边。仅含单点锚 `point_mm` 的模型空间边选择器可显式传 `ambiguity:"nearest"`，按点到有限直线或圆弧的距离选取容差内的唯一最近边。第一与第二近的差不超过 1e-6 mm 则拒绝。成功回执 `geometry_selector_resolution` 给出选中的边及消歧信息，失败回执保留 `matched_ids`。特征重建可替换边或面；重新巡检当前几何，再提交当前面 ID 或边 ID。`sheetmetal_flange` 旧 `edge_geometry` 路径继续使用 `edge_geometry_diagnostic`（字段见上文 DEV-074 增量）。
 
 `{"kind":"geometry_selector","target":"surface",...}` 零匹配时同样给出 `geometry_selector_diagnostic.nearest_surfaces`（最多 5 条，按误差再按 id 升序，只列可命名的 planar/cylindrical 面）：每条含 `id`、`type`（`plane`/`cylinder`）、`origin_mm`、`normal` 或 `axis`、`error_mm`；带 `axis` 过滤时另有 `axis_error_deg`，带 `radius_mm` 时另有 `radius_mm`/`radius_error_mm`，带 `center_mm` 时另有 `center_axis_distance_mm`，带 `points_mm` 时另有 `points_offset_mm`。`radius_mm`/`center_mm` 只适用于圆柱面，方向正确但类型不符的面仍只出现在 `type_rejected_ids`。该列表同样是诊断，不会自动选中。
 

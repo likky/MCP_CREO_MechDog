@@ -236,6 +236,7 @@ OPERATION_KEYS = (
     "failed_model_cleanup",
     "edge_geometry_diagnostic",
     "geometry_selector_diagnostic",
+    "geometry_selector_resolution",
     "depth_basis",
     "depth_scheme_code",
     "depth_scheme_query",

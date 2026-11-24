@@ -119,6 +119,15 @@ static std::string selector_edge_error(const std::string &form, const std::vecto
 // DEV-098: zero-match edge selectors report the closest eligible edges so the
 // caller can re-read the measurements instead of retrying the same anchor. This
 // is diagnostic only - the matcher never selects one of these edges.
+static bool selector_edge_on_face(const J &selector, const J &edge) {
+    if (!selector.contains("on_face"))
+        return true;
+    if (!edge.contains("adjacent_surfaces") || !edge.at("adjacent_surfaces").is_array())
+        return false;
+    const auto &faces = edge.at("adjacent_surfaces");
+    return std::find(faces.begin(), faces.end(), selector.at("on_face").at("id")) != faces.end();
+}
+
 static J selector_nearest_edges(const J &selector, const J &state, double mm_scale,
                                 const std::string &form) {
     const double pi = 3.14159265358979323846;
@@ -134,6 +143,8 @@ static J selector_nearest_edges(const J &selector, const J &state, double mm_sca
         const bool filter_axis = selector.contains("axis");
         const V requested = filter_axis ? normalized(vec(selector["axis"])) : V{0, 0, 0};
         for (const auto &edge : state.value("edges", J::array())) {
+            if (!selector_edge_on_face(selector, edge))
+                continue;
             if (!edge.contains("arc"))
                 continue;
             const J &arc = edge["arc"];
@@ -170,6 +181,8 @@ static J selector_nearest_edges(const J &selector, const J &state, double mm_sca
         const bool filter_point = selector.contains("point_mm");
         const V point = filter_point ? vec(selector["point_mm"]) : V{0, 0, 0};
         for (const auto &edge : state.value("edges", J::array())) {
+            if (!selector_edge_on_face(selector, edge))
+                continue;
             if (!edge.contains("start") || !edge.contains("end"))
                 continue;
             const V first = scale(vec(edge["start"]), mm_scale);
@@ -323,6 +336,34 @@ static J selector_nearest_surfaces(const J &selector, const J &state, double mm_
     return nearest;
 }
 
+// Distance to the finite measured arc, including a possible closest endpoint.
+static double selector_arc_distance(const J &arc, const V &point, double mm_scale) {
+    const V center = scale(vec(arc.at("origin")), mm_scale);
+    const V x = normalized(vec(arc.at("v1"))), y = normalized(vec(arc.at("v2")));
+    if (selector_vector_norm(selector_cross(x, y)) <= 1e-9)
+        return std::numeric_limits<double>::infinity();
+    const V delta = {point[0] - center[0], point[1] - center[1], point[2] - center[2]};
+    const double radius = arc.at("radius").get<double>() * mm_scale;
+    const double start = arc.at("start_angle").get<double>();
+    const double finish = arc.at("end_angle").get<double>();
+    constexpr double full = 6.28318530717958647692;
+    const double angle = std::atan2(dot(delta, y), dot(delta, x));
+    double span = finish - start;
+    if (span < 0)
+        span += full;
+    double offset = std::fmod(angle - start, full);
+    if (offset < 0)
+        offset += full;
+    auto distance = [&](double at) {
+        V difference{};
+        for (int axis = 0; axis < 3; ++axis)
+            difference[axis] =
+                delta[axis] - radius * (x[axis] * std::cos(at) + y[axis] * std::sin(at));
+        return selector_vector_norm(difference);
+    };
+    return offset <= span ? distance(angle) : std::min(distance(start), distance(finish));
+}
+
 // BUG-176: test whether a 3D point lies on a measured circular arc within tolerance.
 static bool selector_point_on_arc(const J &arc, const V &point, double mm_scale, double tolerance,
                                   V *out_center = nullptr, double *out_radius = nullptr,
@@ -377,6 +418,7 @@ static GeometrySelectorOutcome match_geometry_edge_selector(const J &selector, c
     // initialised as a surface and failed with PRO_TK_NOT_EXIST (-23).
     outcome.target = "edge";
     const bool circular = selector.contains("center_mm") || selector.contains("radius_mm");
+    const bool nearest = selector.value("ambiguity", "") == "nearest";
     std::string form = circular                            ? "circular"
                        : selector.contains("endpoints_mm") ? "endpoints"
                                                            : "point_mm";
@@ -397,6 +439,8 @@ static GeometrySelectorOutcome match_geometry_edge_selector(const J &selector, c
         const double cosine_limit = std::cos(axis_tolerance * 3.14159265358979323846 / 180.0);
         const V requested = filter_axis ? normalized(vec(selector["axis"])) : V{0, 0, 0};
         for (const auto &edge : state.value("edges", J::array())) {
+            if (!selector_edge_on_face(selector, edge))
+                continue;
             if (!edge.contains("arc"))
                 continue; // only measured circular edges are eligible
             candidates++;
@@ -440,6 +484,8 @@ static GeometrySelectorOutcome match_geometry_edge_selector(const J &selector, c
         if (selector.contains("endpoints_mm"))
             expected[1] = vec(selector.at("endpoints_mm").at(1));
         for (const auto &edge : state.value("edges", J::array())) {
+            if (!selector_edge_on_face(selector, edge))
+                continue;
             if (edge.contains("start") && edge.contains("end")) {
                 candidates++;
                 V first = scale(vec(edge["start"]), mm_scale);
@@ -478,9 +524,14 @@ static GeometrySelectorOutcome match_geometry_edge_selector(const J &selector, c
                 double arc_radius = 0.0;
                 V arc_normal = {0, 0, 0};
                 double error = 0.0;
-                if (!selector_point_on_arc(edge["arc"], expected[0], mm_scale, tolerance,
-                                           &arc_center, &arc_radius, &arc_normal, &error))
+                if (nearest) {
+                    error = selector_arc_distance(edge["arc"], expected[0], mm_scale);
+                    if (!std::isfinite(error) || error > tolerance)
+                        continue;
+                } else if (!selector_point_on_arc(edge["arc"], expected[0], mm_scale, tolerance,
+                                                  &arc_center, &arc_radius, &arc_normal, &error)) {
                     continue;
+                }
                 matches.push_back(edge["id"].get<int>());
                 matched_centers.push_back(arc_center);
                 matched_radii.push_back(arc_radius);
@@ -495,7 +546,7 @@ static GeometrySelectorOutcome match_geometry_edge_selector(const J &selector, c
     // construction. Two distinct circles that both fit inside the tolerance are
     // still separable, so they keep the generic advice.
     const double same_circle_epsilon = 1e-6;
-    bool same_circle = all_matches_are_arcs && matched_centers.size() > 1 &&
+    bool same_circle = !nearest && all_matches_are_arcs && matched_centers.size() > 1 &&
                        matched_centers.size() == matches.size();
     for (size_t i = 1; same_circle && i < matched_centers.size(); ++i) {
         same_circle =
@@ -515,10 +566,25 @@ static GeometrySelectorOutcome match_geometry_edge_selector(const J &selector, c
     const bool seam_point_hit = selector.contains("point_mm");
     const bool resolved_same_circle =
         matches.size() > 1 && same_circle && (full_circle_opt_in || seam_point_hit);
-    if (matches.size() == 1 || resolved_same_circle) {
-        int chosen = matches[0];
-        for (int id : matches)
-            chosen = std::min(chosen, id);
+    int nearest_id = -1;
+    double nearest_error = std::numeric_limits<double>::infinity();
+    double second_error = nearest_error;
+    if (nearest && matches.size() > 1) {
+        for (const auto &candidate : matched) {
+            const double error = candidate.at("anchor_error_mm").get<double>();
+            if (error < nearest_error) {
+                second_error = nearest_error;
+                nearest_error = error;
+                nearest_id = candidate.at("id").get<int>();
+            } else {
+                second_error = std::min(second_error, error);
+            }
+        }
+    }
+    const bool resolved_nearest = nearest_id >= 0 && second_error - nearest_error > 1e-6;
+    if (matches.size() == 1 || resolved_same_circle || resolved_nearest) {
+        const int chosen =
+            resolved_nearest ? nearest_id : *std::min_element(matches.begin(), matches.end());
         outcome.matched = true;
         outcome.id = chosen;
         outcome.diagnostic = {{"target", "edge"},
@@ -526,6 +592,14 @@ static GeometrySelectorOutcome match_geometry_edge_selector(const J &selector, c
                               {"matched_geometry_id", chosen},
                               {"candidate_count", candidates},
                               {"tolerance_mm", tolerance}};
+        if (selector.contains("on_face"))
+            outcome.diagnostic["on_face"] = selector.at("on_face");
+        if (resolved_nearest) {
+            outcome.diagnostic["matched_ids"] = J(matches);
+            outcome.diagnostic["ambiguity_resolution"] = "nearest";
+            outcome.diagnostic["distance_mm"] = nearest_error;
+            outcome.diagnostic["next_distance_mm"] = second_error;
+        }
         if (resolved_same_circle) {
             outcome.diagnostic["matched_ids"] = J(matches);
             outcome.diagnostic["same_circle"] = true;
@@ -543,6 +617,18 @@ static GeometrySelectorOutcome match_geometry_edge_selector(const J &selector, c
                           {"candidate_count", candidates},
                           {"matched_ids", J(matches)}};
     outcome.error = selector_edge_error(form, matches, candidates, tolerance, same_circle);
+    if (selector.contains("on_face")) {
+        outcome.diagnostic["on_face"] = selector.at("on_face");
+        outcome.error += "; restricted to edges adjacent to current surface " +
+                         std::to_string(selector.at("on_face").at("id").get<int>());
+    }
+    if (nearest && matches.size() > 1) {
+        outcome.diagnostic["ambiguity_resolution"] = "tied";
+        outcome.diagnostic["distance_mm"] = nearest_error;
+        outcome.diagnostic["next_distance_mm"] = second_error;
+        outcome.error +=
+            "; closest edges tie within 1e-6 mm - constrain on_face or use a current edge id";
+    }
     if (matches.empty()) {
         outcome.diagnostic["nearest_edges"] =
             selector_nearest_edges(selector, state, mm_scale, form);

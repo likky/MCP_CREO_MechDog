@@ -1,0 +1,31 @@
+{
+  "batch": "feedback-0.43.1-2026-11-24",
+  "archived_date": "2026-11-24",
+  "source_version": "0.43.1/0.43.2",
+  "files": [
+    {
+      "original_filename": "2026-11-24_CREO_0.43.1_偏移基准面法线方向静默翻转致XZ草图整体反号.md",
+      "archived_path": "originals/datum-plane-normal-sketch-axis-flip.md",
+      "bytes": 17030,
+      "sha256": "b4d87332bb2f48f93934aa358b198db18cf7e4d4dbe10fba0a385473d79ed396"
+    },
+    {
+      "original_filename": "2026-11-24+CREO+0.43.0+chamfer单边模式与旧版同码且Creo10曲面放样仍-18.md",
+      "archived_path": "originals/chamfer-propagate-and-surface-loft-creo10.md",
+      "bytes": 29618,
+      "sha256": "def16bb1d7880146bbe25753e8c7ad0365a83bf320a9c92946ef0d36440af7e2"
+    },
+    {
+      "original_filename": "2026-11-24_CREO_0.43.1_新增Creo9-10专有SDK头文件入库与DEV092唯一例外口径不一致.md",
+      "archived_path": "originals/creo9-10-sdk-header-governance.md",
+      "bytes": 8607,
+      "sha256": "8ab8d2d39916be58963dfeb676b5691612604f67b48ecf7f3a286d41261347fe"
+    },
+    {
+      "original_filename": "2026-11-24_CREO_0.43.2_sheetmetal_base_flange实机通过但只能新建独立链且钣金成形仍门禁.md",
+      "archived_path": "originals/sheetmetal-base-flange-attach.md",
+      "bytes": 6513,
+      "sha256": "cedce94508b06d0093d49d3566a5252f5ce6e99d443c1db7252f241347bfd285"
+    }
+  ]
+}

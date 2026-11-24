@@ -739,13 +739,16 @@ static ProError inspect_edge(ProEdge edge, ProError status, ProAppData) {
         }
         ProGeomitemdataFree(&data);
     }
-    ProEdge ea, eb;
-    ProSurface sa, sb;
-    if (!ProEdgeNeighborsGet(edge, &ea, &eb, &sa, &sb)) {
-        int a, b;
-        ProSurfaceIdGet(sa, &a);
-        ProSurfaceIdGet(sb, &b);
-        item["adjacent_surfaces"] = J::array({a, b});
+    ProEdge ea = nullptr, eb = nullptr;
+    ProSurface sa = nullptr, sb = nullptr;
+    if (ProEdgeNeighborsGet(edge, &ea, &eb, &sa, &sb) == PRO_TK_NO_ERROR) {
+        J adjacent = J::array();
+        for (ProSurface surface : {sa, sb}) {
+            int face_id = -1;
+            if (surface && ProSurfaceIdGet(surface, &face_id) == PRO_TK_NO_ERROR && face_id >= 0)
+                adjacent.push_back(face_id);
+        }
+        item["adjacent_surfaces"] = std::move(adjacent);
     }
     // P08/FEAT-014 candidate-edge discovery: one read-only contour query per
     // edge on sheetmetal parts. PRO_TK_NO_ERROR means the edge lies on a
@@ -2133,7 +2136,8 @@ static void body_options(ProElement root, const J &op) {
     }
 }
 static ProFeature offset_plane(const J &reference, double offset, const std::wstring &name,
-                               double *angle = nullptr, const J *axis = nullptr) {
+                               double *angle = nullptr, const J *axis = nullptr,
+                               bool flip = false) {
     ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
     integer(root, PRO_E_FEATURE_TYPE, PRO_FEAT_DATUM);
     text(root, PRO_E_STD_FEATURE_NAME, name.c_str());
@@ -2154,6 +2158,12 @@ static ProFeature offset_plane(const J &reference, double offset, const std::wst
         ref(through, PRO_E_DTMPLN_CONSTR_REF, s);
         ProSelectionFree(&s);
     }
+    // BUG-187: the support normal is not under the caller's control when a
+    // sketch is attached to an offset datum plane. An explicit flip keeps the
+    // plane in place while publishing the opposite normal, so the sketch v_axis
+    // and the extrusion direction stay predictable.
+    if (flip)
+        integer(root, PRO_E_DTMPLN_FLIP_DIR, PRO_DTMPLN_FLIP_DIR_YES);
     ProFeature f = create(root);
     CK(ProElementFree(&root));
     return f;
@@ -2232,7 +2242,10 @@ static Frame sketch_frame(const J &op) {
         f.origin = support_origin;
         f.u = normalized(add(f.u, scale(f.n, -dot(f.u, f.n))));
     } else {
-        f.n = support_normal;
+        // BUG-187: a dict plane may pin the side it publishes. flip keeps the
+        // selected support but reverses its normal, which reverses v_axis and
+        // the extrusion direction without moving the sketch plane.
+        f.n = p.value("flip", false) ? scale(support_normal, -1) : support_normal;
         f.origin = p.contains("origin") ? vec(p["origin"]) : support_origin;
         // BUG-095: an explicit origin is rejected against the actual support
         // plane, and the rejection now carries the measured evidence instead
@@ -2276,6 +2289,28 @@ static Frame sketch_frame(const J &op) {
         f.u = normalized(in_plane);
     }
     f.v = normalized(cross(f.n, f.u));
+    if (!p.is_string() && p.contains("v_axis")) {
+        // BUG-187: pin the sketch v_axis instead of accepting whatever the
+        // support normal implies. When both u_axis and v_axis are supplied,
+        // verify orthogonality in the plane and derive normal = u_axis x v_axis
+        // so an inverted support normal cannot silently flip v_axis.
+        V requested_v = vec(p["v_axis"]);
+        double v_magnitude = sqrt(dot(requested_v, requested_v));
+        if (v_magnitude < 1e-9)
+            throw std::runtime_error("Sketch v_axis must be a nonzero direction vector");
+        V v_in_plane = add(requested_v, scale(f.n, -dot(requested_v, f.n)));
+        if (sqrt(dot(v_in_plane, v_in_plane)) < 1e-9 * v_magnitude)
+            throw std::runtime_error("Sketch v_axis is parallel to the support plane normal");
+        f.v = normalized(v_in_plane);
+        if (p.contains("u_axis")) {
+            if (fabs(dot(f.u, f.v)) > 1e-6)
+                throw std::runtime_error(
+                    "Sketch u_axis and v_axis must be orthogonal in the plane");
+            f.n = normalized(cross(f.u, f.v));
+        } else {
+            f.u = normalized(cross(f.v, f.n));
+        }
+    }
     double best = 10;
     f.orientation = -1;
     collect_datum_planes_quiet();
@@ -2944,9 +2979,7 @@ static J section_profile_summary(ProSection section, const char *phase) {
                                                        points[list[a]][1] - points[list[b]][1]));
     }
     double max_endpoint_gap = 0.0;
-    J open_samples = J::array();
-    bool open_samples_truncated = false;
-    const size_t max_open_samples = 20;
+    std::vector<J> all_open_samples;
     for (size_t current = 0; current < representatives.size(); current++) {
         if (degrees[current] != 1)
             continue;
@@ -2963,15 +2996,29 @@ static J section_profile_summary(ProSection section, const char *phase) {
             }
         }
         max_endpoint_gap = std::max(max_endpoint_gap, nearest_gap);
-        if (open_samples.size() < max_open_samples)
-            open_samples.push_back(
-                {{"entity", node_entity[current]},
-                 {"point", {representatives[current][0], representatives[current][1]}},
-                 {"nearest_entity", nearest < 0 ? J(nullptr) : J(node_entity[nearest])},
-                 {"nearest_gap_mm", nearest_gap}});
-        else
-            open_samples_truncated = true;
+        all_open_samples.push_back(
+            {{"entity", node_entity[current]},
+             {"point", {representatives[current][0], representatives[current][1]}},
+             {"nearest_entity", nearest < 0 ? J(nullptr) : J(node_entity[nearest])},
+             {"nearest_point",
+              nearest < 0 ? J(nullptr)
+                          : J::array({representatives[nearest][0], representatives[nearest][1]})},
+             {"nearest_gap_mm", nearest_gap}});
     }
+    std::sort(all_open_samples.begin(), all_open_samples.end(), [](const J &a, const J &b) {
+        double ga = a.value("nearest_gap_mm", 0.0), gb = b.value("nearest_gap_mm", 0.0);
+        if (ga != gb)
+            return ga < gb;
+        int ea = a.value("entity", 0), eb = b.value("entity", 0);
+        if (ea != eb)
+            return ea < eb;
+        return a.value("nearest_entity", -1) < b.value("nearest_entity", -1);
+    });
+    J open_samples = J::array();
+    const size_t max_open_samples = 20;
+    bool open_samples_truncated = all_open_samples.size() > max_open_samples;
+    for (size_t i = 0; i < std::min(all_open_samples.size(), max_open_samples); i++)
+        open_samples.push_back(all_open_samples[i]);
     summary = {
         {"available", true},
         {"entities", curves + standalone},
@@ -3825,6 +3872,32 @@ static std::string section_create_failure(const J &op, bool revolve, ProError er
                 m += " Max open endpoint gap " + std::string(gap_text) +
                      " mm (diagnostic sampling, not a kernel welding tolerance).";
             }
+            if (section.contains("open_end_samples") && section["open_end_samples"].is_array() &&
+                !section["open_end_samples"].empty()) {
+                m += " Nearest open ends:";
+                size_t shown = std::min<size_t>(section["open_end_samples"].size(), 5);
+                for (size_t i = 0; i < shown; i++) {
+                    const J &sample = section["open_end_samples"][i];
+                    char item_buf[192];
+                    double px = sample["point"][0].get<double>();
+                    double py = sample["point"][1].get<double>();
+                    double gap = sample.value("nearest_gap_mm", 0.0);
+                    int eid = sample.value("entity", -1);
+                    if (sample.contains("nearest_entity") &&
+                        sample["nearest_entity"].is_number_integer()) {
+                        snprintf(item_buf, sizeof(item_buf),
+                                 " ent_%d@(%.6g,%.6g)->ent_%d (%.9g mm)", eid, px, py,
+                                 sample["nearest_entity"].get<int>(), gap);
+                    } else {
+                        snprintf(item_buf, sizeof(item_buf), " ent_%d@(%.6g,%.6g) (%.9g mm)", eid,
+                                 px, py, gap);
+                    }
+                    if (i > 0)
+                        m += ";";
+                    m += item_buf;
+                }
+                m += ".";
+            }
         } else if (section.contains("max_cluster_spread_mm") &&
                    section["max_cluster_spread_mm"].is_number() &&
                    section["max_cluster_spread_mm"].get<double>() > 0.0) {
@@ -3872,13 +3945,28 @@ static void validate_revolve_axis(const J &op) {
         if (!axis.contains("label") || !axis["label"].is_string() ||
             axis["label"].get<std::string>().empty())
             problem = "kind 'datum_axis_feature' requires a nonempty label";
+    } else if (axis["kind"] == "sketch_points") {
+        auto valid_pt = [](const J &v) {
+            return v.is_array() && v.size() == 2 && v[0].is_number() && v[1].is_number() &&
+                   std::isfinite(v[0].get<double>()) && std::isfinite(v[1].get<double>());
+        };
+        if (!axis.contains("start_mm") || !axis.contains("end_mm") || !valid_pt(axis["start_mm"]) ||
+            !valid_pt(axis["end_mm"]))
+            problem = "kind 'sketch_points' requires finite 2D start_mm and end_mm points";
+        else {
+            double dx = axis["end_mm"][0].get<double>() - axis["start_mm"][0].get<double>();
+            double dy = axis["end_mm"][1].get<double>() - axis["start_mm"][1].get<double>();
+            if (hypot(dx, dy) < 1e-6)
+                problem = "kind 'sketch_points' start_mm and end_mm must be distinct (>= 1e-6 mm)";
+        }
     } else
         problem = "kind '" + axis["kind"].get<std::string>() + "' is not a revolve axis";
     if (!problem.empty())
         throw std::runtime_error(
             "Invalid revolve axis: " + problem +
             ". Use {\"kind\":\"datum_axis_feature\",\"label\":\"axis_label\"} (create that datum "
-            "axis feature first), {\"kind\":\"axis\",\"id\":N} from model inspection, or omit "
+            "axis feature first), {\"kind\":\"axis\",\"id\":N} from model inspection, "
+            "{\"kind\":\"sketch_points\",\"start_mm\":[u1,v1],\"end_mm\":[u2,v2]}, or omit "
             "axis to revolve about the sketch centerline (one construction centerline required)");
 }
 // FEAT-008/T09B: classify the resolved axis by provenance. ProAxisSurfaceGet
@@ -4036,7 +4124,8 @@ static std::string native_exception_text(const std::exception_ptr &error) {
 // for frame="sketch_local".
 static J revolve_axis_report(const J &op, ProFeature &created, ProFeature &sketch_f,
                              int explicit_axis_id, ProError explicit_axis_code) {
-    bool explicit_source = op.contains("axis") && !op.at("axis").is_null();
+    bool explicit_source = op.contains("axis") && !op.at("axis").is_null() &&
+                           op.at("axis").value("kind", "") != "sketch_points";
     J report = {{"source", explicit_source ? "explicit" : "internal_centerline"},
                 {"kind", "unknown"},
                 {"id", nullptr},
@@ -4127,6 +4216,9 @@ static J revolve_axis_report(const J &op, ProFeature &created, ProFeature &sketc
                     record_ids.contains(e.at("name").get<std::string>()))
                     user_centerlines.insert(
                         record_ids.at(e.at("name").get<std::string>()).get<int>());
+            if (sketch_meta->contains("revolve_centerline_id") &&
+                sketch_meta->at("revolve_centerline_id").is_number_integer())
+                user_centerlines.insert(sketch_meta->at("revolve_centerline_id").get<int>());
             log("SECTION_CENTERLINE_META drawn_user_lines=%zu\n", user_centerlines.size());
         }
         ProIntlist ids = nullptr;
@@ -4845,10 +4937,138 @@ static J generic_redefine_solidify_body(const J &op) {
         {"volume_after_mm3", after["volume_mm3"]},
     };
 }
+// DEV-100 (§8): ensure the target sketch carries a construction centerline
+// collinear with axis={kind:"sketch_points",start_mm,end_mm}. Existing solid
+// boundary lines stay untouched so closed profiles remain closed.
+static void ensure_revolve_sketch_centerline(const J &op, ProFeature &sketch_f) {
+    if (!op.contains("axis") || !op["axis"].is_object() ||
+        op["axis"].value("kind", "") != "sketch_points")
+        return;
+    const J *meta =
+        op["sketch"].is_string() ? alias_entry(op["sketch"].get<std::string>()) : nullptr;
+    if (!meta || !meta->contains("origin") || !meta->contains("u_axis") ||
+        !meta->contains("v_axis"))
+        throw std::runtime_error(
+            "Revolve axis kind 'sketch_points' requires a sketch label with stored frame metadata; "
+            "pass a sketch label or use an explicit datum_axis_feature");
+    ProElement root = nullptr;
+    CK(ProFeatureElemtreeExtract(&sketch_f, nullptr, PRO_FEAT_EXTRACT_NO_OPTS, &root));
+    try {
+        J saved_path = meta->value("section_path", J::array({PRO_E_STD_SECTION, PRO_E_SKETCHER}));
+        ProElement sk = get_path(root, saved_path);
+        ProSection section = nullptr;
+        CK(ProElementSpecialvalueGet(sk, nullptr, (ProAppData *)&section));
+        CK(ProSectionIntentManagerModeSet(section, PRO_B_FALSE));
+        ProMatrix loc;
+        CK(ProSectionLocationGet(section, loc));
+        V origin = vec((*meta)["origin"]);
+        V u_axis = vec((*meta)["u_axis"]);
+        V v_axis = vec((*meta)["v_axis"]);
+        V normal = meta->contains("normal") ? vec((*meta)["normal"]) : V{0.0, 0.0, 1.0};
+        bool loc_is_identity = true;
+        for (int row = 0; row < 4 && loc_is_identity; row++)
+            for (int col = 0; col < 4 && loc_is_identity; col++)
+                if (fabs(loc[row][col] - (row == col ? 1.0 : 0.0)) > 1e-12)
+                    loc_is_identity = false;
+        const bool identity_plausible = fabs(normal[0]) < 1e-9 && fabs(normal[1]) < 1e-9 &&
+                                        fabs(normal[2] - 1.0) < 1e-9 && fabs(origin[0]) < 1e-9 &&
+                                        fabs(origin[1]) < 1e-9 && fabs(origin[2]) < 1e-9;
+        const bool use_frame_basis = loc_is_identity && !identity_plausible;
+        double target_pts[2][2];
+        const J pt_specs[2] = {op["axis"]["start_mm"], op["axis"]["end_mm"]};
+        for (int p_idx = 0; p_idx < 2; p_idx++) {
+            double u_val = pt_specs[p_idx][0].get<double>();
+            double v_val = pt_specs[p_idx][1].get<double>();
+            if (use_frame_basis) {
+                target_pts[p_idx][0] = u_val;
+                target_pts[p_idx][1] = v_val;
+            } else {
+                V w = add(origin, add(scale(u_axis, u_val), scale(v_axis, v_val)));
+                for (int i = 0; i < 2; i++)
+                    target_pts[p_idx][i] = (w[0] - loc[3][0]) * loc[i][0] +
+                                           (w[1] - loc[3][1]) * loc[i][1] +
+                                           (w[2] - loc[3][2]) * loc[i][2];
+            }
+        }
+        double tdx = target_pts[1][0] - target_pts[0][0];
+        double tdy = target_pts[1][1] - target_pts[0][1];
+        double tlen = hypot(tdx, tdy);
+        if (tlen < 1e-9)
+            throw std::runtime_error("Projected sketch_points revolve axis is degenerate");
+
+        std::set<int> known_user_centerlines;
+        if (meta->contains("entity_ids") && meta->contains("geometry")) {
+            const J &record_ids = meta->at("entity_ids");
+            for (const J &e : meta->at("geometry"))
+                if (e.is_object() && e.value("type", "") == "centerline" && e.contains("name") &&
+                    record_ids.contains(e.at("name").get<std::string>()))
+                    known_user_centerlines.insert(
+                        record_ids.at(e.at("name").get<std::string>()).get<int>());
+        }
+        if (meta->contains("revolve_centerline_id") &&
+            meta->at("revolve_centerline_id").is_number_integer())
+            known_user_centerlines.insert(meta->at("revolve_centerline_id").get<int>());
+
+        int existing_centerlines = 0;
+        bool collinear_found = false;
+        for (int cl_ent_id : known_user_centerlines) {
+            Pro2dEntdef *def = nullptr;
+            if (ProSectionEntityGet(section, cl_ent_id, &def) != PRO_TK_NO_ERROR || !def)
+                continue;
+            if (def->type != PRO_2D_CENTER_LINE)
+                continue;
+            existing_centerlines++;
+            auto *line = (Pro2dLinedef *)def;
+            double d1 = fabs((line->end1[0] - target_pts[0][0]) * tdy -
+                             (line->end1[1] - target_pts[0][1]) * tdx) /
+                        tlen;
+            double d2 = fabs((line->end2[0] - target_pts[0][0]) * tdy -
+                             (line->end2[1] - target_pts[0][1]) * tdx) /
+                        tlen;
+            if (d1 <= 1e-6 && d2 <= 1e-6)
+                collinear_found = true;
+        }
+
+        if (existing_centerlines == 1 && collinear_found) {
+            log("REVOLVE_SKETCH_POINTS_CENTERLINE=reused\n");
+            CK(ProFeatureElemtreeFree(&sketch_f, root));
+            return;
+        }
+        if (existing_centerlines > 0)
+            throw std::runtime_error(
+                "Revolve sketch_points axis conflicts with an existing construction centerline "
+                "in the sketch; omit axis to use the existing centerline or use an explicit "
+                "datum_axis_feature");
+
+        Pro2dLinedef cl = {};
+        cl.type = PRO_2D_CENTER_LINE;
+        cl.end1[0] = target_pts[0][0];
+        cl.end1[1] = target_pts[0][1];
+        cl.end2[0] = target_pts[1][0];
+        cl.end2[1] = target_pts[1][1];
+        int cl_id = -1;
+        CK(ProSectionEntityAdd(section, (Pro2dEntdef *)&cl, &cl_id));
+        solve_profile(section, J{{"dimensioning", "autodim"}});
+        CK(ProElementSpecialvalueSet(sk, (ProAppData)section));
+        redefine(&sketch_f, root);
+        CK(ProFeatureElemtreeFree(&sketch_f, root));
+        aliases[op["sketch"].get<std::string>()]["revolve_centerline_id"] = cl_id;
+        log("REVOLVE_SKETCH_POINTS_CENTERLINE=added id=%d end1=%.9f,%.9f end2=%.9f,%.9f\n", cl_id,
+            cl.end1[0], cl.end1[1], cl.end2[0], cl.end2[1]);
+    } catch (...) {
+        ProFeatureElemtreeFree(&sketch_f, root);
+        throw;
+    }
+}
+
 static J extrude_or_revolve(const J &op, bool revolve) {
     if (revolve)
         validate_revolve_axis(op);
     ProFeature sketch_f = feature(op.at("sketch"));
+    const bool sketch_points_axis = revolve && op.contains("axis") && op["axis"].is_object() &&
+                                    op["axis"].value("kind", "") == "sketch_points";
+    if (sketch_points_axis)
+        ensure_revolve_sketch_centerline(op, sketch_f);
     bool cut = op.value("mode", "add") == "cut";
     double before_volume = cut ? volume() : 0.0;
     // B4/F08: the non-target comparison needs the state before the feature
@@ -4891,7 +5111,7 @@ static J extrude_or_revolve(const J &op, bool revolve) {
     int revolve_axis_id = -1;
     ProError revolve_axis_code = PRO_TK_NO_ERROR;
     if (revolve) {
-        if (op.contains("axis")) {
+        if (op.contains("axis") && !sketch_points_axis) {
             integer(root, PRO_E_REVOLVE_AXIS_OPT, PRO_REV_AXIS_EXT_REF);
             ProSelection a = resolve(op["axis"]);
             ProModelitem axis_item = {};
@@ -4932,13 +5152,7 @@ static J extrude_or_revolve(const J &op, bool revolve) {
         if (!through_all)
             real(to, PRO_E_EXT_DEPTH_TO_VALUE, op.value("depth", 1.0));
     }
-    ProFeature f = {};
-    try {
-        f = create(root);
-    } catch (ProError error) {
-        ProElementFree(&root);
-        if (last_toolkit_error != "ProFeatureWithoptionsCreate")
-            throw;
+    auto capture_failed_section = [&]() {
         J section = {{"available", false}};
         ProSection saved = nullptr;
         ProError copy_code = ProFeatureSectionCopy(&sketch_f, 0, &saved);
@@ -4947,15 +5161,48 @@ static J extrude_or_revolve(const J &op, bool revolve) {
             ProSectionFree(&saved);
         } else
             section["query_code"] = copy_code;
+        J staged = has_staged_operation_result ? staged_operation_result : J::object();
+        staged["native_section"] = section;
+        stage_operation_result(staged);
+        return section;
+    };
+    ProFeature f = {};
+    try {
+        f = create(root);
+    } catch (ProError error) {
+        ProElementFree(&root);
+        if (last_toolkit_error != "ProFeatureWithoptionsCreate")
+            throw;
+        J section = capture_failed_section();
         throw std::runtime_error(section_create_failure(op, revolve, error, section));
+    } catch (const std::runtime_error &err) {
+        ProElementFree(&root);
+        J section = capture_failed_section();
+        if (section.value("available", false) && section.value("open_ends", 0) > 0) {
+            throw std::runtime_error(std::string(err.what()) + ". " +
+                                     section_create_failure(op, revolve, PRO_TK_NO_ERROR, section));
+        }
+        throw;
     }
     CK(ProElementFree(&root));
+    {
+        ProFeatStatus created_status = PRO_FEAT_ACTIVE;
+        if (ProFeatureStatusGet(&f, &created_status) == PRO_TK_NO_ERROR &&
+            created_status != PRO_FEAT_ACTIVE) {
+            J section = capture_failed_section();
+            if (section.value("available", false) && section.value("open_ends", 0) > 0)
+                throw std::runtime_error(
+                    section_create_failure(op, revolve, PRO_TK_GENERAL_ERROR, section));
+        }
+    }
     remember(op, f);
     J details = {{"feature_id", f.id}};
-    if (revolve)
+    if (revolve) {
         details["revolve_axis"] =
             revolve_axis_report(op, f, sketch_f, revolve_axis_id, revolve_axis_code);
-    else
+        if (op.contains("angle_clamped_from_deg") && op["angle_clamped_from_deg"].is_number())
+            details["angle_clamped_from_deg"] = op["angle_clamped_from_deg"];
+    } else
         details["extrude_depth"] = extrude_depth_report(f, op);
     if (!revolve && op.contains("scope")) {
         details["scope_applied"] = scope_applied_report(op, f, bodies_before);
@@ -6508,7 +6755,8 @@ static J generic_round(const J &op, bool chamfer) {
                     ", length_mm=" + std::to_string(e0.value("length_mm", 0.0));
             if (e0.contains("dihedral_angle_deg"))
                 base += ", dihedral_deg=" + std::to_string(e0["dihedral_angle_deg"].get<double>());
-            base += "; see round_failure.edge_diagnostics)";
+            base += "; see operations[" + std::to_string(operation_position) +
+                    "].round_failure.edge_diagnostics in native_result.json)";
         }
         throw std::runtime_error(base);
     }
@@ -6865,6 +7113,7 @@ static J write_stl(ProMdl model, const std::wstring &destination, const StlExpor
     const std::wstring staging_name =
         L"stl_" + std::to_wstring(generated_identity_index()) + L".stl";
     StlExportOptions effective = options;
+    effective.progress = [](const char *name) { generic_substage(name); };
     // Diagnostic quality override for deviation studies; the public export
     // operation still requests the fixed default.
     const char *chord_probe = std::getenv("MECHDOG_STL_CHORD_MM");
@@ -6970,8 +7219,10 @@ static J write_stl(ProMdl model, const std::wstring &destination, const StlExpor
     }
     result["length_unit"] = length_unit_json(units, scale);
     log("STL_EXPORT_REPORT=%s\n", result.dump().c_str());
-    if (!failure.empty())
+    if (!failure.empty()) {
+        stage_operation_result({{"stl_export", result}});
         throw std::runtime_error(failure);
+    }
     return result;
 }
 static void generic_pattern(const J &op) {
@@ -7339,6 +7590,8 @@ static J through_points_plane(const J &op) {
         ref(c, PRO_E_DTMPLN_CONSTR_REF, s);
         ProSelectionFree(&s);
     }
+    if (op.value("flip", false))
+        integer(root, PRO_E_DTMPLN_FLIP_DIR, PRO_DTMPLN_FLIP_DIR_YES);
     ProFeature f = create(root);
     CK(ProElementFree(&root));
     remember(op, f);
@@ -7612,7 +7865,7 @@ static void execute_operation_body(const J &op) {
             J axis = op.value("axis", J());
             auto f = offset_plane(op["reference"], op.value("offset", 0.0), wide(op["label"]),
                                   op.contains("angle") ? &angle : nullptr,
-                                  op.contains("axis") ? &axis : nullptr);
+                                  op.contains("axis") ? &axis : nullptr, op.value("flip", false));
             remember(op, f);
         }
     } else if (kind == "datum_axis") {

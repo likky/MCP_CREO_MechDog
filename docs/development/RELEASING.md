@@ -15,7 +15,9 @@
 
 ## 版本约定
 
-当前版本为 0.43.2（2026-11-24 PATCH，交付 [BUG-175](../work-items/BUG-175.md) 启动单测补修，公开工具 111）。[版本说明](../RELEASE_NOTES_0.43.2.md) · [发布记录](../validation/RELEASE-0.43.2.md)
+当前版本为 0.44.0（2026-11-24 MINOR，交付 [BUG-186](../work-items/BUG-186.md)、[FEAT-084](../work-items/FEAT-084.md)、[FEAT-085](../work-items/FEAT-085.md)、[BUG-187](../work-items/BUG-187.md)、[BUG-188](../work-items/BUG-188.md)、[BUG-189](../work-items/BUG-189.md)、[BUG-190](../work-items/BUG-190.md)、[FEAT-088](../work-items/FEAT-088.md)、[FEAT-089](../work-items/FEAT-089.md) 及 [DEV-100](../work-items/DEV-100.md)/[BUG-130](../work-items/BUG-130.md) 补项，公开工具 111）。[版本说明](../RELEASE_NOTES_0.44.0.md) · [发布记录](../validation/RELEASE-0.44.0.md)
+
+此前的 0.43.2（2026-11-24 PATCH，交付 [BUG-175](../work-items/BUG-175.md) 启动单测补修，公开工具 111）。[版本说明](../RELEASE_NOTES_0.43.2.md) · [发布记录](../validation/RELEASE-0.43.2.md)
 
 此前的 0.43.1（2026-11-24 PATCH，阶段交付 [BUG-017](../work-items/BUG-017.md)：原生 `generic_rib` 逐阶段返回码/`ProErrorlist`/`feature_id`/`feature_status`/`geometry_item_count` 诊断 `rib_diagnostics` 与 `RIB_DIAG`、未激活再生路径 `feature_errors` 与顶层 `std::exception` 发布、`operation_results`/`compact_sections` 透传、`test_direct_loft.py` 回读兼容，以及 Creo 9/10 `ProRib.h` 逐行比对；本机 Creo 10 实机 `ribs,negative_geometry,unavailable_and_nonintersecting` 17/17 通过并保存重载/回滚，Creo 9 运行时原案保留待验；公开工具仍 111）。见[版本说明](../RELEASE_NOTES_0.43.1.md)和[发布记录](../validation/RELEASE-0.43.1.md)。
 

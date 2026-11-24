@@ -113,7 +113,7 @@ class RevolveAxisSchemaTests(unittest.TestCase):
         selection = next(branch for branch in axis["anyOf"] if "oneOf" in branch)
         self.assertEqual(
             {form["properties"]["kind"]["const"] for form in selection["oneOf"]},
-            {"axis", "datum_axis_feature"},
+            {"axis", "datum_axis_feature", "sketch_points"},
         )
         self.assertIn("centerline", selection["description"])
         self.assertIn("entity", selection["description"])

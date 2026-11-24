@@ -73,6 +73,40 @@ class GeometrySelectorContractTests(unittest.TestCase):
             with self.subTest(selector=bad), self.assertRaisesRegex(ValueError, "feature label"):
                 validate_geometry_selector(bad)
 
+    def test_on_face_refines_current_edges_without_changing_the_anchor(self):
+        face = {"kind": "surface", "id": 17}
+        self.assertEqual(validate_geometry_selector(edge_selector(on_face=face))["on_face"], face)
+        for candidate in (
+            edge_selector(on_face={"kind": "surface", "id": True}),
+            edge_selector(on_face={"kind": "plane", "id": 17}),
+            edge_selector(on_face={"kind": "surface", "id": -1}),
+            edge_selector(on_face=face, coordinate_space="assembly"),
+            surface_selector(on_face=face),
+        ):
+            with self.subTest(candidate=candidate), self.assertRaisesRegex(ValueError, "on_face"):
+                validate_geometry_selector(candidate)
+
+    def test_nearest_only_accepts_explicit_model_space_point_anchors(self):
+        point = {
+            "kind": "geometry_selector",
+            "target": "edge",
+            "point_mm": [0, 1, 2],
+            "tolerance_mm": 0.5,
+            "ambiguity": "nearest",
+        }
+        normalized = validate_geometry_selector(point)
+        self.assertEqual(normalized["ambiguity"], "nearest")
+        self.assertEqual(normalized["point_mm"], [0, 1, 2])
+        for candidate in (
+            edge_selector(ambiguity="nearest"),
+            {**point, "ambiguity": "first"},
+            {**point, "coordinate_space": "assembly"},
+            {**point, "center_mm": [0, 0, 0], "radius_mm": 2},
+            surface_selector(ambiguity="nearest"),
+        ):
+            with self.subTest(candidate=candidate), self.assertRaisesRegex(ValueError, "ambiguity"):
+                validate_geometry_selector(candidate)
+
     def test_unknown_key_and_missing_tolerance_are_refused(self):
         for bad in (
             edge_selector(tolerance=1e-3),
