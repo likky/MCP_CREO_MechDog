@@ -208,8 +208,10 @@ static J selector_nearest_edges(const J &selector, const J &state, double mm_sca
     if (rows.size() > 5)
         rows.resize(5);
     J nearest = J::array();
-    for (const auto &row : rows)
-        nearest.push_back(row.record);
+    for (auto &row : rows) {
+        row.record["suggested_reference"] = {{"kind", "edge"}, {"id", row.id}};
+        nearest.push_back(std::move(row.record));
+    }
     return nearest;
 }
 
@@ -256,7 +258,10 @@ static J selector_nearest_surfaces(const J &selector, const J &state, double mm_
             continue;
         const V origin =
             surface.contains("origin") ? scale(vec(surface["origin"]), mm_scale) : V{0, 0, 0};
-        J record = {{"id", surface["id"]}, {"type", plane ? "plane" : "cylinder"}};
+        J record = {{"id", surface["id"]},
+                    {"type", plane ? "plane" : "cylinder"},
+                    {"coordinate_space", "model"},
+                    {"suggested_reference", {{"kind", "surface"}, {"id", surface["id"]}}}};
         if (surface.contains("origin"))
             record["origin_mm"] = J::array({origin[0], origin[1], origin[2]});
         double error = 0;
@@ -313,8 +318,8 @@ static J selector_nearest_surfaces(const J &selector, const J &state, double mm_
     if (rows.size() > 5)
         rows.resize(5);
     J nearest = J::array();
-    for (const auto &row : rows)
-        nearest.push_back(row.record);
+    for (auto &row : rows)
+        nearest.push_back(std::move(row.record));
     return nearest;
 }
 
@@ -766,6 +771,15 @@ static GeometrySelectorOutcome match_geometry_surface_selector(const J &selector
         "filter. The closest nameable faces are listed in "
         "geometry_selector_diagnostic.nearest_surfaces (diagnostic only, never selected "
         "automatically).";
+    if (outcome.diagnostic.contains("nearest_surfaces") &&
+        outcome.diagnostic["nearest_surfaces"].is_array() &&
+        !outcome.diagnostic["nearest_surfaces"].empty()) {
+        const J &top = outcome.diagnostic["nearest_surfaces"][0];
+        outcome.error +=
+            " Closest candidate: {kind:'surface',id:" + std::to_string(top["id"].get<int>()) +
+            "} (" + top.value("type", "surface") +
+            ", error_mm=" + std::to_string(top.value("error_mm", 0.0)) + ").";
+    }
     return outcome;
 }
 
@@ -822,6 +836,30 @@ static J selector_to_component_model(const J &selector, const ProMatrix &positio
         mapped["axis"] = occurrence_vector_to_model(selector["axis"], position);
     mapped["coordinate_space"] = "model";
     return mapped;
+}
+
+static J model_point_to_assembly(const J &item, const ProMatrix &position) {
+    const double local[3] = {item.at(0).get<double>(), item.at(1).get<double>(),
+                             item.at(2).get<double>()};
+    J result = J::array();
+    for (int col = 0; col < 3; col++)
+        result.push_back(position[3][col] + local[0] * position[0][col] +
+                         local[1] * position[1][col] + local[2] * position[2][col]);
+    return result;
+}
+
+static J model_vector_to_assembly(const J &item, const ProMatrix &position) {
+    const double local[3] = {item.at(0).get<double>(), item.at(1).get<double>(),
+                             item.at(2).get<double>()};
+    double world[3] = {0, 0, 0};
+    for (int col = 0; col < 3; col++)
+        world[col] =
+            local[0] * position[0][col] + local[1] * position[1][col] + local[2] * position[2][col];
+    const double length =
+        std::sqrt(world[0] * world[0] + world[1] * world[1] + world[2] * world[2]);
+    if (length <= 1e-12)
+        return J::array({world[0], world[1], world[2]});
+    return J::array({world[0] / length, world[1] / length, world[2] / length});
 }
 
 static GeometrySelectorOutcome match_geometry_selector(const J &selector, const J &state,

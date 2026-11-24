@@ -2,6 +2,12 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
+## v0.42.0（2026-11-24，打包时点）
+
+- [BUG-179](../work-items/BUG-179.md)、[BUG-180](../work-items/BUG-180.md)、[FEAT-080](../work-items/FEAT-080.md)、[BUG-181](../work-items/BUG-181.md)、[FEAT-081](../work-items/FEAT-081.md) 与 [BUG-182](../work-items/BUG-182.md) 交付：`ChamferOp.propagate` 与实测倒角长度/面积；单/多边 `round` 失败几何诊断与凹凸 `round_kind`；`ShellOp.body_id` 单实体抽壳、`MirrorOp` 替代指引与 `creo_inspect_model` 分页 `total_count`/`page_count`；`ExtrudeOp.region` 交点分割与精确 Boehm B 样条细分；G2 几何级 `g2_verification` 曲率验证；装配面选择器 `suggested_reference` 与 `assembly_origin_mm`/`nearest_coordinate_space`；本机 Creo 10 实机 5/5 通过并保存重载。见[版本说明](../RELEASE_NOTES_0.42.0.md)及[发布记录](../validation/RELEASE-0.42.0.md)。
+- 附件计划：`MCP_CREO_MechDog-0.42.0-source.zip`、`MCP_CREO_MechDog-0.42.0-source.zip.sha256`、`MCP_CREO_MechDog-0.42.0-seed-library.zip`、`MCP_CREO_MechDog-0.42.0-seed-library.zip.sha256`。种子包 SHA256 为 `23ba2e8f0f7599360a9f4ff3cc13c4ab8378335a905de9966f3171a1b975b4f3`。两份同名 sidecar 分别记录对应 ZIP 的实际摘要。
+- 远端核对发布后执行，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.42.0)
+
 ## v0.41.0（2026-11-24，打包时点）
 
 - [BUG-175](../work-items/BUG-175.md)、[BUG-176](../work-items/BUG-176.md)、[FEAT-078](../work-items/FEAT-078.md)、[FEAT-079](../work-items/FEAT-079.md)、[BUG-177](../work-items/BUG-177.md) 与 [BUG-178](../work-items/BUG-178.md) 交付：BUG-170 单测假时钟消抖；整圆棱边选择器 `full_circle:true`、接缝/极值 `point_mm` 消歧与单点选弧；`creo_inspect_model` 总表面积、逐面面积、包围盒与合并计数；多集 `round`/`chamfer` 失败逐集定位；优弧 `sweep_deg`、`spline` 数值面积与基准面文档；`feature_state` 依赖展开、`component_changes` 1e-12 浮点容差与 `creo_execute_plan` 空操作指引；本机 Creo 10 实机 4/4 通过并保存重载。见[版本说明](../RELEASE_NOTES_0.41.0.md)及[发布记录](../validation/RELEASE-0.41.0.md)。

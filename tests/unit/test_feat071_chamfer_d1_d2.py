@@ -190,7 +190,7 @@ class NativeTreeContractTests(unittest.TestCase):
     def setUpClass(cls):
         source = NATIVE.read_text(encoding="utf-8")
         start = source.index("static J generic_round(")
-        end = source.index("static void generic_shell(", start)
+        end = source.index("static J generic_shell(", start)
         cls.source = source[start:end]
 
     def test_d1_d2_uses_the_verified_enum_reference_and_two_legs(self):

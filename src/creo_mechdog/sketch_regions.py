@@ -26,6 +26,7 @@ from creo_mechdog.region_selection import (
     parse_region_signature,
     segments_match,
 )
+from creo_mechdog.sketch_region_split import split_intersecting_entities
 
 #: Endpoint clustering for loop building, in sketch-local millimetres. The TXT
 #: values are printed at six decimals, so this only absorbs representation noise;
@@ -248,6 +249,61 @@ def _usable_sketch(sketch: dict[str, Any], label: str) -> None:
             )
 
 
+def _segment_pair_error(first: Any, second: Any) -> float:
+    forward = max(
+        abs(first[0][0] - second[0][0]),
+        abs(first[0][1] - second[0][1]),
+        abs(first[1][0] - second[1][0]),
+        abs(first[1][1] - second[1][1]),
+    )
+    reverse = max(
+        abs(first[0][0] - second[1][0]),
+        abs(first[0][1] - second[1][1]),
+        abs(first[1][0] - second[0][0]),
+        abs(first[1][1] - second[0][1]),
+    )
+    return min(forward, reverse)
+
+
+def _format_loop_summary(segments: list[Any], limit: int = 4) -> str:
+    parts = [
+        f"({s[0][0]:.3f},{s[0][1]:.3f}|{s[1][0]:.3f},{s[1][1]:.3f})"
+        for s in sorted(segments)[:limit]
+    ]
+    if len(segments) > limit:
+        parts.append(f"...+{len(segments) - limit}")
+    return f"{len(segments)} segs [" + "; ".join(parts) + "]"
+
+
+def _closest_loop_diagnostic(
+    expected: frozenset[Any],
+    candidate_loops: list[list[Any]],
+) -> str:
+    if not candidate_loops:
+        return "no closed loops detected"
+    exp_list = list(expected)
+    best_score: tuple[int, float] | None = None
+    best_loop: list[Any] | None = None
+    for loop in candidate_loops:
+        len_diff = abs(len(loop) - len(exp_list))
+        # Greedy nearest-segment distance for diagnostic ranking only.
+        worst = 0.0
+        for seg in exp_list:
+            nearest = min(_segment_pair_error(seg, cand) for cand in loop)
+            if nearest > worst:
+                worst = nearest
+        score = (len_diff, worst)
+        if best_score is None or score < best_score:
+            best_score = score
+            best_loop = loop
+    summary = _format_loop_summary(best_loop or [])
+    return (
+        f"closest_loop=({summary}, segment_count_diff={best_score[0]}, "
+        f"max_endpoint_diff_mm={best_score[1]:.6f}); "
+        f"detected_loops={[len(loop) for loop in candidate_loops[:8]]}"
+    )
+
+
 def find_region(
     sketch: dict[str, Any],
     signature: str,
@@ -256,7 +312,8 @@ def find_region(
 ) -> tuple[frozenset[int], list[dict[str, Any]]]:
     """Return the one entity cycle whose YZ boundary equals ``signature``."""
     expected = parse_region_signature(signature)
-    entities = sketch["entities"]
+    source_entities = sketch["entities"]
+    entities, did_split = split_intersecting_entities(source_entities)
     points: list[list[float]] = []
     edge_owner: list[int] = []
     raw_edges: list[tuple[int, int]] = []
@@ -276,21 +333,30 @@ def find_region(
             "(lines, arcs, open splines or b_splines); circles/rectangles/ellipses "
             "cannot be named by a boundary signature"
         )
-    clusters = _cluster_vertices(points, ENDPOINT_EPS_MM)
+    cluster_eps = max(ENDPOINT_EPS_MM, min(tolerance, 1e-4)) if did_split else ENDPOINT_EPS_MM
+    clusters = _cluster_vertices(points, cluster_eps)
     edges = [(clusters[a], clusters[b]) for a, b in raw_edges]
     cycles = _enumerate_cycles(edges, MAX_CYCLES)
     matches: list[tuple[frozenset[int], list[dict[str, Any]]]] = []
+    candidate_loops: list[list[Any]] = []
     for cycle in cycles:
         names = [edge_owner[index] for index in sorted(cycle)]
         segments = [_loop_segments(entities[index], frame) for index in names]
+        candidate_loops.append(segments)
         if segments_match(expected, segments, tolerance):
             matches.append((cycle, [entities[index] for index in names]))
     label = sketch.get("label")
     if not matches:
+        diag = _closest_loop_diagnostic(expected, candidate_loops)
+        split_note = (
+            f" (after intersection split: {len(source_entities)}->{len(entities)} entities)"
+            if did_split
+            else ""
+        )
         raise ValueError(
             f"region signature matched none of {len(cycles)} closed loops in sketch "
-            f"{label!r}; compare the YZ endpoints with the sketch frame, not "
-            "region_index_hint"
+            f"{label!r}{split_note}; compare the YZ endpoints with the sketch frame, not "
+            f"region_index_hint; {diag}"
         )
     if len(matches) > 1:
         raise ValueError(

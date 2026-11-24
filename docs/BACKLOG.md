@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-24（0.42.0 MINOR，新增 6 项，台账 247→253，BUG 127→131 / FEAT 76→78 / DEV 44，公开工具仍 111）：归档 0.40.0 两份反馈原件至 [feedback-0.40.0-2026-11-24](validation/feedback-0.40.0-2026-11-24/SOURCE_MANIFEST.json)；交付 [BUG-179](work-items/BUG-179.md)、[BUG-180](work-items/BUG-180.md)、[FEAT-080](work-items/FEAT-080.md)、[BUG-181](work-items/BUG-181.md)、[FEAT-081](work-items/FEAT-081.md)、[BUG-182](work-items/BUG-182.md)（均转入“已有修复但待验收”）：① 实测确认 `PRO_CURVCOLL_ADD_ONE_INSTR` 仅选单边但在开放/相切端受 Creo 默认过渡延伸，`ChamferOp` 新增 `propagate:"single"|"chain"`、倒角回执新增 `created_surface_count`/`created_surface_area_mm2`/`chamfered_edge_length_mm`、`chamfer_type` 说明补注 `exclude=True` 与 `dump_plan_operations()`；② `round`/`chamfer` 单边与多边失败均采集 `ProFeatureStatusGet` 与 `round_failure.edge_diagnostics`（相邻面类型/面积/法向、二面角、端点邻边统计），`round` 成功回执补齐有符号 `volume_delta_mm3` 与 `round_kind`（`convex`/`concave`/`neutral`/`unknown`）；③ `ShellOp` 与 `creo_shell` 新增精确 `body_id`（支持负数初始体如 `-5778` 及正数新建体）单实体抽壳、`MirrorOp` 特征引用拒绝文案补三条可执行替代路径、`creo_inspect_model` 分页响应新增顶层 `total_count` 与 `page_count`；④ `ExtrudeOp.region` 新增 `sketch_region_split.py` 曲线两两求交、T 型交点与精确 Boehm B 样条节点插入分割，零命中报错附 `closest_loop`/`max_endpoint_diff_mm`/`detected_loops`；⑤ G2 曲率连续圆角新增几何级 `g2_verification`（沿圆角与支撑面共享相切边界边求法向夹角与跨边界法曲率差，返回 `pass`/`fail`/`unsupported`）；⑥ 装配面/边选择器零命中每条候选增加可直接复制的 `suggested_reference`，报错文本直出最近候选，且 `requested_coordinate_space="assembly"` 时标注 `nearest_coordinate_space="component"` 并补充 `assembly_origin_mm`/`assembly_normal`。本机 Creo 10.0.0.0（release 42）完成 5/5 实机场景验收并保存重载通过。见[版本说明](RELEASE_NOTES_0.42.0.md)与[发布记录](validation/RELEASE-0.42.0.md)。
+
 2026-11-24（0.41.0 MINOR，新增 6 项，台账 241→247，BUG 123→127 / FEAT 74→76 / DEV 44，公开工具仍 111）：归档 0.39.0 两份反馈原件至 [feedback-0.39.0-2026-11-23](validation/feedback-0.39.0-2026-11-23/SOURCE_MANIFEST.json)；交付 [BUG-175](work-items/BUG-175.md)、[BUG-176](work-items/BUG-176.md)、[FEAT-078](work-items/FEAT-078.md)、[FEAT-079](work-items/FEAT-079.md)、[BUG-177](work-items/BUG-177.md)、[BUG-178](work-items/BUG-178.md)（均转入“已有修复但待验收”）：① `test_feedback0360_fixes.py` 的 BUG-170 单测改用可控假时钟消除 0.3 s 墙钟竞争（50/50 通过）；② 圆形边选择器新增 `full_circle:true`、`point_mm` 落于整圆接缝/极值点确定性取最小边 ID、单点 `point_mm` 支持匹配圆弧边；③ `creo_inspect_model` 新增 `total_surface_area_mm2`、逐面 `surfaces[].area_mm2`、零件与装配 `bounding_box_mm`（`min`/`max`/`size`）、`merged_counts` 与 `counts_convention`；④ 多集 `round`/`chamfer` 失败时逐集探测定位 `failed_reference_index`/`failed_reference`/`round_failure` 并保持回滚；⑤ 草图 `Arc` 新增有符号 `sweep_deg`（支持 >180° 优弧）、`spline` 数值面积、`coordinates` 超差拒绝附 `shifted_sample` 与 `XY`/`XZ`/`YZ` 基准面 `(u,v)`/法线文档；⑥ `feature_state` 支持 `include_dependencies=true` 自动展开依赖并记录 `auto_included_dependencies`（默认 `false` 返回 `suggested_targets`）、`component_changes` 过滤 `1e-12` 浮点往返噪声、`creo_execute_plan` 空操作返回明确 `ToolError` 指引。本机 Creo 10.0.0.0（release 42）完成 4/4 实机场景验收并保存重载通过。见[版本说明](RELEASE_NOTES_0.41.0.md)与[发布记录](validation/RELEASE-0.41.0.md)。
 
 2026-11-23（0.40.0 MINOR，新增 4 项，台账 237→241，BUG 119→123 / FEAT 74 / DEV 44，公开工具仍 111）：归档 0.35.8 三份反馈原件至 [feedback-0.35.8-2026-11-23-hang-recovery](validation/feedback-0.35.8-2026-11-23-hang-recovery/SOURCE_MANIFEST.json)；交付 [BUG-171](work-items/BUG-171.md)、[BUG-172](work-items/BUG-172.md)、[BUG-173](work-items/BUG-173.md)、[BUG-174](work-items/BUG-174.md)（均转入“已有修复但待验收”）：① 原生恢复截止定时器 `ExitProcess(31)` 前同步写出带 `completion_stage="recovery_phase_timeout"` 的 `native_result.json`、消除 `reconcile_native` 中 `restore_baseline` 的重复二次 `inspection()`、恢复预算上限扩至 1800 s 并按 edges/features/surfaces 自适应抬升下限、`_recovery_wait()` 对终态 `recovery_pending` 给出 `terminal_unconfirmed` 解锁指引；② 消除草图/基准解析/体选项/特征收尾中 10+ 次冗余全量 `inspection()` 与逐半边 `fflush()` 刷盘（B045 同等价 6 步作业全量快照由 15 次降至 3 次、耗时 9.1 s），补齐 `INSPECT_PROGRESS`/`INSPECT_SUMMARY` 与遍历上限保护；③ 单轴倾斜三点基准面草图缺失第二正交投影锚点时自动创建并复用正交辅助锚定平面（`SKETCH_ANCHOR_HELPER=1`），`coordinates` 求解失败同时保留 `ProSectionSolve` 与救援 `ProSectionAutodim` 返回码及 `section_references`；④ `dump_plan_operations()` 保留显式 `chamfer_type`（修复内联 `creo_execute_plan` 提交 `d1_d2`/`distance_angle` 倒角被二次校验误拒）、盲孔切除新增 `cut_volume_check` 低去料告警、`bridge.spawn_detached_runner()` 尝试 `CREATE_BREAKAWAY_FROM_JOB` 并披露 `runner_detached_from_job`。本机 Creo 10.0.0.0（release 42）完成 4/4 实机场景验收并保存重载通过。见[版本说明](RELEASE_NOTES_0.40.0.md)与[发布记录](validation/RELEASE-0.40.0.md)。
@@ -232,13 +234,13 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 
 诊断交付不等于根因修复；部分交付不关整卡；缺其他版本证据不自动判未修。观察项等自然新现场，不制造故障。已完成且无保留范围的行移入 [完成档案](BACKLOG_COMPLETED.md#2026-11-07dev-073-归档与历史进展)。原进展/证据保留日期，不再回填第二份待办。小修复沿用卡与证据，复杂跨模块任务才另建完整计划。
 
-当前唯一 ID **247**（BUG **127**、FEAT **76**、DEV **44**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
+当前唯一 ID **253**（BUG **131**、FEAT **78**、DEV **44**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
 | 仍需修复 | 7 |
 | 待复现/待核实 | 36 |
-| 已有修复但待验收 | 63 |
+| 已有修复但待验收 | 69 |
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
 | 开发中 | 7 |
@@ -308,6 +310,12 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
+| [BUG-179](work-items/BUG-179.md) | P1 | 已有修复但待验收 | 0.42.0 | `ChamferOp` 新增 `propagate:"single"|"chain"`、倒角回执新增 `chamfered_edge_length_mm`/`created_surface_count`/`created_surface_area_mm2`、`chamfer_type` 补注说明；本机 Creo 10 实机 `single`(97.14 mm) vs `chain`(155.71 mm) 均通过并保存重载。剩：Creo 9/12、WorkBuddy 黑盒。 |
+| [BUG-180](work-items/BUG-180.md) | P1 | 已有修复但待验收 | 0.42.0 | 单/多边 `round`/`chamfer` 失败均返回 `round_failure.edge_diagnostics`（相邻面/二面角/端点邻边），`round` 回执新增有符号 `volume_delta_mm3` 与 `round_kind`；本机 Creo 10 实机凸/凹圆角与超限失败均通过。剩：Creo 9/12、WorkBuddy 黑盒。 |
+| [FEAT-080](work-items/FEAT-080.md) | P2 | 已有修复但待验收 | 0.42.0 | `ShellOp`/`creo_shell` 新增精确 `body_id` 单实体抽壳、`MirrorOp` 补替代指引、`creo_inspect_model` 分页新增 `total_count`/`page_count`；本机 Creo 10 实机两实体仅抽体 B（78752.0 mm³ 精确吻合）并保存重载。剩：Creo 9/12、WorkBuddy 黑盒。 |
+| [BUG-181](work-items/BUG-181.md) | P1 | 已有修复但待验收 | 0.42.0 | `ExtrudeOp.region` 新增交点分割与精确 Boehm B 样条节点插入及零命中 `closest_loop` 诊断；本机 Creo 10 实机含两相交三次 B 样条 YZ 草图子区域切除（300.0 mm³）通过并保存重载。剩：Creo 9/12、原 Arm7 完整工程、WorkBuddy 黑盒。 |
+| [FEAT-081](work-items/FEAT-081.md) | P2 | 已有修复但待验收 | 0.42.0 | G2 圆角新增几何级 `g2_verification`（沿相切边界边求法向夹角与跨边界法曲率差）；本机 Creo 10 实机 R10 G2 圆角实测 `max_curvature_gap_inv_mm=0.0`、`verdict="pass"` 并保存重载。剩：Creo 9/12、非解析面 G2、WorkBuddy 黑盒。 |
+| [BUG-182](work-items/BUG-182.md) | P1 | 已有修复但待验收 | 0.42.0 | 装配面/边选择器零命中每条候选新增 `suggested_reference`、报错直出最近候选、`assembly` 空间标注 `nearest_coordinate_space="component"` 与 `assembly_origin_mm`/`assembly_normal`；本机 Creo 10 实机验证通过。剩：Creo 9/12、全量 60 配合装配、WorkBuddy 黑盒。 |
 | [BUG-175](work-items/BUG-175.md) | P1 | 已有修复但待验收 | 0.41.0 | `test_feedback0360_fixes.py` BUG-170 单测改用可控假时钟消除 0.3 s 墙钟竞争（50/50 确定性通过）。剩：外部干净源码包复测。 |
 | [BUG-176](work-items/BUG-176.md) | P1 | 已有修复但待验收 | 0.41.0 | 圆形边选择器新增 `full_circle:true`、接缝/极值 `point_mm` 确定性取最小边 ID、单点 `point_mm` 支持圆弧边；本机 Creo 10 实机三组整圆圆角/倒角全部通过并保存重载。剩：Creo 9 原始发动机零件、Creo 12、WorkBuddy 黑盒。 |
 | [FEAT-078](work-items/FEAT-078.md) | P1 | 已有修复但待验收 | 0.41.0 | `creo_inspect_model` 新增 `total_surface_area_mm2`、`surfaces[].area_mm2`、`bounding_box_mm`、`merged_counts` 与 `counts_convention`；本机 Creo 10 实机零件与装配面积/包围盒精确吻合。剩：Creo 9/12、WorkBuddy 黑盒。 |

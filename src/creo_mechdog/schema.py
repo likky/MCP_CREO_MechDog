@@ -1268,7 +1268,10 @@ class ChamferOp(StrictModel):
             exclude=True,
             description="equal_distance keeps the historical size-only tree; "
             "distance_angle requires angle_deg and angle_reference; d1_d2 requires "
-            "distance_1, distance_2 and reference_surface",
+            "distance_1, distance_2 and reference_surface. "
+            "Note: excluded from the final native payload (exclude=True) for backward "
+            "compatibility; use dump_plan_operations() when round-tripping through "
+            "validate_operations() so chamfer_type is preserved.",
         ),
     ]
     angle_deg: Annotated[
@@ -1311,6 +1314,16 @@ class ChamferOp(StrictModel):
             "establish which adjacent face receives D1; swapping distance_1/distance_2 swaps "
             "the two Creo leg values, while the per-face direction remains to be verified on "
             "the target Creo",
+        ),
+    ]
+    propagate: Annotated[
+        Literal["single", "chain"] | None,
+        Field(
+            default=None,
+            description="Edge collection propagation mode: 'single' (default, PRO_CURVCOLL_ADD_ONE_INSTR) "
+            "selects only the listed edge(s), though Creo's default open-end chamfer transition can "
+            "still extend the chamfer plane into a tangent/oblique neighbor face; 'chain' adds "
+            "PRO_CURVCOLL_ADD_TANGENT_INSTR to follow the full tangent chain.",
         ),
     ]
 
@@ -1465,6 +1478,30 @@ class ShellOp(StrictModel):
     thickness: Positive
     remove_surfaces: list[dict[str, Any]] = []
     outward: bool = False
+    body_id: Annotated[
+        int | None,
+        Field(
+            default=None,
+            description=(
+                "Optional exact solid body ID from creo_inspect_model bodies[] "
+                "(including negative initial body IDs such as -5778). "
+                "When omitted, shells Creo's current default body."
+            ),
+        ),
+    ]
+
+    @field_validator("body_id", mode="before")
+    @classmethod
+    def valid_body_id(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, bool) or type(value) is not int or value == 0:
+            raise ValueError(
+                "shell body_id must be a non-zero integer from creo_inspect_model bodies[]"
+            )
+        if not -2147483648 <= value <= 2147483647:
+            raise ValueError("shell body_id must be a 32-bit integer")
+        return value
 
 
 class DimensionValue(StrictModel):
@@ -1662,7 +1699,11 @@ class MirrorOp(StrictModel):
             raise ValueError(
                 "Toolkit mirror accepts curves, axes, quilts, datum planes, coordinate systems, "
                 "points or the whole part; a feature reference is not a mirror item and hangs "
-                "Creo, so mirror the part with kind=part or the feature's quilt with kind=quilt"
+                "Creo. Workarounds: (1) mirror the whole solid with references=[{kind:'part'}]; "
+                "(2) mirror a surface quilt with references=[{kind:'quilt', id:N}]; or "
+                "(3) to mirror an individual solid boss/cut feature across a plane, recreate "
+                "the sketch/extrude with coordinates reflected across the mirror plane (or build "
+                "it as a separate body/quilt and merge)."
             )
         if any(r.get("kind") == "part" for r in self.references) and len(self.references) != 1:
             raise ValueError("Whole-part mirror cannot mix reference types")

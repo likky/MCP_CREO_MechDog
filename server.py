@@ -1752,19 +1752,21 @@ async def creo_shell(
     thickness: float,
     remove_surfaces: list[dict[str, Any]] | None = None,
     outward: bool = False,
+    body_id: int | None = None,
 ) -> dict[str, Any]:
-    """Create native constant-thickness shell, optionally removing selected faces."""
+    """Create native constant-thickness shell, optionally removing selected faces or targeting one body_id."""
+    op: dict[str, Any] = {
+        "op": "shell",
+        "label": label,
+        "thickness": thickness,
+        "remove_surfaces": remove_surfaces or [],
+        "outward": outward,
+    }
+    if body_id is not None:
+        op["body_id"] = body_id
     return await invoke(
         general.submit,
-        [
-            {
-                "op": "shell",
-                "label": label,
-                "thickness": thickness,
-                "remove_surfaces": remove_surfaces or [],
-                "outward": outward,
-            }
-        ],
+        [op],
         model_id,
         None,
         expected_revision,

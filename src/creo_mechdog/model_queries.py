@@ -695,6 +695,8 @@ def inspect_page(
         section=section,
         unavailable_sections=[name for name in names if section_records(model, name) is None],
         returned_count=0,
+        page_count=0,
+        total_count=len(records),
     )
     end = start
     while end < len(records) and end - start < limit:
@@ -705,6 +707,7 @@ def inspect_page(
         )
         response["complete"] = end + 1 == len(records)
         response["returned_count"] = end + 1 - start
+        response["page_count"] = end + 1 - start
         if serialized_size(response) > RESPONSE_BUDGET:
             response["data"][name].pop()
             if end == start:
@@ -719,6 +722,7 @@ def inspect_page(
         )
         response["complete"] = end == len(records)
         response["returned_count"] = end - start
+        response["page_count"] = end - start
         if serialized_size(response) <= RESPONSE_BUDGET:
             return response
         # FEAT-023: the cursor belongs to the page; when it no longer fits beside
