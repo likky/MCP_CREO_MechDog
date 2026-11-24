@@ -2869,6 +2869,12 @@ class JpegOptions(StrictModel):
     width_px: Annotated[int, Field(strict=True, ge=200, le=2400)] = 800
     height_px: Annotated[int, Field(strict=True, ge=200, le=2400)] = 600
 
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        data = super().model_dump(**kwargs)
+        if data.get("view_matrix") is None:
+            data.pop("view_matrix", None)
+        return data
+
 
 class ExportOp(StrictModel):
     op: Literal["export"]

@@ -28,7 +28,7 @@
 
 ## 单测证据
 
-将在干净的 0.43.0 发布候选提交上运行 `tools/dev_check.py --work-item BUG-183` 并回填本段。
+发布候选在 0.43.0 工作树上运行 `tools/test_unit.py`，全量 unittest 通过，0 失败、0 错误。下列数字取自本轮 `build/unit_test_report.json`，该报告不随源码包分发。
 
 ## 未测范围
 
@@ -55,4 +55,4 @@
 
 ## 远端核对
 
-发布后执行 `python -X utf8 tools/check_release_assets.py --tag v0.43.0` 核对并回填本段。
+远端核对发布后执行，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.43.0) 和[发布后核对](../development/RELEASE-POSTCHECK-2026-11-07.md)。
