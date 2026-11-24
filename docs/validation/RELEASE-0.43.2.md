@@ -14,11 +14,17 @@ BUG-175 让普通启动与显式强制启动的单测共用可控时钟和模拟
 
 验证环境为 Windows 11 x64（10.0.26200）和 Python 3.12.10。
 
-发布门槛要求全量单测通过，并提供版本和源码身份匹配的报告。本轮结果待记录。
+`PYTHONUTF8=1 python tools/dev_check.py --work-item BUG-175` 通过。工作树全量单测通过，执行 4,495 项，0 失败、0 错误、7 跳过，耗时 374.39 秒。Ruff 与 clang-format 按项目基线检查无新增问题。更新检查、模型恢复及 MCP stdio 三项离线门禁通过，MCP 服务报告 0.43.2 和 111 个工具。
+
+单测 `run_id=7f11e1bdcca64b3fa249c29754a09f1f`。受测提交 `7c8ab025dccebfb4bfcb525e5f280a4038c5ad7d`，`dirty=false`，受测源码指纹 `f679a74d861befa54ef28cad50ab6fe26a695f3437ff053cc5014e57d9ff4f41`，共 682 个 Git 跟踪的 Python 和原生源文件。
 
 ## 种子包
 
 先运行 `tools/package_seeds.py --allow-record-mismatch` 取得摘要并回填 `docs/seed_package.json`，再用默认校验重建。种子包含 24 个文件和 9 个种子，SHA256 为 `fece0e88c0c55828f9776944ad2196215e43077fcd1b3c7e62103e9d16891c52`。
+
+## 原生与注册基线
+
+对照 v0.43.1 已发布源码 ZIP 的 SHA256 后，核对 189 个可执行源码、第三方库、种子模型、安装和配置模板文件，字节逐一一致。固定相同 ABI 输入，用 `sha256-repo-lf-v1` 对比 callback 和 loader 的源码依赖，两组指纹一致。本机已有 loader、callback、worker 和 `blend_callback_protk.dat` 的原字节 SHA256 在候选检查前后相同，验证过程中未重新构建或注册。
 
 ## 未测范围
 
