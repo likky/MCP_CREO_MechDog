@@ -14,6 +14,8 @@ BUG-175 让普通启动与显式强制启动的单测共用可控时钟和模拟
 
 验证环境为 Windows 11 x64（10.0.26200）和 Python 3.12.10。
 
+发布门槛要求全量单测通过，并提供版本和源码身份匹配的报告。本轮结果待记录。
+
 ## 种子包
 
 先运行 `tools/package_seeds.py --allow-record-mismatch` 取得摘要并回填 `docs/seed_package.json`，再用默认校验重建。种子包含 24 个文件和 9 个种子，SHA256 为 `fece0e88c0c55828f9776944ad2196215e43077fcd1b3c7e62103e9d16891c52`。
