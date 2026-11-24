@@ -33,6 +33,10 @@
 
 发布候选在 0.42.0 工作树上运行 `tools/test_unit.py`，全量 unittest 通过，0 失败、0 错误。下列数字取自本轮 `build/unit_test_report.json`，该报告不随源码包分发。
 
+本轮 `run_id=f0a653a20b634f048e240f33df9f9ff8`，执行 4,478 项，0 失败、0 错误、6 跳过，耗时 348.80 s，报告 `version=0.42.0`、`status=completed`、`success=true`。受测提交 `8fed1eae1ff44d8cc0843bfd77b08271f40753fd`（分支 `codex/feedback-0400-chamfer-round-shell-region-g2`，`dirty=false`），源码指纹 `2deb6abb8ccf7429cded109e601e02d6559fb9a875f5a318e8826b3d81e6d7d2`，统计 679 个受 Git 跟踪的 `.py` 与原生头/源文件。后续回填本段文档不改动任何受跟踪 `.py` 或原生文件，源码指纹保持不变。跳过项为 Windows 符号链接权限、MSVC 独立辅助程序环境与未随仓库保存的历史作业证据，均不涉及本版改动。
+
+语言与格式检查以 `tools/dev_check.py --work-item BUG-179` 执行：`success=true`，lint 0、unformatted 0（593 个 Python、69 个 C++），离线验收 3/3 通过（`test_update_check`、`test_model_reconciliation`、`test_mcp`）。
+
 ## 未测范围
 
 - Creo 9/12、原护卫舰 `frigate_v4` / 原 Arm7 完整工程、60 条配合全量装配与 WorkBuddy 外部黑盒验收未执行。
