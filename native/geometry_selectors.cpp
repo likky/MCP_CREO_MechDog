@@ -86,8 +86,9 @@ static std::string selector_edge_error(const std::string &form, const std::vecto
                            std::to_string(candidates) +
                            " eligible model edges (tolerance_mm=" + std::to_string(tolerance) + ")";
         if (form == "point_mm") {
-            text += "; a single point only matches a finite straight edge - name a circular edge "
-                    "with center_mm+radius_mm instead of its centre point";
+            text += "; a single point matches a finite straight edge or a circular arc edge "
+                    "(not the circle's centre point) - name a circular edge with "
+                    "center_mm+radius_mm (+full_circle:true) instead of its centre point";
         } else if (form == "circular") {
             text += "; re-read creo_inspect_model edges[].arc origin/radius and pass current "
                     "model coordinates";
@@ -98,14 +99,16 @@ static std::string selector_edge_error(const std::string &form, const std::vecto
         return text;
     }
     if (same_circle) {
-        // FEAT-068 A0 / 0.27.0 feedback: one physical rim is reported as several
+        // FEAT-068 A0 / 0.27.0 feedback / BUG-176: one physical rim is reported as several
         // arcs of the same circle. Every one of them passes the centre + radius
         // filter by construction, so "use a smaller tolerance_mm" can never pick
-        // one; the caller must narrow by a point on the span or by edge id.
+        // one; the caller can pass full_circle:true (for round/chamfer propagation),
+        // narrow by point_mm on the span, or select by edge id.
         return "geometry_selector edge " + form + " matched " + std::to_string(matches.size()) +
                " arcs of one circle (ids " + selector_id_list(matches) +
                "); the rim is reported as several arcs with the same centre and radius, so a "
-               "smaller tolerance_mm cannot separate them - add point_mm on the span you want, "
+               "smaller tolerance_mm cannot separate them - set full_circle:true to pick one "
+               "deterministic arc of the circle, add point_mm on the span you want, "
                "or select one arc with {kind:'edge',id:N}";
     }
     return "geometry_selector edge " + form + " matched " + std::to_string(matches.size()) +
@@ -315,6 +318,52 @@ static J selector_nearest_surfaces(const J &selector, const J &state, double mm_
     return nearest;
 }
 
+// BUG-176: test whether a 3D point lies on a measured circular arc within tolerance.
+static bool selector_point_on_arc(const J &arc, const V &point, double mm_scale, double tolerance,
+                                  V *out_center = nullptr, double *out_radius = nullptr,
+                                  V *out_normal = nullptr, double *out_error = nullptr) {
+    V arc_center = scale(vec(arc["origin"]), mm_scale);
+    const double arc_radius = arc["radius"].get<double>() * mm_scale;
+    V arc_v1 = normalized(vec(arc["v1"]));
+    V arc_v2 = normalized(vec(arc["v2"]));
+    V normal = selector_cross(arc_v1, arc_v2);
+    const double normal_length = selector_vector_norm(normal);
+    if (normal_length <= 1e-9)
+        return false;
+    normal = scale(normal, 1.0 / normal_length);
+    V radial = {point[0] - arc_center[0], point[1] - arc_center[1], point[2] - arc_center[2]};
+    const double plane_err = fabs(dot(radial, normal));
+    if (plane_err > tolerance)
+        return false;
+    const double rad_err = fabs(selector_vector_norm(radial) - arc_radius);
+    if (rad_err > tolerance)
+        return false;
+    const double two_pi = 2.0 * 3.14159265358979323846;
+    const double start_angle = arc["start_angle"].get<double>();
+    const double raw_span = arc["end_angle"].get<double>() - start_angle;
+    if (raw_span < two_pi - 1e-6) {
+        double span = raw_span;
+        if (span < 0)
+            span += two_pi;
+        double offset = std::atan2(dot(radial, arc_v2), dot(radial, arc_v1)) - start_angle;
+        offset = std::fmod(offset, two_pi);
+        if (offset < 0)
+            offset += two_pi;
+        const double angular_tolerance = tolerance / std::max(arc_radius, 1e-9) + 1e-6;
+        if (offset > span + angular_tolerance && (two_pi - offset) > angular_tolerance)
+            return false;
+    }
+    if (out_center)
+        *out_center = arc_center;
+    if (out_radius)
+        *out_radius = arc_radius;
+    if (out_normal)
+        *out_normal = normal;
+    if (out_error)
+        *out_error = std::max(plane_err, rad_err);
+    return true;
+}
+
 static GeometrySelectorOutcome match_geometry_edge_selector(const J &selector, const J &state,
                                                             double mm_scale, double tolerance) {
     GeometrySelectorOutcome outcome;
@@ -333,6 +382,8 @@ static GeometrySelectorOutcome match_geometry_edge_selector(const J &selector, c
     // "one rim split into arcs" apart from "the tolerance let two circles in".
     std::vector<V> matched_centers;
     std::vector<double> matched_radii;
+    std::vector<V> matched_normals;
+    bool all_matches_are_arcs = true;
     if (circular) {
         V center = vec(selector["center_mm"]);
         const double radius = selector["radius_mm"].get<double>();
@@ -351,53 +402,28 @@ static GeometrySelectorOutcome match_geometry_edge_selector(const J &selector, c
                 continue;
             if (selector_component_error(arc_center, center) > tolerance)
                 continue;
+            V arc_axis = selector_cross(vec(arc["v1"]), vec(arc["v2"]));
+            const double axis_length = selector_vector_norm(arc_axis);
+            if (axis_length > 1e-9)
+                arc_axis = scale(arc_axis, 1.0 / axis_length);
             if (filter_axis) {
-                V arc_axis = selector_cross(vec(arc["v1"]), vec(arc["v2"]));
-                const double axis_length = selector_vector_norm(arc_axis);
                 if (axis_length <= 1e-9)
                     continue; // no measured plane normal, so no axis filter can pass
-                arc_axis = scale(arc_axis, 1.0 / axis_length);
                 if (fabs(dot(arc_axis, requested)) < cosine_limit)
                     continue;
             }
             if (selector.contains("point_mm")) {
-                // FEAT-068 A0: a full rim is often split into two arcs with the
-                // same centre and radius. The point selects the piece whose
-                // measured angular span contains it; it must lie on the circle.
-                V arc_v1 = normalized(vec(arc["v1"]));
-                V arc_v2 = normalized(vec(arc["v2"]));
-                V normal = selector_cross(arc_v1, arc_v2);
-                const double normal_length = selector_vector_norm(normal);
-                if (normal_length <= 1e-9)
-                    continue;
-                normal = scale(normal, 1.0 / normal_length);
+                // FEAT-068 A0 / BUG-176: a full rim is often split into two arcs with the
+                // same centre and radius. The point selects the piece whose measured
+                // angular span contains it; it must lie on the circle.
                 V point = vec(selector["point_mm"]);
-                V radial = {point[0] - arc_center[0], point[1] - arc_center[1],
-                            point[2] - arc_center[2]};
-                if (fabs(dot(radial, normal)) > tolerance)
+                if (!selector_point_on_arc(arc, point, mm_scale, tolerance))
                     continue;
-                if (fabs(selector_vector_norm(radial) - radius) > tolerance)
-                    continue;
-                const double two_pi = 2.0 * 3.14159265358979323846;
-                const double start_angle = arc["start_angle"].get<double>();
-                const double raw_span = arc["end_angle"].get<double>() - start_angle;
-                if (raw_span < two_pi - 1e-6) {
-                    double span = raw_span;
-                    if (span < 0)
-                        span += two_pi;
-                    double offset =
-                        std::atan2(dot(radial, arc_v2), dot(radial, arc_v1)) - start_angle;
-                    offset = std::fmod(offset, two_pi);
-                    if (offset < 0)
-                        offset += two_pi;
-                    const double angular_tolerance = tolerance / std::max(radius, 1e-9) + 1e-6;
-                    if (offset > span + angular_tolerance)
-                        continue;
-                }
             }
             matches.push_back(edge["id"].get<int>());
             matched_centers.push_back(arc_center);
             matched_radii.push_back(arc_radius);
+            matched_normals.push_back(arc_axis);
             matched.push_back({{"id", edge["id"]},
                                {"radius_mm", arc_radius},
                                {"center_error_mm", selector_component_error(arc_center, center)}});
@@ -409,46 +435,100 @@ static GeometrySelectorOutcome match_geometry_edge_selector(const J &selector, c
         if (selector.contains("endpoints_mm"))
             expected[1] = vec(selector.at("endpoints_mm").at(1));
         for (const auto &edge : state.value("edges", J::array())) {
-            if (!edge.contains("start") || !edge.contains("end"))
-                continue; // arcs and undimensioned curves are not straight edges
-            candidates++;
-            V first = scale(vec(edge["start"]), mm_scale);
-            V second = scale(vec(edge["end"]), mm_scale);
-            double error = 0;
-            if (selector.contains("endpoints_mm")) {
-                // Undirected: a straight edge has no meaningful start.
-                double forward = std::max(selector_component_error(first, expected[0]),
-                                          selector_component_error(second, expected[1]));
-                double reverse = std::max(selector_component_error(second, expected[0]),
-                                          selector_component_error(first, expected[1]));
-                error = std::min(forward, reverse);
-                if (error > tolerance)
-                    continue;
-                if (selector.contains("point_mm")) {
-                    V point = vec(selector["point_mm"]);
-                    if (selector_segment_distance(point, first, second) > tolerance)
+            if (edge.contains("start") && edge.contains("end")) {
+                candidates++;
+                V first = scale(vec(edge["start"]), mm_scale);
+                V second = scale(vec(edge["end"]), mm_scale);
+                double error = 0;
+                if (selector.contains("endpoints_mm")) {
+                    // Undirected: a straight edge has no meaningful start.
+                    double forward = std::max(selector_component_error(first, expected[0]),
+                                              selector_component_error(second, expected[1]));
+                    double reverse = std::max(selector_component_error(second, expected[0]),
+                                              selector_component_error(first, expected[1]));
+                    error = std::min(forward, reverse);
+                    if (error > tolerance)
+                        continue;
+                    if (selector.contains("point_mm")) {
+                        V point = vec(selector["point_mm"]);
+                        if (selector_segment_distance(point, first, second) > tolerance)
+                            continue;
+                    }
+                } else {
+                    // FEAT-068 A0: one point on one finite straight edge. The
+                    // distance is measured to the segment, never to its infinite
+                    // line, so a point beyond an endpoint cannot match.
+                    error = selector_segment_distance(expected[0], first, second);
+                    if (error > tolerance)
                         continue;
                 }
-            } else {
-                // FEAT-068 A0: one point on one finite straight edge. The
-                // distance is measured to the segment, never to its infinite
-                // line, so a point beyond an endpoint cannot match.
-                error = selector_segment_distance(expected[0], first, second);
-                if (error > tolerance)
+                matches.push_back(edge["id"].get<int>());
+                all_matches_are_arcs = false;
+                matched.push_back({{"id", edge["id"]}, {"anchor_error_mm", error}});
+            } else if (!selector.contains("endpoints_mm") && edge.contains("arc")) {
+                // BUG-176: single point_mm also matches circular arc edges when the
+                // point lies on the arc curve itself (not at the circle centre).
+                candidates++;
+                V arc_center = {0, 0, 0};
+                double arc_radius = 0.0;
+                V arc_normal = {0, 0, 0};
+                double error = 0.0;
+                if (!selector_point_on_arc(edge["arc"], expected[0], mm_scale, tolerance,
+                                           &arc_center, &arc_radius, &arc_normal, &error))
                     continue;
+                matches.push_back(edge["id"].get<int>());
+                matched_centers.push_back(arc_center);
+                matched_radii.push_back(arc_radius);
+                matched_normals.push_back(arc_normal);
+                matched.push_back(
+                    {{"id", edge["id"]}, {"anchor_error_mm", error}, {"radius_mm", arc_radius}});
             }
-            matches.push_back(edge["id"].get<int>());
-            matched.push_back({{"id", edge["id"]}, {"anchor_error_mm", error}});
         }
     }
-    if (matches.size() == 1) {
+    // Only arcs sitting on one and the same circle prove that a tighter
+    // tolerance cannot separate them: they pass the centre + radius filter by
+    // construction. Two distinct circles that both fit inside the tolerance are
+    // still separable, so they keep the generic advice.
+    const double same_circle_epsilon = 1e-6;
+    bool same_circle = all_matches_are_arcs && matched_centers.size() > 1 &&
+                       matched_centers.size() == matches.size();
+    for (size_t i = 1; same_circle && i < matched_centers.size(); ++i) {
+        same_circle =
+            fabs(matched_radii[i] - matched_radii[0]) <= same_circle_epsilon &&
+            selector_component_error(matched_centers[i], matched_centers[0]) <= same_circle_epsilon;
+        if (same_circle && i < matched_normals.size() &&
+            selector_vector_norm(matched_normals[i]) > 1e-9 &&
+            selector_vector_norm(matched_normals[0]) > 1e-9) {
+            same_circle = fabs(dot(matched_normals[i], matched_normals[0])) >= 1.0 - 1e-6;
+        }
+    }
+    // BUG-176: deterministically pick the smallest arc id of one physical circle
+    // when either (a) full_circle:true is requested on a circular edge selector, or
+    // (b) point_mm lands on the shared seam/extremum between complementary arcs of
+    // the same circle.
+    const bool full_circle_opt_in = circular && selector.value("full_circle", false);
+    const bool seam_point_hit = selector.contains("point_mm");
+    const bool resolved_same_circle =
+        matches.size() > 1 && same_circle && (full_circle_opt_in || seam_point_hit);
+    if (matches.size() == 1 || resolved_same_circle) {
+        int chosen = matches[0];
+        for (int id : matches)
+            chosen = std::min(chosen, id);
         outcome.matched = true;
-        outcome.id = matches[0];
+        outcome.id = chosen;
         outcome.diagnostic = {{"target", "edge"},
                               {"form", form},
-                              {"matched_geometry_id", matches[0]},
+                              {"matched_geometry_id", chosen},
                               {"candidate_count", candidates},
                               {"tolerance_mm", tolerance}};
+        if (resolved_same_circle) {
+            outcome.diagnostic["matched_ids"] = J(matches);
+            outcome.diagnostic["same_circle"] = true;
+            if (full_circle_opt_in)
+                outcome.diagnostic["full_circle"] = true;
+            if (seam_point_hit)
+                outcome.diagnostic["seam_point_resolved"] = true;
+        }
         return outcome;
     }
     outcome.diagnostic = {{"target", "edge"},
@@ -457,16 +537,6 @@ static GeometrySelectorOutcome match_geometry_edge_selector(const J &selector, c
                           {"tolerance_mm", tolerance},
                           {"candidate_count", candidates},
                           {"matched_ids", J(matches)}};
-    // Only arcs sitting on one and the same circle prove that a tighter
-    // tolerance cannot separate them: they pass the centre + radius filter by
-    // construction. Two distinct circles that both fit inside the tolerance are
-    // still separable, so they keep the generic advice.
-    const double same_circle_epsilon = 1e-6;
-    bool same_circle = matched_centers.size() > 1;
-    for (size_t i = 1; same_circle && i < matched_centers.size(); ++i)
-        same_circle =
-            fabs(matched_radii[i] - matched_radii[0]) <= same_circle_epsilon &&
-            selector_component_error(matched_centers[i], matched_centers[0]) <= same_circle_epsilon;
     outcome.error = selector_edge_error(form, matches, candidates, tolerance, same_circle);
     if (matches.empty()) {
         outcome.diagnostic["nearest_edges"] =

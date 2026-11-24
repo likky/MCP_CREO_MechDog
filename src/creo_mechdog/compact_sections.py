@@ -243,6 +243,11 @@ OPERATION_KEYS = (
     "requested_flip",
     "effective_flip",
     "draft_failure",
+    "failed_reference_index",
+    "failed_reference",
+    "round_failure",
+    "suggested_targets",
+    "auto_included_dependencies",
 )
 
 #: Selectable per-operation blocks; identity, status, message and failure

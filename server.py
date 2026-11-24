@@ -1016,9 +1016,12 @@ async def creo_execute_plan(
     (committed/rolled_back/no_effect/unknown); succeeded only reports execution, not
     the final transaction outcome.
     feature_state delete/suppress/resume changes existing part/sheetmetal features by
-    explicit label or nonnegative feature ID. Every affected dependency must be listed;
-    a missing one returns the dependency list and refuses the plan. Deleted labels are
-    tombstones and cannot be reused; resume applies only to suppressed targets.
+    explicit label or nonnegative feature ID. By default (include_dependencies=false),
+    every affected dependency must be listed; a missing one returns the dependency list
+    and a copyable suggested_targets array and refuses the plan. Set
+    include_dependencies=true to opt into automatically including non-system-required
+    dependent/companion features (reported in auto_included_dependencies). Deleted labels
+    are tombstones and cannot be reused; resume applies only to suppressed targets.
     round/chamfer use `size` (mm); as a standalone-tool alias they also accept
     radius (round) or distance (chamfer), but providing the alias together with
     size is rejected instead of silently preferring one.
@@ -1050,7 +1053,15 @@ async def creo_execute_plan(
         payload = operations
     else:
         if not operations:
-            raise ValueError("creo_execute_plan requires operations or plan_file")
+            hint_tool = {
+                "assembly": "creo_new_assembly",
+                "sheetmetal": "creo_new_sheetmetal",
+                "drawing": "creo_new_drawing",
+            }.get(model_type, "creo_new_part")
+            raise ValueError(
+                "creo_execute_plan requires a non-empty operations list or plan_file; "
+                f"to create an empty {model_type} model use {hint_tool}"
+            )
         payload = dump_plan_operations(operations)
     result = await invoke(
         general.submit,
@@ -1334,7 +1345,15 @@ async def creo_create_sketch(
 ) -> dict[str, Any]:
     """Create an independent native dimensioned sketch of arbitrary supported entities.
 
-    Coordinates are in the chosen plane's (u,v) frame. Arc angles are degrees CCW.
+    Principal plane frame table (offset is a global coordinate on the plane's axis):
+      - XY: origin=[0, 0, offset], normal=[0, 0, +1] (+Z), u_axis=+X, v_axis=+Y
+      - XZ: origin=[0, offset, 0], normal=[0, -1, 0] (-Y), u_axis=+X, v_axis=+Z
+            (NOTE: normal is -Y, so extrude direction="positive" moves toward -Y,
+             and direction="negative" moves toward +Y!)
+      - YZ: origin=[offset, 0, 0], normal=[+1, 0, 0] (+X), u_axis=+Y, v_axis=+Z
+    Coordinates are in the chosen plane's (u,v) frame (u = +first axis, v = +second axis).
+    Arc angles are degrees CCW; arcs also accept signed sweep_deg instead of end_angle
+    to express >180 deg major arcs directly.
     Rectangle/polyline expand to named lines e.g. box_0, box_1. spline fits an
     interpolating curve through points; b_spline writes an exact NURBS with degree,
     clamped knots, control_points and optional weights (creation-only, no in-place
@@ -1394,6 +1413,8 @@ async def creo_extrude(
     scope: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create native extrusion from a sketch label/ID. Supports protrusion, pocket, through cut, symmetric, surface and thin modes.
+    Principal plane normals for direction ("positive" follows normal, "negative" opposes it):
+      - XY: normal=+Z (u=+X, v=+Y); XZ: normal=-Y (u=+X, v=+Z, so +Y is "negative"); YZ: normal=+X (u=+Y, v=+Z).
     depth_type is "blind" (depth in mm, any mode) or "through_all" (cut mode only; depth is ignored);
     direction is "positive", "negative" or "symmetric". These enums are the same as the plan
     operation {"op":"extrude",...}: this tool submits exactly that operation, so the standalone
@@ -2793,7 +2814,7 @@ async def creo_inspect_model(
         ),
     ] = None,
 ) -> dict[str, Any]:
-    """Read a saved verified snapshot, compact by default (identity/revision/status/volume/counts).
+    """Read a saved verified snapshot, compact by default (identity/revision/status/volume/total_surface_area_mm2/bounding_box_mm/counts/merged_counts).
 
     Use detail=full for geometry; large snapshots return data grouped by section,
     complete=false and next_cursor. Repeat with the same detail/section and cursor.

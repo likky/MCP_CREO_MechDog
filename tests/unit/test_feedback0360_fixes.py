@@ -102,10 +102,27 @@ class Bug170StaleSessionAndForceNewTests(unittest.TestCase):
                 "toolkit_hint": "PRO_TK_BAD_CONTEXT",
             }
             # Without force_new_session: never launches, publishes stale diagnosis.
+            # BUG-175: drive with a deterministic fake clock so preparation file I/O
+            # cannot exhaust a short wall-clock deadline before the first -4 probe.
             coord1 = creo_startup.CreoStartup(directory=root / "s1")
             coord1._directory = root / "s1"
             (root / "s1").mkdir(parents=True)
+            fake_now = [100.0]
+
+            def fake_monotonic() -> float:
+                return fake_now[0]
+
+            def probe_then_expire(*_args, **_kwargs):
+                fake_now[0] += 1.0
+                return bad_probe
+
+            def wait_then_expire(timeout=None) -> bool:
+                fake_now[0] += max(0.5, float(timeout or 0.5))
+                return False
+
             with (
+                patch.object(creo_startup.time, "monotonic", side_effect=fake_monotonic),
+                patch.object(coord1._stop, "wait", side_effect=wait_then_expire),
                 patch.object(creo_startup, "inventory", return_value=alive_inv),
                 patch.object(
                     creo_startup,
@@ -113,10 +130,10 @@ class Bug170StaleSessionAndForceNewTests(unittest.TestCase):
                     return_value={"available": True, "processes": alive_inv["processes"]},
                 ),
                 patch.object(bridge, "build_native", return_value=exe),
-                patch.object(bridge, "session_status", return_value=bad_probe),
+                patch.object(bridge, "session_status", side_effect=probe_then_expire),
                 patch.object(creo_startup, "launch_creo") as launcher,
             ):
-                coord1._drive(settings, True, creo_startup.time.monotonic() + 0.3)
+                coord1._drive(settings, True, fake_now[0] + 0.3)
                 launcher.assert_not_called()
             st1 = coord1.status()
             self.assertEqual(st1["state"], "timeout")

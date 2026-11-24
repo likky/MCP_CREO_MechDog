@@ -257,7 +257,11 @@ def _strict_arc_dir(value: Any) -> int:
 class Arc(Circle):
     type: Literal["arc"]
     start_angle: float
-    end_angle: float
+    end_angle: float | None = None
+    # BUG-177: optional signed sweep in degrees (-360 < sweep_deg < 360, non-zero)
+    # as an alternative to end_angle so major arcs (>180 deg) are unambiguous.
+    # Normalized to end_angle + dir and excluded from native serialization.
+    sweep_deg: Annotated[float | None, Field(default=None, exclude=True)] = None
     # FEAT-034/T02: +1 sweeps counterclockwise from start_angle to end_angle in
     # the sketch-local frame (the legacy start/end meaning); -1 sweeps
     # clockwise. The default keeps every legacy request's geometry unchanged.
@@ -265,7 +269,28 @@ class Arc(Circle):
 
     @model_validator(mode="after")
     def span(self):
-        if not math.isfinite(self.start_angle) or not math.isfinite(self.end_angle):
+        if not math.isfinite(self.start_angle):
+            raise ValueError("Arc angles must be finite degrees")
+        if self.sweep_deg is not None:
+            if self.end_angle is not None:
+                raise ValueError("Provide either end_angle or sweep_deg for an arc, not both")
+            if isinstance(self.sweep_deg, bool) or not math.isfinite(self.sweep_deg):
+                raise ValueError("Arc sweep_deg must be a finite number of degrees")
+            if abs(self.sweep_deg) < 1e-10 or abs(self.sweep_deg) >= 360.0 - 1e-10:
+                raise ValueError(
+                    "Arc sweep_deg must satisfy 0 < |sweep_deg| < 360 degrees; "
+                    "use circle for a complete circle"
+                )
+            implied_dir = 1 if self.sweep_deg > 0 else -1
+            if "dir" in self.model_fields_set and self.dir != implied_dir:
+                raise ValueError(
+                    "Arc dir conflicts with the sign of sweep_deg; omit dir or match the sign"
+                )
+            self.dir = implied_dir
+            self.end_angle = self.start_angle + self.sweep_deg
+        elif self.end_angle is None:
+            raise ValueError("Arc requires end_angle or sweep_deg")
+        if not math.isfinite(self.end_angle):
             raise ValueError("Arc angles must be finite degrees")
         sweep = (
             (self.end_angle - self.start_angle) % 360
@@ -2493,6 +2518,24 @@ class FeatureStateOp(StrictModel):
     op: Literal["feature_state"]
     action: Literal["delete", "suppress", "resume"]
     targets: Annotated[list[FeatureTarget], Field(min_length=1, max_length=100)]
+    include_dependencies: Annotated[
+        bool,
+        Field(
+            default=False,
+            description=(
+                "BUG-178: opt-in dependency expansion (default false). When true, "
+                "non-system-required dependent/companion features affected by Creo are "
+                "automatically included and reported in auto_included_dependencies."
+            ),
+        ),
+    ] = False
+
+    @field_validator("include_dependencies", mode="before")
+    @classmethod
+    def strict_include_dependencies(cls, value: Any) -> Any:
+        if type(value) is not bool:
+            raise ValueError("include_dependencies must be true or false")
+        return value
 
     @model_validator(mode="after")
     def distinct_targets(self):

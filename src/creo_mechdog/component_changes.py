@@ -191,6 +191,33 @@ def _constraints_view(constraints: Any) -> Any:
     ]
 
 
+TRANSFORM_NOISE_TOL = 1e-12
+
+
+def _transforms_differ(before: Any, after: Any, tol: float = TRANSFORM_NOISE_TOL) -> bool:
+    """Compare two 4x4 transform matrices with floating-point round-trip tolerance (BUG-178)."""
+    if before == after:
+        return False
+    if not isinstance(before, list) or not isinstance(after, list) or len(before) != len(after):
+        return True
+    for row_a, row_b in zip(before, after):
+        if not isinstance(row_a, list) or not isinstance(row_b, list) or len(row_a) != len(row_b):
+            return True
+        for val_a, val_b in zip(row_a, row_b):
+            if (
+                isinstance(val_a, bool)
+                or isinstance(val_b, bool)
+                or not isinstance(val_a, (int, float))
+                or not isinstance(val_b, (int, float))
+            ):
+                if val_a != val_b:
+                    return True
+                continue
+            if abs(float(val_a) - float(val_b)) > tol:
+                return True
+    return False
+
+
 def _committed_changes(
     targeted: list[dict],
     prior_aliases: dict | None,
@@ -248,8 +275,8 @@ def _committed_changes(
             continue
         before = prior_components.get(prior_id) or {}
         after = result_components.get(result_id) or {}
-        if before.get("transform") is not None and before.get("transform") != after.get(
-            "transform"
+        if before.get("transform") is not None and _transforms_differ(
+            before.get("transform"), after.get("transform")
         ):
             changes.append(
                 {

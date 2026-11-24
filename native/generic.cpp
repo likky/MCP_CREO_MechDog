@@ -558,6 +558,8 @@ static int inspect_surfaces_seen = 0;
 static int inspect_half_edges_seen = 0;
 static int inspect_last_feature_id = -1;
 static int inspect_last_surface_id = -1;
+static double inspect_mm_scale = 1.0;
+static bool inspect_mm_scale_known = false;
 
 static void check_quiet(ProError e, const char *op, int item_id = -1) {
     if (e != PRO_TK_NO_ERROR) {
@@ -806,6 +808,16 @@ static ProError inspect_surface(ProSurface surface, ProError status, ProAppData 
     ProSmtSurfType st;
     if (!ProSmtSurfaceTypeGet((ProPart)board, surface, &st))
         item["sheetmetal_type"] = (int)st;
+    // FEAT-078: evaluate each surface's area in mm^2 when the model length unit
+    // is known; leave null on unknown unit or kernel eval error.
+    double surface_area_raw = 0.0;
+    if (inspect_mm_scale_known &&
+        ProSurfaceAreaEval(surface, &surface_area_raw) == PRO_TK_NO_ERROR &&
+        std::isfinite(surface_area_raw) && surface_area_raw >= 0.0) {
+        item["area_mm2"] = surface_area_raw * inspect_mm_scale * inspect_mm_scale;
+    } else {
+        item["area_mm2"] = nullptr;
+    }
     gsurfaces.push_back(item);
     ProGeomitemdataFree(&data);
     check_quiet(ProSurfaceContourVisit(surface, inspect_contour, nullptr, surface),
@@ -1370,6 +1382,11 @@ static J inspection(bool require_healthy) {
     inspect_half_edges_seen = 0;
     inspect_last_feature_id = -1;
     inspect_last_surface_id = -1;
+    {
+        auto scale_info = length_scale_to_mm((ProMdl)board, inspect_length_units(board));
+        inspect_mm_scale_known = scale_info.known;
+        inspect_mm_scale = scale_info.known ? scale_info.scale : 1.0;
+    }
     gfeatures = J::array();
     gsurfaces = J::array();
     gedges = J::array();
@@ -1550,7 +1567,9 @@ static J inspection(bool require_healthy) {
                 {"has_solid", solid},
                 {"center_of_gravity", nullptr},
                 {"volume_query_code", nullptr},
-                {"volume_mm3", nullptr}};
+                {"volume_mm3", nullptr},
+                {"total_surface_area_mm2", nullptr},
+                {"bounding_box_mm", nullptr}};
     J axes = J::array();
     for (const auto &f : gfeatures)
         if (f.contains("datum_axes")) {
@@ -1591,6 +1610,28 @@ static J inspection(bool require_healthy) {
             auto volume = length_units.volume_mm3(mp.volume);
             if (volume)
                 result["volume_mm3"] = *volume;
+            auto surface_area = length_units.area_mm2(mp.surface_area);
+            if (surface_area && std::isfinite(*surface_area) && *surface_area >= 0.0)
+                result["total_surface_area_mm2"] = *surface_area;
+        }
+        if (inspect_mm_scale_known) {
+            Pro3dPnt outline[2] = {};
+            if (ProSolidOutlineGet((ProSolid)board, outline) == PRO_TK_NO_ERROR) {
+                double lo[3] = {outline[0][0] * inspect_mm_scale, outline[0][1] * inspect_mm_scale,
+                                outline[0][2] * inspect_mm_scale};
+                double hi[3] = {outline[1][0] * inspect_mm_scale, outline[1][1] * inspect_mm_scale,
+                                outline[1][2] * inspect_mm_scale};
+                bool finite_box = true;
+                for (int k = 0; k < 3; ++k)
+                    finite_box = finite_box && std::isfinite(lo[k]) && std::isfinite(hi[k]);
+                if (finite_box) {
+                    result["bounding_box_mm"] = {
+                        {"min", J::array({lo[0], lo[1], lo[2]})},
+                        {"max", J::array({hi[0], hi[1], hi[2]})},
+                        {"size", J::array({hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]})},
+                    };
+                }
+            }
         }
     }
     collect_datum_planes_quiet();
@@ -5485,87 +5526,231 @@ static void reject_duplicate_round_circles(const J &op, bool chamfer) {
         circles.push_back({item.id, center, radius});
     }
 }
-static J generic_round(const J &op, bool chamfer) {
-    reject_duplicate_round_circles(op, chamfer);
-    ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
-    integer(root, PRO_E_FEATURE_TYPE, chamfer ? PRO_FEAT_CHAMFER : PRO_FEAT_ROUND);
-    text(root, PRO_E_STD_FEATURE_NAME, wide(op.at("label")).c_str());
-    // DEV-089 T6a: PRO_CHM_ANG_X_D needs both legs plus the reference face the
-    // angle and the leg distance are measured on (ProChamfer.h Table: LEG2
-    // required for AnglexD, PRO_E_RNDCH_REFERENCE_SURFACE required for that
-    // schema). The angle is written in degrees like PRO_E_DRAFT_ANGLE_1; which
-    // leg carries it is a live measurement recorded in docs/work-items/DEV-089.md.
-    const bool angle_chamfer = chamfer && op.contains("angle_deg");
-    // FEAT-071: D1xD2 requires an explicit reference face and both distance
-    // legs. The SDK does not bind D1 to one adjacent face, so no direction is
-    // inferred here from the edge or face-pair ordering.
-    const bool two_distance_chamfer = chamfer && op.contains("distance_1");
-    // DEV-090 G2 probe: PRO_ROUND_CURV_CONTINUOUS is documented for round
-    // creation in the installed SDK help; the value is opt-in and this branch
-    // writes no CONIC_VALUE/CONIC_DEP_OPT (the help only requires those for
-    // PRO_ROUND_CONIC_ENABLE). Chamfer has no conic concept.
-    const bool curvature_continuous = !chamfer && op.value("curvature_continuous", false);
-    ProElement sets = node(root, PRO_E_RNDCH_SETS);
-    for (auto refs : op["references"]) {
-        ProElement set = node(sets, PRO_E_RNDCH_SET);
-        if (chamfer) {
-            int dimensional_schema = PRO_CHM_D_X_D;
-            if (angle_chamfer)
-                dimensional_schema = PRO_CHM_ANG_X_D;
-            else if (two_distance_chamfer)
-                dimensional_schema = PRO_CHM_D1_X_D2;
-            integer(set, PRO_E_RNDCH_DIMENSIONAL_SCHEMA, dimensional_schema);
-            integer(set, PRO_E_RNDCH_CHAMFER_SHAPE, PRO_CHM_TANGENT_LEGS);
-        } else {
-            integer(set, PRO_E_RNDCH_SHAPE_OPTIONS, PRO_ROUND_TYPE_CONSTANT);
-            integer(node(set, PRO_E_RNDCH_COMPOUND_CONIC), PRO_E_RNDCH_CONIC_TYPE,
-                    curvature_continuous ? PRO_ROUND_CURV_CONTINUOUS : PRO_ROUND_CONIC_DISABLE);
-            integer(node(set, PRO_E_RNDCH_COMPOUND_SPINE), PRO_E_RNDCH_BALL_SPINE,
-                    PRO_ROUND_ROLLING_BALL);
+static void delete_feature_quiet(int feat_id) {
+    if (feat_id <= 0)
+        return;
+    int *list = nullptr;
+    ProFeatureDeleteOptions *options = nullptr;
+    if (ProArrayAlloc(1, sizeof(int), 1, (ProArray *)&list) == PRO_TK_NO_ERROR) {
+        list[0] = feat_id;
+        if (ProArrayAlloc(1, sizeof(ProFeatureDeleteOptions), 1, (ProArray *)&options) ==
+            PRO_TK_NO_ERROR) {
+            options[0] = PRO_FEAT_DELETE_NO_OPTS;
+            ProFeatureWithoptionsDelete((ProSolid)board, list, options, PRO_REGEN_NO_FLAGS);
+            ProArrayFree((ProArray *)&options);
         }
-        ProElement r = node(set, PRO_E_RNDCH_REFERENCES);
-        if (refs.contains("surfaces")) {
-            integer(r, PRO_E_RNDCH_REFERENCE_TYPE, PRO_ROUND_REF_SURF_SURF);
-            ProSelection a = resolve(refs["surfaces"][0]), b = resolve(refs["surfaces"][1]);
-            ref(r, PRO_E_RNDCH_REFERENCE_SURFACE1, a);
-            ref(r, PRO_E_RNDCH_REFERENCE_SURFACE2, b);
-            ProSelectionFree(&a);
-            ProSelectionFree(&b);
-        } else {
-            integer(r, PRO_E_RNDCH_REFERENCE_TYPE, PRO_ROUND_REF_EDGE);
-            ProSelection e = resolve(refs.at("edge"));
-            ProSelectionFree(&e);
-            curve_collection(node(r, PRO_E_STD_CURVE_COLLECTION_APPL), J::array({refs.at("edge")}));
+        ProArrayFree((ProArray *)&list);
+    }
+    ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS);
+}
+
+static bool feature_is_healthy_active(ProFeature *f) {
+    if (!f || f->id <= 0)
+        return false;
+    ProFeatStatus st = PRO_FEAT_INVALID;
+    ProBoolean inc = PRO_B_FALSE;
+    if (ProFeatureStatusGet(f, &st) != PRO_TK_NO_ERROR || st != PRO_FEAT_ACTIVE)
+        return false;
+    if (ProFeatureIsIncomplete(f, &inc) != PRO_TK_NO_ERROR || inc == PRO_B_TRUE)
+        return false;
+    return true;
+}
+
+// FEAT-079: when a multi-reference round/chamfer fails, isolate which individual
+// reference(s) cannot regenerate so the caller does not have to manually bisect.
+template <typename TreeBuilder>
+static J probe_round_references(const J &op, TreeBuilder &&build_tree) {
+    const J &refs = op.at("references");
+    const size_t total = refs.size();
+    const size_t limit = std::min<size_t>(total, 20);
+    J failed_indices = J::array();
+    int first_failed = -1;
+    ProModelitem mi = {};
+    if (ProMdlToModelitem(board, &mi) != PRO_TK_NO_ERROR)
+        return {{"probed_count", 0},
+                {"total_references", (int)total},
+                {"failed_indices", failed_indices}};
+    for (size_t i = 0; i < limit; ++i) {
+        bool ok = false;
+        ProElement probe_root = nullptr;
+        ProFeature probe_feat = {};
+        try {
+            probe_root = build_tree("probe_rnd_" + std::to_string(i), J::array({refs[i]}));
+            ProSelection sel = nullptr;
+            ProFeatureCreateOptions *opts = nullptr;
+            if (ProSelectionAlloc(nullptr, &mi, &sel) == PRO_TK_NO_ERROR &&
+                ProArrayAlloc(1, sizeof(ProFeatureCreateOptions), 1, (ProArray *)&opts) ==
+                    PRO_TK_NO_ERROR) {
+                opts[0] = PRO_FEAT_CR_NO_OPTS;
+                ProErrorlist es = {};
+                ProError err = ProFeatureWithoptionsCreate(sel, probe_root, opts,
+                                                           PRO_REGEN_NO_FLAGS, &probe_feat, &es);
+                if (err == PRO_TK_NO_ERROR && probe_feat.id > 0) {
+                    ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS);
+                    ok = feature_is_healthy_active(&probe_feat);
+                }
+                ProArrayFree((ProArray *)&opts);
+            }
+            if (sel)
+                ProSelectionFree(&sel);
+        } catch (...) {
+            ok = false;
         }
-        if (angle_chamfer || two_distance_chamfer) {
-            ProSelection face =
-                resolve(op.at(angle_chamfer ? "angle_reference" : "reference_surface"));
-            ref(r, PRO_E_RNDCH_REFERENCE_SURFACE, face);
-            ProSelectionFree(&face);
-        }
-        ProElement radius = node(node(set, PRO_E_RNDCH_RADII), PRO_E_RNDCH_RADIUS),
-                   leg = node(radius, PRO_E_RNDCH_LEG1);
-        integer(leg, PRO_E_RNDCH_LEG_TYPE, PRO_ROUND_RADIUS_TYPE_VALUE);
-        // Live evidence (job 2089d13d..., docs/work-items/DEV-089.md): for
-        // PRO_CHM_ANG_X_D Creo reads LEG1 as the linear distance and LEG2 as the
-        // angle. Writing the angle into LEG1 produced d11=70.0 carried as a
-        // linear dimension and d12=3.0 carried as an angle (type 21), and the
-        // feature then failed regeneration with status 6.
-        if (two_distance_chamfer)
-            real(leg, PRO_E_RNDCH_LEG_VALUE, op.at("distance_1"));
-        else
-            real(leg, PRO_E_RNDCH_LEG_VALUE, op.at("size"));
-        if (angle_chamfer || two_distance_chamfer) {
-            ProElement second_leg = node(radius, PRO_E_RNDCH_LEG2);
-            integer(second_leg, PRO_E_RNDCH_LEG_TYPE, PRO_ROUND_RADIUS_TYPE_VALUE);
-            real(second_leg, PRO_E_RNDCH_LEG_VALUE,
-                 op.at(angle_chamfer ? "angle_deg" : "distance_2"));
+        if (probe_root)
+            ProElementFree(&probe_root);
+        if (probe_feat.id > 0)
+            delete_feature_quiet(probe_feat.id);
+        if (!ok) {
+            failed_indices.push_back((int)i);
+            if (first_failed < 0)
+                first_failed = (int)i;
         }
     }
-    integer(root, PRO_E_RNDCH_ATTACH_TYPE, PRO_ROUND_ATTACHED);
-    node(root, PRO_E_RNDCH_TRANSITIONS);
-    ProFeature f = create(root);
-    CK(ProElementFree(&root));
+    J report = {{"probed_count", (int)limit},
+                {"total_references", (int)total},
+                {"truncated", total > limit},
+                {"failed_indices", failed_indices}};
+    if (first_failed >= 0) {
+        report["failed_reference_index"] = first_failed;
+        report["failed_reference"] = refs[(size_t)first_failed];
+    }
+    return report;
+}
+
+static J generic_round(const J &op, bool chamfer) {
+    reject_duplicate_round_circles(op, chamfer);
+    const bool angle_chamfer = chamfer && op.contains("angle_deg");
+    const bool two_distance_chamfer = chamfer && op.contains("distance_1");
+    const bool curvature_continuous = !chamfer && op.value("curvature_continuous", false);
+    const bool multi_ref = op.at("references").size() > 1;
+    auto build_round_tree = [&](const std::string &feat_name, const J &refs_array) -> ProElement {
+        ProElement root = node(nullptr, PRO_E_FEATURE_TREE);
+        integer(root, PRO_E_FEATURE_TYPE, chamfer ? PRO_FEAT_CHAMFER : PRO_FEAT_ROUND);
+        text(root, PRO_E_STD_FEATURE_NAME, wide(feat_name).c_str());
+        // DEV-089 T6a: PRO_CHM_ANG_X_D needs both legs plus the reference face the
+        // angle and the leg distance are measured on (ProChamfer.h Table: LEG2
+        // required for AnglexD, PRO_E_RNDCH_REFERENCE_SURFACE required for that
+        // schema). The angle is written in degrees like PRO_E_DRAFT_ANGLE_1; which
+        // leg carries it is a live measurement recorded in docs/work-items/DEV-089.md.
+        // FEAT-071: D1xD2 requires an explicit reference face and both distance
+        // legs. The SDK does not bind D1 to one adjacent face, so no direction is
+        // inferred here from the edge or face-pair ordering.
+        // DEV-090 G2 probe: PRO_ROUND_CURV_CONTINUOUS is documented for round
+        // creation in the installed SDK help; the value is opt-in and this branch
+        // writes no CONIC_VALUE/CONIC_DEP_OPT (the help only requires those for
+        // PRO_ROUND_CONIC_ENABLE). Chamfer has no conic concept.
+        ProElement sets = node(root, PRO_E_RNDCH_SETS);
+        for (const auto &refs : refs_array) {
+            ProElement set = node(sets, PRO_E_RNDCH_SET);
+            if (chamfer) {
+                int dimensional_schema = PRO_CHM_D_X_D;
+                if (angle_chamfer)
+                    dimensional_schema = PRO_CHM_ANG_X_D;
+                else if (two_distance_chamfer)
+                    dimensional_schema = PRO_CHM_D1_X_D2;
+                integer(set, PRO_E_RNDCH_DIMENSIONAL_SCHEMA, dimensional_schema);
+                integer(set, PRO_E_RNDCH_CHAMFER_SHAPE, PRO_CHM_TANGENT_LEGS);
+            } else {
+                integer(set, PRO_E_RNDCH_SHAPE_OPTIONS, PRO_ROUND_TYPE_CONSTANT);
+                integer(node(set, PRO_E_RNDCH_COMPOUND_CONIC), PRO_E_RNDCH_CONIC_TYPE,
+                        curvature_continuous ? PRO_ROUND_CURV_CONTINUOUS : PRO_ROUND_CONIC_DISABLE);
+                integer(node(set, PRO_E_RNDCH_COMPOUND_SPINE), PRO_E_RNDCH_BALL_SPINE,
+                        PRO_ROUND_ROLLING_BALL);
+            }
+            ProElement r = node(set, PRO_E_RNDCH_REFERENCES);
+            if (refs.contains("surfaces")) {
+                integer(r, PRO_E_RNDCH_REFERENCE_TYPE, PRO_ROUND_REF_SURF_SURF);
+                ProSelection a = resolve(refs["surfaces"][0]), b = resolve(refs["surfaces"][1]);
+                ref(r, PRO_E_RNDCH_REFERENCE_SURFACE1, a);
+                ref(r, PRO_E_RNDCH_REFERENCE_SURFACE2, b);
+                ProSelectionFree(&a);
+                ProSelectionFree(&b);
+            } else {
+                integer(r, PRO_E_RNDCH_REFERENCE_TYPE, PRO_ROUND_REF_EDGE);
+                ProSelection e = resolve(refs.at("edge"));
+                ProSelectionFree(&e);
+                curve_collection(node(r, PRO_E_STD_CURVE_COLLECTION_APPL),
+                                 J::array({refs.at("edge")}));
+            }
+            if (angle_chamfer || two_distance_chamfer) {
+                ProSelection face =
+                    resolve(op.at(angle_chamfer ? "angle_reference" : "reference_surface"));
+                ref(r, PRO_E_RNDCH_REFERENCE_SURFACE, face);
+                ProSelectionFree(&face);
+            }
+            ProElement radius = node(node(set, PRO_E_RNDCH_RADII), PRO_E_RNDCH_RADIUS),
+                       leg = node(radius, PRO_E_RNDCH_LEG1);
+            integer(leg, PRO_E_RNDCH_LEG_TYPE, PRO_ROUND_RADIUS_TYPE_VALUE);
+            // Live evidence (job 2089d13d..., docs/work-items/DEV-089.md): for
+            // PRO_CHM_ANG_X_D Creo reads LEG1 as the linear distance and LEG2 as the
+            // angle. Writing the angle into LEG1 produced d11=70.0 carried as a
+            // linear dimension and d12=3.0 carried as an angle (type 21), and the
+            // feature then failed regeneration with status 6.
+            if (two_distance_chamfer)
+                real(leg, PRO_E_RNDCH_LEG_VALUE, op.at("distance_1"));
+            else
+                real(leg, PRO_E_RNDCH_LEG_VALUE, op.at("size"));
+            if (angle_chamfer || two_distance_chamfer) {
+                ProElement second_leg = node(radius, PRO_E_RNDCH_LEG2);
+                integer(second_leg, PRO_E_RNDCH_LEG_TYPE, PRO_ROUND_RADIUS_TYPE_VALUE);
+                real(second_leg, PRO_E_RNDCH_LEG_VALUE,
+                     op.at(angle_chamfer ? "angle_deg" : "distance_2"));
+            }
+        }
+        integer(root, PRO_E_RNDCH_ATTACH_TYPE, PRO_ROUND_ATTACHED);
+        node(root, PRO_E_RNDCH_TRANSITIONS);
+        return root;
+    };
+    ProElement root = build_round_tree(op.at("label").get<std::string>(), op.at("references"));
+    ProFeature f = {};
+    bool created_ok = false;
+    std::string create_err;
+    try {
+        f = create(root);
+        created_ok = true;
+    } catch (const std::exception &ex) {
+        create_err = ex.what();
+    } catch (ProError code) {
+        create_err = "ProFeatureWithoptionsCreate failed with code " + std::to_string((int)code);
+    }
+    ProElementFree(&root);
+    bool healthy = created_ok && feature_is_healthy_active(&f);
+    if (!healthy && created_ok) {
+        // Regenerate once to confirm feature status (some round failures only
+        // surface after ProSolidRegenerate).
+        ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS);
+        healthy = feature_is_healthy_active(&f);
+    }
+    if (!healthy) {
+        if (multi_ref) {
+            if (f.id > 0)
+                delete_feature_quiet(f.id);
+            J probe = probe_round_references(op, build_round_tree);
+            J staged = {{"round_failure", probe}};
+            std::string suffix;
+            if (probe.contains("failed_reference_index")) {
+                staged["failed_reference_index"] = probe["failed_reference_index"];
+                staged["failed_reference"] = probe["failed_reference"];
+                suffix = "; isolated failed_reference_index=" +
+                         std::to_string(probe["failed_reference_index"].get<int>()) +
+                         ", failed_indices=" + probe["failed_indices"].dump();
+            } else {
+                suffix = "; all " + std::to_string(probe["probed_count"].get<int>()) +
+                         " references succeeded individually (interaction conflict between sets)";
+            }
+            stage_operation_result(staged);
+            std::string base =
+                create_err.empty()
+                    ? std::string(chamfer ? "chamfer" : "round") +
+                          " feature failed regeneration across multiple reference sets"
+                    : create_err;
+            throw std::runtime_error(base + suffix);
+        }
+        if (!create_err.empty())
+            throw std::runtime_error(create_err);
+        throw std::runtime_error(std::string(chamfer ? "chamfer" : "round") +
+                                 " feature failed regeneration");
+    }
     remember(op, f);
     // Echo the applied leg values so callers can compare them with their input,
     // and report the tree-proven set application beside the requested count.

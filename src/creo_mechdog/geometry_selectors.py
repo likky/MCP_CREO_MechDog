@@ -83,6 +83,7 @@ _ALLOWED_KEYS = frozenset(
         "axis_tolerance_deg",
         "coordinate_space",
         "coaxial",
+        "full_circle",
         "feature",
     }
 )
@@ -90,11 +91,15 @@ _ALLOWED_KEYS = frozenset(
 DESCRIPTION = (
     "A geometric anchor selector is {kind:'geometry_selector',target:'edge'|'surface',"
     "tolerance_mm:>0,...}. Edges take endpoints_mm (two endpoints, either direction) with an "
-    "optional point_mm filter, point_mm alone for one finite straight edge, or "
-    "center_mm+radius_mm (+axis, +point_mm on the arc span) for a circular edge; surfaces take "
-    "points_mm on the "
+    "optional point_mm filter, point_mm alone for one finite straight or circular arc edge "
+    "(resolving a shared seam endpoint between two arcs of the same circle to the smallest id), "
+    "or center_mm+radius_mm (+axis, +point_mm on the arc span, or full_circle:true to pick one "
+    "deterministic arc of a split full circle for round/chamfer propagation) for a circular edge; "
+    "surfaces take points_mm on the "
     "surface and/or center_mm/radius_mm/axis with axis_tolerance_deg for the direction. "
-    "It must match exactly one current model item; zero or multiple matches are refused. "
+    "It must match exactly one current model item (or one split circle when full_circle:true or "
+    "point_mm hits the seam between complementary arcs of one circle); zero or multiple matches "
+    "are refused. "
     "coordinate_space is 'model' (default) or 'assembly'; an assembly-space selector is only "
     "valid on the assembly side of a component constraint that names the placed "
     "assembly_component and is mapped into that component's frame by the executor. "
@@ -158,6 +163,10 @@ def validate_geometry_selector(value: Any, path: str = "selector") -> dict[str, 
         raise ValueError(
             f"{path}.coaxial is only valid on a surface selector: it relaxes a coaxial "
             "cylinder choice, not an edge choice"
+        )
+    if "full_circle" in value and target != "edge":
+        raise ValueError(
+            f"{path}.full_circle is only valid on a circular edge selector (center_mm+radius_mm)"
         )
 
     if "tolerance_mm" not in value:
@@ -237,7 +246,16 @@ def validate_geometry_selector(value: Any, path: str = "selector") -> dict[str, 
             # actually spans that angle; a centre point is never inferred.
             if "point_mm" in value:
                 normalized["point_mm"] = _point(value["point_mm"], f"{path}.point_mm")
+            if "full_circle" in value:
+                if type(value["full_circle"]) is not bool:
+                    raise ValueError(f"{path}.full_circle must be a boolean (true or false)")
+                normalized["full_circle"] = value["full_circle"]
             return normalized
+        if "full_circle" in value:
+            raise ValueError(
+                f"{path}.full_circle only accompanies a circular edge selector with "
+                "center_mm and radius_mm"
+            )
         if "axis" in value:
             raise ValueError(
                 f"{path}.axis only accompanies a circular edge selector with center_mm/radius_mm"

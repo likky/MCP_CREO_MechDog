@@ -303,6 +303,9 @@ def _check_dependencies(
     resolved: list[dict],
     features: list[dict],
     path: str,
+    *,
+    include_dependencies: bool = False,
+    raw_targets: list | None = None,
 ) -> None:
     targets = {item["feature_id"]: item["feature"] for item in resolved}
     if action in ("delete", "suppress"):
@@ -327,13 +330,25 @@ def _check_dependencies(
                 pending.extend(_dependencies(child))
         if missing:
             ordered = sorted(missing)
+            if include_dependencies:
+                for dep_id in ordered:
+                    dep = _feature_by_id(features, dep_id)
+                    if dep is not None and dep.get("system_required"):
+                        raise _error(
+                            path,
+                            f"include_dependencies=true cannot include system-required "
+                            f"feature {dep_id}",
+                        )
+                return
+            suggested = list(raw_targets or []) + ordered
             raise _error(
                 path,
                 f"delete/suppress targets do not cover every affected dependency; "
                 f"list these feature IDs explicitly (no automatic cascade): "
                 f"{_describe(model, features, ordered)}. Append these feature IDs to targets "
-                f"and resubmit the same action; auto-created support datums carry no label, so "
-                f"their ids only appear here",
+                f"(or pass include_dependencies=true) and resubmit the same action; auto-created "
+                f"support datums carry no label, so their ids only appear here; "
+                f"suggested_targets={suggested}",
             )
     elif action == "resume":
         missing = set()
@@ -346,10 +361,14 @@ def _check_dependencies(
                     missing.add(parent_id)
         if missing:
             ordered = sorted(missing)
+            if include_dependencies:
+                return
+            suggested = list(raw_targets or []) + ordered
             raise _error(
                 path,
                 "resume targets require their suppressed parents to be resumed in the same "
-                f"request; list these feature IDs explicitly: {_describe(model, features, ordered)}",
+                f"request; list these feature IDs explicitly: {_describe(model, features, ordered)}; "
+                f"suggested_targets={suggested}",
             )
 
 
@@ -406,7 +425,18 @@ def validate_plan(model: dict | None, operations: list[dict]) -> None:
             resolved.append(_resolve_target(model, features, target, f"{path}.targets[{position}]"))
         for item in resolved:
             _validate_target_rules(model, item, action, features, path)
-        _check_dependencies(model, action, resolved, features, path)
+        include_deps = operation.get("include_dependencies", False)
+        if type(include_deps) is not bool:
+            raise _error(path, "include_dependencies must be true or false")
+        _check_dependencies(
+            model,
+            action,
+            resolved,
+            features,
+            path,
+            include_dependencies=include_deps,
+            raw_targets=targets,
+        )
 
 
 REFERENCE_KINDS = {
