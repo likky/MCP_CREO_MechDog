@@ -15,7 +15,9 @@
 
 ## 版本约定
 
-当前版本为 0.44.0（2026-11-24 MINOR，交付 [BUG-186](../work-items/BUG-186.md)、[FEAT-084](../work-items/FEAT-084.md)、[FEAT-085](../work-items/FEAT-085.md)、[BUG-187](../work-items/BUG-187.md)、[BUG-188](../work-items/BUG-188.md)、[BUG-189](../work-items/BUG-189.md)、[BUG-190](../work-items/BUG-190.md)、[FEAT-088](../work-items/FEAT-088.md)、[FEAT-089](../work-items/FEAT-089.md) 及 [DEV-100](../work-items/DEV-100.md)/[BUG-130](../work-items/BUG-130.md) 补项，公开工具 111）。[版本说明](../RELEASE_NOTES_0.44.0.md) · [发布记录](../validation/RELEASE-0.44.0.md)
+当前版本为 0.44.1（2026-11-25 PATCH，交付 [BUG-036](../work-items/BUG-036.md) 装配平面配合位姿校验与回滚，公开工具 111）。[版本说明](../RELEASE_NOTES_0.44.1.md) · [发布记录](../validation/RELEASE-0.44.1.md)
+
+此前的 0.44.0（2026-11-24 MINOR，交付 [BUG-186](../work-items/BUG-186.md)、[FEAT-084](../work-items/FEAT-084.md)、[FEAT-085](../work-items/FEAT-085.md)、[BUG-187](../work-items/BUG-187.md)、[BUG-188](../work-items/BUG-188.md)、[BUG-189](../work-items/BUG-189.md)、[BUG-190](../work-items/BUG-190.md)、[FEAT-088](../work-items/FEAT-088.md)、[FEAT-089](../work-items/FEAT-089.md) 及 [DEV-100](../work-items/DEV-100.md)/[BUG-130](../work-items/BUG-130.md) 补项，公开工具 111）。[版本说明](../RELEASE_NOTES_0.44.0.md) · [发布记录](../validation/RELEASE-0.44.0.md)
 
 此前的 0.43.2（2026-11-24 PATCH，交付 [BUG-175](../work-items/BUG-175.md) 启动单测补修，公开工具 111）。[版本说明](../RELEASE_NOTES_0.43.2.md) · [发布记录](../validation/RELEASE-0.43.2.md)
 

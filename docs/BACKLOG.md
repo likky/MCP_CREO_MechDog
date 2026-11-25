@@ -315,7 +315,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
-| [BUG-036](work-items/BUG-036.md) | P1 | 已有修复但待验收 | 开发分支 | 本机 Creo 10 复现约束写入成功而位姿未更新。平面配合加入实际面距和法向校验，冲突请求明确拒绝并验证回滚。外部 Creo 9 原案、Creo 12.4 与 WorkBuddy 待验证。 |
+| [BUG-036](work-items/BUG-036.md) | P1 | 已有修复但待验收 | 0.44.1 | 本版交付平面配合位姿校验。本机 Creo 10 复现约束写入成功而位姿未更新，冲突请求明确拒绝并验证回滚。外部 Creo 9 原案、Creo 12.4 与 WorkBuddy 待验证。 |
 | [BUG-187](work-items/BUG-187.md) | P0 | 已有修复但待验收 | 0.44.0 | 偏移基准面 `flip` 与草图显式 `v_axis`（`u_axis × v_axis` 确定法线），本机 Creo 10 正反例（`1000.0 mm³`、Z `[0,20]`、保存重载与回滚）通过。剩：Creo 9/12、WorkBuddy 黑盒。 |
 | [BUG-188](work-items/BUG-188.md) | P0 | 已有修复但待验收 | 0.44.0 | `coordinates` 放行 `PRO_2D_CONSTR_CIRCLE` 并标记 `construction=true`，本机 Creo 10（2 构造圆+3 构造线、`1000.0 mm³`、保存重载）通过。剩：Creo 9/12、WorkBuddy 黑盒。 |
 | [BUG-189](work-items/BUG-189.md) | P2 | 已有修复但待验收 | 0.44.0 | `ValidationMCPServer.call_tool` 按 schema 拒绝未知工具参数并附拼写建议；单测与 `test_mcp.py --offline` 通过。剩：WorkBuddy 黑盒。 |
