@@ -14,10 +14,12 @@
 #include <ProUtil.h>
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -25,6 +27,7 @@
 #include <sstream>
 #include <string>
 #include <system_error>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -50,7 +53,9 @@ struct StlExportOptions {
     bool refine_capped_surfaces = true;
     std::uint64_t refine_min_facets = 2000;
     std::uint64_t refine_max_output_facets = 1500000;
-    std::uint64_t refine_max_new_vertices = 250000;
+    // Shared cap for the additional vertices across all surfaces.
+    std::uint64_t refine_max_new_vertices = 750000;
+    // Bound work on nearly singular surface parameterisations.
     int refine_max_rounds = 6;
 
     void (*progress)(const char *) = nullptr;
@@ -306,8 +311,15 @@ struct StlPerSurfaceReport {
     std::uint64_t refine_limited_surfaces = 0;
     std::uint64_t refine_zero_area_facets = 0;
     int refine_max_level = 0;
+    // Stop reason and final count above the heuristic threshold.
+    std::string refine_stop_reason;
+    std::uint64_t refine_remaining_candidates = 0;
     // Per-surface facet counts make a per-surface tessellation ceiling visible.
     std::vector<std::pair<int, std::uint64_t>> surface_facets;
+    // Per-surface refinement budget: the area weight the surface carries
+    // and the vertices it actually spent. It shows how the vertex budget
+    // was shared between the surfaces of the model.
+    std::vector<std::array<double, 4>> refine_shares;
     int failed_surface_id = -1;
     int failed_facet_index = -1;
     std::string failed_indices;
@@ -381,6 +393,31 @@ struct DeviationSample {
     bool vertex = false;
 };
 
+// Collects the refinement budget share of every surface that will be
+// visited. The share is proportional to the surface area, because the
+// number of vertices a surface needs to reach the target chord height
+// grows with its area, not with the number of surfaces in the model.
+// Splitting the budget equally instead starves a model that has one large
+// face and several small ones: the small faces cannot use their share and
+// the large face is cut off before it reaches the target.
+struct RefineSurfaceShare {
+    int surface_id = -1;
+    double area = 0.0;
+    // Share of the model this surface represents, used to draw the
+    // refinement budget from the pool.
+    double weight = 0.0;
+    // The absolute number of vertices this surface may draw from the pool.
+    std::uint64_t allowance = 0;
+    // Vertices already drawn from the pool.
+    std::uint64_t drawn = 0;
+    // Vertices actually spent.
+    std::uint64_t spent = 0;
+    bool refined = false;
+    // Set when the share has been handed to its surface, so a second visit
+    // of the same surface cannot claim the budget twice.
+    bool matched = false;
+};
+
 struct Context {
     std::ofstream *out = nullptr;
     double chord_height_native = 0.0;
@@ -407,9 +444,10 @@ struct Context {
     std::uint64_t refine_min_facets = 0;
     std::uint64_t refine_max_output_facets = 0;
     std::uint64_t refine_vertex_budget = 0;
-    int refine_surface_total = 0;
-    int refine_surfaces_seen = 0;
     int refine_max_rounds = 6;
+    // Per-surface refinement shares, collected before any surface is
+    // visited so the vertex budget can follow the surface areas.
+    std::vector<RefineSurfaceShare> refine_shares;
     std::uint64_t refined_surfaces = 0;
     std::uint64_t refine_input_facets = 0;
     std::uint64_t refine_output_facets = 0;
@@ -425,6 +463,10 @@ struct Context {
     std::uint64_t refine_limited_surfaces = 0;
     int refine_max_level = 0;
     std::uint64_t refine_zero_area_facets = 0;
+    // The worst stop reason over the refined surfaces and the triangles that
+    // were still above the target when the refinement stopped.
+    std::string refine_stop_reason;
+    std::uint64_t refine_remaining_candidates = 0;
     std::unordered_map<WeldKey, int, WeldKeyHash> weld;
     std::vector<std::array<double, 3>> welded_points;
     std::vector<std::array<double, 3>> stitch_centers;
@@ -492,14 +534,46 @@ inline std::uint64_t edge_key(int first, int second) {
     return (low << 32) | high;
 }
 
-inline bool write_facet(std::ofstream &out, const std::array<double, 3> &normal,
+inline char *write_coordinate(char *out, double value) {
+    // At the scale of the 14 m fixture this preserves sub-nanometre
+    // differences for the winding check, which rereads the ASCII file.
+    const std::to_chars_result result =
+        std::to_chars(out, out + 32, value, std::chars_format::general, 15);
+    return result.ptr;
+}
+
+// Writes one facet to a stream. The template keeps the format testable
+// with a string stream while the export writes to a file stream.
+template <typename Stream>
+inline bool write_facet(Stream &out, const std::array<double, 3> &normal,
                         const std::array<double, 3> &a, const std::array<double, 3> &b,
                         const std::array<double, 3> &c) {
-    out << "facet normal " << normal[0] << ' ' << normal[1] << ' ' << normal[2]
-        << "\n outer loop\n";
-    for (const std::array<double, 3> *point : {&a, &b, &c})
-        out << "  vertex " << (*point)[0] << ' ' << (*point)[1] << ' ' << (*point)[2] << '\n';
-    out << " endloop\nendfacet\n";
+    // One buffer per facet keeps the formatting out of the stream, so the
+    // file is written in large blocks instead of many tiny ones.
+    char buffer[512];
+    char *cursor = buffer;
+    std::memcpy(cursor, "facet normal ", 13);
+    cursor += 13;
+    cursor = write_coordinate(cursor, normal[0]);
+    *cursor++ = ' ';
+    cursor = write_coordinate(cursor, normal[1]);
+    *cursor++ = ' ';
+    cursor = write_coordinate(cursor, normal[2]);
+    std::memcpy(cursor, "\n outer loop\n", 13);
+    cursor += 13;
+    for (const std::array<double, 3> *point : {&a, &b, &c}) {
+        std::memcpy(cursor, "  vertex ", 9);
+        cursor += 9;
+        cursor = write_coordinate(cursor, (*point)[0]);
+        *cursor++ = ' ';
+        cursor = write_coordinate(cursor, (*point)[1]);
+        *cursor++ = ' ';
+        cursor = write_coordinate(cursor, (*point)[2]);
+        *cursor++ = '\n';
+    }
+    std::memcpy(cursor, " endloop\nendfacet\n", 18);
+    cursor += 18;
+    out.write(buffer, static_cast<std::streamsize>(cursor - buffer));
     return static_cast<bool>(out);
 }
 
@@ -544,6 +618,19 @@ struct RefineStats {
     double max_estimated_sag = 0.0;
     int levels = 0;
     bool limited = false;
+    // Why the refinement stopped. A surface that stops with triangles far
+    // above the target has to say so, otherwise a stopped refinement looks
+    // like a finished one.
+    enum class Stop {
+        converged,
+        budget,
+        facet_cap,
+        rounds,
+        fineness,
+        blocked,
+    } stop = Stop::converged;
+    // Triangles still above the target when the refinement stopped.
+    std::uint64_t remaining_candidates = 0;
 };
 
 using SurfaceUv = std::array<double, 2>;
@@ -608,23 +695,6 @@ inline double triangle_area(const StlPoint &a, const StlPoint &b, const StlPoint
     return 0.5 * std::sqrt(cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]);
 }
 
-// The tessellation error of a triangle is bounded by how far the surface
-// bulges out of that triangle's plane.
-inline double plane_distance(const StlPoint &point, const StlPoint &a, const StlPoint &b,
-                             const StlPoint &c) {
-    const double u[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
-    const double v[3] = {c[0] - a[0], c[1] - a[1], c[2] - a[2]};
-    const double normal[3] = {u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2],
-                              u[0] * v[1] - u[1] * v[0]};
-    const double length =
-        std::sqrt(normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]);
-    if (!(length > 0.0))
-        return 0.0;
-    const double offset = (point[0] - a[0]) * normal[0] + (point[1] - a[1]) * normal[1] +
-                          (point[2] - a[2]) * normal[2];
-    return std::abs(offset) / length;
-}
-
 inline bool surface_uv_roundtrip_ok(ProSurface surface, const std::vector<StlPoint> &points,
                                     const std::vector<SurfaceUv> &uvs, double tolerance,
                                     double &worst) {
@@ -650,21 +720,193 @@ inline bool surface_uv_roundtrip_ok(ProSurface surface, const std::vector<StlPoi
     return checked > 0 && failed * 10 <= checked;
 }
 
+// The share of its allowance a surface takes before it has to ask the pool
+// for more. The first slice has to cover the first refinement round, so it
+// scales with the number of facets the surface brought in; the rest of the
+// allowance stays available for the rounds in which the surface still has
+// triangles above the target.
+inline std::uint64_t first_refine_slice(std::uint64_t input_facets) {
+    const std::uint64_t slice = input_facets / 2 + 1024;
+    return slice;
+}
+
+// Draws the vertex budget for one surface from the pool. The surface may
+// draw up to its own allowance, and the pool only holds what the surfaces
+// visited earlier did not use, so a small surface that finishes early leaves
+// its remainder for the surfaces visited after it.
+//
+// The surface takes a first slice of its allowance and keeps the rest for
+// the rounds in which it still has triangles above the target. Taking the
+// whole allowance up front would leave nothing to draw later, which is how
+// a surface used to stop early while a third of the model budget sat unused.
+inline std::uint64_t claim_refine_budget(RefineSurfaceShare &share, std::uint64_t &pool,
+                                         std::uint64_t limit) {
+    if (pool == 0)
+        return 0;
+    const std::uint64_t left = share.allowance > share.drawn ? share.allowance - share.drawn : 0;
+    if (left == 0)
+        return 0;
+    const std::uint64_t capped = limit > 0 && limit < left ? limit : left;
+    const std::uint64_t claim = capped < pool ? capped : pool;
+    pool -= claim;
+    share.drawn += claim;
+    return claim;
+}
+
+// Draws an additional amount of vertices from the shared pool. The surface
+// may draw up to the absolute amount its area share of the model budget
+// allows, so a small surface cannot take the pool away from a large one
+// that is still waiting for its turn.
+inline std::uint64_t draw_refine_budget(std::uint64_t &pool, std::uint64_t requested,
+                                        std::uint64_t *drawn = nullptr) {
+    if (pool == 0 || requested == 0)
+        return 0;
+    const std::uint64_t granted = requested < pool ? requested : pool;
+    pool -= granted;
+    if (drawn != nullptr)
+        *drawn += granted;
+    return granted;
+}
+
+// Names why a refinement stopped, so the receipt can tell a surface that
+// reached the target from one that ran out of budget or hit a cap.
+inline std::string describe_refine_stop(const RefineStats &stats) {
+    switch (stats.stop) {
+    case RefineStats::Stop::converged:
+        return "converged";
+    case RefineStats::Stop::budget:
+        return "budget";
+    case RefineStats::Stop::facet_cap:
+        return "facet_cap";
+    case RefineStats::Stop::rounds:
+        return "rounds";
+    case RefineStats::Stop::fineness:
+        return "fineness";
+    case RefineStats::Stop::blocked:
+        return "blocked";
+    }
+    return "";
+}
+
 // Splitting is adaptive red-green refinement: a triangle over the target chord
 // height splits every interior edge it has, and neighbours follow so no
 // T-junction is left behind. Both adjacent triangles split a shared edge into
 // the same two halves, keeping the surface mesh conforming.
+//
+// The surface draws its vertices from the shared pool round by round instead
+// of reserving a fixed share up front. A fixed share stopped a surface that
+// still had triangles far above the target while a third of the model budget
+// sat unused, because the surface could not draw more once it had taken its
+// share, and the surfaces visited later could not use what it had left.
+// Drawing per round keeps the budget with the surface that still needs it,
+// and returns whatever a surface does not spend.
 inline void refine_surface_mesh(ProSurface surface, std::vector<StlPoint> &points,
                                 std::vector<StlPoint> &vertex_normals, std::vector<SurfaceUv> &uvs,
                                 std::vector<StlTriangle> &faces, double target,
                                 std::uint64_t max_output_facets, std::uint64_t &vertex_budget,
-                                int max_rounds, RefineStats &stats) {
+                                int max_rounds, RefineStats &stats, std::uint64_t *pool = nullptr,
+                                std::uint64_t share_allowance = 0,
+                                std::uint64_t *share_drawn = nullptr, double area_weight = 0.0,
+                                double min_edge_length = 0.0) {
     stats.input_facets = static_cast<std::uint64_t>(faces.size());
+    // The welded mesh keeps two vertices apart only when they are farther
+    // apart than the weld tolerance. A split that lands a new vertex on top
+    // of an existing one is therefore not a refinement: the weld joins the
+    // two and the mesh stops being the mesh that was written. The grid
+    // finds such a vertex in constant time, and it grows with the mesh.
+    const double cell_size = min_edge_length > 0.0 ? min_edge_length : 0.008;
+    const auto cell_key = [](std::int64_t x, std::int64_t y, std::int64_t z) {
+        return (static_cast<std::uint64_t>(x) * 0x9e3779b97f4a7c15ull) ^
+               (static_cast<std::uint64_t>(y) * 0xc2b2ae3d27d4eb4full) ^
+               (static_cast<std::uint64_t>(z) * 0x165667b19e3779f9ull);
+    };
+    const auto cell_of = [&cell_size](const StlPoint &point) {
+        return std::make_tuple(static_cast<std::int64_t>(std::floor(point[0] / cell_size)),
+                               static_cast<std::int64_t>(std::floor(point[1] / cell_size)),
+                               static_cast<std::int64_t>(std::floor(point[2] / cell_size)));
+    };
+    std::unordered_map<std::uint64_t, std::vector<int>> occupancy;
+    for (std::size_t index = 0; index < points.size(); ++index) {
+        const auto [cx, cy, cz] = cell_of(points[index]);
+        occupancy[cell_key(cx, cy, cz)].push_back(static_cast<int>(index));
+    }
+    const auto too_close = [&points, &occupancy, &cell_key, &cell_of,
+                            min_edge_length](const StlPoint &point) {
+        if (!(min_edge_length > 0.0))
+            return false;
+        const auto [cx, cy, cz] = cell_of(point);
+        for (int dx = -1; dx <= 1; ++dx)
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int dz = -1; dz <= 1; ++dz) {
+                    const auto found = occupancy.find(cell_key(cx + dx, cy + dy, cz + dz));
+                    if (found == occupancy.end())
+                        continue;
+                    for (int index : found->second)
+                        if (point_distance(point, points[index]) < min_edge_length)
+                            return true;
+                }
+        return false;
+    };
+    // Use the normal change to rank candidates and their shortest edge to
+    // screen out splits near the stitching resolution.
+    const auto measure = [&points, &vertex_normals](const StlTriangle &face) {
+        const double longest = std::max({point_distance(points[face[0]], points[face[1]]),
+                                         point_distance(points[face[1]], points[face[2]]),
+                                         point_distance(points[face[2]], points[face[0]])});
+        const double shortest = std::min({point_distance(points[face[0]], points[face[1]]),
+                                          point_distance(points[face[1]], points[face[2]]),
+                                          point_distance(points[face[2]], points[face[0]])});
+        const double turn =
+            std::max({normal_angle(vertex_normals[face[0]], vertex_normals[face[1]]),
+                      normal_angle(vertex_normals[face[1]], vertex_normals[face[2]]),
+                      normal_angle(vertex_normals[face[2]], vertex_normals[face[0]])});
+        return std::make_tuple(longest, shortest, turn);
+    };
+    // The number of vertices this surface has created. It keeps the surface
+    // inside its own share of the model budget.
+    std::uint64_t used = 0;
+    stats.stop = RefineStats::Stop::rounds;
     for (int round = 0; round < max_rounds; ++round) {
         const auto round_start = std::chrono::steady_clock::now();
         if (vertex_budget == 0) {
-            stats.limited = true;
-            break;
+            // The surface used its share but still has triangles above the
+            // target. It draws from the shared pool instead of stopping, so
+            // a surface that needs more is not cut off by a share it took
+            // earlier. It stays inside its own allowance, so a small
+            // surface cannot take the pool away from a large one that is
+            // still waiting for its turn.
+            if (pool != nullptr && *pool > 0) {
+                // The surface may use the rest of its own share, and it may
+                // also take what the pool holds beyond that when the other
+                // surfaces do not need it. A surface that still has
+                // triangles above the target is the one that decides
+                // whether the model reaches the target chord height.
+                // The surface may use the rest of its own share. It may
+                // also take what the pool holds beyond that share when the
+                // other surfaces do not need it, but not more than the pool
+                // holds: a small surface must not take the budget away from
+                // a large one that is still waiting for its turn.
+                const std::uint64_t room = share_allowance > used ? share_allowance - used : 0;
+                std::uint64_t limit = room;
+                if (area_weight > 0.0) {
+                    const auto share_of_pool =
+                        static_cast<std::uint64_t>(static_cast<double>(*pool) * area_weight);
+                    if (limit < share_of_pool)
+                        limit = share_of_pool;
+                }
+                const std::uint64_t requested = limit < *pool ? limit : *pool;
+                const std::uint64_t granted = draw_refine_budget(*pool, requested, share_drawn);
+                if (granted == 0) {
+                    stats.limited = true;
+                    stats.stop = RefineStats::Stop::budget;
+                    break;
+                }
+                vertex_budget += granted;
+            } else {
+                stats.limited = true;
+                stats.stop = RefineStats::Stop::budget;
+                break;
+            }
         }
         std::unordered_map<std::uint64_t, int> uses;
         uses.reserve(faces.size() * 3);
@@ -677,25 +919,34 @@ inline void refine_surface_mesh(ProSurface surface, std::vector<StlPoint> &point
         // which rules out scanning 200k triangles per round.
         std::vector<std::pair<double, int>> order;
         order.reserve(faces.size());
+        bool below_resolution = false;
         for (std::size_t index = 0; index < faces.size(); ++index) {
             const StlTriangle &face = faces[index];
-            const double longest = std::max({point_distance(points[face[0]], points[face[1]]),
-                                             point_distance(points[face[1]], points[face[2]]),
-                                             point_distance(points[face[2]], points[face[0]])});
-            const double turn =
-                std::max({normal_angle(vertex_normals[face[0]], vertex_normals[face[1]]),
-                          normal_angle(vertex_normals[face[1]], vertex_normals[face[2]]),
-                          normal_angle(vertex_normals[face[2]], vertex_normals[face[0]])});
+            const auto [longest, shortest, turn] = measure(face);
             // Estimated chord error: sag ~ L * turn / 8 for a triangle whose
             // vertex normals turn by `turn` across it.
             const double sag = 0.125 * longest * turn;
             if (!(sag > target))
                 continue;
-            stats.max_estimated_sag = std::max(stats.max_estimated_sag, sag);
+            if (min_edge_length > 0.0 && shortest < min_edge_length) {
+                // The triangle is above the target but too small to split.
+                // The welded mesh cannot keep two vertices closer than its
+                // own tolerance, so a split here would put the new vertex on
+                // top of its neighbours, the weld would join them and the
+                // mesh would stop being a manifold. The floor belongs on the
+                // shortest edge: that is the edge the split halves, so it is
+                // the one that decides how close the new vertex lands to
+                // the two it joins.
+                below_resolution = true;
+                continue;
+            }
             order.push_back({sag, static_cast<int>(index)});
         }
-        if (order.empty())
+        if (order.empty()) {
+            stats.stop =
+                below_resolution ? RefineStats::Stop::fineness : RefineStats::Stop::converged;
             break;
+        }
         std::sort(order.begin(), order.end(),
                   [](const std::pair<double, int> &left, const std::pair<double, int> &right) {
                       return left.first > right.first;
@@ -720,8 +971,32 @@ inline void refine_surface_mesh(ProSurface surface, std::vector<StlPoint> &point
                 continue;
             }
             if (needed > vertex_budget - planned) {
-                stats.limited = true;
-                break;
+                // The round needs more vertices than this surface holds. It
+                // draws the shortfall from the shared pool, so a surface
+                // that still has triangles above the target is not stopped
+                // by a share it took earlier and did not need.
+                if (pool != nullptr) {
+                    // The round needs more vertices than this surface holds.
+                    // It draws the shortfall from the shared pool, so a
+                    // surface that still has triangles above the target is
+                    // not stopped by a share it took earlier and did not
+                    // need. It may use what is left of its own share and
+                    // what the pool holds beyond it, because the surface
+                    // that still has triangles above the target decides
+                    // whether the model reaches the target chord height.
+                    const std::uint64_t shortfall = needed - (vertex_budget - planned);
+                    const std::uint64_t granted = draw_refine_budget(*pool, shortfall, share_drawn);
+                    vertex_budget += granted;
+                    if (granted < shortfall) {
+                        stats.limited = true;
+                        stats.stop = RefineStats::Stop::budget;
+                        break;
+                    }
+                } else {
+                    stats.limited = true;
+                    stats.stop = RefineStats::Stop::budget;
+                    break;
+                }
             }
             for (int pair = 0; pair < 3; ++pair) {
                 const std::uint64_t key = edge_key(face[pair], face[(pair + 1) % 3]);
@@ -730,8 +1005,11 @@ inline void refine_surface_mesh(ProSurface surface, std::vector<StlPoint> &point
             }
             planned += needed;
         }
-        if (splits.empty())
+        if (splits.empty()) {
+            if (stats.stop != RefineStats::Stop::budget)
+                stats.stop = RefineStats::Stop::blocked;
             break;
+        }
         for (auto &entry : splits) {
             const int first = static_cast<int>(entry.first >> 32);
             const int second = static_cast<int>(entry.first & 0xffffffffu);
@@ -742,7 +1020,11 @@ inline void refine_surface_mesh(ProSurface surface, std::vector<StlPoint> &point
             StlPoint evaluated_normal = {0.0, 0.0, 0.0};
             if (!evaluate_surface_uv(surface, midpoint, evaluated, &evaluated_normal) ||
                 point_distance(evaluated, points[first]) > length * 0.75 + target ||
-                point_distance(evaluated, points[second]) > length * 0.75 + target) {
+                point_distance(evaluated, points[second]) > length * 0.75 + target ||
+                too_close(evaluated)) {
+                // The edge keeps its whole length, and so does the edge of
+                // the triangle on the other side of it: neither triangle is
+                // split, so the mesh stays conforming.
                 ++stats.rejected_edges;
                 continue;
             }
@@ -750,8 +1032,13 @@ inline void refine_surface_mesh(ProSurface surface, std::vector<StlPoint> &point
             points.push_back(evaluated);
             vertex_normals.push_back(evaluated_normal);
             uvs.push_back(midpoint);
+            {
+                const auto [cx, cy, cz] = cell_of(evaluated);
+                occupancy[cell_key(cx, cy, cz)].push_back(static_cast<int>(points.size() - 1));
+            }
             if (vertex_budget > 0)
                 --vertex_budget;
+            ++used;
             ++stats.created_vertices;
         }
         std::vector<StlTriangle> next;
@@ -809,10 +1096,14 @@ inline void refine_surface_mesh(ProSurface surface, std::vector<StlPoint> &point
               " splits=" + std::to_string(splits.size()) + " next=" + std::to_string(next.size()) +
               " created=" + std::to_string(stats.created_vertices) + " evals=" +
               std::to_string(evaluation_count) + " ms=" + std::to_string(elapsed_ms(round_start)));
-        if (next.size() <= faces.size())
+        if (next.size() <= faces.size()) {
+            if (stats.stop != RefineStats::Stop::budget)
+                stats.stop = RefineStats::Stop::blocked;
             break;
+        }
         if (next.size() > max_output_facets) {
             stats.limited = true;
+            stats.stop = RefineStats::Stop::facet_cap;
             break;
         }
         faces.swap(next);
@@ -820,12 +1111,86 @@ inline void refine_surface_mesh(ProSurface surface, std::vector<StlPoint> &point
         ++stats.levels;
     }
     stats.output_facets = static_cast<std::uint64_t>(faces.size());
+    for (const StlTriangle &face : faces) {
+        const auto [longest, shortest, turn] = measure(face);
+        const double sag = 0.125 * longest * turn;
+        stats.max_estimated_sag = std::max(stats.max_estimated_sag, sag);
+        if (sag > target)
+            ++stats.remaining_candidates;
+    }
+    if (stats.remaining_candidates == 0)
+        stats.stop = RefineStats::Stop::converged;
 }
 
-inline ProError count_surface_callback(ProSurface, ProError status, ProAppData data) {
-    if (status == PRO_TK_NO_ERROR && data)
-        ++*static_cast<int *>(data);
+inline ProError surface_share_callback(ProSurface surface, ProError status, ProAppData data) {
+    if (status != PRO_TK_NO_ERROR || !data)
+        return PRO_TK_NO_ERROR;
+    std::vector<RefineSurfaceShare> *shares = static_cast<std::vector<RefineSurfaceShare> *>(data);
+    RefineSurfaceShare share;
+    if (ProSurfaceIdGet(surface, &share.surface_id) != PRO_TK_NO_ERROR)
+        return PRO_TK_NO_ERROR;
+    double area = 0.0;
+    // A surface whose area cannot be measured still has to be visited; it
+    // falls back to an equal share, so one unreadable surface cannot block
+    // the export.
+    if (ProSurfaceAreaEval(surface, &area) == PRO_TK_NO_ERROR && std::isfinite(area) && area > 0.0)
+        share.area = area;
+    shares->push_back(share);
     return PRO_TK_NO_ERROR;
+}
+
+// Computes the area weight of every surface and the absolute number of
+// vertices it may draw from the pool. The weight is the fraction of the model
+// the surface represents, and the allowance is that fraction of the vertex
+// budget, so the budget follows the work instead of the surface count.
+inline void allocate_refine_budget(std::vector<RefineSurfaceShare> &shares,
+                                   std::uint64_t total_budget) {
+    double measured_area = 0.0;
+    std::size_t measured_count = 0;
+    for (const RefineSurfaceShare &share : shares) {
+        if (!(share.area > 0.0))
+            continue;
+        measured_area += share.area;
+        ++measured_count;
+    }
+    // A surface whose area cannot be measured gets the average measured
+    // weight, so one unreadable surface neither blocks the export nor
+    // starves the others.
+    const double fallback_weight = measured_count > 0 ? measured_area / measured_count : 0.0;
+    double total_weight = 0.0;
+    for (RefineSurfaceShare &share : shares) {
+        share.weight = share.area > 0.0 ? share.area : fallback_weight;
+        if (share.weight > 0.0)
+            total_weight += share.weight;
+    }
+    if (total_weight <= 0.0) {
+        // Nothing could be measured: give every surface an equal share.
+        const double equal = shares.empty() ? 0.0 : 1.0 / static_cast<double>(shares.size());
+        for (RefineSurfaceShare &share : shares) {
+            share.weight = equal;
+            share.allowance = total_budget / (shares.empty() ? 1 : shares.size());
+        }
+        return;
+    }
+    std::uint64_t assigned = 0;
+    for (RefineSurfaceShare &share : shares) {
+        if (!(share.weight > 0.0))
+            continue;
+        share.weight = share.weight / total_weight;
+        share.allowance =
+            static_cast<std::uint64_t>(static_cast<double>(total_budget) * share.weight);
+        assigned += share.allowance;
+    }
+    // The rounding remainder goes to the largest surface, which is also the
+    // one whose deviation dominates the measured maximum.
+    if (assigned < total_budget) {
+        RefineSurfaceShare *largest = nullptr;
+        for (RefineSurfaceShare &share : shares)
+            if (largest == nullptr || share.weight > largest->weight)
+                largest = &share;
+        if (largest != nullptr)
+            largest->allowance += total_budget - assigned;
+    }
 }
 
 inline ProError surface_callback(ProSurface surface, ProError status, ProAppData data) {
@@ -949,11 +1314,22 @@ inline ProError surface_callback(ProSurface surface, ProError status, ProAppData
         }
     }
     const std::uint64_t input_facets = static_cast<std::uint64_t>(faces.size());
-    // Split the remaining vertex budget across the surfaces still to visit, so
-    // no single surface can starve the rest of the model.
-    const int remaining_surfaces =
-        std::max(1, context.refine_surface_total - context.refine_surfaces_seen);
-    ++context.refine_surfaces_seen;
+    // The vertex budget of this surface was fixed before the visit, in
+    // proportion to the surface area. Splitting the budget equally across
+    // the surfaces instead starves a model that has one large face and
+    // several small ones: the small faces cannot use their share, and the
+    // large face is cut off before it reaches the target chord height.
+    // The share is matched by surface id, not by visit order, so the two
+    // surface traversals cannot disagree about which share belongs to
+    // which face.
+    RefineSurfaceShare *share = nullptr;
+    for (RefineSurfaceShare &candidate : context.refine_shares) {
+        if (candidate.surface_id == surface_id && !candidate.matched) {
+            candidate.matched = true;
+            share = &candidate;
+            break;
+        }
+    }
     if (context.refine_enabled && input_facets >= context.refine_min_facets) {
         const auto params_start = std::chrono::steady_clock::now();
         ProUvParam *params = nullptr;
@@ -998,15 +1374,58 @@ inline ProError surface_callback(ProSurface surface, ProError status, ProAppData
                         ? context.budget.max_facets - context.budget.accumulated_facets
                         : 0;
                 RefineStats refine_stats;
-                std::uint64_t surface_budget =
-                    context.refine_vertex_budget / static_cast<std::uint64_t>(remaining_surfaces);
-                const std::uint64_t surface_budget_start = surface_budget;
-                refine_surface_mesh(surface, points, vertex_normals, uvs, faces,
-                                    context.refine_target,
-                                    std::min(context.refine_max_output_facets, remaining),
-                                    surface_budget, context.refine_max_rounds, refine_stats);
-                const std::uint64_t spent = surface_budget_start - surface_budget;
-                context.refine_vertex_budget -= std::min(context.refine_vertex_budget, spent);
+                // The budget is drawn from the pool in proportion to the
+                // surface area, so it follows the work instead of the
+                // surface count. Splitting the budget equally instead
+                // starves a model that has one large face and several small
+                // ones: the small faces cannot use their share, and the
+                // large face is cut off before it reaches the target.
+                // The surface draws from the pool round by round, so it can
+                // take more when it still has triangles above the target and
+                // it returns what it does not spend.
+                // The surface draws from the pool round by round, so it can
+                // take more when it still has triangles above the target.
+                // The surface takes a first slice of its allowance and keeps
+                // the rest for the rounds in which it still has triangles
+                // above the target. Taking the whole allowance up front
+                // would leave nothing to draw later.
+                std::uint64_t surface_budget = 0;
+                if (share != nullptr)
+                    surface_budget = claim_refine_budget(*share, context.refine_vertex_budget,
+                                                         first_refine_slice(input_facets));
+                refine_surface_mesh(
+                    surface, points, vertex_normals, uvs, faces, context.refine_target,
+                    std::min(context.refine_max_output_facets, remaining), surface_budget,
+                    context.refine_max_rounds, refine_stats, &context.refine_vertex_budget,
+                    share != nullptr ? share->allowance : 0,
+                    share != nullptr ? &share->drawn : nullptr,
+                    share != nullptr ? share->weight : 0.0,
+                    // A split puts the new vertex half an edge away from the
+                    // two it joins, so the edge that is halved has to stay
+                    // above the weld tolerance for the welded mesh to keep
+                    // the two apart.
+                    context.weld_tolerance * 8.0);
+                // Whatever the surface did not spend goes back to the pool, so
+                // the surfaces visited after it can still reach the target.
+                context.refine_vertex_budget += surface_budget;
+                if (share != nullptr) {
+                    share->spent = refine_stats.created_vertices;
+                    share->refined = true;
+                    trace("share surface=" + std::to_string(surface_id) +
+                          " allowance=" + std::to_string(share->allowance) + " drawn=" +
+                          std::to_string(share->drawn) + " spent=" + std::to_string(share->spent) +
+                          " local_left=" + std::to_string(surface_budget) +
+                          " pool=" + std::to_string(context.refine_vertex_budget) +
+                          " stop=" + describe_refine_stop(refine_stats) +
+                          " candidates=" + std::to_string(refine_stats.remaining_candidates));
+                }
+                // The stop reason of the worst surface decides whether the
+                // model reached the target chord height.
+                context.refine_remaining_candidates += refine_stats.remaining_candidates;
+                const std::string reason = describe_refine_stop(refine_stats);
+                if (!reason.empty() && (context.refine_stop_reason.empty() || reason == "budget" ||
+                                        context.refine_stop_reason == "converged"))
+                    context.refine_stop_reason = reason;
                 ++context.refined_surfaces;
                 context.refine_input_facets += refine_stats.input_facets;
                 context.refine_output_facets += refine_stats.output_facets;
@@ -1093,6 +1512,13 @@ inline ProError surface_callback(ProSurface surface, ProError status, ProAppData
     return PRO_TK_NO_ERROR;
 }
 
+// Splits the boundary graph into simple cycles by walking the edges. A walk
+// that returns to a vertex of its own path closes a cycle; a walk that
+// reaches a vertex it has already used is split there. The walk handles a
+// branched component (a T-junction) where a depth-first search does not:
+// every branch gets its own fan and therefore its own centroid, so no
+// centroid edge becomes non-manifold. A component that does not close is
+// returned as a path and closed by a fan over its own vertices.
 // Closes boundary edges left by independently tessellated surfaces. Each
 // boundary component receives a centroid fan whose triangles traverse the
 // original boundary edge in the opposite direction, so the edge becomes
@@ -1198,6 +1624,24 @@ inline ProError stitch_boundaries(Context &context) {
 // Shared edges carry a direction per adjacent face; a BFS propagates a flip
 // flag across the face graph. The rewritten file is then checked for a positive
 // signed volume. Conflicts are reported instead of hidden.
+// Reads three whitespace-separated coordinates from a line of the staged
+// ASCII STL. std::from_chars parses them without a locale and without the
+// overhead of a string stream, which matters when a whole model is read
+// back for the winding repair.
+inline bool read_coordinates(const char *text, const char *end, std::array<double, 3> &values) {
+    for (int axis = 0; axis < 3; ++axis) {
+        while (text < end && (*text == ' ' || *text == '\t'))
+            ++text;
+        double value = 0.0;
+        const std::from_chars_result result = std::from_chars(text, end, value);
+        if (result.ec != std::errc())
+            return false;
+        values[axis] = value;
+        text = result.ptr;
+    }
+    return true;
+}
+
 inline bool fix_staged_winding(const std::filesystem::path &file, double tolerance,
                                std::string &error, std::uint64_t &flipped_faces,
                                std::uint64_t &conflicts, double &volume, bool &global_flipped) {
@@ -1218,28 +1662,33 @@ inline bool fix_staged_winding(const std::filesystem::path &file, double toleran
     while (std::getline(input, line)) {
         if (line.rfind("facet normal", 0) != 0)
             continue;
-        std::istringstream header(line);
-        std::string keyword;
+        // The coordinates are parsed without a string stream: a large model
+        // has hundreds of thousands of facets, and the stream formatting
+        // dominates the repair of a file this size.
+        const char *cursor = line.c_str() + 12;
+        const char *end = line.c_str() + line.size();
         std::array<double, 3> normal = {0.0, 0.0, 0.0};
-        header >> keyword >> normal[0] >> normal[1] >> normal[2];
+        if (!read_coordinates(cursor, end, normal)) {
+            error = "non-numeric facet normal while repairing winding";
+            return false;
+        }
         std::array<double, 3> vertices[3];
         int count = 0;
         while (std::getline(input, line)) {
-            std::istringstream tokens(line);
-            std::string keyword;
-            if (!(tokens >> keyword))
-                continue;
-            // The staged file indents "vertex" lines and "endfacet", so match on
-            // the first token instead of the raw prefix.
-            if (keyword == "endfacet")
+            // The staged file indents "vertex" lines and "endfacet", so match
+            // on the first token instead of the raw prefix.
+            const char *text = line.c_str();
+            while (*text == ' ' || *text == '\t')
+                ++text;
+            if (std::strncmp(text, "endfacet", 8) == 0)
                 break;
-            if (keyword != "vertex")
+            if (std::strncmp(text, "vertex", 6) != 0)
                 continue;
             if (count >= 3) {
                 error = "extra vertex while repairing winding";
                 return false;
             }
-            if (!(tokens >> vertices[count][0] >> vertices[count][1] >> vertices[count][2])) {
+            if (!read_coordinates(text + 6, text + line.size(), vertices[count])) {
                 error = "non-numeric vertex while repairing winding";
                 return false;
             }
@@ -1477,7 +1926,6 @@ inline StlPerSurfaceReport write_stl_per_surface(ProMdl model,
         report.error = "cannot open the staged STL file";
         return report;
     }
-    out.precision(12);
     out << "solid creo_native\n";
     if (!out) {
         report.error = "cannot write the staged STL header";
@@ -1520,10 +1968,13 @@ inline StlPerSurfaceReport write_stl_per_surface(ProMdl model,
         return report;
     }
     int active_bodies = 0;
-    // Count the surfaces first so the refinement vertex budget is shared
-    // between them instead of being consumed by the first large surface.
-    int surface_total = 0;
-    for (int index = 0; index < body_count; ++index) {
+    // Collect the surfaces first, with their areas, so the refinement vertex
+    // budget can be shared in proportion to the work each surface needs.
+    // Splitting it equally instead starves a model that has one large face
+    // and several small ones: the small faces cannot use their share, and
+    // the large face is cut off before it reaches the target chord height.
+    std::vector<RefineSurfaceShare> shares;
+    for (int index = 0; context.refine_enabled && index < body_count; ++index) {
         ProSolidBodyState state;
         code = ProSolidBodyStateGet(&bodies[index], &state);
         if (code != PRO_TK_NO_ERROR) {
@@ -1532,13 +1983,14 @@ inline StlPerSurfaceReport write_stl_per_surface(ProMdl model,
         }
         if (state != PRO_BODY_STATE_ACTIVE)
             continue;
-        code = ProSolidBodySurfaceVisit(&bodies[index], count_surface_callback, &surface_total);
+        code = ProSolidBodySurfaceVisit(&bodies[index], surface_share_callback, &shares);
         if (code != PRO_TK_NO_ERROR) {
-            report.error = "cannot count the surfaces (code " + std::to_string(code) + ")";
+            report.error = "cannot measure the surfaces (code " + std::to_string(code) + ")";
             return report;
         }
     }
-    context.refine_surface_total = surface_total;
+    allocate_refine_budget(shares, context.refine_vertex_budget);
+    context.refine_shares = std::move(shares);
     options.stage("stl_tessellate_and_write");
     for (int index = 0; index < body_count; ++index) {
         ProSolidBodyState state;
@@ -1594,15 +2046,15 @@ inline StlPerSurfaceReport write_stl_per_surface(ProMdl model,
                 ++report.deviation_failed;
                 continue;
             }
-            if (distances.empty() || distance > report.deviation_max_mm) {
-                report.deviation_max_mm = distance;
-                report.deviation_worst_surface_id = sample.surface_id;
-                report.deviation_worst_point = sample.point;
-            }
             if (sample.vertex) {
                 ++report.deviation_vertex_samples;
                 report.deviation_vertex_max_mm = std::max(report.deviation_vertex_max_mm, distance);
                 continue;
+            }
+            if (distances.empty() || distance > report.deviation_max_mm) {
+                report.deviation_max_mm = distance;
+                report.deviation_worst_surface_id = sample.surface_id;
+                report.deviation_worst_point = sample.point;
             }
             distances.push_back(distance);
             total += distance;
@@ -1647,6 +2099,13 @@ inline StlPerSurfaceReport write_stl_per_surface(ProMdl model,
     report.stitched_triangles = context.stitched_triangles;
     report.inverted_stitch_facets = context.inverted_stitch_facets;
     report.surface_facets = context.surface_facets;
+    for (const RefineSurfaceShare &share : context.refine_shares) {
+        if (!share.refined)
+            continue;
+        report.refine_shares.push_back({static_cast<double>(share.surface_id), share.weight,
+                                        static_cast<double>(share.spent),
+                                        static_cast<double>(share.drawn)});
+    }
     report.refined_surfaces = context.refined_surfaces;
     report.refine_input_facets = context.refine_input_facets;
     report.refine_output_facets = context.refine_output_facets;
@@ -1662,6 +2121,8 @@ inline StlPerSurfaceReport write_stl_per_surface(ProMdl model,
     report.refine_limited_surfaces = context.refine_limited_surfaces;
     report.refine_zero_area_facets = context.refine_zero_area_facets;
     report.refine_max_level = context.refine_max_level;
+    report.refine_remaining_candidates = context.refine_remaining_candidates;
+    report.refine_stop_reason = context.refine_stop_reason;
     std::string winding_error;
     double fixed_volume = 0.0;
     bool global_flipped = false;
@@ -1669,6 +2130,13 @@ inline StlPerSurfaceReport write_stl_per_surface(ProMdl model,
     // The 0.001 mm stitching tolerance is used only to find holes; reusing it
     // here merges genuinely distinct vertices (observed at 5e-4 mm apart) and
     // hides winding conflicts that external tools still see.
+    //
+    // The tolerance still has to be larger than the resolution the file
+    // itself carries, otherwise two facets that share a vertex are read back
+    // as two different points and the adjacency breaks apart. The file
+    // keeps fifteen significant digits, which is about 1e-10 mm at the size
+    // of this model, so this tolerance has a decade of room above it and
+    // stays far below the 5e-4 mm separation that has to survive.
     constexpr double winding_weld_tolerance = 1.0e-9;
     options.stage("stl_repair_winding");
     if (!fix_staged_winding(staging_file, winding_weld_tolerance, winding_error,

@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.45.0
+# MCP_CREO_MechDog 0.45.1
 
-![version](https://img.shields.io/badge/version-0.45.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.45.1-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.45.0**（MINOR）。加料操作保护已有实体，包围盒基于实际实体面，默认草图保留输入坐标，并修正拔模方向和启动探针诊断。基准面正负角度及跨版本用法见版本说明。公开工具以 `creo_capabilities` 的 `tool_count` 为准。 [版本说明](docs/RELEASE_NOTES_0.45.0.md) · [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.45.0)
+当前正式版 **0.45.1**（PATCH）。改进大型曲面的 STL 细化、接缝保护、ASCII 写出和偏差诊断。公开工具以 `creo_capabilities` 的 `tool_count` 为准。 [版本说明](docs/RELEASE_NOTES_0.45.1.md) · [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.45.1)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 

@@ -11,5 +11,6 @@
   "startup_total_budget_seconds": 300,
   "creo_startup_psf": null,
   "creo_startup_args": [],
-  "creo_worker_launch": "auto"
+  "creo_worker_launch": "auto",
+  "stl_deviation": null
 }

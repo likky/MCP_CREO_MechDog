@@ -725,17 +725,23 @@ def windows_process_environment() -> dict[str, str]:
 
 
 def native_environment() -> dict[str, str]:
-    common = Path(config()["creo_root"]) / "Common Files"
+    settings = config()
+    common = Path(settings["creo_root"]) / "Common Files"
     env = windows_process_environment()
     # FEAT-072: a session selected at runtime outranks config.json for every
     # worker this service starts, so a client can leave `selection_required`
     # without editing the file or restarting the connector. The native worker
     # still rejects a fallback when the id is gone.
-    selected = selected_session(config())
+    selected = selected_session(settings)
     if selected:
         env["MECHDOG_CREO_SESSION_ID"] = selected
     else:
         env.pop("MECHDOG_CREO_SESSION_ID", None)
+    # An explicit setting overrides the inherited diagnostic environment.
+    if settings.get("stl_deviation") is True:
+        env["MECHDOG_STL_DEVIATION"] = "1"
+    elif settings.get("stl_deviation") is False:
+        env.pop("MECHDOG_STL_DEVIATION", None)
     env["PRO_COMM_MSG_EXE"] = str(common / "x86e_win64/obj/pro_comm_msg.exe")
     env["PATH"] = (
         os.pathsep.join(

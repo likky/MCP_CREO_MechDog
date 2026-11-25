@@ -2,6 +2,8 @@
 
 # Creo 兼容与验收矩阵
 
+0.45.1 在 Windows x64 / Creo 10.0.0.0（release 42）及匹配 SDK 验收 14 m 球鼻艏零件的逐面 STL 导出、闭合性和偏差抽样。Creo 9 与 12.4 的本版编译和实机、装配 STL 仍待验证。 [发布记录](validation/RELEASE-0.45.1.md)
+
 0.45.0 的范围为六项反馈修复。本机使用 Windows x64 / Creo 10.0.0.0（release 42）及匹配 SDK，验收加料体积保护、实际实体包围盒、默认草图保真、拔模方向、基准面角度与启动探针。Creo 9 和 Creo 12.4 的安装及原生回归未纳入本版专项。 [发布记录](validation/RELEASE-0.45.0.md)
 
 0.36.0 在 Windows x64 / Creo 10.0.0.0（Toolkit 42）验收受管保存与恢复、显式 B 样条折线切除、两截面种子放样、按特征限定拔模面及零件 JPEG 导出。Creo 10 的曲面元素树路线有实测提取限制，能力回执披露当前执行器的证据。Creo 9 和 12 本批未复验，Creo 9 SDK 编译与运行时验收仍未完成。见[发布记录](validation/RELEASE-0.36.0.md)。

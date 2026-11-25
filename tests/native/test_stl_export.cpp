@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -94,6 +95,15 @@ static StlPoint curved_normal(double u, double v) {
     return {-du / length, -dv / length, 1.0 / length};
 }
 
+static std::string fast_facet(const std::array<double, 3> &normal, const std::array<double, 3> &a,
+                              const std::array<double, 3> &b, const std::array<double, 3> &c) {
+    // The production writer is exercised through a stream, so the test
+    // cannot drift away from the code it checks.
+    std::ostringstream stream;
+    stl_surface_detail::write_facet(stream, normal, a, b, c);
+    return stream.str();
+}
+
 static void build_grid(std::vector<StlPoint> &points, std::vector<SurfaceUv> &uvs,
                        std::vector<StlTriangle> &faces) {
     const int n = 5;
@@ -128,8 +138,13 @@ static double max_chord_error(const std::vector<StlPoint> &points,
         if (!stl_surface_detail::evaluate_surface_uv(reinterpret_cast<ProSurface>(1), centroid,
                                                      evaluated))
             continue;
-        worst = std::max(worst, stl_surface_detail::plane_distance(
-                                    evaluated, points[face[0]], points[face[1]], points[face[2]]));
+        const StlPoint &first = points[face[0]];
+        const StlPoint normal =
+            stl_surface_detail::safe_normal(first, points[face[1]], points[face[2]]);
+        double offset = 0.0;
+        for (int axis = 0; axis < 3; ++axis)
+            offset += normal[axis] * (evaluated[axis] - first[axis]);
+        worst = std::max(worst, std::abs(offset));
     }
     return worst;
 }
@@ -185,6 +200,14 @@ ProError ProSolidBodySurfaceVisit(ProSolidBody *,
 
 ProError ProSurfaceIdGet(ProSurface, int *id) {
     *id = surface_id_value;
+    return PRO_TK_NO_ERROR;
+}
+
+// Surface areas drive the refinement budget split. The fixture hands out a
+// different area per surface so the proportional split can be tested.
+static double surface_area_value = 100.0;
+ProError ProSurfaceAreaEval(ProSurface, double *area) {
+    *area = surface_area_value;
     return PRO_TK_NO_ERROR;
 }
 
@@ -431,6 +454,7 @@ static void reset() {
     surface_curvature = 0.0;
     uv_projection_sets = 0;
     uv_projection_value = -1;
+    surface_area_value = 100.0;
 }
 
 int main() {
@@ -454,6 +478,54 @@ int main() {
     assert(current_directory == L"C:\\initial");
     assert(!fs::exists(staging / "stl_0.stl"));
     assert(fs::is_regular_file(destination));
+
+    // The ASCII writer keeps the coordinates within its 15-digit precision.
+    {
+        const std::vector<std::array<double, 3>> values = {
+            {0.0, 0.0, 1.0},
+            {1.0, -2.0, 3.5},
+            {-0.000123456789012, 1.0e-7, 12345.6789},
+            {78095.063, -1817.98, -6600.001},
+            {1.0 / 3.0, 2.0 / 3.0, 1e-300},
+            {0.1, 0.2, 0.3},
+            {-1.0e-9, 1.0e9, 6.02214076e23},
+            {0.0, -0.0, 123456789.123456},
+        };
+        // Four coordinate triples per facet: the normal and the corners.
+        for (std::size_t index = 0; index + 4 <= values.size(); index += 4) {
+            const std::array<double, 3> normal = values[index];
+            const std::array<double, 3> a = values[index + 1];
+            const std::array<double, 3> b = values[index + 2];
+            const std::array<double, 3> c = values[index + 3];
+            const std::string fast = fast_facet(normal, a, b, c);
+            std::istringstream input(fast);
+            std::string keyword;
+            input >> keyword;
+            assert(keyword == "facet");
+            const auto check_coordinates = [&input, &keyword](const char *label,
+                                                              const StlPoint &expected) {
+                input >> keyword;
+                assert(keyword == label);
+                for (double component : expected) {
+                    double measured = 0.0;
+                    assert(input >> measured);
+                    assert(std::abs(measured - component) <= 5.0e-15 * std::abs(component));
+                }
+            };
+            check_coordinates("normal", normal);
+            input >> keyword;
+            assert(keyword == "outer");
+            input >> keyword;
+            assert(keyword == "loop");
+            check_coordinates("vertex", a);
+            check_coordinates("vertex", b);
+            check_coordinates("vertex", c);
+            input >> keyword;
+            assert(keyword == "endloop");
+            input >> keyword;
+            assert(keyword == "endfacet");
+        }
+    }
 
     // The requested millimeter chord height is converted into the model's
     // native unit; it is never passed as bare millimeters.
@@ -687,6 +759,107 @@ int main() {
         assert(stats.limited && stats.levels == 0 && faces.size() == 32);
     }
 
+    // The refinement budget follows the surface area, not the surface count.
+    // A model with one large face and several small ones used to give every
+    // face the same share, which cut the large face off before it reached
+    // the target chord height.
+    {
+        using stl_surface_detail::allocate_refine_budget;
+        using stl_surface_detail::claim_refine_budget;
+        using stl_surface_detail::RefineSurfaceShare;
+        std::vector<RefineSurfaceShare> shares(3);
+        shares[0].surface_id = 119;
+        shares[0].area = 900.0;
+        shares[1].surface_id = 131;
+        shares[1].area = 99.0;
+        shares[2].surface_id = 166;
+        shares[2].area = 1.0;
+        allocate_refine_budget(shares, 250000);
+        // The weights are the fractions of the model area.
+        assert(shares[0].weight > 0.89 && shares[0].weight < 0.91);
+        assert(shares[1].weight > 0.09 && shares[1].weight < 0.10);
+        assert(shares[2].weight > 0.0009 && shares[2].weight < 0.0011);
+        // The allowance follows the weight, so the large face may draw most
+        // of the pool and the small face only a little.
+        assert(shares[0].allowance == 225000);
+        assert(shares[2].allowance == 250);
+        // A surface draws at most its own allowance from the shared pool.
+        // The first slice is limited, so the surface keeps the rest for the
+        // rounds in which it still has triangles above the target.
+        std::uint64_t pool = 250000;
+        const std::uint64_t large = claim_refine_budget(shares[0], pool, 50000);
+        assert(large == 50000);
+        // The surface may draw more later, up to its own allowance.
+        const std::uint64_t more = claim_refine_budget(shares[0], pool, 0);
+        assert(more == 175000);
+        // Drawing again does not hand out the same allowance twice.
+        const std::uint64_t again = claim_refine_budget(shares[0], pool, 0);
+        assert(again == 0);
+        // A small surface may not draw more than its own share.
+        const std::uint64_t small = claim_refine_budget(shares[2], pool, 0);
+        assert(small == 250);
+        // The pool keeps what the surfaces did not draw.
+        assert(pool > 20000);
+
+        // A surface whose area cannot be measured still gets a share, so one
+        // unreadable surface does not block the export.
+        std::vector<RefineSurfaceShare> mixed(2);
+        mixed[0].surface_id = 1;
+        mixed[0].area = 100.0;
+        mixed[1].surface_id = 2;
+        mixed[1].area = 0.0;
+        allocate_refine_budget(mixed, 250000);
+        assert(mixed[0].weight > 0.49 && mixed[0].weight < 0.51);
+        assert(mixed[1].weight > 0.49 && mixed[1].weight < 0.51);
+        assert(mixed[0].allowance == 125000);
+
+        // When no area can be measured at all, every surface gets an equal
+        // share.
+        std::vector<RefineSurfaceShare> blind(3);
+        for (std::size_t index = 0; index < blind.size(); ++index)
+            blind[index].surface_id = static_cast<int>(index);
+        allocate_refine_budget(blind, 250000);
+        for (const RefineSurfaceShare &share : blind) {
+            assert(share.weight > 0.32 && share.weight < 0.34);
+            assert(share.allowance == 83333);
+        }
+    }
+
+    // Both triangles keep the shared diagonal when its evaluated midpoint
+    // lands beside an existing vertex. With the same input and no guard the
+    // diagonal splits on both sides.
+    {
+        surface_curvature = 10.0;
+        const std::vector<StlPoint> corners = {{0.0, 0.0, 0.0},
+                                               {1.0, 0.0, 0.0},
+                                               {1.0, 1.0, 0.0},
+                                               {0.0, 1.0, 0.0},
+                                               {0.503, 0.5, curved_height(0.5, 0.5)}};
+        const std::vector<StlTriangle> original = {{0, 1, 2}, {0, 2, 3}};
+        for (double spacing : {0.0, 0.008}) {
+            std::vector<StlPoint> points = corners;
+            std::vector<SurfaceUv> uvs = {{0, 0}, {1, 0}, {1, 1}, {0, 1}, {0.5, 0.5}};
+            std::vector<StlPoint> normals(points.size(), {0.0, 0.0, 1.0});
+            normals[0] = {1.0, 0.0, 0.0};
+            std::vector<StlTriangle> faces = original;
+            stl_surface_detail::RefineStats stats;
+            std::uint64_t budget = 10;
+            stl_surface_detail::refine_surface_mesh(reinterpret_cast<ProSurface>(1), points,
+                                                    normals, uvs, faces, 0.01, 100, budget, 1,
+                                                    stats, nullptr, 0, nullptr, 0.0, spacing);
+            if (spacing == 0.0) {
+                assert(stats.created_vertices == 1 && faces.size() == 4);
+                assert(stats.remaining_candidates == 2);
+                assert(stats.stop == stl_surface_detail::RefineStats::Stop::rounds);
+            } else {
+                assert(stats.rejected_edges == 1 && stats.created_vertices == 0);
+                assert(faces == original && points == corners);
+                assert(stats.remaining_candidates == 2);
+                assert(stats.stop == stl_surface_detail::RefineStats::Stop::blocked);
+            }
+        }
+    }
+
     // The export path refines a coarse surface it would otherwise write as is.
     reset();
     grid_mesh = true;
@@ -718,6 +891,6 @@ int main() {
     }
 
     fs::remove_all(root, ignored);
-    std::puts("STL_EXPORT_OK cases=24; substituted SDK calls; no Toolkit connection");
+    std::puts("STL_EXPORT_OK cases=27; substituted SDK calls; no Toolkit connection");
     return 0;
 }

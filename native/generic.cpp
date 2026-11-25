@@ -7092,11 +7092,20 @@ static J stl_per_surface_report_json(const StlPerSurfaceReport &report) {
                         {"max_estimated_sag", report.refine_max_estimated_sag},
                         {"limited_surfaces", report.refine_limited_surfaces},
                         {"zero_area_facets", report.refine_zero_area_facets},
-                        {"max_level", report.refine_max_level}};
+                        {"max_level", report.refine_max_level},
+                        {"stop_reason", report.refine_stop_reason},
+                        {"remaining_candidates", report.refine_remaining_candidates}};
     J surface_facets = J::array();
     for (const auto &entry : report.surface_facets)
         surface_facets.push_back({{"surface_id", entry.first}, {"facets", entry.second}});
     result["surface_facets"] = surface_facets;
+    J refine_shares = J::array();
+    for (const auto &entry : report.refine_shares)
+        refine_shares.push_back({{"surface_id", static_cast<int>(entry[0])},
+                                 {"area_weight", entry[1]},
+                                 {"vertices_spent", static_cast<std::uint64_t>(entry[2])},
+                                 {"vertices_drawn", static_cast<std::uint64_t>(entry[3])}});
+    result["refine_shares"] = refine_shares;
     result["failed_surface_id"] = report.failed_surface_id;
     result["failed_facet_index"] = report.failed_facet_index;
     if (!report.failed_indices.empty())

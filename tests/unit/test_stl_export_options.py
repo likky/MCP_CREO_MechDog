@@ -10,6 +10,7 @@ import asyncio
 import unittest
 from unittest import mock
 
+import bridge
 from creo_mechdog import schema
 
 try:
@@ -119,6 +120,28 @@ class ExportToolPassThroughTest(unittest.TestCase):
                 }
             ],
         )
+
+
+class StlDeviationEnvironmentTest(unittest.TestCase):
+    def test_optional_config_setting_overrides_the_inherited_worker_switch(self):
+        settings = {"creo_root": "C:/Creo"}
+        cases = (
+            ({}, {"MECHDOG_STL_DEVIATION": "1"}, "1"),
+            ({"stl_deviation": False}, {"MECHDOG_STL_DEVIATION": "1"}, None),
+            ({"stl_deviation": True}, {}, "1"),
+        )
+        for override, inherited, expected in cases:
+            with (
+                self.subTest(override=override),
+                mock.patch.object(bridge, "config", return_value=settings | override),
+                mock.patch.object(
+                    bridge,
+                    "windows_process_environment",
+                    return_value=inherited,
+                ),
+                mock.patch.object(bridge, "resolve_license_environment", return_value=(None, None)),
+            ):
+                self.assertEqual(bridge.native_environment().get("MECHDOG_STL_DEVIATION"), expected)
 
 
 if __name__ == "__main__":
