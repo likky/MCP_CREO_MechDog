@@ -45,4 +45,4 @@ Windows x64、Python 3.12.10、Creo 10.0.0.0（release 42）、匹配 Toolkit SD
 
 ## 远端核对
 
-发布后执行，当前未验证。下载、标签、前版身份比较和解包实测记录见[发布后附件核对记录](../development/RELEASE-POSTCHECK-2026-11-07.md)。
+2026-11-25 发布后执行。标签 `v0.45.0` 指向提交 `378990cc16d75ea2a86417619c3fefce1ef2a972`，远端 `main` 为同一提交。从 Release 直链重新下载四件附件，按 `tools/check_release_assets.py --tag v0.45.0 --version 0.45.0 --dir build/release-assets/v0.45.0 --body-file docs/RELEASE_NOTES_0.45.0.md` 核验：四件齐全，两份 sidecar 与对应 ZIP 摘要一致，Release 正文自证通过。首次创建的正文未通过正文自证门禁，已用修订后的版本说明更新 Release 正文；标签内源码保留首次发布文本，四件附件字节未变。源码 ZIP SHA256 为 `f7e9e69a855459a6f1f5f7479bf059e7f8e530fa8db48711ad7c14c91ab42576`，种子包为 `1ab6d9892f764a019642a1595f59c4f8de64f04933f6657da8597abab80fa73f`，下载件与本地打包件逐字节相同。解包后的重新安装未执行，原因见上一节。前版身份比较和下载记录见[发布后附件核对记录](../development/RELEASE-POSTCHECK-2026-11-07.md)。
