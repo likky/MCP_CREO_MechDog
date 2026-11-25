@@ -12,7 +12,7 @@ from pathlib import Path
 from creo_mechdog.build_support import compiler_setup_script, validate_local_path
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "tests/native/bench_stl_write.cpp"
+SOURCE = ROOT / "tests/native/test_stl_write_benchmark.cpp"
 
 
 def main() -> int:

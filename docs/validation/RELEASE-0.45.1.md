@@ -14,7 +14,7 @@ Windows x64、Python 3.12.10、Creo 10.0.0.0（release 42）、匹配 Toolkit SD
 
 ## 开发检查
 
-`bridge.py build`、`tools/dev_check.py --work-item BUG-130 --skip-unit` 通过。离线 stdio MCP 契约覆盖 111 个工具。`tools/test_stl_export.py` 用当前 Toolkit 头文件和替代 API 实现覆盖 27 个用例。`tools/bench_stl_write.py` 的 20 万片内存流基准测得 7.11 → 0.85 µs/片。候选工作树与独立解包目录分别运行全量单测，交付结论见[发布后核对记录](../development/RELEASE-POSTCHECK-2026-11-07.md)。
+`bridge.py build`、`tools/dev_check.py --work-item BUG-130 --skip-unit` 通过。离线 stdio MCP 契约覆盖 111 个工具。`tools/test_stl_export.py` 用当前 Toolkit 头文件和替代 API 实现覆盖 27 个用例。`tools/bench_stl_write.py` 的 20 万片内存流基准测得 7.11 → 0.85 µs/片。发布门禁要求候选工作树全量 unittest 通过，打包时校验本轮 `tools/test_unit.py` 报告。独立解包目录同样执行全量单测，两套测试结果见[发布后核对记录](../development/RELEASE-POSTCHECK-2026-11-07.md)。
 
 ## 逐 ID 状态核对
 
