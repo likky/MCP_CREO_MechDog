@@ -2,6 +2,12 @@
 
 本文件补记 [DEV-075](../work-items/DEV-075.md) 指出的缺口：`RELEASING.md` 第 7 步要求「发布后用 `gh release view` 或 `tools/check_release_assets.py --tag <tag>` 核对远端恰有四个附件、两个 sidecar 与对应远端 ZIP 摘要一致，核对结果写入发布记录」，但此前只在各版 `RELEASE-*.md` 里记结论，没有可复核的发布后留存。原有小节记录**发布之后**对远端实际对象的重新下载与重算结果；2026-11-08新增小节另标历史索引、外部元数据和未核验事实；发布前的本地打包、CI 与验收结论仍以各版版本说明和发布记录为准。
 
+## v0.45.0（2026-11-25，打包时点）
+
+- Creo 10.0.0.0（release 42）专项验收加料体积、实体面包围盒、默认草图、拔模、基准面角度和启动探针。 [版本说明](../RELEASE_NOTES_0.45.0.md) · [验证与发布记录](../validation/RELEASE-0.45.0.md)
+- 四件附件为 `MCP_CREO_MechDog-0.45.0-source.zip`、`MCP_CREO_MechDog-0.45.0-source.zip.sha256`、`MCP_CREO_MechDog-0.45.0-seed-library.zip` 和 `MCP_CREO_MechDog-0.45.0-seed-library.zip.sha256`。种子包 SHA256 为 `1ab6d9892f764a019642a1595f59c4f8de64f04933f6657da8597abab80fa73f`。两份同名 sidecar 分别记录对应 ZIP 的实际摘要。
+- 远端核对发布后执行，当前未验证。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.45.0)
+
 ## v0.44.1（2026-11-25，打包时点）
 
 - 交付 [BUG-036](../work-items/BUG-036.md) 平面配合回读、面距及法向核验与失败回滚。Windows x64 / Python 3.12.10 / Creo 10.0.0.0（release 42）匹配 SDK 的 23 个专项作业与 T09 六类回放通过。发布候选执行离线门禁及全量单测报告核验，源码 ZIP 解压后独立运行全量单测。[版本说明](../RELEASE_NOTES_0.44.1.md) · [发布记录](../validation/RELEASE-0.44.1.md)

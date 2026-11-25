@@ -1,5 +1,19 @@
 # 统一开发台账
 
+2026-11-25（0.45.0 MINOR，公开工具仍 111）。同一候选在 Creo 10 复跑六项反馈修复，共 57 个几何作业和四种启动场景。三项按预期拒绝的几何作业完成回滚，其余几何作业成功。台账 272 项，历史未测范围见各卡。 [版本说明](RELEASE_NOTES_0.45.0.md) · [验收记录](validation/RELEASE-0.45.0.md)
+
+2026-11-25：[BUG-170](work-items/BUG-170.md#2026-11-25-启动探针暂态复核) 修正启动 `-4` 错误释义与暂态诊断，直连与复核共用截止时间。Creo 10 冷启动自然复现 `-4 → 0`，受控用例覆盖持续不可达及单次失败后超时。
+
+2026-11-25：[BUG-094](work-items/BUG-094.md#2026-11-25-基准面角度与位置复核) 在 Creo 10 验证 RIGHT 面绕实际 `+Z` 和 `−Z` 的 ±54° 法向、偏移位置和重载结果，并记录 0.9.0 与 0.44.0 反馈中的角度符号差异。
+
+2026-11-25：[BUG-102](work-items/BUG-102.md#2026-11-25-拔模方向回归) 修正拔模方向映射与回执。Creo 10 复现 Ø6×3 凸台默认加料，修正后正负角和反向组合以及显式基准轴均通过保存重载和实体锥度核验。
+
+2026-11-25：[BUG-108](work-items/BUG-108.md#2026-11-25-默认草图漂移回归) 默认草图坐标修正。Creo 10 复现 R12 单圆平移 0.002 mm，`auto` 优先坐标标注，超差回滚。创建、原位替换与保存重载通过。
+
+2026-11-25：[FEAT-078](work-items/FEAT-078.md) 新反馈修正。Creo 10 复现切齿、贯穿槽、回转壳的旧轮廓失真，改用实际实体面测量装配坐标系包围盒。
+
+2026-11-25：登记 [BUG-191](work-items/BUG-191.md)。Creo 10 用原生关系夹具复现加料净体积下降仍保存，并验证保存前保护、整单回滚、revision 不变及重载原几何。外部摆杆原案仍待同输入复现。
+
 2026-11-24（0.44.0 MINOR，台账 271 项不变，公开工具仍 111）：交付 [BUG-186](work-items/BUG-186.md)、[FEAT-084](work-items/FEAT-084.md)、[FEAT-085](work-items/FEAT-085.md)、[BUG-187](work-items/BUG-187.md)、[BUG-188](work-items/BUG-188.md)、[BUG-189](work-items/BUG-189.md)、[BUG-190](work-items/BUG-190.md)、[FEAT-088](work-items/FEAT-088.md)、[FEAT-089](work-items/FEAT-089.md) 及 [DEV-100](work-items/DEV-100.md)/[BUG-130](work-items/BUG-130.md) 补项（均转入“已有修复但待验收”），涵盖钣金法兰厚度侧与宽向控制、STL 单次预算与 6 阶段日志、边选择器面过滤与唯一最近消歧、草图闭合焊合与开放端定位/显式 `v_axis`/构造圆、旋转两点轴与弧度收敛、装配 `packaged` 无约束放置、未知工具参数报错与 `creo_get_job` 失败诊断透传；本机 Creo 10.0.0.0（release 42）实机验收全部通过并保存重载。见[版本说明](RELEASE_NOTES_0.44.0.md)与[发布记录](validation/RELEASE-0.44.0.md)。
 
 2026-11-24（反馈登记，未发版，新增 8 项与总控，台账 262→271，BUG 135→139 / FEAT 82→86 / DEV 45→46，公开工具仍 111）：归档 0.43.1/0.43.2 四份反馈原件至 [feedback-0.43.1-2026-11-24](validation/feedback-0.43.1-2026-11-24/SOURCE_MANIFEST.json)，新建 [DEV-101](work-items/DEV-101.md) 总控并登记 [BUG-187](work-items/BUG-187.md)、[BUG-188](work-items/BUG-188.md)、[BUG-189](work-items/BUG-189.md)、[BUG-190](work-items/BUG-190.md)、[FEAT-086](work-items/FEAT-086.md)、[FEAT-087](work-items/FEAT-087.md)、[FEAT-088](work-items/FEAT-088.md)、[FEAT-089](work-items/FEAT-089.md)。P0 为偏移基准面法线与草图 v 轴静默翻转（BUG-187）与 coordinates 拒绝构造实体（BUG-188）；其余点映射到既有 BUG-170/069/096、FEAT-078、BUG-179/122/184/143/186/054、FEAT-014/084、DEV-075/078/092，待逐项复核与实机验收。当前开发基点 `a043c37`（DEV-100 分支，未合入 `main`、未发版），本批不改 DEV-100。
@@ -240,7 +254,7 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 
 诊断交付不等于根因修复；部分交付不关整卡；缺其他版本证据不自动判未修。观察项等自然新现场，不制造故障。已完成且无保留范围的行移入 [完成档案](BACKLOG_COMPLETED.md#2026-11-07dev-073-归档与历史进展)。原进展/证据保留日期，不再回填第二份待办。小修复沿用卡与证据，复杂跨模块任务才另建完整计划。
 
-当前唯一 ID **271**（BUG **139**、FEAT **86**、DEV **46**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
+当前唯一 ID **272**（BUG **140**、FEAT **86**、DEV **46**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
@@ -250,7 +264,7 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
 | 开发中 | 9 |
-| 部分交付，剩余待验收 | 49 |
+| 部分交付，剩余待验收 | 50 |
 | 部分交付，剩余待规划 | 7 |
 | 待规划 | 56 |
 
@@ -306,9 +320,9 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [BUG-081](work-items/BUG-081.md) | P1 | 待复现/待核实 | 未排期 | 自然现场验证 MCP 拒绝时序后决定 alive=None 规则；依赖：缺同型残留 worker/外部 Creo 9 现场。 |
 | [BUG-085](work-items/BUG-085.md) | P1 | 待复现/待核实 | 未排期 | 自然事故时采集 nmsd 身份、worker 与源码指纹；依赖：缺原始时序和受控现场。 |
 | [BUG-091](work-items/BUG-091.md) | P1 | 待复现/待核实 | 未排期 | 自然现场核对分层事实与外部时间线；依赖：缺真实断连/挂起现场。 |
-| [BUG-102](work-items/BUG-102.md) | P1 | 待复现/待核实 | 未排期 | 取得报告方原 surface 69/中性面引用并做单变量对照；依赖：缺外部 Creo 10 原夹具/错误树。 |
+| [BUG-102](work-items/BUG-102.md) | P1 | 部分交付，剩余待验收 | 0.45.0 | 交付拔模方向映射与回执。正负角、反向与重载锥度经 Creo 10 验收。历史 `-1` 仍需原倒角和圆角夹具。 |
 | [BUG-106](work-items/BUG-106.md) | P2 | 部分交付（文案+裁定）；实机链路待验 | 0.27.0（离线裁定）；实机复测未排期 | 文案已修；2026-11-17 离线裁定不纳入 `adopt_session_copy`（一致性判定/身份改写/审计边界未冻结，现有两步文案已覆盖可恢复路径），反向断言保持 0 命中。只剩真实同名外部模型的 save/erase 两步链路实机复测。 |
-| [BUG-108](work-items/BUG-108.md) | P1 | 待复现/待核实 | 未排期 | 在原 Creo 10 现场取得可复现平移及 accepted_rigid 实例，判断原点固定是否消除位移；现有修复仅覆盖子项，原案/规则未闭环。 |
+| [BUG-108](work-items/BUG-108.md) | P1 | 部分交付，剩余待验收 | 0.45.0 | 交付默认草图保真，创建、替换、超差回滚和重载通过。历史长链 0.004 mm 漂移及显式 coordinates 的 accepted_rigid 实例仍待验证。 |
 | [BUG-109](work-items/BUG-109.md) | P1 | 待复现/待核实 | 未排期 | 自然现场取得子阶段时间线以定位阻塞；依赖：缺 Creo 9 真实停滞的 native.log/request.json。 |
 
 ## 已有修复但待验收
@@ -338,7 +352,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [BUG-182](work-items/BUG-182.md) | P1 | 已有修复但待验收 | 0.42.0 | 装配面/边选择器零命中每条候选新增 `suggested_reference`、报错直出最近候选、`assembly` 空间标注 `nearest_coordinate_space="component"` 与 `assembly_origin_mm`/`assembly_normal`；本机 Creo 10 实机验证通过。剩：Creo 9/12、全量 60 配合装配、WorkBuddy 黑盒。 |
 | [BUG-175](work-items/BUG-175.md) | P1 | 已有修复但待验收 | 0.43.2 | 0.41.0 修复第一段，0.43.0 外部干净包复测发现同一用例的强制启动分支仍会误超时。本轮补齐共享假时钟及夹具隔离，解包 120/120、慢探测 3/3、统一开发检查通过。补修随 0.43.2 交付，待报告方复测。 |
 | [BUG-176](work-items/BUG-176.md) | P1 | 已有修复但待验收 | 0.41.0 | 圆形边选择器新增 `full_circle:true`、接缝/极值 `point_mm` 确定性取最小边 ID、单点 `point_mm` 支持圆弧边；本机 Creo 10 实机三组整圆圆角/倒角全部通过并保存重载。剩：Creo 9 原始发动机零件、Creo 12、WorkBuddy 黑盒。 |
-| [FEAT-078](work-items/FEAT-078.md) | P1 | 已有修复但待验收 | 0.41.0 | `creo_inspect_model` 新增 `total_surface_area_mm2`、`surfaces[].area_mm2`、`bounding_box_mm`、`merged_counts` 与 `counts_convention`；本机 Creo 10 实机零件与装配面积/包围盒精确吻合。剩：Creo 9/12、WorkBuddy 黑盒。 |
+| [FEAT-078](work-items/FEAT-078.md) | P1 | 部分交付，剩余待验收 | 0.45.0 | 交付实体面包围盒。三种零件和直接、嵌套旋转装配通过 Creo 10 验收。外部原计划、Creo 9/12、WorkBuddy 待验。 |
 | [FEAT-079](work-items/FEAT-079.md) | P1 | 已有修复但待验收 | 0.41.0 | 多引用 `round`/`chamfer` 失败时逐集探测定位 `failed_reference_index`/`failed_reference`/`round_failure` 并保持回滚；本机 Creo 10 实机精准定位索引 1 并完整回滚。剩：Creo 9/12、WorkBuddy 黑盒。 |
 | [BUG-177](work-items/BUG-177.md) | P2 | 已有修复但待验收 | 0.41.0 | 草图 `Arc.sweep_deg`（本机 Creo 10 实机 270° 优弧体积精确吻合）、`spline` 数值面积、`coordinates` 超差 `shifted_sample` 与 `XY`/`XZ`/`YZ` 基准面文档。剩：Creo 9/12、WorkBuddy 黑盒。 |
 | [BUG-178](work-items/BUG-178.md) | P2 | 已有修复但待验收 | 0.41.0 | `feature_state` 依赖展开 `include_dependencies=true` 与 `suggested_targets`、`component_changes` 1e-12 浮点噪声过滤、`creo_execute_plan` 空装配 `ToolError` 指引；本机 Creo 10 实机删除与装配插入均通过并保存重载。剩：Creo 9/12、WorkBuddy 黑盒。 |
@@ -346,7 +360,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [BUG-172](work-items/BUG-172.md) | P1 | 已有修复但待验收 | 0.40.0 | 消除草图/基准/拉伸流程 10+ 次冗余全量 `inspection()` 与逐半边 `fflush()` 刷盘，补 `INSPECT_PROGRESS`/`INSPECT_SUMMARY` 与遍历上限；本机 Creo 10 实机 B045 同等价 6 步作业全量快照由 15 次降至 3 次（9.1 s 完成）并保存重载。剩：原始 53 特征 `carrier_v2`、Creo 9/12、WorkBuddy 黑盒。 |
 | [BUG-173](work-items/BUG-173.md) | P1 | 已有修复但待验收 | 0.40.0 | 单轴倾斜三点基准面草图自动创建并复用正交辅助锚定平面（`SKETCH_ANCHOR_HELPER=1`），`coordinates` 求解失败同时报告 `ProSectionSolve` 与救援 `ProSectionAutodim` 返回码及 `section_references`；本机 Creo 10 实机 B045/B104 倾斜草图拉伸与切除精确匹配体积并保存重载。剩：Creo 9/12、WorkBuddy 黑盒。 |
 | [BUG-174](work-items/BUG-174.md) | P1 | 已有修复但待验收 | 0.40.0 | `dump_plan_operations` 保留显式 `chamfer_type`、盲孔切除新增 `cut_volume_check` 低去料告警、`spawn_detached_runner` 尝试 `CREATE_BREAKAWAY_FROM_JOB` 并披露 `runner_detached_from_job`；本机 Creo 10 实机内联 `d1_d2` 倒角与低去料告警通过并保存重载。剩：客户端退出脱离实测、Creo 9/12、WorkBuddy 黑盒。 |
-| [BUG-170](work-items/BUG-170.md) | P0 | 已有修复但待验收 | 0.39.0 | 升级/重启后 `-4`/`PRO_TK_BAD_CONTEXT` 诊断 `stale_session_needs_restart`、`force_new_session` 显式新会话入口与 `session_candidates.diagnostic_only` 离线单测与门禁全过。剩：真实 Creo 9 升级 `-4` 现场、WorkBuddy 黑盒。 |
+| [BUG-170](work-items/BUG-170.md) | P0 | 部分交付，剩余待验收 | 0.45.0 | 交付启动暂态诊断与共用截止时间。Creo 10 冷启动复现 `-4 → 0`，查找持续失败和探针超时通过对照。Creo 9 历史升级现场及 WorkBuddy 待验。 |
 | [BUG-166](work-items/BUG-166.md) | P1 | 已有修复但待验收 | 0.39.0 | 跨会话 `restore_baseline`/`abandon_new` 解死锁、新增 `abandon_unknown_recovery`、单次 `budget_seconds` 与高边数自适应下限（6428 边 548 s）、`blocking_operation="recovery_pending"`；本机 Creo 10 实机 3/3 通过并保存重载。剩：原始 6428 边 M113 P05 模型、Creo 9/12、WorkBuddy 黑盒。 |
 | [FEAT-076](work-items/FEAT-076.md) | P1 | 已有修复但待验收 | 0.39.0 | 边 `geometry_selector` 支持 `feature` 标签过滤、`creo_inspect_model` 新增 `near`/`max_distance_mm` 近邻查询与 `creo_round`/`creo_chamfer` 说明同步；本机 Creo 10 实机 `near` 定位 + 按特征边圆角精确去料并保存重载。剩：原始 6428 边件、Creo 9/12、WorkBuddy 黑盒。 |
 | [FEAT-077](work-items/FEAT-077.md) | P2 | 已有修复但待验收 | 0.39.0 | 零件 JPEG 预览隐藏并恢复四项基准显示选项（不写 `config.pro`）；更新检查默认预算 5 s→15 s 且带 `advisory=true`；本机 Creo 10 实机零件预览/JPEG 导出隐藏与恢复全过。剩：Creo 9/12、WorkBuddy 黑盒。 |
@@ -384,7 +398,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [BUG-082](work-items/BUG-082.md) | P1 | 已有修复但待验收 | 未排期 | 主修复/外部 Creo 9 编辑已过；非主平面 autodim、贴轴基线及失败 revision 未齐。 |
 | [BUG-083](work-items/BUG-083.md) | P2 | 已有修复但待验收 | 未排期 | Python 非法轴准入已修；原生 validate_revolve_axis 分支与外部原环境未验。 |
 | [BUG-090](work-items/BUG-090.md) | P1 | 已有修复但待验收 | 未排期 | 厚度函数门控/实读回退已修；Creo 10 定向编译与运行待原环境，保持开放。 |
-| [BUG-094](work-items/BUG-094.md) | P1 | 已有修复但待验收 | 未排期 | 本机已验，待原负责人交付裁定；−Z 扩展及外部原请求未验证；依赖：交付裁定；外部原请求/环境仅用于原案核对，不作全项目发布门槛。 |
+| [BUG-094](work-items/BUG-094.md) | P1 | 部分交付，剩余待验收 | 0.45.0 | 交付基准面角度约定文档。RIGHT 面绕实际 ±Z 的 ±54°、位置与重载通过。历史两个 MCP 版本在同一有向轴下的对跑待验。 |
 | [BUG-098](work-items/BUG-098.md) | P1 | 已有修复但待验收 | 未排期 | 三点面阻塞已修并实机8/8；约束引用逐条核对仍未验证，保留数量校验安全边界。 |
 | [BUG-101](work-items/BUG-101.md) | P1 | 已有修复但待验收 | 未排期 | 补圆弧端点支持并用 gear10 原案验证；依赖：缺 gear10.json 和外部 Creo 10 对照。 |
 | [BUG-105](work-items/BUG-105.md) | P1 | 已有修复但待验收 | 未排期 | 回滚成功保持 ready 已验；派发前零变更及 ack_no_mutation 恢复失败态仍未实机。 |
@@ -451,6 +465,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
+| [BUG-191](work-items/BUG-191.md) | P1 | 部分交付，剩余待验收 | 0.45.0 | 交付保存前加料净体积保护，整单回滚、revision 和重载几何通过。原始摆杆同输入复现与定因待验。 |
 | [FEAT-074](work-items/FEAT-074.md) | P2 | 部分交付，剩余待验收 | 0.36.0（选面、预览与回执）；面角色组待验收 | 同计划拔模按特征标签限定面，支持 JPEG 视图与像素规格，清理输入可复制，会报共享边与端点间隙。面角色组与原弧线仍无证据。 |
 | [BUG-143](work-items/BUG-143.md) | P1 | 部分交付 0.35.6 子项；闭合锥面 trim 与其他非圆柱形态未排期 | 0.35.0（子项已交付）；0.35.2（镜像防护与标签实机已交付）；0.35.3（非圆柱链路与保存闭环证据已交付）；0.35.6（固体镜像根因与创建前拒绝已交付）；余项未排期 | fill/mirror/merge/trim 回执给实测 `quilt_id`，同计划 merge/fill 标签可被 `solidify` 消费（本机 Creo 10 实机 785.3981633974481 mm³、保存重载 true），已随 v0.35.0 发布。0.35.2 实机补验：mirror 标签跨作业被 trim 消费（3141.59→1570.80 mm²、保留区 z 60…79.944）、trim 标签跨作业被 thicken 消费（1405.186 mm³）、单计划 trim 保存重载 true；另加 mirror 用 `feature` 引用曲面特征的崩溃防护（实机拒绝且会话存活）。保存阶段 `ProMdlnameBackup=-1` 见 BUG-113 同日观测。0.35.3 以开放圆锥套补齐非圆柱跨作业链路：mirror quilt 79→99、trim 消费 mirror 标签（保留区 687.218 mm²）、thicken 消费 trim 标签（1500.099 mm³），三步保存重载 true；闭合锥面 trim 受 `ProContourAreaEval` 对锥面 -1 限制仍不可行。剩：闭合锥面/其他非圆柱形态、外部报告环境。固体特征镜像挂死已定位并处置：2026-11-21 实机两次复现（作业停在 `mirror:block_mirror`、native 末行 `ProArrayAlloc(…ProFeatureCreateOptions…)`、Creo CPU 不增长、随后 `toolkit_code=-38`），根因是 `PRO_E_MIRROR_REF_ITEMS` 不接受 `PRO_FEATURE`（`ProMirror.h` 自 Wildfire 2.0 起明确排除）；现契约与原生都在创建前拒绝全部 feature 引用并给出 `{kind:'part'}` 或 quilt 路线。实机复验：feature 引用在提交阶段即被拒（无作业、`toolkit_code=0`），`{kind:'part'}` 路线 `succeeded`、体积 4000.0000000000005 mm³、保存重载 true、会话仍 `0`。 |
 | [FEAT-071](work-items/FEAT-071.md) | P2 | 部分交付 0.35.0，剩余待验收 | 0.35.0（子项已交付）；剩余未排期 | `d1_d2` 与独立 `creo_chamfer` 契约已落地；Creo 10 实机 2/5 与 5/2 各去除 250 mm³，D1 落在非 `reference_surface` 相邻面，已随 v0.35.0 发布。剩：其他参考面组合、曲面边与其他 Creo 版本。 |

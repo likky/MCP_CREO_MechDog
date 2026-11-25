@@ -178,7 +178,7 @@ Test-Path "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\um\x64\kernel
 
 这两项来自 PTC 自带的 `proe_start.bat` 写法；Creo 13.4 的配置库已没有 `win32_gdi` 软件渲染选项，因此在旧显卡驱动会触发 TDR 蓝屏的环境里，无图形启动是当前唯一的项目侧入口。修改 `config.json` 后必须重启 MCP 服务，运行中的进程不重新读取配置。Creo 12.4 实测：`xtop.exe` 命令行出现同名参数、无界面，Toolkit 连接 `toolkit_code=0`；板件建模（拉伸、圆角、通孔、保存重载、预览）成功，`window_activate_code=-8` 只作诊断记录、不再判失败（见 [BUG-126](work-items/BUG-126.md)）。Creo 13.4 未测，失败时不要用连接成功代替建模验收。
 
-原生状态探针默认以子进程直接启动 `build/creo_worker.exe`。`auto` 模式下若探针返回 `-4`（`PRO_TK_BAD_CONTEXT`，worker 没有 Toolkit 上下文），服务会再经同一个 Explorer 以隐藏窗口启动一次 worker 复核，用于判断该差异是否随 MCP 宿主进程树出现（见 [BUG-127](work-items/BUG-127.md)）。桌面路径不可用、超时或仍返回 `-4` 时保留直连结果，并附 `desktop_retry` 说明，不改变错误语义；该路径只用于状态探针，不改建模作业的启动方式。
+原生状态探针默认以子进程直接启动 `build/creo_worker.exe`。`auto` 模式下探针返回 `-4`（`PRO_TK_E_NOT_FOUND`，Toolkit 找不到会话或读不到注册信息）时，服务可经同一个 Explorer 隐藏启动一次 worker 复核（见 [BUG-127](work-items/BUG-127.md)）。启动协调器的直连与桌面复核共用剩余连接预算。桌面路径不可用、超时或仍返回 `-4` 时保留直连结果，并附 `desktop_retry` 说明。该路径只用于状态探针。
 
 同一用户会话、安装和 PSF 的多个服务共享 `%LOCALAPPDATA%/MCP_CREO_MechDog/startup/<目标摘要>/` 下的锁、`state.json` 和 `startup.log`。启动预留先于实际拉起写入；先前结果不确定且当前没有进程时，需要显式调用 `creo_startup_status(retry=true)`。重试会复查实际进程，正在启动或已有 Creo 时继续等待，不重复创建。日志不包含许可或敏感会话 ID。冷启动时先依据进程检查拉起 GUI，再进行真实 Toolkit 探测，避免首次探测创建的名称服务随 MCP 主机退出而被清理。Explorer 启动接口不提供子进程退出码；请求异常记录为失败，无就绪确认则有界超时，不将启动请求返回当作成功。
 
@@ -195,7 +195,7 @@ Test-Path "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\um\x64\kernel
 | `vcvars64` 成功但缺少 `stdio.h` / SDK 库 | 核对推荐组件、Windows SDK 与注册表 / `reg.exe` 探测；由管理员修复环境，或用 `vcvars64_env` / `-VcVars64Env` 提供完整环境，仍须通过编译前置自检 |
 | 原生构建 `error C2065`，名称为 `PRO_*` | 检查失败消息中的 SDK 版本方向提示和末尾最多 15 条 error 摘要；提示只表示可能使用了较新 SDK 常量，不能直接断言所需版本。完整错误保留在 `build/build.log` |
 | 文件检查通过但 Toolkit 连接失败 | 确认只打开一个 Creo 会话，处理模态对话框，再核查当前 PTC 许可；检查 `license_diagnostics`，路径拼写错误可能导致许可文件不存在 |
-| `toolkit_code=-4`、`worker_exit_code=20` | `PRO_TK_BAD_CONTEXT` 表示该 worker 进程没有 Toolkit 上下文，不是许可或 Creo 版本问题。先看返回的 `toolkit_hint` 与 `worker_launch`；需要区分宿主进程树时可把 `creo_worker_launch` 设为 `desktop`（见 [BUG-127](work-items/BUG-127.md)） |
+| `toolkit_code=-4`、`worker_exit_code=20` | `PRO_TK_E_NOT_FOUND` 表示 Toolkit 没找到或读不到会话。退出码 20 表示 worker 连接失败。`waiting_for_connection` 且 `diagnosis=session_not_ready` 时继续查询同一启动尝试。现有进程在预算内反复查询失败时，终态为 `timeout` 并给出 `stale_session_needs_restart`，再按回执中的 `next_steps` 处理。 |
 | `toolkit_code=-38` | `PRO_TK_E_BUSY`：Creo 消息循环被模态对话框堵住。先看 `xtop.exe` 的窗口标题（例如 `NVIDIA OpenGL Driver` 错误框），处理对话框后再查；直接重试不会清除对话框 |
 | 冷启动后首次查询仍是 `waiting_for_connection` 或 `timeout` | 冷启动常见 60–120 秒。按 `creo_startup_timeout_seconds` 的预算轮询，不要在一次探针失败后立刻重启 Creo；确实超时再请求 `retry=true` |
 | `lmutil lmstat` / `ptcstatus.bat` 报 `-13,66` | 节点锁定许可文件没有 `SERVER` 行，这两个工具不适用。以 `support.inf` 的许可段和实际建模结果判断，不能据此认定许可无效 |

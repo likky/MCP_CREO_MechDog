@@ -81,6 +81,31 @@ SDK 依据：本机 `ProChamfer.h` 声明 `PRO_CHM_D1_X_D2 = 603`，该 schema �
 
 **两种平面形式的取舍（BUG-116，0.19.3 反馈）**：`{kind:"plane",normal,offset}` 按几何位置在**面集合**里找面，`{kind:"datum_plane",axis,offset}` 只在**基准面集合**里找。真实模型同一高度常有多张平行基准面（草图支撑面会被自动创建为 `no_name` 基准面），此时 `datum_plane` 形式会被拒绝。拔模 `neutral_plane` 等"取某个高度的平面"场景优先用几何形式，或直接用巡检返回的 `plane`/`surface` ID；被拒绝时回执会给出匹配到的候选数、候选 ID 列表，并用 `failed_reference field=...` 指名是哪个参数解析失败。
 
+## 加料体积保护与实体包围盒（0.45.0）
+
+`extrude`、`revolve`、`sweep`、`loft` 的 `mode="add"` 会在再生后、保存前核对总体积。允许零净增量。下降超过 `max(1e-6 mm³, 加料前体积 × 1e-12)` 时返回 `add_reduced_volume`，可靠测量无法建立时返回 `add_volume_unverified`。写作业按原检查点整单回滚。`volume_before_mm3`、`volume_after_mm3`、`material_delta_mm3` 和 `add_volume_check` 提供测量和判据。 [BUG-191](work-items/BUG-191.md)
+
+零件和装配的 `bounding_box_mm` 在当前模型坐标系内从裁剪后的实体面网格取边界。旋转装配先把实体面网格变换至装配坐标系再求极值。`bounding_box_source="solid_face_tessellation"`，`bounding_box_status` 披露采样目标弦高，以及 `measured`、`no_solid` 或 `unavailable`。旧快照的历史轮廓保存在 `legacy_regeneration_outline_mm`，用 `creo_refresh_model` 可重新测量。 [FEAT-078](work-items/FEAT-078.md)
+
+## 启动未就绪与持续不可达（0.45.0）
+
+自动发现会话时，已观察到 Creo 进程且 Toolkit 返回 `-4`（`PRO_TK_E_NOT_FOUND`），`waiting_for_connection` 与 `diagnosis=session_not_ready` 表示协调器会在原连接截止时间内再查。`probe_attempts` 统计已经返回的连接探针。现有进程在原预算内持续查询失败时，`timeout` 附 `stale_session_needs_restart` 和 `last_lookup_failure`。探针自身超时通过 `native.connection_state=probe_timeout` 表示。 [BUG-170](work-items/BUG-170.md)
+
+## 基准面角度的正负与位置
+
+`creo_datum_plane` 和计划中的 `datum_plane` 使用带符号的度数。`angle` 的正向按 `axis` 所引用的**实际有向轴**应用右手定则。沿轴从正端朝负端看，正角为逆时针。用 `creo_inspect_model(detail="full", section="datum_axes")` 读取轴的 `direction` 和 `origin`。用 `creo_inspect_model(detail="full", section="datum_planes")` 复核已保存平面的 `normal` 和 `origin`，并按 `feature_geometry` 将特征 ID 对应到平面几何 ID。
+
+Creo 10.0.0.0 实测，默认 `flip=false`，`RIGHT` 面起始法向为 `(1, 0, 0)`。绕过模型原点的 Z 轴旋转后，两种有向轴下生成的纯旋转面均通过该轴，`origin` 在测量精度内为 `(0, 0, 0)`。保存重载后的法向如下。
+
+| 实测轴方向 | `angle=+54` 的法向 | `angle=-54` 的法向 |
+| --- | --- | --- |
+| `+Z` | `(0.587785, 0.809017, 0)` | `(0.587785, −0.809017, 0)` |
+| `−Z` | `(0.587785, −0.809017, 0)` | `(0.587785, 0.809017, 0)` |
+
+需要通过 `(−5.090109, −7.005933, 0)` 的平面时，先绕 `+Z` 转 `+54°`，再用第二个 `datum_plane` 沿旋转后的法向偏移 `−8.65981 mm`。把第一步角度换为 `−54°` 并使用相同偏移，得到镜像点 `(−5.090109, +7.005933, 0)`。
+
+0.9.0 外部报告用 `−54°` 得到正 Y 法向，原报告也记录该轴实测方向为 `−Z`。0.44.0 外部报告用 `+54°` 得到相同法向。本机在 Creo 10 已用 `−Z` 和 `+Z` 分别复现两种结果。轴方向足以解释这组差异，同一有向轴下两个 MCP 历史版本是否存在行为差异尚未对跑。 [BUG-094 实机与历史记录](work-items/BUG-094.md#2026-11-25-基准面角度与位置复核)
+
 ## 钣金展开固定面（fixed_surface，P05）
 
 `sheetmetal_unbend`/`sheetmetal_flat_pattern`/`sheetmetal_bend_back` 的 `fixed_surface` 是一个**裸面引用**（与其他引用同一解析语义），如：
@@ -92,6 +117,8 @@ SDK 依据：本机 `ProChamfer.h` 声明 `PRO_CHM_D1_X_D2 = 603`，该 schema �
 它指定展开/折回过程中保持固定的几何；`references` 省略时作用于全部折弯。选中的几何能否真正固定由原生执行器判定，Python 侧不预判。
 
 ## 任意平面 coordinates 标注（FEAT-010 / T04）
+
+`dimensioning="auto"`（默认）在没有用户尺寸或约束且图元支持坐标标注时选择 `coordinates`，包括单圆和其他小轮廓。创建与替换都在求解后、完成特征后核对绝对偏差，整体平移计入偏差。默认上限为 `1e-5 mm`，显式 `geometry_tolerance_mm` 可设定上限。超差或无法完成测量会拒绝提交。样条插值 `spline`、椭圆及带用户尺寸或约束的创建请求继续走 `autodim`。
 
 `dimensioning="coordinates"` 与 auto 路由的坐标标注不再限于主平面字符串：字典平面（任意有效支撑面）同样创建完整坐标尺寸，编辑路径（`creo_update_sketch_geometry`）不再因非主平面法向拒绝或强制退回 autodim。坐标尺寸在**原生 section 局部坐标**中创建并回读核验；草图 U 轴与 section 轴成任意角度时，输入 u/v 分量按主导 section 轴命名（日志 `COORDINATE_AXES`），不再报 "requires principal section axes"。
 
@@ -106,7 +133,7 @@ SDK 依据：本机 `ProChamfer.h` 声明 `PRO_CHM_D1_X_D2 = 603`，该 schema �
 
 **`geometry_tolerance_mm` 的含义**：它是**验收放行阈值**（判定求解结果是否可接受），不是求解精度设置，也不会让内核"解得更好"。缺省时 `coordinates` 按 1e-5 mm 判定形状、autodim 按 1e-3 mm 只告警不拒绝。
 
-**形状与平移分开判**：坐标求解会整体挪动整个截面（外部实测 1.6e-5 ~ 4e-3 mm），这不是形状改变。现在两处闸门（`SectionRegenerate` 的 `verify_coordinate_plan` 与 `CompleteFeature` 的 `enforce_geometry_deviation`）都按"去掉共模平移后的逐点残差"判定：
+**显式 `dimensioning="coordinates"` 的形状与平移判据**：坐标求解可能整体移动截面（外部实测 1.6e-5 ~ 4e-3 mm）。显式选择该模式时，按既有的形状残差与平移上限分别验收：
 
 ```json
 {"geometry_deviation": {"max_deviation_mm": 0.000016, "shape_deviation_mm": 0.0,
@@ -244,6 +271,7 @@ SDK 依据：本机 `ProChamfer.h` 声明 `PRO_CHM_D1_X_D2 = 603`，该 schema �
 | hole.placement/reference1/reference2 | 各自直接传入裸引用，placement 为放置面，reference1/2 为定位参考；平面定位参考可用 `datum_plane.id` 几何 ID |
 | hole.standard | `{"series":"ISO","size":"M6","thread_depth":8}`：按安装孔表建螺纹孔。此时 `diameter` 可省略（给了必须等于表内名义直径），`depth` 必填，`thread_depth` 必须严格小于钻尖深度且不超表内上限；回执给 `thread_metadata` 与 `thread_metadata_verified`（只有创建后特征树回读一致才为 true），非标准孔回执不变 |
 | draft.surfaces/neutral_plane/pull_direction | surfaces 是裸面引用数组；neutral_plane 和 pull_direction 分别是裸单引用。neutral_plane 优先用 `{kind:"plane",normal,offset}` 或巡检的 `plane`/`surface` 几何 ID；`datum_plane` 的 axis+offset 只在候选唯一时成立，多张平行面会被拒绝并列出候选（BUG-116）。`pull_direction` 省略或为 null 时取中性面法向 |
+| draft.angle/flip | `angle` 为带符号的度数。`flip=false`（默认）沿 Creo 的拔模引用方向，`flip=true` 反向。以底面为中性面且拔模方向指向自由端的外圆柱为例，正角缩小自由端，负角扩大自由端。改变 `flip` 或角度符号均反转锥度。`draft_geometry.effective_flip` 来自原生树，平面引用的 `applied_pull_vector` 给出应用反向设置后的模型坐标向量。基准轴的 `pull_vector` 为轴线几何方向，`applied_pull_vector` 为 null。 |
 | boolean_bodies.targets/tools | 裸 body 引用数组，须明确不同 body ID；不能传特征 ID。巡检可能返回负 body ID，但当前布尔入口不支持把负 ID 作为目标或工具；这不表示巡检记录无效。正 ID 也不保证能把独立实体并入钣金主体：报告方在 Creo 10 对钣金体与实体做双向 union 均遇到原生 `-1` 并回滚，当前未提供钣金体融合能力 |
 | 钣金模型的 extrude/revolve add | 普通 `extrude(mode="add", thin=null, new_body=false)` 在建模前以 `SHEETMETAL_SOLID_ADD_UNSUPPORTED` 拒绝；`new_body=true` 创建的是独立实体，不保证能与钣金主体融合。`thin` 增料与 `revolve` 增料未被该准入规则阻断，但目标 body 与合并结果尚无可靠契约，不能据此视为钣金主体增料 |
 | solidify.reference | 裸平面/曲面参考，可用已验证平面的 `plane.id` 几何 ID；平面裁剪示例使用 mode=cut，quilt 分支按既有能力限制验收 |
