@@ -5,7 +5,8 @@
 ## v0.45.0（2026-11-25，打包时点）
 
 - Creo 10.0.0.0（release 42）专项验收加料体积、实体面包围盒、默认草图、拔模、基准面角度和启动探针。 [版本说明](../RELEASE_NOTES_0.45.0.md) · [验证与发布记录](../validation/RELEASE-0.45.0.md)
-- 四件附件为 `MCP_CREO_MechDog-0.45.0-source.zip`、`MCP_CREO_MechDog-0.45.0-source.zip.sha256`、`MCP_CREO_MechDog-0.45.0-seed-library.zip` 和 `MCP_CREO_MechDog-0.45.0-seed-library.zip.sha256`。种子包 SHA256 为 `1ab6d9892f764a019642a1595f59c4f8de64f04933f6657da8597abab80fa73f`。两份同名 sidecar 分别记录对应 ZIP 的实际摘要。
+- 四件附件为 `MCP_CREO_MechDog-0.45.0-source.zip`、`MCP_CREO_MechDog-0.45.0-source.zip.sha256`、`MCP_CREO_MechDog-0.45.0-seed-library.zip` 和 `MCP_CREO_MechDog-0.45.0-seed-library.zip.sha256`。源码 ZIP 含 2448 个文件，与工作树逐字节一致。种子包 SHA256 为 `1ab6d9892f764a019642a1595f59c4f8de64f04933f6657da8597abab80fa73f`。两份同名 sidecar 分别记录对应 ZIP 的实际摘要。
+- 解包后的重新安装未执行：本机安全策略禁止 `reg.exe`，临时目录内的 MSVC/Windows SDK 预检失败；不以候选安装结果代替，也不计为通过。
 - 远端核对发布后执行，当前未验证。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.45.0)
 
 ## v0.44.1（2026-11-25，打包时点）

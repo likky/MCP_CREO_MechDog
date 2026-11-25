@@ -19,7 +19,7 @@ Windows x64、Python 3.12.10、Creo 10.0.0.0（release 42）、匹配 Toolkit SD
 
 ## 开发检查与打包
 
-候选的 `bridge.py build` 和 `tools/dev_check.py --work-item BUG-191 --skip-unit` 已通过。离线 stdio 契约验证 111 个工具，开发检查源码指纹为 `954816bb3112563c83d5e7c390f32658e2ea289436d70ad1b26deaa747e9b265`。干净候选的全量单测执行 `tools/test_unit.py`，通过后由 `tools/package.py --unit-report` 同时校验提交、版本、运行状态和源码指纹。源码 ZIP 解包在独立环境执行安装、依赖检查、真实 stdio 契约及全量单测。候选和解包的实际结果见[发布后附件核对记录](../development/RELEASE-POSTCHECK-2026-11-07.md)。
+候选的 `bridge.py build` 和 `tools/dev_check.py --work-item BUG-191 --skip-unit` 已通过。离线 stdio 契约验证 111 个工具，开发检查源码指纹为 `954816bb3112563c83d5e7c390f32658e2ea289436d70ad1b26deaa747e9b265`。干净候选的全量单测执行 `tools/test_unit.py`，通过后由 `tools/package.py --unit-report` 同时校验提交、版本、运行状态和源码指纹；源码 ZIP 生成后按 2448 个文件与工作树逐字节比对（`build/release-0.45.0/source-tree-check.json`）。解包后的独立安装复验未执行：本机安全策略禁止 `reg.exe`，MSVC/Windows SDK 预检在临时目录内失败，属环境限制，不计为通过。候选结果见[发布后附件核对记录](../development/RELEASE-POSTCHECK-2026-11-07.md)。
 
 ## 逐 ID 状态核对
 
