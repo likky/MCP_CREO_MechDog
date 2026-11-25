@@ -6,7 +6,18 @@
 
 - Windows x64 / Creo 10.0.0.0（release 42）完成 14 m 球鼻艏 STL 专项。 [版本说明](../RELEASE_NOTES_0.45.1.md) · [验证与发布记录](../validation/RELEASE-0.45.1.md)
 - 四件附件为 `MCP_CREO_MechDog-0.45.1-source.zip`、`MCP_CREO_MechDog-0.45.1-source.zip.sha256`、`MCP_CREO_MechDog-0.45.1-seed-library.zip` 和 `MCP_CREO_MechDog-0.45.1-seed-library.zip.sha256`。种子包 SHA256 为 `51c41e1e01d712302d639fa9302cf3af871148c7e2bbf8553a27e6d641a0a8f5`。两份同名 sidecar 分别记录对应 ZIP 的实际摘要。
-- 远端核对发布后执行，当前未验证。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.45.1)
+- 候选工作树和独立解包的 `tools/test_unit.py` 各运行 4,532 项，均无失败或错误，分别跳过 7 项和 8 项。源码包 2,453 个文件逐字节核对通过。解包安装使用显式 MSVC/Windows SDK 路径，离线 stdio 验证 111 个工具，实机简单建模作业 `fb0bd5836c2546d6882288dd6c214904` 保存重载为 true。
+- 正式 Release 458319515 发布于 2026-11-25 15:41:44 UTC。2026-11-25 15:43:26 UTC（2026-11-25 23:43:26 +08:00）重新查询，发布时的远端 `main` 与标签 `v0.45.1` 指向 `0177e227dd42587541e3e01628647deda53e4dea`。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.45.1)
+- `tools/check_release_assets.py --tag v0.45.1` 返回 0。用 `gh release download` 独立重下四件，字节与本地打包件相同。两份 sidecar 匹配 ZIP，正文列出的 SHA256 与实算一致。下表摘要同时等于 GitHub API 的 digest。
+
+| 远端附件 | 字节 | 下载实算 SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.45.1-seed-library.zip` | 493,442 | `51c41e1e01d712302d639fa9302cf3af871148c7e2bbf8553a27e6d641a0a8f5` |
+| `MCP_CREO_MechDog-0.45.1-seed-library.zip.sha256` | 107 | `e9f9f4df4cb3eb54a1e5ff78e35544bc84cb34c1c96c35e3971a211daa20e412` |
+| `MCP_CREO_MechDog-0.45.1-source.zip` | 12,319,665 | `95e2b04a685152c9ce6dedb17668ea2003b52162b06491da58f199bb8c92d470` |
+| `MCP_CREO_MechDog-0.45.1-source.zip.sha256` | 101 | `4fd182b857a79c6a7232b6201cef00dc8b8e017252785722216325059bfaedc7` |
+
+回调入口与前版源码包字节一致，第三方 JSON 和许可证逐字节相同，种子库仅兼容版本清单有变化。解包安装生成独立目录的注册文件。该环境下 worker SHA256 为 `a8e18596b427983ec2fbd933c0259e8c24bbe38514443a915749a3bd2e3ea016`，loader SHA256 为 `5d6897b5f7db29d3c90311ae0820025ce7f5100b0d63cf09c57a09f89e86cb0a`，callback SHA256 为 `fb2b3dd4a6ce0963dcc51c84dca2a0c1d2f946507ceb1c8c9fb3701bed9742c8`。
 
 ## v0.45.0（2026-11-25，打包时点）
 

@@ -35,4 +35,4 @@ Windows x64、Python 3.12.10、Creo 10.0.0.0（release 42）、匹配 Toolkit SD
 
 ## 远端核对
 
-发布后执行，当前未验证。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.45.1)
+发布后已从 GitHub 独立下载和校验四件附件。详细时间、标签、附件 SHA256 与解包结果见[发布后核对记录](../development/RELEASE-POSTCHECK-2026-11-07.md)。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.45.1)
