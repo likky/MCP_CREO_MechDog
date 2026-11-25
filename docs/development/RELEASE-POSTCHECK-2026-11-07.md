@@ -8,6 +8,24 @@
 - 四件附件为 `MCP_CREO_MechDog-0.44.1-source.zip`、`MCP_CREO_MechDog-0.44.1-source.zip.sha256`、`MCP_CREO_MechDog-0.44.1-seed-library.zip` 和 `MCP_CREO_MechDog-0.44.1-seed-library.zip.sha256`。种子包 SHA256 为 `491a80535bec356b99610e5805c9006cb5bf1633f150cd91c99b61768f6a1474`。两份同名 sidecar 分别记录对应 ZIP 的实际摘要。
 - 远端核对发布后执行，当前未验证。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.44.1)
 
+### v0.44.1 发布后核对
+
+- 核对时间为 `2026-11-25T01:11:42+00:00`（UTC）及 `2026-11-25T09:11:42+08:00`（北京时间）。Release ID 为 `457525880`，创建于 `2026-11-25T01:11:00Z`，发布于 `2026-11-25T01:11:16Z`，GitHub 标记为最新正式版。[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.44.1)
+- 本地与远端附注标签对象均为 `2921961b881332cdca588671aa9b6886b7fcde33`，指向发布提交 `5e04dcd8204759cd2eaed13aeadbb80661e307cc`。核对时远端 `main` 同指该提交。四件附件均由该提交的干净工作树生成，源码包内 2,439 个文件逐一核对。
+- `python -X utf8 tools/check_release_assets.py --tag v0.44.1` 退出码 0。随后用 `gh release download v0.44.1` 再下载一次，四件文件与本地上传原件逐字节一致。每份 sidecar 的文件名和 ZIP 摘要均与实算、GitHub API 和 Release 正文一致。
+
+| 附件 | 字节数 | GitHub API digest | 下载后实算 SHA256 |
+| --- | ---: | --- | --- |
+| `MCP_CREO_MechDog-0.44.1-source.zip` | 12,257,168 | `sha256:61e2561a8d0166bace9abdb64a92cf197556382805c7d0d582ece470978c6c67` | `61e2561a8d0166bace9abdb64a92cf197556382805c7d0d582ece470978c6c67` |
+| `MCP_CREO_MechDog-0.44.1-source.zip.sha256` | 101 | `sha256:7f25cdd4aca75ebdfc77d3fc5179231e3b68ca9b3e71685b10e1cd21d9178e5d` | `7f25cdd4aca75ebdfc77d3fc5179231e3b68ca9b3e71685b10e1cd21d9178e5d` |
+| `MCP_CREO_MechDog-0.44.1-seed-library.zip` | 493,442 | `sha256:491a80535bec356b99610e5805c9006cb5bf1633f150cd91c99b61768f6a1474` | `491a80535bec356b99610e5805c9006cb5bf1633f150cd91c99b61768f6a1474` |
+| `MCP_CREO_MechDog-0.44.1-seed-library.zip.sha256` | 107 | `sha256:b2f7b814c660c093e4c925a03de4fc18e8f9dfc2bda0fdd33f64160d24f44dbf` | `b2f7b814c660c093e4c925a03de4fc18e8f9dfc2bda0fdd33f64160d24f44dbf` |
+
+- 候选提交的 `bridge.py build` 和 `tools/dev_check.py --work-item BUG-036 --skip-unit` 通过。Creo 10.0.0.0（release 42）复跑 23 个作业，21 个成功、两个按预期拒绝并确认回滚。无效引用作业为 `f974ea7811f54434a2d6d849891c1bef`，矛盾平面配合作业为 `9f88ce285e694d80a64754cfdcb6b1ed`。T09 实施验收记录的三个受影响原生文件指纹与候选一致。
+- Windows x64 / Python 3.12.10，以 `PYTHONUTF8=1` 执行 `tools/test_unit.py`。干净候选运行 4,525 项、7 跳过、0 失败、0 错误，`run_id=1252fdd43a464a2ebc0ee3778e89a848`，源码指纹 `7a5537838e6c0b7e92b1247b2a58e9abc1f27ab74348587f9f2c0502bbae651b`。实际源码 ZIP 解包，在独立环境 editable 安装、`pip check` 及 `tools/test_mcp.py --offline` 通过，报告 111 个工具。解包全量单测同为 4,525 项、9 跳过、0 失败、0 错误，`run_id=4363671d6dc944d0b8a73613c6f37e3b`，`git_status=unavailable`，源码指纹 `8ab80068516051c4deab5350f5faf5386dc010919f9773d18101969096294e30`。
+- 与校验了正式源码包 SHA256 的 v0.44.0 对比，`native/third_party/json.hpp`、第三方许可和 23 个种子包非版本清单文件逐字节一致。相同 SDK/ABI 下 `sha256-repo-lf-v1` 的 loader 指纹 `cef31b4febf914c4803df314aeafc146faccf8811a3bcfc532a8f1f3fbe076b3` 和 callback 指纹 `36dc5b958304505b4899c7e8a530beb9d228c26192fdeb92320f8512c059363d` 两版一致。候选本机 loader SHA256 为 `07bfa359365f5ba058a62a60ecba0a3cdaed88d2c7cab99d20ca2d76b8d24017`，callback 为 `37e5e40e63e6072963094afcc425c9a654d36161f8627bb36940767376d0dc64`，worker 为 `2397c5e2b4698265788f6b8437e5c4e230eaffdd43a93961a9b106b142a0abe8`。前版源码 ZIP 无二进制，前版实际运行 worker 摘要未确认。安装脚本一致，本机注册入口继续为 `build/blend_callback_protk.dat`，其 SHA256 为 `8229806bb4f67ac566acdeacb28be03b1eb16144311ee379fdbbfcea093448b5`。升级后重启 MCP 连接器以加载修复。
+- [BUG-036 工作卡](../work-items/BUG-036.md)、[主台账](../BACKLOG.md)、[版本说明](../RELEASE_NOTES_0.44.1.md) 与 [开发入口](../DEVELOPMENT.md) 已按远端 Release 逐项复核。状态仍为「已有修复但待验收」，交付版本 0.44.1。外部 Creo 9 原案、Creo 12.4 和 WorkBuddy 黑盒仍待复验。
+
 ## v0.44.0（2026-11-24，打包时点）
 
 - 交付 [BUG-186](../work-items/BUG-186.md)、[FEAT-084](../work-items/FEAT-084.md)、[FEAT-085](../work-items/FEAT-085.md)、[BUG-187](../work-items/BUG-187.md)、[BUG-188](../work-items/BUG-188.md)、[BUG-189](../work-items/BUG-189.md)、[BUG-190](../work-items/BUG-190.md)、[FEAT-088](../work-items/FEAT-088.md)、[FEAT-089](../work-items/FEAT-089.md) 及 [DEV-100](../work-items/DEV-100.md)/[BUG-130](../work-items/BUG-130.md) 补项。环境为 Windows x64 / Python 3.12.10 / Creo 10.0.0.0（release 42）。[版本说明](../RELEASE_NOTES_0.44.0.md) · [发布记录](../validation/RELEASE-0.44.0.md)
