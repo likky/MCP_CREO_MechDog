@@ -14,37 +14,22 @@ static J profile_dimensioning_choice(const J &op) {
         return choice(requested, "explicit");
     if (!op.value("dimensions", J::array()).empty() || !op.value("constraints", J::array()).empty())
         return choice("autodim", "supplied_dimensions_or_constraints");
-    double extent = 0;
-    int count = 0;
-    for (auto e : op.at("entities")) {
-        std::string type = e.at("type");
+    for (const auto &e : op.at("entities")) {
+        const auto &type = e.at("type").get_ref<const std::string &>();
         if (type != "line" && type != "centerline" && type != "rectangle" && type != "polyline" &&
-            type != "circle" && type != "arc")
+            type != "circle" && type != "arc" && type != "b_spline")
             return choice("autodim", "unsupported_coordinate_entity");
-        count += type == "rectangle" ? 4
-                 : type == "polyline"
-                     ? (int)e["points"].size() - 1 + (e.value("closed", false) ? 1 : 0)
-                     : 1;
-        for (auto key : {"start", "end", "min", "max", "center"})
-            if (e.contains(key))
-                for (auto value : e[key])
-                    extent = std::max(extent, fabs(value.get<double>()));
-        if (e.contains("points"))
-            for (auto point : e["points"])
-                for (auto value : point)
-                    extent = std::max(extent, fabs(value.get<double>()));
-        if (e.contains("radius"))
-            extent = std::max(extent, e["radius"].get<double>());
     }
-    if (count >= 10)
-        return choice("coordinates", "entity_count");
-    if (extent > 1000)
-        return choice("coordinates", "extent");
-    return choice("autodim", "small_profile");
+    return choice("coordinates", "unconstrained_coordinate_profile");
 }
-static std::string profile_dimensioning(const J &op) {
-    return profile_dimensioning_choice(op).at("used").get<std::string>();
-}
+
+static constexpr double DEFAULT_COORDINATE_TOLERANCE_MM = 1e-5;
+struct DeviationPolicy {
+    double tolerance;
+    bool enforce;
+    const char *source;
+    bool strict_position;
+};
 // BUG-108: the coordinate-system entity carries no position constraint of its
 // own, so a solve may translate it, and the whole profile with it. Pin it
 // against the projected reference lines when both section axes are covered; a
@@ -325,7 +310,8 @@ static J coordinate_dimensions(ProSection section, int origin,
 static constexpr double RIGID_TRANSLATION_LIMIT_MM = 0.01;
 
 static J verify_coordinate_plan(ProSection section, const J &targets, int origin,
-                                double tolerance_mm = 0.00001) {
+                                const DeviationPolicy &policy) {
+    const double tolerance_mm = policy.tolerance;
     double deviation = 0;
     int points = 0;
     // BUG-108: per-point (du,dv) offsets feed the rigid/common-mode verdict.
@@ -471,7 +457,8 @@ static J verify_coordinate_plan(ProSection section, const J &targets, int origin
     else if (shifted)
         log("SKETCH_SHIFT_DEFORMED max=%.12f residual=%.12f\n", max_point, residual);
     const double translation = rigid ? hypot(mean_u, mean_v) : 0.0;
-    const bool rigid_accepted = rigid && translation <= RIGID_TRANSLATION_LIMIT_MM;
+    const bool rigid_accepted =
+        !policy.strict_position && rigid && translation <= RIGID_TRANSLATION_LIMIT_MM;
     J shift = {{"detected", shifted},
                {"rigid", shifted ? J(rigid) : J(nullptr)},
                {"translation_mm", rigid ? J{{"u", mean_u}, {"v", mean_v}} : J(nullptr)},
@@ -484,7 +471,9 @@ static J verify_coordinate_plan(ProSection section, const J &targets, int origin
                {"sample", shift_sample},
                {"truncated", shift_truncated},
                {"measurement_scope", "named_section_entities"}};
-    if (deviation > tolerance_mm && !rigid_accepted) {
+    // Automatic coordinate mode enforces both measured stages together and
+    // publishes their evidence before refusing the transaction.
+    if (!policy.strict_position && deviation > tolerance_mm && !rigid_accepted) {
         std::string message =
             "Coordinate dimensioning changed the supplied geometry; maximum deviation mm=" +
             std::to_string(deviation);
@@ -503,7 +492,7 @@ static J verify_coordinate_plan(ProSection section, const J &targets, int origin
         }
         throw std::runtime_error(message);
     }
-    if (deviation > tolerance_mm)
+    if (deviation > tolerance_mm && rigid_accepted)
         log("GEOMETRY_DEVIATION_RIGID_ACCEPTED stage=section_regenerate translation=%.12f "
             "residual=%.12f tolerance=%.12f\n",
             translation, residual, tolerance_mm);
@@ -521,7 +510,7 @@ static J verify_coordinate_plan(ProSection section, const J &targets, int origin
 // BUG-108: the public top-level verdict for one sketch record. Measurement stays
 // in verify_coordinate_plan; this adds only the policy context, so a caller can
 // see that an explicit request tolerance is what let a moved sketch through.
-static J sketch_shift_block(const J &verification, const char *tolerance_source) {
+static J sketch_shift_block(const J &verification, const DeviationPolicy &policy) {
     J shift = verification.is_object() && verification.contains("shift")
                   ? verification["shift"]
                   : J{{"detected", nullptr},           {"rigid", nullptr},
@@ -532,8 +521,13 @@ static J sketch_shift_block(const J &verification, const char *tolerance_source)
                       {"measurement_scope", nullptr}};
     const bool detected = shift["detected"].is_boolean() && shift["detected"].get<bool>();
     const bool rigid = shift["rigid"].is_boolean() && shift["rigid"].get<bool>();
-    const std::string source = tolerance_source ? tolerance_source : "";
-    const bool accepted = detected && rigid && source == "request";
+    const std::string source = policy.source;
+    const double deviation =
+        verification.is_object() ? verification.value("max_deviation_mm", 0.0) : 0.0;
+    const bool accepted =
+        detected && rigid && source == "request" &&
+        (!policy.strict_position ||
+         (deviation > DEFAULT_COORDINATE_TOLERANCE_MM && deviation <= policy.tolerance));
     // BUG-108/R13: a rigid move inside the translation limit is accepted as a
     // rigid move, independent of whether an explicit request tolerance was set.
     double magnitude = 0;
@@ -542,7 +536,7 @@ static J sketch_shift_block(const J &verification, const char *tolerance_source)
         double v = shift["translation_mm"]["v"].get<double>();
         magnitude = hypot(u, v);
     }
-    const bool accepted_rigid = detected && rigid && magnitude <= RIGID_TRANSLATION_LIMIT_MM;
+    const bool accepted_rigid = shift.value("accepted_rigid", false);
     shift["total"] = shift.contains("point_count") ? shift["point_count"] : J(nullptr);
     shift["tolerance_source"] = source.empty() ? J(nullptr) : J(source);
     shift["accepted_by_request"] = accepted;
@@ -559,8 +553,7 @@ static J sketch_shift_block(const J &verification, const char *tolerance_source)
             "the solved profile translated as a rigid body; the move was accepted as a rigid "
             "translation, the shape itself was not re-solved";
     else if (rigid)
-        shift["note"] =
-            "the solved profile translated as a rigid body, beyond the rigid translation limit";
+        shift["note"] = "the solved profile translated as a rigid body";
     else
         shift["note"] = "the solved profile deformed; per-point deviations differ";
     return shift;
@@ -687,7 +680,8 @@ static J unavailable_deviation_stage(const std::string &reason) {
             {"truncated", false},
             {"unavailable_reason", reason}};
 }
-static J geometry_deviation_stage(ProSection section, const J &targets) {
+static J geometry_deviation_stage(ProSection section, const J &targets,
+                                  const DeviationPolicy &policy) {
     J sample = J::array();
     bool truncated = false, any_measured = false;
     double worst = 0;
@@ -921,9 +915,10 @@ static J geometry_deviation_stage(ProSection section, const J &targets) {
     if (any_measured)
         log("GEOMETRY_STAGE_SHAPE points=%d translation=%.12f shape=%.12f rigid=%d total=%d\n",
             (int)offsets.size(), translation, shape, rigid ? 1 : 0, total);
+    const bool available = any_measured && (!policy.strict_position || everything_measured);
     return {
-        {"available", any_measured},
-        {"max_deviation_mm", any_measured ? J(worst) : J(nullptr)},
+        {"available", available},
+        {"max_deviation_mm", available ? J(worst) : J(nullptr)},
         {"shape_deviation_mm", any_measured ? J(shape) : J(nullptr)},
         {"residual_mm", any_measured ? J(residual) : J(nullptr)},
         {"rigid", any_measured ? J(rigid) : J(nullptr)},
@@ -934,9 +929,9 @@ static J geometry_deviation_stage(ProSection section, const J &targets) {
         {"sample", sample},
         {"truncated", truncated},
         {"unavailable_reason",
-         any_measured
+         available
              ? J(nullptr)
-             : J(failure.empty() ? "no measurable entities in the target snapshot" : failure)}};
+             : J(failure.empty() ? "the target geometry could not be fully measured" : failure)}};
 }
 
 // Merges both verification points into the published geometry_deviation
@@ -1045,14 +1040,11 @@ static J geometry_deviation_report(const J &regenerate_stage, const J &feature_s
 // Resolves the FEAT-010/BUG-049 tolerance policy for one sketch operation.
 // An explicit request value is validated (finite, strictly positive, no
 // bool/NaN/Inf) and enforced as a hard cap in any mode; the coordinates
-// default keeps the current 1e-5 mm rejection gate; other modes stay
-// creatable and warn above 1e-3 mm.
-struct DeviationPolicy {
-    double tolerance;
-    bool enforce;
-    const char *source;
-};
+// default uses 1e-5 mm. Automatic coordinate mode checks absolute positions.
+// The explicit coordinates path retains its rigid-translation policy.
 static DeviationPolicy resolve_geometry_tolerance(const J &op, const std::string &mode) {
+    const bool strict_position =
+        mode == "coordinates" && op.value("dimensioning", "auto") == "auto";
     auto it = op.find("geometry_tolerance_mm");
     if (it != op.end() && !it->is_null()) {
         if (!it->is_number())
@@ -1062,11 +1054,11 @@ static DeviationPolicy resolve_geometry_tolerance(const J &op, const std::string
         if (!std::isfinite(value) || value <= 0)
             throw std::runtime_error(
                 "geometry_tolerance_mm must be a finite positive number of millimeters");
-        return {value, true, "request"};
+        return {value, true, "request", strict_position};
     }
     if (mode == "coordinates")
-        return {0.00001, true, "default_coordinates"};
-    return {0.001, false, "default_autodim"};
+        return {DEFAULT_COORDINATE_TOLERANCE_MM, true, "default_coordinates", strict_position};
+    return {0.001, false, "default_autodim", false};
 }
 
 // Applies the policy to the merged report. An enforced policy is a strict
@@ -1074,19 +1066,27 @@ static DeviationPolicy resolve_geometry_tolerance(const J &op, const std::string
 // silent pass. BUG-108/R13: a provable rigid translation inside the limit is
 // the one documented exception — the profile was moved, not re-solved, so the
 // shape gate (shape deviation, not point displacement) still has to pass.
-static void enforce_geometry_deviation(const J &report, const char *context) {
+static void enforce_geometry_deviation(const J &report, const DeviationPolicy &policy,
+                                       const char *context) {
     if (!report["enforced"].get<bool>())
         return;
     double tolerance = report["warning_threshold_mm"].get<double>();
-    const bool accepted_rigid =
-        report["accepted_rigid"].is_boolean() && report["accepted_rigid"].get<bool>();
+    const bool accepted_rigid = !policy.strict_position && report["accepted_rigid"].is_boolean() &&
+                                report["accepted_rigid"].get<bool>();
+    auto reject = [&](const std::string &message) {
+        if (policy.strict_position) {
+            J staged = has_staged_operation_result ? staged_operation_result : J::object();
+            staged["geometry_deviation"] = report;
+            stage_operation_result(staged);
+        }
+        throw std::runtime_error(message);
+    };
     for (const char *name : {"section_regenerate", "complete_feature"}) {
         const J &stage = report["stages"][name];
         if (!stage["available"].get<bool>())
-            throw std::runtime_error(
-                std::string(context) +
-                ": the requested geometry tolerance requires measurable geometry; " +
-                stage["unavailable_reason"].get<std::string>());
+            reject(std::string(context) +
+                   ": the requested geometry tolerance requires measurable geometry; " +
+                   stage["unavailable_reason"].get<std::string>());
         if (stage["max_deviation_mm"].get<double>() > tolerance) {
             const bool stage_rigid = stage["rigid"].is_boolean() && stage["rigid"].get<bool>();
             const bool shape_ok = stage["shape_deviation_mm"].is_number() &&
@@ -1103,7 +1103,7 @@ static void enforce_geometry_deviation(const J &report, const char *context) {
                 stage["max_deviation_mm"].get<double>(), tolerance);
             std::string message = std::string(context) +
                                   " changed the supplied geometry; maximum deviation mm=" +
-                                  std::to_string(stage["max_deviation_mm"].get<double>());
+                                  stage["max_deviation_mm"].dump();
             // DEV-089 T7: a failure receipt has to say which stage failed, how
             // much of the deviation was shape rather than rigid motion, and
             // which effective threshold rejected it. The values are reported as
@@ -1117,15 +1117,15 @@ static void enforce_geometry_deviation(const J &report, const char *context) {
             if (stage["translation_magnitude_mm"].is_number())
                 message += ", translation_mm=" +
                            std::to_string(stage["translation_magnitude_mm"].get<double>());
-            message += ", effective_tolerance_mm=" + std::to_string(tolerance) +
+            message += ", effective_tolerance_mm=" + J(tolerance).dump() +
                        ", tolerance_source=" + report.value("tolerance_source", "unknown") +
                        ", enforced=true";
-            if (stage_rigid)
+            if (stage_rigid && !policy.strict_position)
                 message += " (the whole profile translated as a rigid body by " +
                            std::to_string(stage["translation_magnitude_mm"].get<double>()) +
                            " mm, beyond the rigid translation limit of " +
                            std::to_string(RIGID_TRANSLATION_LIMIT_MM) + " mm)";
-            throw std::runtime_error(message);
+            reject(message);
         }
     }
 }

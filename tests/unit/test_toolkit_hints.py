@@ -21,13 +21,13 @@ def probe(code, connected=False, state="connection_failed", exit_code=20):
 
 class HintTests(unittest.TestCase):
     def test_hints_name_the_observed_condition_without_local_paths(self):
-        bad_context = bridge.toolkit_hint({"toolkit_code": -4, "worker_exit_code": 20})
+        not_found = bridge.toolkit_hint({"toolkit_code": -4, "worker_exit_code": 20})
         busy = bridge.toolkit_hint({"toolkit_code": -38, "worker_exit_code": 20})
-        self.assertIn("PRO_TK_BAD_CONTEXT", bad_context)
-        self.assertIn("not a license", bad_context)
+        self.assertIn("PRO_TK_E_NOT_FOUND", not_found)
+        self.assertIn("PRO_TK_BAD_CONTEXT", bridge.toolkit_hint({"toolkit_code": -8}))
         self.assertIn("modal dialog", busy)
         self.assertIn("exit 20", busy)
-        for text in (bad_context, busy):
+        for text in (not_found, busy):
             self.assertNotIn(":\\", text)
 
     def test_unknown_code_and_success_are_described(self):
@@ -53,13 +53,19 @@ class LaunchModeTests(unittest.TestCase):
 
 
 class SessionStatusTests(unittest.TestCase):
-    def run_status(self, mode, direct, desktop):
+    def run_status(self, mode, direct, desktop, *, deadline=None):
         with (
             patch.object(bridge, "worker_launch_mode", return_value=mode),
             patch.object(
                 bridge, "toolkit_lock", side_effect=lambda **kwargs: contextlib.nullcontext()
             ),
             patch.object(bridge, "build_native", return_value=WORKER),
+            patch.object(bridge, "worker_build_identity", return_value={}),
+            patch.object(
+                bridge,
+                "record_channel_health",
+                side_effect=lambda connected, **fields: {"connected": connected, **fields},
+            ),
             patch.object(bridge, "native_environment", return_value={"PATH": "x"}),
             patch.object(bridge.subprocess, "run", return_value=direct) as run,
             patch.object(
@@ -69,7 +75,7 @@ class SessionStatusTests(unittest.TestCase):
                 return_value=desktop,
             ) as desktop_run,
         ):
-            value = bridge.session_status(2)
+            value = bridge.session_status(2, deadline=deadline)
         return value, run, desktop_run
 
     def test_direct_mode_never_uses_the_desktop(self):
@@ -78,11 +84,11 @@ class SessionStatusTests(unittest.TestCase):
         )
         self.assertEqual(value["worker_launch"], "direct")
         self.assertEqual(value["toolkit_code"], -4)
-        self.assertIn("PRO_TK_BAD_CONTEXT", value["toolkit_hint"])
+        self.assertIn("PRO_TK_E_NOT_FOUND", value["toolkit_hint"])
         desktop_run.assert_not_called()
         self.assertEqual(run.call_count, 1)
 
-    def test_auto_mode_retries_through_the_desktop_after_bad_context(self):
+    def test_auto_mode_retries_through_the_desktop_when_session_not_found(self):
         value, _, desktop_run = self.run_status("auto", probe(-4), probe(0, True, "connected", 0))
         self.assertEqual(value["worker_launch"], "desktop")
         self.assertTrue(value["connected"])
@@ -97,10 +103,31 @@ class SessionStatusTests(unittest.TestCase):
         self.assertEqual(value["desktop_retry_reason"], "Explorer unavailable")
         self.assertEqual(desktop_run.call_count, 1)
 
-    def test_desktop_result_that_is_still_bad_context_is_reported_but_not_adopted(self):
+    def test_desktop_result_that_is_still_not_found_is_reported_but_not_adopted(self):
         value, _, _ = self.run_status("auto", probe(-4), probe(-4))
         self.assertEqual(value["worker_launch"], "direct")
         self.assertEqual(value["desktop_retry"]["toolkit_code"], -4)
+
+    def test_desktop_fallback_gets_only_the_unused_startup_budget(self):
+        with patch.object(bridge, "time", wraps=bridge.time) as fake_time:
+            fake_time.monotonic.side_effect = [100, 103.5]
+            value, run, desktop_run = self.run_status(
+                "auto", probe(-4), probe(0, True, "connected", 0), deadline=104
+            )
+        self.assertTrue(value["connected"])
+        self.assertEqual(run.call_args.kwargs["timeout"], 4)
+        self.assertEqual(desktop_run.call_args.args[3], 0.5)
+        self.assertEqual(desktop_run.call_args.args[0][-1], "1")
+
+    def test_desktop_fallback_is_skipped_if_direct_uses_the_deadline(self):
+        with patch.object(bridge, "time", wraps=bridge.time) as fake_time:
+            fake_time.monotonic.side_effect = [100, 104]
+            value, run, desktop_run = self.run_status(
+                "auto", probe(-4), probe(0, True, "connected", 0), deadline=104
+            )
+        self.assertEqual(value["toolkit_code"], -4)
+        self.assertEqual(run.call_args.kwargs["timeout"], 4)
+        desktop_run.assert_not_called()
 
     def test_other_failures_do_not_trigger_a_desktop_attempt(self):
         value, _, desktop_run = self.run_status("auto", probe(-38), probe(0, True, "connected", 0))

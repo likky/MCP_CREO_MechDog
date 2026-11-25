@@ -95,6 +95,8 @@ class Feat078InspectAreaBboxAndMergedCountsTests(unittest.TestCase):
                 "max": [10.0, 10.0, 150.0],
                 "size": [20.0, 20.0, 150.0],
             },
+            "bounding_box_source": "solid_face_tessellation",
+            "bounding_box_status": {"state": "measured", "target_chord_height_mm": 0.001},
             "surfaces": [
                 {"id": 1, "type": 34, "normal": [0, 0, 1], "origin": [0, 0, 0]},
                 {"id": 2, "type": 34, "normal": [0, 0, 1], "origin": [0, 0, 150]},
@@ -152,6 +154,8 @@ class Feat078InspectAreaBboxAndMergedCountsTests(unittest.TestCase):
         summary = model_queries.inspection_summary(raw_inspection)
         self.assertEqual(summary["total_surface_area_mm2"], 4567.8)
         self.assertEqual(summary["bounding_box_mm"]["size"], [20.0, 20.0, 150.0])
+        self.assertEqual(summary["bounding_box_source"], raw_inspection["bounding_box_source"])
+        self.assertEqual(summary["bounding_box_status"], raw_inspection["bounding_box_status"])
         self.assertEqual(summary["counts"]["surfaces"], 5)
         self.assertEqual(summary["counts"]["edges"], 3)
         self.assertEqual(summary["merged_counts"]["surfaces"], 4)
@@ -160,10 +164,31 @@ class Feat078InspectAreaBboxAndMergedCountsTests(unittest.TestCase):
         self.assertEqual(summary["merged_counts"]["circular_edge_groups"], 1)
         self.assertIn("2 half-cylinders", summary["counts_convention"])
 
-    def test_native_inspection_exposes_surface_area_and_outline(self):
+    def test_saved_legacy_outline_is_identified_in_compact_and_full_views(self):
+        outline = {"min": [0, 0, -0.5], "max": [40, 20, 5.5], "size": [40, 20, 6]}
+        stored = {"bounding_box_mm": outline}
+        model = {
+            "model_id": "a" * 32,
+            "revision": 1,
+            "inspection": stored,
+            "inspection_summary": stored,
+        }
+        for detail in ("compact", "full"):
+            with self.subTest(detail=detail):
+                state = model_queries.inspect_page(model, detail=detail)["inspection"]
+                self.assertIsNone(state["bounding_box_mm"])
+                self.assertEqual(state["legacy_regeneration_outline_mm"], outline)
+                self.assertEqual(state["bounding_box_status"]["reason"], "legacy_snapshot")
+        self.assertEqual(stored, {"bounding_box_mm": outline})
+
+    def test_native_inspection_uses_material_faces_for_the_model_box(self):
         src = (ROOT / "native" / "generic.cpp").read_text(encoding="utf-8")
+        bounds = (ROOT / "native" / "solid_bounds.h").read_text(encoding="utf-8")
         self.assertIn("ProSurfaceAreaEval(surface", src)
-        self.assertIn("ProSolidOutlineGet((ProSolid)board, outline)", src)
+        self.assertIn("solid_bounds::inspect((ProSolid)board, isasm, length_scale, result)", src)
+        self.assertIn("ProSolidBodySurfaceVisit", bounds)
+        self.assertIn("ProSurfaceTessellationGet", bounds)
+        self.assertIn("ProAsmcomppathTrfGet", bounds)
         self.assertIn('"total_surface_area_mm2"', src)
         self.assertIn('"bounding_box_mm"', src)
         self.assertIn('"area_mm2"', src)

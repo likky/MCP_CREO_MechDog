@@ -199,13 +199,15 @@ class RevolveSketchPointsAndRadiansTests(unittest.TestCase):
             with self.subTest(op=op), self.assertRaises(ValueError):
                 validate_operations([op])
 
-    def test_sketch_tolerance_tool_descriptions_document_auto_split(self):
+    def test_sketch_tolerance_tool_descriptions_document_absolute_auto_cap(self):
         tools = {tool.name: tool for tool in asyncio.run(server.mcp.list_tools())}
         for name in ("creo_create_sketch", "creo_update_sketch_geometry"):
             desc = tools[name].input_schema["properties"]["geometry_tolerance_mm"]["description"]
             self.assertIn("autodim", desc)
-            self.assertIn("<10", desc)
-            self.assertIn(">=10", desc)
+            self.assertIn("Auto with coordinates", desc)
+            self.assertIn("absolute cap", desc)
+            self.assertIn("including translation", desc)
+            self.assertIn("1e-5 mm", desc)
             self.assertIn("enforced=true", desc)
 
 

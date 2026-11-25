@@ -428,6 +428,7 @@ FAILED_EVIDENCE_KEYS = (
     "failed_toolkit_call",
     "failed_operation",
     "cut_geometry_context",
+    "add_volume_check",
     "failed_loft_input",
     "failed_boundary_condition",
     "failed_reference_index",
@@ -500,6 +501,15 @@ def _status_core(record: dict[str, Any], *, failed: bool) -> dict[str, Any]:
         PROTECTED_OPERATION_KEYS + OUTCOME_OPERATION_KEYS + (FAILED_EVIDENCE_KEYS if failed else ())
     )
     core = {key: record[key] for key in keys if key in record}
+    if failed and "add_volume_check" in record:
+        for key in (
+            "volume_before_mm3",
+            "volume_after_mm3",
+            "material_delta_mm3",
+            "material_measurement",
+        ):
+            if key in record:
+                core[key] = record[key]
     placement = record.get("constraint_placement")
     if isinstance(placement, dict):
         core["constraint_placement"] = {

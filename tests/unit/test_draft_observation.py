@@ -37,7 +37,10 @@ def draft_record(**overrides) -> dict:
             "flip": True,
             "requested_flip": False,
             "effective_flip": True,
+            "direction_flip_code": -1,
             "angle_deg": 5.0,
+            "pull_vector": {"frame": "model", "source": "plane_normal", "vector": [0, 0, 1]},
+            "applied_pull_vector": [0, 0, -1],
         },
     }
     record.update(overrides)
@@ -81,12 +84,15 @@ class DraftProjectionTests(unittest.TestCase):
     def annotate(self, result: dict) -> dict:
         return operation_results.annotate_native_result(result, readonly=False, inputs=[])
 
-    def test_projection_passes_both_flip_fields_through(self):
+    def test_projection_passes_the_direction_receipt_through(self):
         result = self.annotate({"operations": [draft_record()]})
         geometry = result["operations"][0]["draft_geometry"]
         self.assertIs(geometry["requested_flip"], False)
         self.assertIs(geometry["effective_flip"], True)
         self.assertIs(geometry["flip"], True)
+        self.assertEqual(geometry["direction_flip_code"], -1)
+        self.assertEqual(geometry["pull_vector"]["vector"], [0, 0, 1])
+        self.assertEqual(geometry["applied_pull_vector"], [0, 0, -1])
 
     def test_projection_never_fabricates_the_effective_value(self):
         record = draft_record()

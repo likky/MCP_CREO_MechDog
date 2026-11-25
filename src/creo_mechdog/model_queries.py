@@ -51,7 +51,7 @@ def summary_of_model(model: dict[str, Any]) -> dict[str, Any]:
     # Deferred import: inspection_refs reads this module for the summary shape.
     from creo_mechdog.inspection_refs import summary_of
 
-    return summary_of(model)
+    return qualify_bounding_box(summary_of(model))
 
 
 def full_inspection_of_model(model: dict[str, Any]) -> dict[str, Any]:
@@ -59,7 +59,20 @@ def full_inspection_of_model(model: dict[str, Any]) -> dict[str, Any]:
     payload (BUG-076); both resolve here, tampered references refuse."""
     from creo_mechdog.inspection_refs import full_inspection
 
-    return full_inspection(model) or {}
+    return qualify_bounding_box(full_inspection(model) or {})
+
+
+def qualify_bounding_box(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Expose historical regeneration outlines under their own name in read views."""
+    if snapshot.get("bounding_box_mm") is None or "bounding_box_source" in snapshot:
+        return snapshot
+    return {
+        **snapshot,
+        "bounding_box_mm": None,
+        "bounding_box_source": "legacy_regeneration_outline",
+        "bounding_box_status": {"state": "unavailable", "reason": "legacy_snapshot"},
+        "legacy_regeneration_outline_mm": snapshot["bounding_box_mm"],
+    }
 
 
 def body_counts(value: Any) -> dict[str, Any] | None:
@@ -254,7 +267,7 @@ def inspection_summary(inspection: Any) -> dict[str, Any]:
     section (``bodies`` counts body objects, not material bodies). The native
     ``body_counts`` block is the separated view and is passed through as-is.
     """
-    state = inspection if isinstance(inspection, dict) else {}
+    state = qualify_bounding_box(inspection) if isinstance(inspection, dict) else {}
     supplied = state.get("counts") or {}
     counts = {}
     for key in COUNT_KEYS:
@@ -281,6 +294,9 @@ def inspection_summary(inspection: Any) -> dict[str, Any]:
                 "volume_query_code",
                 "total_surface_area_mm2",
                 "bounding_box_mm",
+                "bounding_box_source",
+                "bounding_box_status",
+                "legacy_regeneration_outline_mm",
                 "inspection_source",
                 "inspection_available",
                 "verified_feature_counts",
@@ -635,6 +651,11 @@ def inspect_page(
         # whole fast path must serve the same shape (T08 feature_state
         # precedent), so the two full shapes cannot disagree on labels.
         payload = whole.get("inspection")
+        if isinstance(payload, dict):
+            payload = qualify_bounding_box(payload)
+            whole["inspection"] = payload
+        if isinstance(whole.get("inspection_summary"), dict):
+            whole["inspection_summary"] = response["inspection"]
         if isinstance(payload, dict) and isinstance(payload.get("bodies"), list):
             payload = {**payload, "bodies": _body_records(payload["bodies"])}
             whole["inspection"] = payload

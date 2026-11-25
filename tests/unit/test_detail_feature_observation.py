@@ -60,6 +60,9 @@ def measured_operation(**overrides) -> dict:
             "neutral_plane": {"type": 54, "id": 627, "query_code": 0},
             "pull_direction": {"type": 54, "id": 627, "query_code": 0},
             "flip": True,
+            "requested_flip": True,
+            "effective_flip": True,
+            "direction_flip_code": -1,
             "angle_deg": 11.0,
             "pull_vector": {
                 "frame": "model",
@@ -67,6 +70,7 @@ def measured_operation(**overrides) -> dict:
                 "source": "plane_normal",
                 "query_code": 0,
             },
+            "applied_pull_vector": [0.0, -1.0, 0.0],
         },
         "reference_application": {
             "requested_set_count": 1,
@@ -163,11 +167,10 @@ class NativeSourceContractTests(unittest.TestCase):
         source = native_source("generic.cpp")
         self.assertIn("material_removed_mm3", source)
 
-    def test_python_projection_never_derives_material_geometry(self):
+    def test_python_projection_does_not_derive_detail_feature_readbacks(self):
         source = (
             Path(__file__).resolve().parents[2] / "src" / "creo_mechdog" / "operation_results.py"
         ).read_text(encoding="utf-8")
-        self.assertNotIn("material_delta", source)
         self.assertNotIn("draft_geometry", source)
         self.assertNotIn("reference_application", source)
 
@@ -298,6 +301,36 @@ class CompactFullPassThroughTests(unittest.TestCase):
         for key in OBSERVATION_KEYS:
             with self.subTest(key=key):
                 self.assertIn(key, projected)
+                self.assertEqual(projected[key], record[key])
+
+    def test_add_volume_failure_keeps_native_evidence_under_compact_budget(self):
+        record = {
+            "op": "extrude",
+            "index": 0,
+            "succeeded": False,
+            "execution_status": "failed",
+            "effect_status": "rolled_back",
+            "volume_before_mm3": 2004.0,
+            "volume_after_mm3": 206.0,
+            "material_delta_mm3": -1798.0,
+            "material_measurement": {
+                "status": "measured",
+                "before_query_code": 0,
+                "after_query_code": 0,
+            },
+            "add_volume_check": {
+                "status": "failed",
+                "reason": "add_reduced_volume",
+                "tolerance_mm3": 1e-6,
+            },
+            "metadata": {"long_note": "x" * 3000},
+        }
+        compact = bridge.compact_job({"result": {"operations": [copy.deepcopy(record)]}})
+        trimmed = operation_results.enforce_compact_budget(compact, budget=1200)
+        projected = trimmed["result"]["operations"][0]
+        self.assertNotIn("metadata", projected)
+        for key in (*MEASUREMENT_KEYS, "add_volume_check"):
+            with self.subTest(key=key):
                 self.assertEqual(projected[key], record[key])
 
     def test_compact_keeps_unknown_blocks_with_nulls(self):

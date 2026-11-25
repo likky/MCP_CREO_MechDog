@@ -1527,11 +1527,10 @@ WORKER_LAUNCH_MODES = ("auto", "direct", "desktop")
 TOOLKIT_HINTS = {
     0: "Toolkit connection verified",
     -4: (
-        "PRO_TK_BAD_CONTEXT: this worker process has no Toolkit context. That is a "
-        "worker process-context failure, not a license or Creo version problem; "
-        "compare creo_worker_launch modes before retrying"
+        "PRO_TK_E_NOT_FOUND: Toolkit could not find the requested Creo session or read "
+        "its registration. Check startup readiness and the configured session selection"
     ),
-    -8: "PRO_TK_E_NOT_FOUND: no current model is active; Creo itself is reachable",
+    -8: "PRO_TK_BAD_CONTEXT: this Toolkit call has no valid context",
     -36: "Multiple Creo sessions match; configure creo_session_id before retrying",
     -38: (
         "PRO_TK_E_BUSY: Creo's message loop is blocked, typically by a modal dialog "
@@ -1584,7 +1583,21 @@ def _desktop_probe(command: list[str], env: dict[str, str], budget: float, ident
     return _record_probe_result(result, worker_identity=identity)
 
 
-def session_status(connect_timeout_seconds: int = 30, *, build_worker: bool = True) -> dict:
+def _probe_timeout_result(budget: float) -> dict:
+    return record_channel_health(
+        False,
+        connection_state="probe_timeout",
+        toolkit_code=None,
+        probe_budget_seconds=budget,
+        message="Toolkit connection probe ran out of time. "
+        "Inspect Creo dialogs and occupying jobs; preserve unknown jobs/models, then "
+        "request creo_startup_status(retry=true). No Creo process was closed.",
+    )
+
+
+def session_status(
+    connect_timeout_seconds: int = 30, *, build_worker: bool = True, deadline: float | None = None
+) -> dict:
     if (
         isinstance(connect_timeout_seconds, bool)
         or not isinstance(connect_timeout_seconds, int)
@@ -1600,12 +1613,24 @@ def session_status(connect_timeout_seconds: int = 30, *, build_worker: bool = Tr
                 "connection_state": "worker_unavailable",
                 "message": "Native worker is unavailable; request creo_startup_status(retry=true)",
             }
-        budget = connect_timeout_seconds + min(connect_timeout_seconds, 15) + 5
-        command = [str(exe), "status", str(connect_timeout_seconds)]
+        default_budget = connect_timeout_seconds + min(connect_timeout_seconds, 15) + 5
+
+        def probe_limits() -> tuple[list[str], float]:
+            budget = (
+                default_budget
+                if deadline is None
+                else max(0.0, min(default_budget, deadline - time.monotonic()))
+            )
+            seconds = min(connect_timeout_seconds, max(1, math.ceil(budget)))
+            return [str(exe), "status", str(seconds)], budget
+
         env = native_environment()
         identity = worker_build_identity()
         value = None
         if mode != "desktop":
+            command, budget = probe_limits()
+            if not budget:
+                return _probe_timeout_result(budget)
             try:
                 result = subprocess.run(
                     command,
@@ -1616,15 +1641,7 @@ def session_status(connect_timeout_seconds: int = 30, *, build_worker: bool = Tr
                     creationflags=HIDDEN,
                 )
             except subprocess.TimeoutExpired:
-                return record_channel_health(
-                    False,
-                    connection_state="probe_timeout",
-                    toolkit_code=None,
-                    probe_budget_seconds=budget,
-                    message="Toolkit connection probe timed out; only this probe helper was stopped. "
-                    "Inspect Creo dialogs and occupying jobs; preserve unknown jobs/models, then "
-                    "request creo_startup_status(retry=true). No Creo process was closed.",
-                )
+                return _probe_timeout_result(budget)
             value = _record_probe_result(result, worker_identity=identity)
             value["worker_launch"] = "direct"
         # A worker that cannot see the Toolkit channel in this process tree can
@@ -1632,10 +1649,17 @@ def session_status(connect_timeout_seconds: int = 30, *, build_worker: bool = Tr
         if mode == "desktop" or (
             mode == "auto" and value is not None and value.get("toolkit_code") == -4
         ):
-            desktop = _desktop_probe(command, env, budget, identity)
+            command, budget = probe_limits()
+            desktop = (
+                _desktop_probe(command, env, budget, identity)
+                if budget
+                else {"desktop_error": "No startup probe budget remains"}
+            )
             if "desktop_error" in desktop:
                 reason = desktop["desktop_error"]
                 if value is None:
+                    if deadline is not None and time.monotonic() >= deadline:
+                        return _probe_timeout_result(budget)
                     return record_channel_health(
                         False,
                         connection_state="worker_unavailable",

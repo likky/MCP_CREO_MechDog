@@ -142,7 +142,7 @@ class GeometryToleranceValidation(unittest.TestCase):
 
     def test_native_coordinates_threshold_stays_synced(self):
         source = (ROOT / "native" / "sketch_coordinates.cpp").read_text(encoding="utf-8")
-        match = re.search(r"tolerance_mm = ([0-9.eE-]+)\)", source)
+        match = re.search(r"DEFAULT_COORDINATE_TOLERANCE_MM = ([0-9.eE-]+);", source)
         self.assertIsNotNone(match, "coordinates rejection threshold not found in native source")
         self.assertAlmostEqual(float(match.group(1)), COORDINATES_DEFAULT_TOLERANCE_MM)
 

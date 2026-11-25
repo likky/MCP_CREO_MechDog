@@ -23,6 +23,12 @@ CONNECTION_FAILED = {
     "connection_state": "connection_failed",
     "toolkit_code": -38,
 }
+SESSION_NOT_FOUND = {
+    "connected": False,
+    "connection_state": "not_found_or_unreadable",
+    "toolkit_code": -4,
+    "worker_exit_code": 20,
+}
 
 
 class Bug139StartupFixture(unittest.TestCase):
@@ -77,7 +83,9 @@ class Bug139ConfigurableBudget(Bug139StartupFixture):
         self.fixture.config["creo_probe_timeout_seconds"] = 23
         self.fixture.inventory.return_value = self.fixture.existing()
         self.drive()
-        self.fixture.probe.assert_called_once_with(connect_timeout_seconds=23, build_worker=False)
+        self.fixture.probe.assert_called_once_with(
+            connect_timeout_seconds=23, build_worker=False, deadline=10
+        )
 
     def test_default_probe_timeout_is_at_least_ten(self):
         self.fixture.config.pop("creo_probe_timeout_seconds", None)
@@ -128,6 +136,40 @@ class Bug139ConfigurableBudget(Bug139StartupFixture):
 
 
 class Bug139ProbeLanding(Bug139StartupFixture):
+    def test_not_found_stays_pending_and_keeps_raw_evidence_until_success(self):
+        self.fixture.inventory.return_value = self.fixture.existing()
+
+        def second_probe(**kwargs):
+            waiting = self.startup.status()
+            self.assertEqual(waiting["state"], "waiting_for_connection")
+            self.assertEqual(waiting["diagnosis"], "session_not_ready")
+            self.assertEqual(waiting["native"], SESSION_NOT_FOUND)
+            self.assertEqual(kwargs["deadline"], 10)
+            return startup_tests.READY
+
+        probes = iter([lambda **_: SESSION_NOT_FOUND, second_probe])
+        self.fixture.probe.side_effect = lambda **kwargs: next(probes)(**kwargs)
+        result = self.drive()
+        self.assertEqual(result["state"], "ready")
+        self.assertEqual(result["probe_attempts"], 2)
+        self.assertNotIn("diagnosis", result)
+        self.fixture.launch.assert_not_called()
+
+    def test_a_single_lookup_failure_at_deadline_does_not_diagnose_stale_session(self):
+        self.fixture.inventory.return_value = self.fixture.existing()
+
+        def last_probe(**kwargs):
+            self.clock.elapsed = kwargs["deadline"]
+            return SESSION_NOT_FOUND
+
+        self.fixture.probe.side_effect = last_probe
+        result = self.drive()
+        self.assertEqual(result["state"], "timeout")
+        self.assertNotEqual(result.get("diagnosis"), "stale_session_needs_restart")
+        self.assertEqual(result["native"], SESSION_NOT_FOUND)
+        self.assertEqual(result["probe_attempts"], 1)
+        self.fixture.launch.assert_not_called()
+
     def test_connected_probe_right_before_deadline_lands_ready(self):
         """A probe that succeeds only after the clock passed the deadline must
         still publish ready, not timeout (BUG-139 success-landing race)."""

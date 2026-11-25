@@ -226,16 +226,20 @@ static J draft_pull_vector_json(ProElement element, ProError code) {
     }
     return block;
 }
-// BUG-102: `flip` is the value the feature tree ended up with, so echoing only
-// that left a caller unable to tell a requested false from an applied true.
-// `requested_flip` is the caller's own value and `effective_flip` is the tree
-// readback; neither is derived from the other and an unreadable tree keeps null.
+// BUG-102: the direction side is a signed Toolkit enum. Both valid values are
+// nonzero, so only AGAINST means the reference direction was reversed.
 static J draft_geometry_json(ProFeature &f, bool requested_flip) {
-    J block = {{"source", "unknown"},      {"query_code", nullptr},
-               {"neutral_plane", nullptr}, {"pull_direction", nullptr},
-               {"flip", nullptr},          {"angle_deg", nullptr},
-               {"pull_vector", nullptr},   {"requested_flip", requested_flip},
-               {"effective_flip", nullptr}};
+    J block = {{"source", "unknown"},
+               {"query_code", nullptr},
+               {"neutral_plane", nullptr},
+               {"pull_direction", nullptr},
+               {"flip", nullptr},
+               {"angle_deg", nullptr},
+               {"pull_vector", nullptr},
+               {"applied_pull_vector", nullptr},
+               {"requested_flip", requested_flip},
+               {"effective_flip", nullptr},
+               {"direction_flip_code", nullptr}};
     ProElement tree = nullptr;
     ProError code = ProFeatureElemtreeExtract(&f, nullptr, PRO_FEAT_EXTRACT_NO_OPTS, &tree);
     block["query_code"] = (int)code;
@@ -255,8 +259,21 @@ static J draft_geometry_json(ProFeature &f, bool requested_flip) {
     if (path_code == PRO_TK_NO_ERROR && flip) {
         int value = 0;
         if (!ProElementIntegerGet(flip, nullptr, &value)) {
-            block["flip"] = value != 0;
-            block["effective_flip"] = value != 0;
+            block["direction_flip_code"] = value;
+            if (value == PRO_DIRECTION_FLIP_ALONG || value == PRO_DIRECTION_FLIP_AGAINST) {
+                const bool reversed = value == PRO_DIRECTION_FLIP_AGAINST;
+                block["flip"] = reversed;
+                block["effective_flip"] = reversed;
+                const J &reference_vector = block["pull_vector"];
+                // A datum axis's line endpoints do not establish Creo's signed pull direction.
+                if (reference_vector["source"] == "plane_normal") {
+                    const J &vector = reference_vector["vector"];
+                    const double sign = reversed ? -1.0 : 1.0;
+                    block["applied_pull_vector"] = {sign * vector[0].get<double>(),
+                                                    sign * vector[1].get<double>(),
+                                                    sign * vector[2].get<double>()};
+                }
+            }
         }
     }
     ProElement angle = get_optional(tree, {PRO_E_DRAFT_SIDE_1, PRO_E_DRAFT_ANGLE_1}, &path_code);
@@ -324,7 +341,8 @@ static J generic_draft(const J &op) {
         resolve_field(pull_reference, explicit_pull ? "pull_direction" : "neutral_plane_for_pull");
     ref(direction, PRO_E_DIRECTION_REFERENCE, pull);
     ProSelectionFree(&pull);
-    integer(direction, PRO_E_DIRECTION_FLIP, op.value("flip", false) ? PRO_B_TRUE : PRO_B_FALSE);
+    integer(direction, PRO_E_DIRECTION_FLIP,
+            op.value("flip", false) ? PRO_DIRECTION_FLIP_AGAINST : PRO_DIRECTION_FLIP_ALONG);
     ProElement side = node(root, PRO_E_DRAFT_SIDE_1);
     integer(side, PRO_E_DRAFT_NEUTRAL_OBJECT_TYPE_1, PRO_DRAFT_UI_PLANE);
     ProSelection neutral = resolve_field(op["neutral_plane"], "neutral_plane");

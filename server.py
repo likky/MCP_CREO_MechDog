@@ -313,7 +313,7 @@ async def creo_check_environment() -> dict[str, Any]:
 
 @mcp.tool(annotations=READ)
 async def creo_session_status() -> dict[str, Any]:
-    """Check the configured/unique Creo session through Toolkit (9 second probe budget, no rebuild). Every return branch carries server_version. Busy returns its occupying job; probe_timeout returns recovery guidance. During startup return its snapshot promptly. connected=true requires verification; ambiguous/stale session selections never fall back to a random session. Includes a read-only creo_process_snapshot (pid/name/created_at/matches) so a failed probe can distinguish a dead IPC endpoint from an exited Creo process. session_health reuses this completed probe plus already recorded job results; it never adds a connection, save or session probe."""
+    """Check the configured/unique Creo session through Toolkit using the configured probe timeout, without rebuilding. Every return branch carries server_version. Busy returns its occupying job; probe_timeout returns recovery guidance. During startup return its snapshot promptly without starting another probe. connected=true requires verification; ambiguous/stale session selections never fall back to a random session. Includes a read-only creo_process_snapshot (pid/name/created_at/matches) so a failed probe can be interpreted alongside observed processes. Use creo_startup_status(retry=true) for a bounded recheck of an unconfirmed connection. session_health reuses this completed probe plus already recorded job results; it never adds a connection, save or session probe."""
     result = await invoke(startup.session_status)
     return {**result, "server_version": VERSION, "session_health": session_health()}
 
@@ -374,7 +374,7 @@ async def creo_startup_status(
     clear_session_id: bool = False,
     force_new_session: bool = False,
 ) -> dict[str, Any]:
-    """Read a background snapshot with verified_at, verification_age_seconds and stale. retry=true rechecks the channel within 180s preparation plus configured startup budget; overlapping retries share coordination. When an existing Creo process is running but unreachable after an upgrade/restart (toolkit_code=-4 / PRO_TK_BAD_CONTEXT), diagnosis='stale_session_needs_restart' and next_steps recommend closing the old Creo and retrying, or passing retry=true with force_new_session=true to launch a fresh Creo session without closing existing processes (BUG-170). session_id with retry=true selects the Creo session to connect to for this process (FEAT-072): it is validated by that connection, applies to every following worker, is never written to config.json, never survives a restart and is never replaced by another session when it is absent; clear_session_id=true with retry=true drops the selection and falls back to config.json. session_selection reports which source applies and its fingerprint (the raw id is never echoed); session_candidates lists the observed Creo processes as diagnostic_only (selectable_by_pid=false), because a Toolkit session id cannot be derived from a Windows PID. force_ready=true is an operator override that opens modeling admission despite a non-ready snapshot (sets force_ready/force_ready_at; verify Toolkit connectivity before modeling); force_ready=false clears it. Unreadable startup history can be archived/rebuilt only when it predates a verified Windows reboot, both recovery locks are held and no Creo session exists; startup_recovery identifies the backup. Same-boot/unverified history requires manual reconciliation. waiting_for_channel includes busy details. Never closes Creo, clears unknown job/model reservations or replays jobs. Poll until ready; inspect recovery guidance otherwise. session_health is a read-only evidence summary (unknown/suspected_damage/no_failure_observed) built from recorded save/connection results; it opens no connection, saves nothing and is not a health guarantee."""
+    """Read a background snapshot with verified_at, verification_age_seconds and stale. retry=true rechecks the channel within 180s preparation plus configured startup budget; overlapping retries share coordination. In automatic discovery, a running Creo process with toolkit_code=-4 (PRO_TK_E_NOT_FOUND) stays waiting_for_connection with diagnosis='session_not_ready' while the coordinator retries within the connection deadline. Repeated lookup failures for an existing session at the deadline report timeout and diagnosis='stale_session_needs_restart'. probe_attempts counts completed connection probes within that startup attempt. For persistent failure, next_steps include retry=true with force_new_session=true to explicitly launch a fresh session while preserving existing processes. session_id with retry=true selects the Creo session to connect to for this process (FEAT-072): it is validated by that connection, applies to every following worker, is never written to config.json, never survives a restart and is never replaced by another session when it is absent; clear_session_id=true with retry=true drops the selection and falls back to config.json. session_selection reports which source applies and its fingerprint (the raw id is never echoed); session_candidates lists the observed Creo processes as diagnostic_only (selectable_by_pid=false), because a Toolkit session id cannot be derived from a Windows PID. force_ready=true is an operator override that opens modeling admission despite a non-ready snapshot (sets force_ready/force_ready_at; verify Toolkit connectivity before modeling); force_ready=false clears it. Unreadable startup history can be archived/rebuilt only when it predates a verified Windows reboot, both recovery locks are held and no Creo session exists; startup_recovery identifies the backup. Same-boot/unverified history requires manual reconciliation. waiting_for_channel includes busy details. Never closes Creo, clears unknown job/model reservations or replays jobs. Poll until ready; inspect recovery guidance otherwise. session_health is a read-only evidence summary (unknown/suspected_damage/no_failure_observed) built from recorded save/connection results; it opens no connection, saves nothing and is not a health guarantee."""
     if force_ready and (session_id is not None or clear_session_id or force_new_session):
         raise ValueError(
             "session_id, clear_session_id and force_new_session control connection/launch "
@@ -1197,18 +1197,17 @@ async def creo_update_sketch_geometry(
         float | None,
         Field(
             description=(
-                "Optional hard post-solve deviation cap in mm. Enforced as a rejection gate "
-                "(enforced=true) in BOTH coordinates and autodim modes (including autodim "
-                "fallback). Omitting it keeps mode defaults: dimensioning='auto' picks "
-                "autodim for <10 entities (warn-only >1e-3 mm) and coordinates for >=10 "
-                "entities (hard reject >1e-5 mm); omit this field on small sketches if you "
-                "want autodim's warn-only default."
+                "Optional post-solve acceptance threshold in mm. Auto with coordinates enforces "
+                "an absolute cap (enforced=true), including translation. The default is 1e-5 mm. "
+                "Mode autodim enforces a supplied tolerance. Explicit coordinates retains its "
+                "documented rigid-translation allowance."
             )
         ),
     ] = None,
 ) -> dict[str, Any]:
-    """Replace native sketch geometry in place, preserving sketch feature ID. Expanded entity names/types must match; centerline entities are supported for revolve sketches. Clears old named dimensions/constraints. Arc and ellipse editing are experimental and need local validation. On any valid sketch plane, "auto" and "autodim" edits of supported entity types use exact coordinate dimensions (solver info reports requested vs used); "autodim" alone stays on its native route, where a failed edit rolls back cleanly.
-    geometry_deviation reports the post-solve fidelity at both verification points (SectionRegenerate and CompleteFeature): unavailable values are null with a reason, never zero. Omitting geometry_tolerance_mm keeps the mode default (coordinates rejects above 1e-5 mm, autodim warns above 1e-3 mm); an explicit positive value enforces that cap and rejects unmeasurable geometry. sketch_shifted states the post-solve movement at the top level (detected, rigid, translation_mm, max_point_mm, bounded sample); geometry_tolerance_mm is an acceptance threshold, not a solve precision, so accepted_by_request=true means an explicit tolerance let a moved sketch through and the solve was not exact. The solver receipt reports requested/used mode, selection_reason and individual solve/autodimension/regenerate codes; an initial solve error may recover, so use completed and the final operation outcome. Missing historical stages remain null."""
+    """Replace native sketch geometry in place, preserving the sketch feature ID. Expanded entity names/types must match. The replacement clears old named dimensions/constraints. Arc and ellipse editing need local validation.
+    On any valid sketch plane, auto selects coordinates for supported line, centerline, rectangle, polyline, circle and arc profiles. The default absolute deviation limit is 1e-5 mm, including rigid translation. A positive geometry_tolerance_mm sets that limit. Spline and ellipse use autodim. An explicit autodim edit may use the existing coordinate upgrade on compatible sections; the solver reports requested and used modes.
+    geometry_deviation reports both solver and completed-feature measurements. An identical geometry verified against its actual section can skip re-solving. Missing measurements carry a reason. The explicit coordinates mode retains its rigid-translation allowance. Failed replacement rolls back to the saved model."""
     return await invoke(
         general.submit,
         [
@@ -1390,12 +1389,10 @@ async def creo_create_sketch(
         float | None,
         Field(
             description=(
-                "Optional hard post-solve deviation cap in mm. Enforced as a rejection gate "
-                "(enforced=true) in BOTH coordinates and autodim modes (including autodim "
-                "fallback). Omitting it keeps mode defaults: dimensioning='auto' picks "
-                "autodim for <10 entities (warn-only >1e-3 mm) and coordinates for >=10 "
-                "entities (hard reject >1e-5 mm); omit this field on small sketches if you "
-                "want autodim's warn-only default."
+                "Optional post-solve acceptance threshold in mm. Auto with coordinates enforces "
+                "an absolute cap (enforced=true), including translation. The default is 1e-5 mm. "
+                "Mode autodim enforces a supplied tolerance. Explicit coordinates retains its "
+                "documented rigid-translation allowance."
             )
         ),
     ] = None,
@@ -1424,19 +1421,19 @@ async def creo_create_sketch(
     and offset; it does not create a new plane from the normal.
     For revolve include exactly one construction centerline, or supply an explicit external
     axis to creo_revolve: {kind:'datum_axis_feature',label:'axis_label'} or {kind:'axis',id:N}.
-    auto uses complete coordinate dimensions for large/complex supported profiles on
-    any valid sketch plane (principal or dictionary plane); coordinates forces that mode;
-    autodim retains native automatic dimensions. Coordinate mode supports
-    lines/polylines/rectangles/circles/arcs and cannot combine explicit dimensions/constraints.
+    On any valid sketch plane, auto selects coordinates for supported profiles without explicit
+    dimensions or constraints, including single circles and native B-splines. Spline, ellipse and explicitly dimensioned or
+    constrained profiles in auto use autodim. Explicit coordinates forces coordinate dimensioning.
     Centerlines are verified as infinite lines (direction and offset); skewed centerlines
     carry no endpoint dimensions.
     Multiple disjoint or nested closed loops are supported in one sketch. The result
     reports analytic input contour/entity counts and the solved native section counts;
     geometry_deviation reports the post-solve fidelity at both verification points
     (SectionRegenerate and CompleteFeature): unavailable values are null with a reason,
-    never zero. Omitting geometry_tolerance_mm keeps the mode default (coordinates
-    rejects above 1e-5 mm, autodim warns above 1e-3 mm); an explicit positive value
-    enforces that cap and rejects unmeasurable geometry.
+    never zero. Auto coordinates rejects missing measurements and absolute deviation above
+    1e-5 mm, including translation. A positive geometry_tolerance_mm sets that limit.
+    Explicit coordinates retains its rigid-translation allowance. Autodim warns above
+    1e-3 mm by default and enforces an explicitly supplied tolerance.
     sketch_shifted states the post-solve movement at the top level (detected, rigid,
     translation_mm, max_point_mm, bounded sample); geometry_tolerance_mm is an
     acceptance threshold, not a solve precision, so accepted_by_request=true means an
@@ -1754,6 +1751,11 @@ async def creo_datum_plane(
     {kind:'datum_axis_feature',label:'axis_label'} created earlier in the same model;
     a plane reference or datum_feature plane label is not a rotation axis. Missing
     kind and unknown labels are rejected before a job is dispatched.
+    angle is signed in degrees and follows the right-hand rule about the measured
+    axis direction. With a +Z axis, +54 rotates the RIGHT plane's +X normal toward
+    +Y. Reversing the axis reverses the rotation for the same signed angle. Read
+    datum_axes.direction and the saved datum_planes.normal/origin with
+    creo_inspect_model(detail='full'), selecting the corresponding section.
     The three-point form {kind:'through_points',points:[label_a,label_b,label_c]}
     takes exactly three distinct labels of single-point datum_points features created
     earlier in the same plan (submit the three datum_points operations and this plane
@@ -1761,7 +1763,7 @@ async def creo_datum_plane(
     nonzero offset, rejects repeated/nearly collinear/unresolvable points, and the
     external {thru_points:[...]} or {kind:'datum_point_feature',label:...} spellings
     are refused instead of being passed through - convert them to the through_points
-    form. The job result reports the created plane's read-back frame
+    form. The three-point job result reports the created plane's read-back frame
     (plane_frame.normal/origin) and verification evidence.
     """
     op = {
@@ -1993,18 +1995,20 @@ async def creo_draft(
 ) -> dict[str, Any]:
     """Create a native constant-angle, unsplit draft using selected surfaces and a neutral plane.
 
-    Pull direction defaults to the neutral plane normal; can use a datum plane or axis reference.
+    Pull direction defaults to the neutral plane normal and can use a datum plane or axis.
+    flip=false follows that reference direction and flip=true reverses it. The signed
+    angle is independent of flip. For an outside cylindrical boss with the neutral
+    plane at its base and pull toward its free end, a positive angle narrows that end.
     The result reports measured material evidence (volume_before_mm3,
     volume_after_mm3, material_delta_mm3 = after - before with
     material_measurement status/query codes; unestablished values are null), so
-    a flip that adds material is visible from the signed delta. draft_geometry
-    reads the created feature's own tree: actual neutral/pull references, flip,
-    angle and the reference's provable direction vector (plane normal or axis
-    direction; unreadable fields are null, no global taper verdict).
-    requested_flip echoes the argument you sent and effective_flip is the tree
-    readback, so a request that the kernel flipped is visible instead of
-    ambiguous; a failed create publishes draft_failure with the request, the
-    bounded element_errors sample and classification
+    material changes are visible from the signed delta. draft_geometry reads the
+    created feature tree. requested_flip echoes the argument, and effective_flip
+    (also flip) is true when the tree reverses the pull reference. The response
+    includes the signed angle and the reference pull_vector. For plane references,
+    applied_pull_vector gives the model-space direction after reversal. Unavailable
+    values are null. A failed create publishes draft_failure with the request,
+    the bounded element_errors sample and classification
     (kernel_element_error / no_element_evidence) plus a next action.
     reference_application separates requested_set_count from the tree-proven
     applied_set_count.
@@ -2915,6 +2919,11 @@ async def creo_inspect_model(
     ] = None,
 ) -> dict[str, Any]:
     """Read a saved verified snapshot, compact by default (identity/revision/status/volume/total_surface_area_mm2/bounding_box_mm/counts/merged_counts).
+
+    bounding_box_mm approximates the trimmed solid faces in the model or assembly frame.
+    bounding_box_source and bounding_box_status disclose the source and sampling target.
+    For older snapshots, legacy_regeneration_outline_mm carries the historical outline.
+    Query refresh_model for a new live bounding box or save_model to update the saved snapshot.
 
     Use detail=full for geometry; large snapshots return data grouped by section,
     complete=false and next_cursor. Repeat with the same detail/section and cursor.

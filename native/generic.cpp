@@ -8,6 +8,7 @@
 #include "axis_geometry.h"
 #include "assembly_units.h"
 #include "assembly_walk.h"
+#include "solid_bounds.h"
 #include "assembly_pose.h"
 #include "constraint_placement.h"
 #include "constraint_names.h"
@@ -1618,26 +1619,8 @@ static J inspection(bool require_healthy) {
             if (surface_area && std::isfinite(*surface_area) && *surface_area >= 0.0)
                 result["total_surface_area_mm2"] = *surface_area;
         }
-        if (inspect_mm_scale_known) {
-            Pro3dPnt outline[2] = {};
-            if (ProSolidOutlineGet((ProSolid)board, outline) == PRO_TK_NO_ERROR) {
-                double lo[3] = {outline[0][0] * inspect_mm_scale, outline[0][1] * inspect_mm_scale,
-                                outline[0][2] * inspect_mm_scale};
-                double hi[3] = {outline[1][0] * inspect_mm_scale, outline[1][1] * inspect_mm_scale,
-                                outline[1][2] * inspect_mm_scale};
-                bool finite_box = true;
-                for (int k = 0; k < 3; ++k)
-                    finite_box = finite_box && std::isfinite(lo[k]) && std::isfinite(hi[k]);
-                if (finite_box) {
-                    result["bounding_box_mm"] = {
-                        {"min", J::array({lo[0], lo[1], lo[2]})},
-                        {"max", J::array({hi[0], hi[1], hi[2]})},
-                        {"size", J::array({hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]})},
-                    };
-                }
-            }
-        }
     }
+    solid_bounds::inspect((ProSolid)board, isasm, length_scale, result);
     collect_datum_planes_quiet();
     J ds = J::array();
     for (auto p : planes)
@@ -3657,7 +3640,7 @@ static J sketch(J op) {
         deviation_targets = section_target_snapshot(section, entities);
     J solver_info = solve_profile(section, solving_op);
     solver_info["requested"] = op.value("dimensioning", "auto");
-    J deviation_regenerate = geometry_deviation_stage(section, deviation_targets);
+    J deviation_regenerate = geometry_deviation_stage(section, deviation_targets, deviation_policy);
     // FEAT-039/W01: the weld residual is read back while the solved section is
     // still the one the entities were written into.
     double weld_residual = -1.0;
@@ -3665,9 +3648,8 @@ static J sketch(J op) {
         weld_residual = endpoint_weld_residual(section, entities, weld_report);
     solver_info["section_location"] = section_location;
     if (!coordinate_plan.is_null())
-        solver_info["coordinate_geometry"] =
-            verify_coordinate_plan(section, coordinate_plan["targets"],
-                                   coordinate_plan["origin_id"], deviation_policy.tolerance);
+        solver_info["coordinate_geometry"] = verify_coordinate_plan(
+            section, coordinate_plan["targets"], coordinate_plan["origin_id"], deviation_policy);
     CK(ProElementSpecialvalueSet(sk, (ProAppData)section));
     redefine(&f, root);
     CK(ProFeatureElemtreeFree(&f, root));
@@ -3685,10 +3667,11 @@ static J sketch(J op) {
                 arc_geometry_report(saved, copy_code, op["entities"], entities, frame.origin,
                                     frame.u, frame.v, effective_loc, mirrored);
             if (!coordinate_plan.is_null())
-                solver_info["coordinate_geometry_after_creation"] = verify_coordinate_plan(
-                    saved, coordinate_plan["targets"], coordinate_plan["origin_id"],
-                    deviation_policy.tolerance);
-            deviation_feature = geometry_deviation_stage(saved, deviation_targets);
+                solver_info["coordinate_geometry_after_creation"] =
+                    verify_coordinate_plan(saved, coordinate_plan["targets"],
+                                           coordinate_plan["origin_id"], deviation_policy);
+            deviation_feature =
+                geometry_deviation_stage(saved, deviation_targets, deviation_policy);
         } catch (...) {
             ProSectionFree(&saved);
             throw;
@@ -3720,7 +3703,7 @@ static J sketch(J op) {
         const J &verification = solver_info.contains("coordinate_geometry_after_creation")
                                     ? solver_info["coordinate_geometry_after_creation"]
                                     : solver_info["coordinate_geometry"];
-        sketch_shifted = sketch_shift_block(verification, deviation_policy.source);
+        sketch_shifted = sketch_shift_block(verification, deviation_policy);
         geometry_deviation["shift_detected"] = sketch_shifted["detected"];
         geometry_deviation["accepted_by_request"] = sketch_shifted["accepted_by_request"];
         geometry_deviation["accepted_rigid"] = sketch_shifted["accepted_rigid"];
@@ -3740,7 +3723,7 @@ static J sketch(J op) {
         // Only a measured coordinates solve can prove a rigid translation.
         geometry_deviation["accepted_rigid"] = false;
     }
-    enforce_geometry_deviation(geometry_deviation, deviation_context);
+    enforce_geometry_deviation(geometry_deviation, deviation_policy, deviation_context);
     solver_info["geometry_deviation"] = geometry_deviation;
     solver_info["sketch_shifted"] = sketch_shifted;
     J ids = J::object();
@@ -5770,8 +5753,7 @@ struct VolumeProbe {
     double native_volume = 0.0;
     bool finite = false;
 };
-// The before-side probe of the round/chamfer/draft op being executed, kept for
-// the shared tail (success) and for the single failure record (T02).
+// Keep the before-side probe for the shared tail and the single failure record.
 static VolumeProbe material_probe_before;
 static bool material_probe_active = false;
 static VolumeProbe probe_volume() {
@@ -5815,6 +5797,46 @@ static J material_observation_json(const VolumeProbe &before, bool after_ran,
              {{"status", status},
               {"before_query_code", before.ran ? J((int)before.code) : J(nullptr)},
               {"after_query_code", after_ran && after.ran ? J((int)after.code) : J(nullptr)}}}};
+}
+
+// BUG-191: guard every additive operation between regeneration and save.
+// Only an independently confirmed absence of solid bodies establishes zero.
+static void verify_add_volume(J &result, bool had_solid, bool has_solid) {
+    auto establish = [](J &volume, bool solid) {
+        if (!solid)
+            volume = 0.0;
+        else if (!volume.is_number() || !std::isfinite(volume.get<double>()) ||
+                 volume.get<double>() <= 0.0)
+            volume = nullptr;
+    };
+    J &before = result.at("volume_before_mm3");
+    J &after = result.at("volume_after_mm3");
+    establish(before, had_solid);
+    establish(after, has_solid);
+    const bool measured = before.is_number() && after.is_number();
+    J delta = nullptr, tolerance = nullptr;
+    const char *reason = nullptr;
+    if (measured) {
+        const double difference = after.get<double>() - before.get<double>();
+        const double limit = std::max(1e-6, before.get<double>() * 1e-12);
+        delta = difference;
+        tolerance = limit;
+        if (!has_solid || difference < -limit)
+            reason = had_solid ? "add_reduced_volume" : "add_produced_no_solid";
+    } else {
+        reason = "add_volume_unverified";
+    }
+    result["material_delta_mm3"] = delta;
+    result["material_measurement"]["status"] = measured ? "measured" : "unknown";
+    result["add_volume_check"] = {{"status", reason ? "failed" : "passed"},
+                                  {"reason", reason ? J(reason) : J(nullptr)},
+                                  {"tolerance_mm3", tolerance}};
+    if (reason) {
+        stage_operation_result(result);
+        throw std::runtime_error(std::string(reason) + ": additive operation could not be saved " +
+                                 "(volume before/after in mm3: " + before.dump() + "/" +
+                                 after.dump() + ", tolerance: " + tolerance.dump() + ")");
+    }
 }
 // Non-throwing tree navigation for readback: raw codes instead of exceptions,
 // so a missing element degrades one field to unknown instead of failing the
@@ -7697,8 +7719,12 @@ static void execute_operation_body(const J &op) {
     // FEAT-051: round/chamfer/draft carry per-operation material evidence. The
     // quilt round is included so a surface-only result reports
     // material_measurement=not_applicable instead of omitting the field.
-    const bool material_op =
-        kind == "round" || kind == "chamfer" || kind == "draft" || kind == "surface_round";
+    const bool additive_op =
+        (kind == "extrude" || kind == "revolve" || kind == "sweep" || kind == "loft") &&
+        op.value("mode", "add") == "add";
+    const bool material_op = additive_op || kind == "round" || kind == "chamfer" ||
+                             kind == "draft" || kind == "surface_round";
+    const bool had_solid = additive_op && model_has_solid();
     material_probe_active = material_op;
     material_probe_before = VolumeProbe{};
     if (material_op)
@@ -8091,9 +8117,11 @@ static void execute_operation_body(const J &op) {
         }
     }
     if (material_op) {
-        J mat =
-            material_observation_json(material_probe_before, true, probe_volume(), !post_has_solid);
+        J mat = material_observation_json(material_probe_before, true, probe_volume(),
+                                          !post_has_solid && !additive_op);
         result.update(mat);
+        if (additive_op)
+            verify_add_volume(result, had_solid, post_has_solid);
         if (kind == "round") {
             const J &delta = mat["material_delta_mm3"];
             result["volume_delta_mm3"] = delta;
@@ -8128,10 +8156,9 @@ static void execute_operation(const J &op) {
         std::exception_ptr error = std::current_exception();
         std::string kind = op.at("op");
         J failure = has_staged_operation_result ? staged_operation_result : J::object();
-        // FEAT-051: a failed round/chamfer/draft keeps its real before-side
-        // probe; the after-side never ran and must stay null (no fabricated
-        // readings).
-        if (material_probe_active)
+        // Earlier failures retain the before probe. A guard failure already
+        // staged both measurements and must keep the observed after state.
+        if (material_probe_active && !failure.contains("material_measurement"))
             failure.update(
                 material_observation_json(material_probe_before, false, VolumeProbe{}, false));
         if (!last_feature_error_report.is_null())

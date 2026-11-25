@@ -97,6 +97,11 @@ static void generic_sketch_edit(const J &op) {
     ProFeature f = feature(label);
     int original_id = f.id;
     const std::string requested = op.value("dimensioning", "auto");
+    const J dimensioning_choice = profile_dimensioning_choice(op);
+    const auto requested_policy =
+        resolve_geometry_tolerance(op, dimensioning_choice.at("used").get<std::string>());
+    const double match_tolerance =
+        requested_policy.strict_position ? std::min(1e-7, requested_policy.tolerance) : 1e-7;
     // Older records lack the cache fields. Their solver still records the
     // requested mode, but geometry must always be checked against the native
     // section: submitted JSON alone is not proof that dimensions stayed put.
@@ -191,7 +196,7 @@ static void generic_sketch_edit(const J &op) {
     // Shared by the unchanged shortcut and the rewrite path (to skip entities
     // whose geometry already matches).
     auto entity_matches = [&](int id, const J &e) -> bool {
-        constexpr double tolerance = 1e-7;
+        const double tolerance = match_tolerance;
         auto close = [&](double a, double b) {
             return std::isfinite(a) && std::isfinite(b) && fabs(a - b) <= tolerance;
         };
@@ -358,7 +363,8 @@ static void generic_sketch_edit(const J &op) {
         // No re-solve happened for an identical payload; the fidelity report
         // stays explicitly unavailable instead of implying a fresh measurement.
         unchanged["geometry_deviation"] = skipped_geometry_deviation(
-            "identical payload; no re-solve was performed (geometry verified at 1e-7 mm)");
+            "identical payload; no re-solve was performed (geometry verified at " +
+            J(match_tolerance).dump() + " mm)");
         CK(ProFeatureElemtreeFree(&f, root));
         stage_operation_result(unchanged);
         return;
@@ -484,9 +490,9 @@ static void generic_sketch_edit(const J &op) {
     trace_section_constraints(section, "after_rebuild");
     trace_section_entities(section, "after_rebuild");
     J solving_op = op;
-    last_sketch_solver_info = profile_dimensioning_choice(op);
-    std::string mode = profile_dimensioning(op);
-    if (mode == "autodim" && op.value("dimensioning", "auto") != "coordinates") {
+    last_sketch_solver_info = dimensioning_choice;
+    std::string mode = dimensioning_choice.at("used").get<std::string>();
+    if (requested == "autodim") {
         // BUG-079: autodim after an in-place rebuild can under-dimension the
         // redefined section (an arc radius change dropped the position
         // dimension), leaving an orphaned sketch-feature dimension that fails
@@ -582,11 +588,10 @@ static void generic_sketch_edit(const J &op) {
     trace_section_ids(section, "after_solve");
     trace_section_constraints(section, "after_solve");
     meta["solver"]["requested"] = op.value("dimensioning", "auto");
-    J deviation_regenerate = geometry_deviation_stage(section, deviation_targets);
+    J deviation_regenerate = geometry_deviation_stage(section, deviation_targets, deviation_policy);
     if (!coordinate_plan.is_null())
-        meta["solver"]["coordinate_geometry"] =
-            verify_coordinate_plan(section, coordinate_plan["targets"],
-                                   coordinate_plan["origin_id"], deviation_policy.tolerance);
+        meta["solver"]["coordinate_geometry"] = verify_coordinate_plan(
+            section, coordinate_plan["targets"], coordinate_plan["origin_id"], deviation_policy);
     CK(ProElementSpecialvalueSet(sk, (ProAppData)section));
     redefine(&f, root);
     CK(ProFeatureElemtreeFree(&f, root));
@@ -624,10 +629,11 @@ static void generic_sketch_edit(const J &op) {
         } else {
             try {
                 if (!coordinate_plan.is_null())
-                    meta["solver"]["coordinate_geometry_after_creation"] = verify_coordinate_plan(
-                        saved, coordinate_plan["targets"], coordinate_plan["origin_id"],
-                        deviation_policy.tolerance);
-                deviation_feature = geometry_deviation_stage(saved, deviation_targets);
+                    meta["solver"]["coordinate_geometry_after_creation"] =
+                        verify_coordinate_plan(saved, coordinate_plan["targets"],
+                                               coordinate_plan["origin_id"], deviation_policy);
+                deviation_feature =
+                    geometry_deviation_stage(saved, deviation_targets, deviation_policy);
             } catch (...) {
                 ProSectionFree(&saved);
                 throw;
@@ -648,7 +654,7 @@ static void generic_sketch_edit(const J &op) {
         const J &verification = meta["solver"].contains("coordinate_geometry_after_creation")
                                     ? meta["solver"]["coordinate_geometry_after_creation"]
                                     : meta["solver"]["coordinate_geometry"];
-        sketch_shifted = sketch_shift_block(verification, deviation_policy.source);
+        sketch_shifted = sketch_shift_block(verification, deviation_policy);
         geometry_deviation["shift_detected"] = sketch_shifted["detected"];
         geometry_deviation["accepted_by_request"] = sketch_shifted["accepted_by_request"];
         geometry_deviation["accepted_rigid"] = sketch_shifted["accepted_rigid"];
@@ -667,7 +673,7 @@ static void generic_sketch_edit(const J &op) {
         geometry_deviation["accepted_by_request"] = nullptr;
         geometry_deviation["accepted_rigid"] = false;
     }
-    enforce_geometry_deviation(geometry_deviation, deviation_context);
+    enforce_geometry_deviation(geometry_deviation, deviation_policy, deviation_context);
     meta["solver"]["geometry_deviation"] = geometry_deviation;
     meta["solver"]["sketch_shifted"] = sketch_shifted;
     if (f.id != original_id)
