@@ -169,6 +169,7 @@ _SOURCE_NAMES = (
     "native/import_geometry.cpp",
     "native/component_transform.h",
     "native/assembly_pose.h",
+    "native/constraint_placement.h",
     "native/constraint_names.h",
     "native/constraint_compare.h",
     "native/adoption_source.h",

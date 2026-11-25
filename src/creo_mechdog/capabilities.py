@@ -1021,6 +1021,17 @@ def families() -> dict:
                 "transactions, no FEAT-050 comparison, no new constraint types"
             ),
         },
+        "planar_constraint_verification": {
+            "operations": ["assemble_component", "component_constraints"],
+            "types": ["mate", "align", "mate_offset", "align_offset"],
+            "scope": (
+                "Resolved planar references are checked in the owning assembly frame "
+                "after write, regeneration, and save/reload"
+            ),
+            "distance_tolerance_mm": 0.001,
+            "angle_tolerance_deg": 0.01,
+            "failure_effect": "Fails the job and uses managed checkpoint recovery",
+        },
         "disk_open": {
             "enabled": True,
             "tool": "creo_open_file",

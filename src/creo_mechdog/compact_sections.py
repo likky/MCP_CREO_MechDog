@@ -237,6 +237,7 @@ OPERATION_KEYS = (
     "edge_geometry_diagnostic",
     "geometry_selector_diagnostic",
     "geometry_selector_resolution",
+    "constraint_placement",
     "depth_basis",
     "depth_scheme_code",
     "depth_scheme_query",

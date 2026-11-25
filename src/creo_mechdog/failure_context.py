@@ -360,5 +360,15 @@ def annotate_failed_operation(result: dict[str, Any], inputs: Any = None) -> dic
             "constraint_reason": _text(native.get("constraint_reason")),
         }
     )
+    if "placement_matches_constraints" in native:
+        matches = native["placement_matches_constraints"]
+        block["placement_matches_constraints"] = matches if isinstance(matches, bool) else None
+        for field in (
+            "max_distance_error_mm",
+            "max_angle_error_deg",
+            "distance_tolerance_mm",
+            "angle_tolerance_deg",
+        ):
+            block[field] = _number(native.get(field))
     result["failed_operation"] = block
     return result

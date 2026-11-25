@@ -244,9 +244,9 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
-| 仍需修复 | 7 |
+| 仍需修复 | 6 |
 | 待复现/待核实 | 37 |
-| 已有修复但待验收 | 83 |
+| 已有修复但待验收 | 84 |
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
 | 开发中 | 9 |
@@ -263,7 +263,6 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | [BUG-133](work-items/BUG-133.md) | P1 | 已交付 0.35.4（准入按实测 1e-7 收紧） | 0.35.4（已交付） | Python 与原生统一为 `1e-7`（缺省与上限相同），显式容差只能收紧；六位小数矩阵在提交前被拒绝并给出残差。2026-11-21 实机（Creo 10.0.0.0/42）：残差 `4.5e-10`/`7.664e-9`/`4.755e-8` 可放置，`2.241e-7`/`4.890e-7`/`1.129e-6` 均被 `ProAsmcompAssemble`/`ProAsmcompPositionSet` 以 `-2` 拒绝。剩：其他 Creo 版本与 WorkBuddy 未测。 |
 | [BUG-017](work-items/BUG-017.md) | P1 | 仍需修复 | 未排期 | 0.43.1 已补逐阶段原生诊断/未激活回执、Creo 10 对照与 Creo 9 `ProRib.h` 核对；仍需 Creo 9.0.0.0 同环境合法用例与界面对照以闭环原案。 |
 | [BUG-034](work-items/BUG-034.md) | P1 | 仍需修复 | 未排期 | 定位种子生产版本及原生加载失败，决定可追溯重生方案；依赖：需 Creo 9 SDK/许可与种子来源。 |
-| [BUG-036](work-items/BUG-036.md) | P1 | 仍需修复 | 未排期 | 核对实际约束、求解调用与 transform，修正写侧或给出明确拒绝；现有修复仅覆盖子项，原案/规则未闭环。 |
 | [BUG-130](work-items/BUG-130.md) | P1 | 已修复（bulb 偏差 0.0899mm 达标；旧 14m 0.1115mm 未达标） | 0.27.0（偏差子项）；旧 14m 余项下个版本 | 约14m复杂球鼻艏 `export(stl)` 两次worker `0xC0000005`，整件剖分及外层计数返回成功后退出、STL均0字节；旧同尺度球鼻艏197118片/48.85MB成功，不能仅归因尺度。2026-11-17 离线：`tools/diagnose_stl_export.py`、`STL_*` 阶段日志与防护、`native/stl_file_check.h`/`native/stl_export.h`/`native/stl_mesh_check.h`、23+19 项 native 用例。旧路径只读实机定位 `n_facets=201551` 配 `facets=null`，安全失败且源件不变；官方路径小件成功，旧 14m 同质量 600 秒未完成。重启后恢复基线，逐面导出并做 SDK 法向对齐、0.001mm 焊点与边界环质心补洞、1e-9mm 精确邻接绕序修复：`bulb_bulged` 404,652 片/82,166,002 字节、旧 14m 197,722 片/40,068,497 字节，均 succeeded、源件 SHA/revision 不变；焊接后边界边 0、非流形边 0、零面积片 0，有符号体积与原生差 0.0030%/0.0172%，包络一致；trimesh 独立复核两件 `is_watertight=true`、`is_winding_consistent=true`、`euler_number=2`。默认路径已切换为逐面，官方路径保留 `MECHDOG_STL_OFFICIAL_FILE=1` 诊断。抽样偏差实测（`MECHDOG_STL_DEVIATION=1`，每 500 片取质心/边中点投影回原生面，顶点自检 ≤0.004mm）：bulb 平均 0.0367mm、p99 0.1378mm、最大 0.1581mm；旧 14m 平均 0.0814mm、p99 0.3002mm、最大 0.3086mm，**0.1mm 目标未达成**。逐面片数回执定位根因：bulb 在 0.05 与 0.005mm 弦高下大面均为 ~204,000 片（0.005 时 203,988/204,043/1,761），单面片数上限约 20.4 万；同几何小件（未到上限）0.05→0.001mm 片数 328→1,488，证明弦高参数本身有效、不是会话缓存。Task 6 已完成：`creo_export_model(format="stl", stl_options={"chord_height_mm":…,"angle_control":…})`，仅 STL 允许，未知键/布尔/NaN/Inf/越界提交前拒绝，缺省保持 0.05/0.1，回执保留 `requested`/`passed` 并新增逐面 `surface_facets`；9 项单测通过。剩余：装配、Creo 9/10 与其他质量入口未测；受单面上限约束，逐面路径无法把大面细化到 0.1mm 以内。计划见 [bug130-stl-export](superpowers/plans/2026-11-16-bug130-stl-export.md)。 |
 | [BUG-131](work-items/BUG-131.md) | P1 | 仍需修复（取消/收尾/看门狗已实机；挂死根因未验） | 0.27.0（作业控制子项）；挂死根因未排期 | 23组件带配合总装作业 `1ce57484…` 在 `hom_1` 选择器解析挂死 60 分钟，同输入 2 组件探针 9.4 秒结构化失败；装配 `unknown_outcome` 后 reconcile 曾全不可用。已离线交付进度观测、`creo_cancel_job`（公开工具 108→109）、worker 日志停滞看门狗与 `revision==0` 新装配出口。2026-11-17 本机 Creo 12.4 临时件实机：worker 启动前取消 `cancelled`/`geometry_may_have_changed=false`，启动后取消 `unknown_outcome`/`true` 并终止 pid，两种均经 `abandon_new` 收尾；当次授权下 1 秒预算 + 500 圆孔重计划触发看门狗，`stall_watchdog` 记录 budget/silent/log_bytes/termination 并收尾。修复空 owner 误判与 stall_watchdog 未投影；`test_job_control` 19 项、投影 1 项。`revision==0` 新装配实机未复现；挂死根因仍需 Creo 10 栈/轨迹。 |
 | [BUG-132](work-items/BUG-132.md) | P1 | 仍需修复（本机 Creo 12.4 已验报错分型与 coaxial insert；Creo 10/Arm7 未验） | 0.27.0（选择器子项）；Creo 10/Arm7 未排期 | native 圆柱面拆成两半（base 198/200、hom 57/59、96/98、224/226），TXT 整圆柱锚点无法唯一命中；报错把「消歧点落在端面平面」写成「add radius_mm」。已离线交付：零/多/类型不符三种报错分型（逐项列 `id (plane|cylinder)`，说明 `radius_mm` 非类型过滤器）、组装侧选择器缺 `assembly_component` 的准入预检、仅 `insert/concentric` 可用的显式 `coaxial:"any"`（多个圆柱命中取最小 id，默认唯一性不放宽），两个测试文件 39 项通过。2026-11-17 本机 Creo 12.4：R27.5 通孔拆半 102/103，三种报错分型实机通过并 `rolled_back`；默认 insert 拒绝并列出 102/103，`coaxial:"any"` insert+mate `committed`、`underconstrained=false`、轴共线，显式保存重载 5→6。Arm7 原半圆柱与 Creo 10 未验。 |
@@ -316,6 +315,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
+| [BUG-036](work-items/BUG-036.md) | P1 | 已有修复但待验收 | 开发分支 | 本机 Creo 10 复现约束写入成功而位姿未更新。平面配合加入实际面距和法向校验，冲突请求明确拒绝并验证回滚。外部 Creo 9 原案、Creo 12.4 与 WorkBuddy 待验证。 |
 | [BUG-187](work-items/BUG-187.md) | P0 | 已有修复但待验收 | 0.44.0 | 偏移基准面 `flip` 与草图显式 `v_axis`（`u_axis × v_axis` 确定法线），本机 Creo 10 正反例（`1000.0 mm³`、Z `[0,20]`、保存重载与回滚）通过。剩：Creo 9/12、WorkBuddy 黑盒。 |
 | [BUG-188](work-items/BUG-188.md) | P0 | 已有修复但待验收 | 0.44.0 | `coordinates` 放行 `PRO_2D_CONSTR_CIRCLE` 并标记 `construction=true`，本机 Creo 10（2 构造圆+3 构造线、`1000.0 mm³`、保存重载）通过。剩：Creo 9/12、WorkBuddy 黑盒。 |
 | [BUG-189](work-items/BUG-189.md) | P2 | 已有修复但待验收 | 0.44.0 | `ValidationMCPServer.call_tool` 按 schema 拒绝未知工具参数并附拼写建议；单测与 `test_mcp.py --offline` 通过。剩：WorkBuddy 黑盒。 |

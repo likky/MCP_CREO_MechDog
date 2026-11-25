@@ -68,6 +68,16 @@ creo_plan_assembly_rebuild(snapshot_id, component_mapping, reference_mapping)
   Toolkit，也不产生 `operation_results`；未覆盖 FEAT-050 公共比对、嵌套装配和
   新约束类型。
 
+## 平面约束的位姿验证
+
+执行器对平面 `mate`、`align` 及其偏移类型核对整组回读，并用组件当前位姿测量两侧平面。
+面距误差上限为 0.001 mm，法向角误差上限为 0.01°。执行器在写入后、整计划再生后和保存重载后复查仍生效的约束。
+允许仍有自由度且几何满足约束的放置。基准面配合需要明确的配合面方向。
+基准面的红侧会翻转配合法向，偏移仍沿装配侧基准面的原始法向计量。
+
+成功作业的 `constraint_placement` 给出验证范围、阶段和误差。失败作业的 `failed_operation` 给出失败阶段、原因以及可确定的约束索引。
+超差、引用证据不足或约束回读不符会使作业失败并触发检查点恢复。完整结果的 `constraint_placement_failure` 保留已取得的实际矩阵和逐条残差。
+
 ## 位姿与矩阵约定
 
 - `translation` 为 XYZ 毫米；`rotation` 为 XYZ Euler 度（先 X 后 Y 再 Z）；

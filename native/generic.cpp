@@ -9,6 +9,7 @@
 #include "assembly_units.h"
 #include "assembly_walk.h"
 #include "assembly_pose.h"
+#include "constraint_placement.h"
 #include "constraint_names.h"
 #include "constraint_compare.h"
 #include "preview.h"
@@ -11284,6 +11285,12 @@ static J failed_operation_context(const J &operation, int index, bool executing,
                 last_constraint_failure.type.empty() ? J(nullptr) : J(last_constraint_failure.type);
             block["constraint_stage"] = J(last_constraint_failure.stage);
             block["constraint_reason"] = J(last_constraint_failure.reason);
+            if (constraint_placement_failure.is_object()) {
+                for (const char *field :
+                     {"placement_matches_constraints", "max_distance_error_mm",
+                      "max_angle_error_deg", "distance_tolerance_mm", "angle_tolerance_deg"})
+                    block[field] = constraint_placement_failure.value(field, J(nullptr));
+            }
         }
     }
     if (!message.empty()) {
@@ -11300,6 +11307,8 @@ static int run_generic(const std::wstring &job) {
     last_toolkit_error.clear();
     last_feature_error_report = nullptr;
     last_constraint_failure = AssemblyConstraintFailure();
+    pending_constraint_placements.clear();
+    constraint_placement_failure = nullptr;
     J report = {{"success", false},
                 {"saved_file_reloaded_and_verified", false},
                 {"rollback_succeeded", false}};
@@ -11573,6 +11582,24 @@ static int run_generic(const std::wstring &job) {
             }
             generic_stage("verify_model");
             generic_substage("verify_model_start");
+            auto verify_pending_placements = [&](const char *phase) {
+                for (const auto &[id, pending] : pending_constraint_placements) {
+                    operation_index = pending.operation_index;
+                    operation_in_flight = request["operations"].at(operation_index);
+                    executing_operation = true;
+                    ProAsmcomp component = {};
+                    component.id = id;
+                    constraint_placement_failure = nullptr;
+                    last_constraint_failure = {true, -1, "", phase, "placement_unverified"};
+                    CK(ProModelitemInit(board, id, PRO_FEATURE, &component));
+                    verify_constraint_placement(&component, pending, phase,
+                                                constraint_placement_failure);
+                    operation_results.at(operation_index)["constraint_placement"] =
+                        std::move(constraint_placement_failure);
+                    constraint_placement_failure = nullptr;
+                    executing_operation = false;
+                }
+            };
             if (request.contains("loft_seed")) {
                 suppress_seed_for_profiles(request["loft_seed"]["feature_id"], false);
                 // The seed rebinding is a plan-level construction step, not a
@@ -11584,6 +11611,7 @@ static int run_generic(const std::wstring &job) {
             if (!request.value("readonly", false)) {
                 generic_substage("verify_model_regenerate");
                 CK(ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS));
+                verify_pending_placements("after_regenerate");
             }
             generic_substage("verify_model_inspect");
             J state = inspection();
@@ -11607,6 +11635,7 @@ static int run_generic(const std::wstring &job) {
                 reload_managed_checkpoint(saved, mdltype, true);
                 generic_substage("verify_model_reload_regenerate");
                 CK(ProSolidRegenerate((ProSolid)board, PRO_REGEN_NO_FLAGS));
+                verify_pending_placements("after_reload");
                 generic_substage("verify_model_reload_inspect");
                 state = inspection();
                 if (request.contains("loft_seed"))
@@ -11750,6 +11779,8 @@ static int run_generic(const std::wstring &job) {
         report["failed_operation"] = failed_operation_context(
             operation_in_flight, operation_index, executing_operation, generic_phase,
             failure_pro_error, failure_pro_error_source, last_toolkit_error, failure_message);
+        if (constraint_placement_failure.is_object())
+            report["constraint_placement_failure"] = constraint_placement_failure;
         // BUG-111: a failed transform names its own backend, angles and reference
         // count instead of leaving only a Toolkit code and the phase name.
         if (executing_operation && operation_in_flight.is_object() &&

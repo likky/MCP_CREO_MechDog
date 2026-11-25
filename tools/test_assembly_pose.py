@@ -58,6 +58,7 @@ def main() -> int:
             for path in (
                 *sources.values(),
                 root / "native/assembly_pose.h",
+                root / "native/constraint_placement.h",
                 root / "native/third_party/json.hpp",
             )
         },

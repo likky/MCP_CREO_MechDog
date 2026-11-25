@@ -77,6 +77,187 @@ async def components(probe: Probe) -> None:
     assert refreshed["revision"] == placed["revision"] + 1
 
 
+def plane_constraint(relation: str, axis: str, **fields) -> dict:
+    return {
+        "type": relation,
+        "assembly_reference": {"kind": "datum_plane", "axis": axis},
+        "component_reference": {"kind": "datum_plane", "axis": axis},
+        **fields,
+    }
+
+
+async def constraint_baseline(probe: Probe, *, assert_guard: bool = False) -> None:
+    source = await probe.job("creo_execute_plan", {"operations": box()}, "bug036_source")
+    for case, first in (
+        ("align_control", plane_constraint("align", "z")),
+        ("reported_sides", plane_constraint("mate", "z")),
+        ("reversed_mate_side", plane_constraint("mate", "z", component_side="red")),
+    ):
+        assembly = await probe.job("creo_new_assembly", {}, f"{case}_assembly")
+        placed = await probe.job(
+            "creo_assemble_component",
+            {
+                **identity(assembly),
+                "source_model_id": source["model_id"],
+                "label": "member",
+                "translation": [-30, 20, 0],
+                "rotation": [0, 0, 30],
+            },
+            f"{case}_fixed",
+        )
+        result = await probe.job(
+            "creo_component_constraints",
+            {
+                **identity(placed),
+                "component": "member",
+                "constraints": [
+                    first,
+                    plane_constraint("align", "y"),
+                    plane_constraint("align", "x"),
+                ],
+            },
+            f"{case}_constraints",
+            allow_failure=not assert_guard,
+            expected_failure=assert_guard and case == "reported_sides",
+        )
+        if not assert_guard:
+            continue
+        before = placed["result"]["inspection"]["components"][0]
+        if case == "reported_sides":
+            failure = result["result"]["failed_operation"]
+            assert failure["constraint_reason"] == "placement_mismatch", failure
+            assert failure["placement_matches_constraints"] is False, failure
+            assert abs(failure["max_distance_error_mm"] - 30) < 1e-7, failure
+            assert abs(failure["max_angle_error_deg"] - 180) < 1e-7, failure
+            assert result["result"]["rollback_succeeded"] is True
+            refreshed = await probe.job(
+                "creo_refresh_model", {"model_id": placed["model_id"]}, "bug036_verify_rollback"
+            )
+            restored = refreshed["result"]["inspection"]["components"][0]
+            close_matrix(restored["transform"], before["transform"])
+            assert restored["constraints"] == before["constraints"]
+            assert refreshed["revision"] == placed["revision"]
+            result = await probe.job(
+                "creo_execute_plan",
+                {
+                    **identity(refreshed),
+                    "operations": [
+                        {
+                            "op": "component_constraints",
+                            "component": "member",
+                            "constraints": [
+                                plane_constraint("mate", "z", component_side="red"),
+                                plane_constraint("align", "y"),
+                                plane_constraint("align", "x"),
+                            ],
+                        }
+                    ],
+                },
+                "bug036_retry_with_compatible_sides",
+            )
+        assert result["revision"] == placed["revision"] + 1
+        component = result["result"]["inspection"]["components"][0]
+        close_matrix(component["transform"], pose_at_z(0))
+        assert not component["underconstrained"] and not component["packaged"]
+        check_placement_receipt(result, 3)
+
+
+def pose_at_z(z: float) -> list:
+    return [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, z, 1]]
+
+
+def check_placement_receipt(job: dict, count: int) -> None:
+    receipt = job["result"]["operations"][0]["constraint_placement"]
+    assert receipt["phase"] == "after_reload", receipt
+    assert receipt["measured_count"] == count, receipt
+    assert receipt["placement_matches_constraints"] is True, receipt
+    assert receipt["max_distance_error_mm"] <= receipt["distance_tolerance_mm"], receipt
+    assert receipt["max_angle_error_deg"] <= receipt["angle_tolerance_deg"], receipt
+
+
+async def constraint_guard(probe: Probe) -> None:
+    await constraint_baseline(probe, assert_guard=True)
+
+
+async def constraint_offsets(probe: Probe) -> None:
+    source = await probe.job("creo_execute_plan", {"operations": box()}, "bug036_offset_source")
+    assembly = await probe.job("creo_new_assembly", {}, "bug036_offset_assembly")
+    for relation in ("align_offset", "mate_offset"):
+        component_side = "red" if relation == "mate_offset" else "yellow"
+        for offset, assembly_side, moving_side, expected_z, label in (
+            (5, "yellow", component_side, 5, "offset_pos"),
+            (-5, "yellow", component_side, -5, "offset_neg"),
+            (5, "red", "yellow" if component_side == "red" else "red", 5, "red_side"),
+        ):
+            component_label = f"{relation}_{label}"
+            result = await probe.job(
+                "creo_assemble_component",
+                {
+                    **identity(assembly),
+                    "source_model_id": source["model_id"],
+                    "label": component_label,
+                    "placement": "constraints",
+                    "constraints": [
+                        plane_constraint(
+                            relation,
+                            "z",
+                            offset=offset,
+                            assembly_side=assembly_side,
+                            component_side=moving_side,
+                        ),
+                        plane_constraint("align", "x"),
+                        plane_constraint("align", "y"),
+                    ],
+                },
+                f"bug036_{relation}_{label}",
+            )
+            assert result["revision"] == assembly["revision"] + 1
+            check_placement_receipt(result, 3)
+            member = result["result"]["inspection"]["components"][-1]
+            close_matrix(member["transform"], pose_at_z(expected_z))
+            assembly = result
+
+    partial = await probe.job(
+        "creo_component_constraints",
+        {
+            **identity(assembly),
+            "component": component_label,
+            "constraints": [plane_constraint("align_offset", "z", offset=8)],
+        },
+        "bug036_replace_with_underconstrained_group",
+    )
+    check_placement_receipt(partial, 1)
+    member = partial["result"]["inspection"]["components"][-1]
+    assert member["underconstrained"], member
+    assert len(member["constraints"]) == 1, member
+    transform = member["transform"]
+    assert abs(transform[3][2] - 8) < 1e-7, transform
+    assert all(
+        abs(actual - expected) < 1e-7 for actual, expected in zip(transform[2][:3], (0, 0, 1))
+    ), transform
+    assert partial["revision"] == assembly["revision"] + 1
+
+    invalid = plane_constraint("align", "z")
+    invalid["assembly_reference"] = {"kind": "datum_plane", "id": 2147483647}
+    failed = await probe.job(
+        "creo_component_constraints",
+        {**identity(partial), "component": component_label, "constraints": [invalid]},
+        "bug036_invalid_reference",
+        expected_failure=True,
+    )
+    failure = failed["result"]["failed_operation"]
+    assert failure["constraint_stage"] == "reference", failure
+    assert failure["failed_constraint_index"] == 0, failure
+    assert failed["result"]["rollback_succeeded"] is True
+    restored = await probe.job(
+        "creo_refresh_model", {"model_id": partial["model_id"]}, "bug036_invalid_reference_rollback"
+    )
+    again = restored["result"]["inspection"]["components"][-1]
+    assert again["constraints"] == member["constraints"]
+    close_matrix(again["transform"], member["transform"])
+    assert restored["revision"] == partial["revision"]
+
+
 async def seeds(probe: Probe) -> None:
     for interpolation in ("straight", "smooth"):
         result = await probe.job(
@@ -189,6 +370,7 @@ async def run(args: argparse.Namespace) -> bool:
         "native/generic.cpp",
         "native/loft_seed.cpp",
         "native/component_transform.h",
+        "native/constraint_placement.h",
         "native/assembly_pose.h",
         "tools/test_feedback037_modeling.py",
     )
@@ -211,8 +393,16 @@ async def run(args: argparse.Namespace) -> bool:
             if args.retry:
                 await probe.call("creo_startup_status", {"retry": True})
             await wait_for_startup(client, report, args.output)
+            report["session"] = await probe.call("creo_session_status", {})
             for case in args.cases.split(","):
-                await {"components": components, "seeds": seeds, "rounds": rounds}[case](probe)
+                await {
+                    "components": components,
+                    "constraint_baseline": constraint_baseline,
+                    "constraint_guard": constraint_guard,
+                    "constraint_offsets": constraint_offsets,
+                    "seeds": seeds,
+                    "rounds": rounds,
+                }[case](probe)
             report["success"] = True
     except Exception as error:
         report["error"] = repr(error)

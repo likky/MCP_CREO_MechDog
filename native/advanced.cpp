@@ -2319,12 +2319,221 @@ struct AssemblyConstraintFailure {
 };
 static AssemblyConstraintFailure last_constraint_failure;
 
-static void component_constraints(ProAsmcomp *c, const J &constraints) {
+static J constraint_reference(ProSelection ref);
+static J inspect_constraints(ProAsmcomp *comp);
+
+struct PendingConstraintPlacement {
+    int operation_index;
+    J expected;
+    std::vector<int> planar_slots;
+};
+static std::map<int, PendingConstraintPlacement> pending_constraint_placements;
+static J constraint_placement_failure;
+
+struct ConstraintSelection {
+    ProSelection value;
+    ~ConstraintSelection() {
+        ProSelectionFree(&value);
+    }
+};
+
+struct ConstraintArray {
+    ProAsmcompconstraint *value = nullptr;
+    ~ConstraintArray() {
+        if (value)
+            ProAsmcompconstraintArrayFree(value);
+    }
+};
+
+static bool planar_constraint_reference(ProSelection selection) {
+    ProModelitem item;
+    CK(ProSelectionModelitemGet(selection, &item));
+    if (item.type != PRO_SURFACE)
+        return false;
+    ProGeomitemdata *data = nullptr;
+    CK(ProGeomitemdataGet(&item, &data));
+    const auto *shape = data ? data->data.p_surface_data : nullptr;
+    const bool readable = shape != nullptr;
+    const bool planar = readable && shape->type == PRO_SRF_PLANE;
+    if (data)
+        ProGeomitemdataFree(&data);
+    if (!readable)
+        throw std::runtime_error("Cannot determine constraint surface geometry");
+    return planar;
+}
+
+static J constraint_input_reference(ProSelection selection) {
+    J result = constraint_reference(selection);
+    if (!result.is_object() || !result.contains("component_path"))
+        throw std::runtime_error("Cannot read resolved constraint reference identity");
+    return result;
+}
+
+static mechdog_constraints::PlacementPlane constraint_plane(const J &reference, ProDatumside side,
+                                                            double owner_scale) {
+    const J &path = reference.at("component_path");
+    ProMdl owner = board;
+    ProMatrix transform = {};
+    for (int i = 0; i < 4; ++i)
+        transform[i][i] = 1.0;
+    if (!path.empty()) {
+        if (path.size() != 1)
+            throw std::runtime_error("Cannot measure a constraint with a nested reference");
+        ProAsmcomp instance;
+        CK(ProModelitemInit(board, path.at(0).get<int>(), PRO_FEATURE, &instance));
+        CK(ProAsmcompMdlGet(&instance, &owner));
+        CK(component_to_assembly_transform(&instance, transform));
+        if (!matrix_entries_finite(transform))
+            throw std::runtime_error("Cannot measure a non-finite component transform");
+    }
+    ProGeomitem item;
+    CK(ProModelitemInit(owner, reference.at("id").get<int>(), PRO_SURFACE, &item));
+    ProGeomitemdata *data = nullptr;
+    CK(ProGeomitemdataGet(&item, &data));
+    const auto *shape = data ? data->data.p_surface_data : nullptr;
+    const bool planar = shape && shape->type == PRO_SRF_PLANE;
+    ProPlanedata plane = {};
+    ProSurfaceOrient orientation = PRO_SURF_ORIENT_NONE;
+    if (planar) {
+        plane = shape->srf_shape.plane;
+        orientation = shape->orient;
+    }
+    if (data)
+        ProGeomitemdataFree(&data);
+    if (!planar)
+        throw std::runtime_error("Constraint reference no longer resolves to a plane");
+    ProFeature feature_owner;
+    CK(ProGeomitemFeatureGet(&item, &feature_owner));
+    ProFeattype feature_type;
+    CK(ProFeatureTypeGet(&feature_owner, &feature_type));
+    const bool datum = feature_type == PRO_FEAT_DATUM;
+    double direction;
+    if (datum) {
+        if (side == PRO_DATUM_SIDE_NONE)
+            throw std::runtime_error(
+                "Datum plane constraint requires an explicit yellow or red side");
+        direction = side == PRO_DATUM_SIDE_RED ? -1.0 : 1.0;
+    } else {
+        if (orientation == PRO_SURF_ORIENT_NONE)
+            throw std::runtime_error("Cannot determine the planar surface orientation");
+        direction = orientation == PRO_SURF_ORIENT_IN ? -1.0 : 1.0;
+    }
+    mechdog_constraints::PlacementPlane result = {};
+    transform_point(transform, plane.origin, result.origin.data());
+    for (int column = 0; column < 3; ++column)
+        for (int row = 0; row < 3; ++row)
+            result.normal[column] += plane.e3[row] * transform[row][column];
+    result.origin = scale(result.origin, owner_scale);
+    result.normal = normalized(scale(result.normal, direction));
+    // A red datum flips the facing normal. Creo's offset is signed along the
+    // underlying datum normal for both mate_offset and align_offset.
+    if (datum)
+        result.offset_axis_sign = direction;
+    return result;
+}
+
+static bool constraint_readback_matches(const J &expected, const J &actual, double owner_scale) {
+    if (!actual.is_object() || expected.at("type") != actual.value("type", -1))
+        return false;
+    for (const char *field :
+         {"assembly_reference", "component_reference", "assembly_side", "component_side"})
+        if (expected.at(field) != actual.value(field, J(nullptr)))
+            return false;
+    const int type = expected.at("type").get<int>();
+    if (type != PRO_ASM_MATE_OFF && type != PRO_ASM_ALIGN_OFF)
+        return true;
+    const double offset = actual.value("offset", std::numeric_limits<double>::quiet_NaN());
+    return std::abs(expected.at("offset_mm").get<double>() - offset * owner_scale) <=
+           mechdog_constraints::plane_distance_tolerance_mm;
+}
+
+static void verify_constraint_placement(ProAsmcomp *component,
+                                        const PendingConstraintPlacement &pending,
+                                        const char *phase, J &evidence) {
+    using namespace mechdog_constraints;
+    last_constraint_failure = {true, -1, "", phase, "placement_unverified"};
+    evidence = {{"component_id", component->id},
+                {"phase", phase},
+                {"scope", "planar"},
+                {"constraint_count", pending.expected.size()},
+                {"placement_matches_constraints", nullptr},
+                {"distance_tolerance_mm", plane_distance_tolerance_mm},
+                {"angle_tolerance_deg", plane_angle_tolerance_deg},
+                {"measured_count", 0},
+                {"max_distance_error_mm", nullptr},
+                {"max_angle_error_deg", nullptr},
+                {"residuals", J::array()}};
+    const MillimeterScale owner_scale = length_scale_to_mm(board, inspect_length_units(board));
+    if (!owner_scale.known)
+        throw std::runtime_error("Cannot verify planar constraints with unknown assembly units");
+    const J actual = inspect_constraints(component);
+    if (actual.size() != pending.expected.size()) {
+        last_constraint_failure.reason = "constraint_readback_mismatch";
+        throw std::runtime_error("Stored constraint count differs from the requested group");
+    }
+    for (size_t i = 0; i < pending.expected.size(); ++i) {
+        if (!constraint_readback_matches(pending.expected[i], actual[i], owner_scale.scale)) {
+            last_constraint_failure.index = (int)i;
+            last_constraint_failure.type = pending.expected[i].at("type_name").get<std::string>();
+            last_constraint_failure.reason = "constraint_readback_mismatch";
+            throw std::runtime_error("Stored constraint type, reference, side or offset differs "
+                                     "from the requested group");
+        }
+    }
+    ProMatrix transform = {};
+    CK(component_to_assembly_transform(component, transform));
+    if (!matrix_entries_finite(transform))
+        throw std::runtime_error("Cannot verify planar constraints with a non-finite pose");
+    evidence["transform"] = matrix_json(transform);
+    double max_distance = 0, max_angle = 0;
+    int failed = -1;
+    for (int index : pending.planar_slots) {
+        const J &row = actual.at(index);
+        const J &input = pending.expected.at(index);
+        const std::string type = input.at("type_name").get<std::string>();
+        last_constraint_failure.index = index;
+        last_constraint_failure.type = type;
+        const auto a =
+            constraint_plane(row.at("assembly_reference"),
+                             (ProDatumside)row.at("assembly_side").get<int>(), owner_scale.scale);
+        const auto b =
+            constraint_plane(row.at("component_reference"),
+                             (ProDatumside)row.at("component_side").get<int>(), owner_scale.scale);
+        const bool mate = type == "mate" || type == "mate_offset";
+        const auto residual = plane_residual(a, b, mate, input.at("offset_mm").get<double>());
+        if (!residual.known())
+            throw std::runtime_error("Planar constraint residual is not finite");
+        max_distance = std::max(max_distance, std::abs(residual.distance_mm));
+        max_angle = std::max(max_angle, residual.angle_deg);
+        evidence["residuals"].push_back({{"index", index},
+                                         {"type", type},
+                                         {"signed_distance_error_mm", residual.distance_mm},
+                                         {"angle_error_deg", residual.angle_deg}});
+        evidence["measured_count"] = evidence["residuals"].size();
+        evidence["max_distance_error_mm"] = max_distance;
+        evidence["max_angle_error_deg"] = max_angle;
+        if (!residual.matches() && failed < 0)
+            failed = index;
+    }
+    evidence["placement_matches_constraints"] = failed < 0;
+    if (failed >= 0) {
+        last_constraint_failure.index = failed;
+        last_constraint_failure.type =
+            pending.expected.at(failed).at("type_name").get<std::string>();
+        last_constraint_failure.reason = "placement_mismatch";
+        throw std::runtime_error(
+            "The component pose does not satisfy the stored planar constraints");
+    }
+    last_constraint_failure = AssemblyConstraintFailure();
+}
+
+static J component_constraints(ProAsmcomp *c, const J &constraints) {
     last_constraint_failure = AssemblyConstraintFailure();
     last_constraint_failure.active = true;
     last_constraint_failure.reason = "constraint_rejected";
-    ProAsmcompconstraint *list = nullptr;
-    CK(ProArrayAlloc((int)constraints.size(), sizeof(ProAsmcompconstraint), 1, (ProArray *)&list));
+    ConstraintArray list;
+    CK(ProArrayAlloc(0, sizeof(ProAsmcompconstraint), 1, (ProArray *)&list.value));
+    PendingConstraintPlacement pending{operation_position, J::array(), {}};
     std::map<std::string, ProAsmcompConstrType> types = {{"mate", PRO_ASM_MATE},
                                                          {"align", PRO_ASM_ALIGN},
                                                          {"mate_offset", PRO_ASM_MATE_OFF},
@@ -2356,11 +2565,16 @@ static void component_constraints(ProAsmcomp *c, const J &constraints) {
             throw std::runtime_error("A component constraint cannot reference its own component "
                                      "as the assembly side");
         last_constraint_failure.stage = "allocation";
-        CK(ProAsmcompconstraintAlloc(&list[i]));
-        CK(ProAsmcompconstraintTypeSet(list[i], found->second));
+        ProAsmcompconstraint entry = nullptr;
+        CK(ProAsmcompconstraintAlloc(&entry));
+        ProError appended = ProArrayObjectAdd((ProArray *)&list.value, -1, 1, &entry);
+        if (appended)
+            ProAsmcompconstraintFree(entry);
+        check(appended, "ProArrayObjectAdd");
+        CK(ProAsmcompconstraintTypeSet(entry, found->second));
         last_constraint_failure.stage = "reference";
-        ProSelection a = assembly_reference(spec),
-                     b = component_reference(c, spec["component_reference"]);
+        ConstraintSelection a{assembly_reference(spec)};
+        ConstraintSelection b{component_reference(c, spec["component_reference"])};
         // FEAT-068 A1: resolved selector references must be the surface type
         // their relationship requires, not merely something the selector shape
         // allowed.
@@ -2374,31 +2588,47 @@ static void component_constraints(ProAsmcomp *c, const J &constraints) {
         const bool cylinder_required = type == "insert";
         if (plane_required || cylinder_required) {
             if (spec["assembly_reference"].value("kind", std::string()) == "geometry_selector")
-                require_constraint_surface_type(a, "assembly_reference", plane_required,
+                require_constraint_surface_type(a.value, "assembly_reference", plane_required,
                                                 spec["assembly_reference"], type);
             if (spec["component_reference"].value("kind", std::string()) == "geometry_selector")
-                require_constraint_surface_type(b, "component_reference", plane_required,
+                require_constraint_surface_type(b.value, "component_reference", plane_required,
                                                 spec["component_reference"], type);
         }
+        if (plane_required && planar_constraint_reference(a.value) &&
+            planar_constraint_reference(b.value))
+            pending.planar_slots.push_back((int)i);
         last_constraint_failure.stage = "side";
-        CK(ProAsmcompconstraintAsmreferenceSet(list[i], a, constraint_side(spec, "assembly_side")));
-        CK(ProAsmcompconstraintCompreferenceSet(list[i], b,
-                                                constraint_side(spec, "component_side")));
-        ProSelectionFree(&a);
-        ProSelectionFree(&b);
+        const ProDatumside assembly_side = constraint_side(spec, "assembly_side");
+        const ProDatumside component_side = constraint_side(spec, "component_side");
+        CK(ProAsmcompconstraintAsmreferenceSet(entry, a.value, assembly_side));
+        CK(ProAsmcompconstraintCompreferenceSet(entry, b.value, component_side));
+        pending.expected.push_back({{"type", (int)found->second},
+                                    {"type_name", type},
+                                    {"assembly_reference", constraint_input_reference(a.value)},
+                                    {"component_reference", constraint_input_reference(b.value)},
+                                    {"assembly_side", (int)assembly_side},
+                                    {"component_side", (int)component_side},
+                                    {"offset_mm", requested_offset}});
         last_constraint_failure.stage = "offset_write";
-        CK(ProAsmcompconstraintOffsetSet(list[i], spec.value("offset", 0.0)));
+        CK(ProAsmcompconstraintOffsetSet(entry, requested_offset));
     }
     // The kernel sets or solves the whole array at once: a failure here names no
     // individual item, so the index stays empty and the raw code is preserved.
     last_constraint_failure.stage = "solve";
     last_constraint_failure.reason = "solver_failed";
     last_constraint_failure.index = -1;
-    ProError e = ProAsmcompConstraintsSet(nullptr, c, list);
-    ProAsmcompconstraintArrayFree(list);
-    if (e != PRO_TK_NO_ERROR)
-        check(e, "ComponentConstraints");
+    last_constraint_failure.type.clear();
+    CK(ProAsmcompConstraintsSet(nullptr, c, list.value));
+    pending_constraint_placements.erase(c->id);
     last_constraint_failure = AssemblyConstraintFailure();
+    if (pending.planar_slots.empty())
+        return nullptr;
+    constraint_placement_failure = nullptr;
+    verify_constraint_placement(c, pending, "after_write", constraint_placement_failure);
+    pending_constraint_placements.emplace(c->id, std::move(pending));
+    J evidence = std::move(constraint_placement_failure);
+    constraint_placement_failure = nullptr;
+    return evidence;
 }
 // T09: a replay plan binds the source revision and file digest. The Python
 // admission already re-read the registry and file bytes; the native executor
@@ -2500,10 +2730,11 @@ static void assemble_component(const J &op) {
     CK(ProAsmcompAssemble((ProAssembly)board, (ProSolid)child, position, &comp));
     component_aliases_in_flight[comp.id] = source["aliases"];
     std::string placement = op.value("placement", "fixed");
+    J constraint_placement = nullptr;
     if (placement == "fixed")
         fix_component(&comp);
     else if (placement == "constraints")
-        component_constraints(&comp, op["constraints"]);
+        constraint_placement = component_constraints(&comp, op["constraints"]);
     else if (placement == "packaged") {
         // FEAT-088: keep the supplied transform from ProAsmcompAssemble with no constraints.
     } else {
@@ -2520,6 +2751,8 @@ static void assemble_component(const J &op) {
     CK(ProModelitemNameSet(&comp, name));
     J pose_receipt = assembly_pose_receipt(&comp, op);
     pose_receipt["placement"] = placement;
+    if (!constraint_placement.is_null())
+        pose_receipt["constraint_placement"] = std::move(constraint_placement);
     {
         ProAsmcompconstraint *actual_cs = nullptr;
         int actual_count = 0;
@@ -2566,17 +2799,17 @@ static J constraint_reference(ProSelection ref) {
     return result;
 }
 static J inspect_constraints(ProAsmcomp *comp) {
-    ProAsmcompconstraint *list = nullptr;
-    ProError collected = ProAsmcompConstraintsWithDtmOrientGet(comp, &list);
+    ConstraintArray list;
+    ProError collected = ProAsmcompConstraintsWithDtmOrientGet(comp, &list.value);
     if (collected == PRO_TK_E_NOT_FOUND)
         return J::array();
     check(collected, "CollectComponentConstraints");
     int n = 0;
-    CK(ProArraySizeGet((ProArray)list, &n));
+    CK(ProArraySizeGet((ProArray)list.value, &n));
     J result = J::array();
     for (int i = 0; i < n; i++) {
         ProAsmcompConstrType type;
-        CK(ProAsmcompconstraintTypeGet(list[i], &type));
+        CK(ProAsmcompconstraintTypeGet(list.value[i], &type));
         J item = {{"type", (int)type}};
         // Keep the numeric SDK code and add the shared readable symbol; an
         // unrecognized code stays numeric with an explicit "unknown" symbol.
@@ -2587,24 +2820,23 @@ static J inspect_constraints(ProAsmcomp *comp) {
             continue;
         }
         double offset = 0;
-        if (!ProAsmcompconstraintOffsetGet(list[i], &offset))
+        if (!ProAsmcompconstraintOffsetGet(list.value[i], &offset))
             item["offset"] = offset;
         ProSelection r = nullptr;
         ProDatumside side;
-        if (!ProAsmcompconstraintAsmreferenceGet(list[i], &r, &side) && r) {
+        if (!ProAsmcompconstraintAsmreferenceGet(list.value[i], &r, &side) && r) {
             item["assembly_reference"] = constraint_reference(r);
             item["assembly_side"] = (int)side;
             ProSelectionFree(&r);
         }
         r = nullptr;
-        if (!ProAsmcompconstraintCompreferenceGet(list[i], &r, &side) && r) {
+        if (!ProAsmcompconstraintCompreferenceGet(list.value[i], &r, &side) && r) {
             item["component_reference"] = constraint_reference(r);
             item["component_side"] = (int)side;
             ProSelectionFree(&r);
         }
         result.push_back(item);
     }
-    ProAsmcompconstraintArrayFree(list);
     return result;
 }
 static J assembly_inspection() {
@@ -2687,14 +2919,17 @@ static void modify_component(const J &op) {
     if (type != PRO_FEAT_COMPONENT)
         throw std::runtime_error("Reference is not an assembly component");
     std::string action = op["op"];
-    if (action == "component_constraints")
-        component_constraints(&comp, op["constraints"]);
-    else if (action == "component_placement") {
+    if (action == "component_constraints") {
+        J placement = component_constraints(&comp, op["constraints"]);
+        if (!placement.is_null())
+            stage_operation_result({{"constraint_placement", std::move(placement)}});
+    } else if (action == "component_placement") {
         ProMatrix position;
         assembly_rigid_transform(op, position);
         CK(ProAsmcompAllConstrRemove(&comp));
         CK(ProAsmcompPositionSet(nullptr, &comp, position));
         fix_component(&comp);
+        pending_constraint_placements.erase(comp.id);
         stage_operation_result(assembly_pose_receipt(&comp, op));
     } else {
         int *ids = nullptr;
@@ -2707,6 +2942,7 @@ static void modify_component(const J &op) {
         ProArrayFree((ProArray *)&ids);
         ProArrayFree((ProArray *)&options);
         check(e, "RemoveComponent");
+        pending_constraint_placements.erase(comp.id);
         std::vector<std::string> obsolete;
         for (auto it = aliases.begin(); it != aliases.end(); ++it)
             if (it.value()["feature_id"] == comp.id)

@@ -95,6 +95,7 @@ print(json.dumps({name: [importlib.import_module(name).__file__,
                 names = [f"src/creo_mechdog/{module}.py" for module in HELPERS]
                 names.append("native/inspection_units.h")
                 names.append("native/assembly_pose.h")
+                names.append("native/constraint_placement.h")
                 for name in names:
                     self.assertIn(name, server._SOURCE_NAMES)
                     original = (root / name).read_bytes()
@@ -129,6 +130,7 @@ print(json.dumps({name: [importlib.import_module(name).__file__,
         }
         required |= {
             "native/assembly_pose.h",
+            "native/constraint_placement.h",
             "tests/native/test_assembly_pose.cpp",
             "tests/unit/test_assembly_pose.py",
             "tools/test_assembly_pose.py",

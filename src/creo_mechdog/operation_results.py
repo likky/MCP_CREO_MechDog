@@ -500,6 +500,11 @@ def _status_core(record: dict[str, Any], *, failed: bool) -> dict[str, Any]:
         PROTECTED_OPERATION_KEYS + OUTCOME_OPERATION_KEYS + (FAILED_EVIDENCE_KEYS if failed else ())
     )
     core = {key: record[key] for key in keys if key in record}
+    placement = record.get("constraint_placement")
+    if isinstance(placement, dict):
+        core["constraint_placement"] = {
+            key: value for key, value in placement.items() if key not in ("transform", "residuals")
+        }
     group = record.get("group")
     if record.get("op") == "surface_group_measure" and isinstance(group, dict):
         # FEAT-065 T1b: the measurement lives in the nested group block, which

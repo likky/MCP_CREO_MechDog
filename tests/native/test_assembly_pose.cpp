@@ -1,4 +1,5 @@
 #include "assembly_pose.h"
+#include "constraint_placement.h"
 #include "third_party/json.hpp"
 
 #include <cassert>
@@ -63,7 +64,39 @@ static void rejected(const J &op) {
             assert(number == 123); // checks precede output mutation
 }
 
+static void constraint_placement_residuals() {
+    using namespace mechdog_constraints;
+    const PlacementPlane top{{0, 0, 0}, {0, 0, 1}};
+    const PlacementPlane opposing{{0, 0, 0}, {0, 0, -1}};
+    assert(plane_residual(top, opposing, true, 0).matches());
+    close(plane_residual(top, top, true, 0).angle_deg, 180);
+    assert(plane_residual(top, top, false, 0).matches());
+
+    // The initial placement reported in BUG-036 violates a zero-offset align
+    // on both the normal and the position, even when the kernel says solved.
+    const PlacementPlane right{{0, 0, 0}, {1, 0, 0}};
+    const PlacementPlane stale{{-30, 20, 0}, {std::sqrt(3.0) / 2, 0.5, 0}};
+    const auto residual = plane_residual(right, stale, false, 0);
+    close(residual.distance_mm, -30);
+    close(residual.angle_deg, 30);
+    assert(!residual.matches());
+
+    const PlacementPlane shifted{{40, -90, -5}, {0, 0, -1}};
+    assert(plane_residual(top, shifted, true, -5).matches()); // sliding in the plane is legal
+    assert(!plane_residual(top, shifted, true, 5).matches());
+    const PlacementPlane red_datum{{0, 0, 0}, {0, 0, -1}, -1};
+    const PlacementPlane same_facing{{0, 0, 5}, {0, 0, -1}};
+    const PlacementPlane opposite_facing{{0, 0, 5}, {0, 0, 1}};
+    assert(plane_residual(red_datum, same_facing, false, 5).matches());
+    assert(plane_residual(red_datum, opposite_facing, true, 5).matches());
+    const PlacementPlane nearly{{0, 0, 0.0009}, {0, 0, 1}};
+    assert(plane_residual(top, nearly, false, 0).matches());
+    const PlacementPlane unreadable{{0, 0, std::numeric_limits<double>::quiet_NaN()}, {0, 0, 1}};
+    assert(!plane_residual(top, unreadable, false, 0).known());
+}
+
 int main() {
+    constraint_placement_residuals();
     const J identity = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
     pose({0, 0, 0}, identity, {2, 3, 5});
     pose({90, 0, 0}, {{1, 0, 0}, {0, 0, 1}, {0, -1, 0}}, {2, -5, 3});

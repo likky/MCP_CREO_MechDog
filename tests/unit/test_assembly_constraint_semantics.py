@@ -2,7 +2,9 @@
 
 import unittest
 
+from creo_mechdog.failure_context import annotate_failed_operation
 from creo_mechdog.job_projection import ASSEMBLY_POSE_KEYS, compact_operation
+from creo_mechdog.operation_results import enforce_compact_budget
 from creo_mechdog.schema import (
     AssembleOp,
     AssemblyConstraint,
@@ -448,6 +450,41 @@ class AssemblyFailureProjectionTests(unittest.TestCase):
         block = compact["failed_operation"]
         self.assertIsNone(block["failed_constraint_index"])
         self.assertEqual(block["constraint_reason"], "solver_failed")
+
+    def test_planar_placement_failure_keeps_measured_scalars_in_compact_budget(self):
+        failure = {
+            "index": 0,
+            "operation": "component_constraints",
+            "constraint_stage": "after_write",
+            "constraint_reason": "placement_mismatch",
+            "placement_matches_constraints": False,
+            "max_distance_error_mm": 30,
+            "max_angle_error_deg": 180,
+        }
+        result = annotate_failed_operation(
+            {"success": False, "failed_operation_index": 0, "failed_operation": failure},
+            [{"op": "component_constraints", "component": "pin"}],
+        )
+        record = compact_operation(
+            {
+                "op": "component_constraints",
+                "index": 0,
+                "execution_status": "failed",
+                "failed_operation": result["failed_operation"],
+                "constraint_placement": {
+                    "placement_matches_constraints": False,
+                    "residuals": [{"distance_error_mm": 30}] * 100,
+                },
+            }
+        )
+        result["operations"] = [record]
+        compact = enforce_compact_budget({"result": result}, budget=1500)
+        row = compact["result"]["operations"][0]
+        self.assertEqual(row["constraint_placement"], {"placement_matches_constraints": False})
+        self.assertEqual(row["failed_operation"]["constraint_reason"], "placement_mismatch")
+        self.assertIs(row["failed_operation"]["placement_matches_constraints"], False)
+        self.assertEqual(row["failed_operation"]["max_distance_error_mm"], 30)
+        self.assertEqual(row["failed_operation"]["max_angle_error_deg"], 180)
 
 
 if __name__ == "__main__":
