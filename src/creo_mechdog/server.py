@@ -801,6 +801,7 @@ def _capabilities_payload(tool_entries: list[dict[str, Any]]) -> dict[str, Any]:
         if multisection_evidence.is_file()
         else {"status": "No multisection Blend integration summary yet"},
     }
+    artifacts = callback_setup_status(bridge.ROOT / "build")
     return {
         "name": "MCP_CREO_MechDog",
         "version": VERSION,
@@ -891,13 +892,13 @@ def _capabilities_payload(tool_entries: list[dict[str, Any]]) -> dict[str, Any]:
         "support_status": _support_status(),
         "complete_creo_coverage": False,
         "seed_library": seeds.list_seeds(),
-        "direct_blend_callback": callback_setup_status(bridge.ROOT / "build"),
+        "direct_blend_callback": artifacts,
         "release_status": release_status(VERSION),
         "families": project_worker_availability(
             families(),
             bridge.surface_loft_admission_identity(),
             bridge.channel_health().get("surface_loft_runtime"),
-            bridge.channel_health().get("callback_runtime", {}),
+            bridge.callback_admission_status(artifacts),
         ),
         "known_limitations": list(KNOWN_LIMITATIONS),
         "plan_examples": list(PLAN_EXAMPLES),

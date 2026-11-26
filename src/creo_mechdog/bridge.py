@@ -1727,6 +1727,111 @@ def _record_probe_result(
     return value
 
 
+def _callback_context(build: Path, artifacts: dict) -> tuple[str, dict | None]:
+    """Bind a probe to the selection, live processes, deployment and Start/Stop records."""
+    from creo_mechdog import creo_startup
+
+    settings = creo_startup.Settings.load()
+    observed = creo_startup.inventory(settings)
+    if observed["uncertain"]:
+        raise ValueError("incomplete Creo process inventory")
+    hosts = sorted(
+        (p["pid"], p["created"], p["image"], p["matches"])
+        for p in observed["processes"]
+        if Path(p["image"]).name.lower() == "xtop.exe"
+    )
+    target = selected_session(config())
+    lifecycle = []
+    current = None
+    loader = Path(artifacts["loader_file"])
+    for directory in sorted((build / "blend_loader").iterdir()):
+        path = directory / "callback_result.json"
+        try:
+            with path.open("rb") as stream:
+                data = stream.read()
+                stamp = os.fstat(stream.fileno()).st_mtime_ns
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        lifecycle.append((directory.name, stamp, hashlib.sha256(data).hexdigest()))
+        if directory == loader.parent and len(hosts) == 1 and not target and hosts[0][3]:
+            pid, created, _, _ = hosts[0]
+            record = json.loads(data)
+            # Windows creation time is in 100 ns ticks from 1601. A recycled PID
+            # cannot corroborate an initialization written by the previous process.
+            if (
+                isinstance(record, dict)
+                and record.get("process_id") == pid
+                and stamp >= (created - 116444736000000000) * 100
+            ):
+                current = record
+    worker = (build / "creo_worker.exe").stat()
+    binding = (target, hosts, artifacts, lifecycle, worker.st_size, worker.st_mtime_ns)
+    if not lifecycle and hosts:
+        current = {}
+    return hashlib.sha256(json.dumps(binding, sort_keys=True).encode()).hexdigest(), current
+
+
+def callback_admission_status(artifacts: dict | None = None) -> dict:
+    """Read local admission evidence only. The worker still performs live identity verification."""
+    build = ROOT / "build"
+    if artifacts is None:
+        artifacts = callback_setup_status(build)
+    if not isinstance(artifacts, dict) or artifacts.get("artifact_status") != "prepared":
+        # Keep the existing bootstrap path: the executor may still need to be built.
+        return artifacts if isinstance(artifacts, dict) else {}
+    unknown = {
+        "readiness": "unknown",
+        "reason": "callback_observation_required",
+        "next_action": "query creo_callback_status",
+        "registry_file": artifacts["registry_file"],
+    }
+    try:
+        binding, record = _callback_context(build, artifacts)
+    except (OSError, ValueError, KeyError, TypeError):
+        return unknown
+    cached = channel_health().get("callback_runtime")
+    if isinstance(cached, dict) and cached.get("binding") == binding:
+        return {**unknown, **cached}
+    if record is None:
+        return unknown
+    if not record:
+        return {
+            **unknown,
+            "readiness": "not_loaded",
+            "reason": "no_runtime_identity_record",
+            "next_action": "start_or_register_application_manually",
+        }
+    if record.get("terminated") is True:
+        return {
+            **unknown,
+            "readiness": "not_loaded",
+            "reason": "recorded_application_not_active",
+            "next_action": "start_or_register_application_manually",
+        }
+    keys = (
+        "loader_file",
+        "module_file",
+        "loader_sha256",
+        "dll_sha256",
+        "protocol",
+        "contract",
+        "command",
+        "resource_root",
+        "loader_abi",
+    )
+    if record.get("initialize_code") == 0 and record.get("terminated") is False:
+        if any(record.get(key) != artifacts[key] for key in keys):
+            return {
+                **unknown,
+                "readiness": "version_mismatch",
+                "reason": "loaded_deployment_differs",
+            }
+        # A matching initialization permits the normal cold-start submit path.
+        # Only an explicit live probe may advertise readiness as verified.
+        return {**unknown, "reason": "matching_local_initialization", "admit_to_worker": True}
+    return unknown
+
+
 def callback_status() -> dict:
     """Nine-second read-only native probe; no build, DLL loading or GUI launch."""
     build = ROOT / "build"
@@ -1743,6 +1848,10 @@ def callback_status() -> dict:
         return unknown_readiness(artifacts, "worker_unavailable")
     try:
         with toolkit_lock(operation="callback_status"):
+            try:
+                before, _ = _callback_context(build, artifacts)
+            except (OSError, ValueError, KeyError, TypeError):
+                before = None
             result = subprocess.run(
                 [str(exe), "callback-status", "2"],
                 cwd=build,
@@ -1780,6 +1889,10 @@ def callback_status() -> dict:
         return unknown_readiness(artifacts, "invalid_probe_result", session=session)
     if callback_setup_status(build) != artifacts:
         return unknown_readiness(artifacts, "deployment_changed_during_probe", session=session)
+    try:
+        after, _ = _callback_context(build, artifacts)
+    except (OSError, ValueError, KeyError, TypeError):
+        after = None
     payload = {
         **artifacts,
         **native,
@@ -1791,6 +1904,8 @@ def callback_status() -> dict:
     record_channel_health(
         True,
         callback_runtime={
+            "binding": after if before == after else None,
+            "next_action": native.get("next_action") or native.get("instruction"),
             "readiness": native.get("readiness"),
             "reason": native.get("reason"),
             "checked_at": payload["checked_at"],

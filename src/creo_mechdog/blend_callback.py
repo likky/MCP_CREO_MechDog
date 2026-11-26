@@ -523,6 +523,7 @@ def callback_setup_status(build: Path) -> dict:
                 for key in (
                     "protocol",
                     "contract",
+                    "command",
                     "loader_abi",
                     "loader_fingerprint",
                     "loader_sha256",

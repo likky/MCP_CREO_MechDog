@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
+import json
 import unittest
 from unittest.mock import patch
 
-from creo_mechdog import capabilities, capability_pages, generic_bridge, server
+from creo_mechdog import (
+    bridge,
+    capabilities,
+    capability_pages,
+    creo_startup,
+    generic_bridge,
+    server,
+)
+from tests.unit import test_toolkit_channel
+from tests.unit.test_surface_loft_panel_admission import panel_op
 
 
 def _creo10_identity() -> dict:
@@ -79,40 +89,95 @@ class LoftRuntimeReadinessTests(unittest.TestCase):
         self.assertIn("runtime_ready", compact["families"]["loft"])
         self.assertIn("runtime_ready", compact["families"]["surface_loft"])
 
-    def test_loft_and_panel_reject_before_job_when_callback_not_loaded(self):
-        not_loaded = {
-            "readiness": "not_loaded",
-            "reason": "recorded_application_not_active",
-            "next_action": "start_or_register_application_manually",
-            "registry_file": "build/blend_callback_protk.dat",
+
+class LockFreeCallbackAdmission(unittest.TestCase):
+    setUp = test_toolkit_channel.ToolkitChannel.setUp
+
+    def prepare(self):
+        build = self.root / "build"
+        loader = build / "blend_loader" / "generation" / "loader.dll"
+        loader.parent.mkdir(parents=True)
+        (build / "creo_worker.exe").touch()
+        artifacts = {
+            "artifact_status": "prepared",
+            "registry_file": "fixture.dat",
+            "loader_file": str(loader),
+            "module_file": "payload.dll",
+            "loader_sha256": "loader",
+            "dll_sha256": "payload",
+            "protocol": 4,
+            "contract": "panel",
+            "command": "command",
+            "resource_root": str(self.root),
+            "loader_abi": 2,
         }
-        loft_ops = [
-            {
-                "op": "sketch",
-                "label": "s0",
-                "plane": "XY",
-                "entities": [{"type": "circle", "name": "c0", "center": [0, 0], "radius": 5}],
-            },
-            {
-                "op": "sketch",
-                "label": "s1",
-                "plane": "XY",
-                "offset": 10,
-                "entities": [{"type": "circle", "name": "c1", "center": [0, 0], "radius": 5}],
-            },
-            {"op": "loft", "label": "l1", "sections": ["s0", "s1"], "mode": "add"},
-        ]
+        hosts = [{"pid": 20, "created": 116444736000000000, "image": "xtop.exe", "matches": True}]
+        self.enterContext(patch.object(bridge, "callback_setup_status", return_value=artifacts))
+        self.enterContext(
+            patch.object(
+                creo_startup, "inventory", return_value={"processes": hosts, "uncertain": False}
+            )
+        )
+        self.enterContext(
+            patch.object(bridge, "surface_loft_admission_identity", return_value=_creo10_identity())
+        )
+        return artifacts, loader.parent / "callback_result.json", hosts
+
+    def test_two_routes_reject_without_probing_locking_or_making_a_job(self):
+        artifacts, record, _ = self.prepare()
+        ops = [{"op": "loft", "label": "loft_one", "sections": [40, 49]}, panel_op()]
         with (
-            patch.object(generic_bridge.bridge, "callback_status", return_value=not_loaded),
-            patch.object(generic_bridge.bridge, "toolkit_lock") as mock_lock,
+            patch.object(bridge, "toolkit_lock", side_effect=AssertionError("took Toolkit lock")),
+            patch.object(bridge.subprocess, "run", side_effect=AssertionError("started a probe")),
         ):
-            with self.assertRaises(ValueError) as caught:
-                generic_bridge.submit(loft_ops)
-            mock_lock.assert_not_called()
-        msg = str(caught.exception)
-        self.assertIn("BLEND_CALLBACK_SETUP_REQUIRED", msg)
-        self.assertIn("before-job preflight", msg)
-        self.assertIn("creo_new_loft_part", msg)
+            for identity, readiness in [
+                (None, "not_loaded"),
+                ({"terminated": True}, "not_loaded"),
+                ({"terminated": False, "dll_sha256": "other"}, "version_mismatch"),
+                ({"process_id": 999, "terminated": False}, "unknown"),
+            ]:
+                if identity is not None:
+                    record.write_text(
+                        json.dumps(
+                            {**artifacts, "process_id": 20, "initialize_code": 0, **identity}
+                        )
+                    )
+                for op in ops:
+                    with self.subTest(op=op["op"], identity=identity):
+                        with self.assertRaisesRegex(ValueError, "before-job preflight") as caught:
+                            generic_bridge.submit([op])
+                        self.assertIn(readiness, str(caught.exception))
+                        self.assertEqual(
+                            "creo_new_loft_part" in str(caught.exception), op["op"] == "loft"
+                        )
+        self.assertFalse(bridge.JOBS.exists())
+        self.assertFalse(generic_bridge.MODELS.exists())
+
+    def test_observation_is_bound_to_lifecycle_deployment_and_target(self):
+        artifacts, path, hosts = self.prepare()
+        record = {**artifacts, "process_id": 20, "initialize_code": 0, "terminated": False}
+        path.write_text(json.dumps(record))
+        binding, _ = bridge._callback_context(self.root / "build", artifacts)
+        bridge.record_channel_health(
+            True, callback_runtime={"binding": binding, "readiness": "ready"}
+        )
+        self.assertEqual(bridge.callback_admission_status()["readiness"], "ready")
+        path.write_text(json.dumps({**record, "terminated": True}))
+        self.assertEqual(bridge.callback_admission_status()["readiness"], "not_loaded")
+        path.write_text(json.dumps(record))
+        current = bridge.callback_admission_status()
+        self.assertTrue(current["admit_to_worker"])
+        self.assertNotEqual(current["readiness"], "ready")
+        with patch.object(bridge, "selected_session", return_value="other"):
+            self.assertNotIn("admit_to_worker", bridge.callback_admission_status())
+        hosts.append({**hosts[0], "pid": 21})
+        self.assertNotIn("admit_to_worker", bridge.callback_admission_status())
+        hosts.pop()
+        hosts[0]["created"] = 150000000000000000
+        self.assertNotIn("admit_to_worker", bridge.callback_admission_status())
+        path.write_text("{")
+        self.assertEqual(bridge.callback_admission_status()["readiness"], "unknown")
+        self.assertEqual(bridge.callback_admission_status({}), {})
 
 
 if __name__ == "__main__":

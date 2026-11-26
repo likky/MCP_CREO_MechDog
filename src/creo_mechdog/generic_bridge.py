@@ -1323,8 +1323,12 @@ def submit(
         # BUG-193: pre-check resident callback readiness before taking the Toolkit
         # channel or creating a job, so not_loaded/version_mismatch rejects cleanly
         # without queueing a doomed native job.
-        cb = bridge.callback_status()
-        if isinstance(cb, dict) and cb.get("readiness") in ("not_loaded", "version_mismatch"):
+        cb = bridge.callback_admission_status()
+        if (
+            cb.get("artifact_status") not in ("not_prepared", "legacy")
+            and cb.get("readiness") != "ready"
+            and not cb.get("admit_to_worker")
+        ):
             route_hint = (
                 " callback_free_route=creo_new_loft_part (use creo_list_seeds)."
                 if loft_requests
