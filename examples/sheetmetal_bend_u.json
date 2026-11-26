@@ -1,0 +1,62 @@
+{
+  "description": "钣金 U 形槽 + 二级回折 + 安装孔（Creo 11 实测）：基板 120x60x2 -> 两侧 90 度法兰 h30 R2 -> 前法兰顶部回折 h20 -> 中心 d12 通孔。法兰边用 edge_geometry 端点引用，重建后仍可解析。",
+  "model_type": "sheetmetal",
+  "template": "mmns_part_sheetmetal_abs.prt",
+  "operations": [
+    {
+      "op": "sheetmetal_planar_wall",
+      "label": "base_panel",
+      "plane": "XY",
+      "length": 120,
+      "width": 60,
+      "thickness": 2
+    },
+    {
+      "op": "sheetmetal_flange",
+      "label": "bend_front",
+      "edge": {
+        "kind": "edge_geometry",
+        "endpoints_mm": [[0.0, 0.0, 2.0], [120.0, 0.0, 2.0]],
+        "tolerance_mm": 1e-4
+      },
+      "height": 30,
+      "angle": 90,
+      "radius": 2
+    },
+    {
+      "op": "sheetmetal_flange",
+      "label": "bend_back",
+      "edge": {
+        "kind": "edge_geometry",
+        "endpoints_mm": [[120.0, 60.0, 2.0], [0.0, 60.0, 2.0]],
+        "tolerance_mm": 1e-4
+      },
+      "height": 30,
+      "angle": 90,
+      "radius": 2
+    },
+    {
+      "op": "sheetmetal_flange",
+      "label": "return_lip",
+      "edge": {
+        "kind": "edge_geometry",
+        "endpoints_mm": [[0.0, 0.0, 30.0], [120.0, 0.0, 30.0]],
+        "tolerance_mm": 1e-3
+      },
+      "height": 20,
+      "angle": 90,
+      "radius": 2
+    },
+    {
+      "op": "hole",
+      "label": "mount_hole",
+      "diameter": 12,
+      "placement": {"kind": "plane", "axis": "z", "offset": 2},
+      "reference1": {"kind": "datum_plane", "axis": "x"},
+      "reference2": {"kind": "datum_plane", "axis": "y"},
+      "offset1": 60,
+      "offset2": 30
+    }
+  ],
+  "assertions": {"require_solid": true}
+}

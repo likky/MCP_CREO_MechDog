@@ -11,5 +11,6 @@
 - `RELEASING_HISTORY_2026.md`：从 [RELEASING.md](../development/RELEASING.md) 抽离的 0.44.1 及更早版本约定流水账。
 - `BACKLOG_COMPLETED_HISTORY_2026.md`：从 [BACKLOG_COMPLETED.md](../BACKLOG_COMPLETED.md) 抽离的早期历史来源索引与原台账日期进展。
 - `RELEASE-POSTCHECK-ARCHIVE-2026.md`：从 [RELEASE-POSTCHECK-2026-11-07.md](../development/RELEASE-POSTCHECK-2026-11-07.md) 抽离的 v0.44.1 及更早发布后附件核对归档。
+- `creo11-2026-11/`：Creo 11 实测报告、钣金实战手册与 107 工具目录（本地 0.19.3 分支回流内容，条目见 [BUG-196](../work-items/BUG-196.md)）。
 
 > 注：受 `creo_mechdog.release_integrity` 及单元测试强约束的 `docs/release-notes/RELEASE_NOTES_*.md`、`docs/releases/*.json`、`docs/validation/RELEASE-*.md`、`docs/BACKLOG*.md` 与 `docs/work-items/*.md` 仍保留在规定路径。

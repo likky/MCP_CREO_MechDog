@@ -712,6 +712,12 @@ def windows_process_environment() -> dict[str, str]:
         "USERDOMAIN",
         "USERDOMAIN_ROAMINGPROFILE",
         "WINDIR",
+        # Creo 11 async Toolkit needs the nmsd port from the user block; without
+        # PTCNMSPORT ProEngineerConnect returns -4 (PRO_TK_E_NOT_FOUND). The
+        # license path stays out of this set: native_environment() applies
+        # resolve_license_environment() instead.
+        "PTCNMSPORT",
+        "PRO_DIRECTORY",
     }
     for key, value in defaults.items():
         if key.upper() in prerequisites:

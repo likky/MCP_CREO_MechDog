@@ -43,6 +43,11 @@ SECTION_DESCRIPTIONS = {
 _CURSOR_KIND = "job"
 PAGE_LIMIT_MAX = 200
 ENTRY_BUDGET = RESPONSE_BUDGET - 2048
+#: A complete job view up to this size is served inline with its top-level
+#: ``result`` block instead of being reshaped into pages. Pages keep
+#: RESPONSE_BUDGET: a normal Creo 11 feature job serializes to ~35 KiB, and
+#: paging it dropped the inline ``result`` for clients that read that shape.
+INLINE_WHOLE_BUDGET = 64 * 1024
 
 #: Outcome scalars carried on every page so a page alone still identifies the
 #: job terminal state (failure reason and revision included).
@@ -176,7 +181,7 @@ def job_page(
             "sections_available": list(SECTIONS),
             "section_counts": section_counts(manifest),
         }
-        if serialized_size(whole) <= RESPONSE_BUDGET:
+        if serialized_size(whole) <= INLINE_WHOLE_BUDGET:
             return whole
     names = [section] if section is not None else list(SECTIONS)
     records = [
