@@ -15,6 +15,18 @@
 - 独立试件创建作业 `5f765d82adfe47f8935aee1a5290b825`；四张草图作业 `27fc971fe8044173aee47972be0003a0` 后为 rev 2。闭合圆 `c0/c30` 用于 `creo_loft`，开放半圆 `a0/a30` 用于显式 `resident_panel` 的 `creo_surface_loft`。
 - 未加载时，两条请求均返回 `BLEND_CALLBACK_SETUP_REQUIRED (before-job preflight)`，包含 `readiness`、`reason`、`next_action` 和注册文件提示；`creo_loft` 另带 `callback_free_route=creo_new_loft_part`。未返回 job ID，公开作业列表未新增；rev 2、哈希、`last_job` 不变，`pending_job=null`。事后通道空闲不能证明调用过程中从未取得锁；不从公开列表推定内部从未分配编号。
 - 加载后在同一试件、同一 rev 2 原样重提 `creo_surface_loft`（`bug193_surf`，`resident_panel`，`straight`，`a0/a30` 均 `open_confirmed=true`）。作业 `cf26702a2a674f91b9defdfb4480c1a3` 成功，rev 2→3，新增 feature 70 / quilt 76，保存重载为 true。
-- 重载后面积 1986.917653 mm²（与解析半锥台面积一致），1 面、4 条开放边，未生成实体。摘要另报 `geometry_check.verified=false` 和零导线配对；两者分开记录，**未确认因果**。当前项目的公开回执几何判断代码并不以配对数为判据；要定位该字段，需查看完整作业回执中字段所在层级及 `geometry_check.reasons`，不必重跑已有作业。
+- 重载后面积 1986.917653 mm²（与解析半锥台面积一致），1 面、4 条开放边，未生成实体。
+
+## 同一作业的两层几何判定（只读补证）
+
+完整作业回执 `complete=true`、`next_cursor=null`。两层几何测量一致，指向同一 quilt 76，均为重载后测量：
+
+| 字段路径 | 实测判定 |
+| --- | --- |
+| `result.operations[0].geometry_check` | `verified=false`；未返回 `status`、`reasons`、`error` |
+| `result.panel_receipt.geometry_check` | `verified=true`，`status=verified`，`reasons=[]` |
+| 作业终态 | `succeeded`，`stage=verified`，`saved_file_reloaded_and_verified=true` |
+
+对照 v0.46.0 tag（`333105a2`）：原生 [`panel_finalize_reloaded_geometry`](https://github.com/wudahua/MCP_CREO_MechDog/blob/v0.46.0/native/panel_run.h#L149-L199) 把操作层 `verified` 初始化为 false，采集几何后不改写该值；[Python 面板回执](https://github.com/wudahua/MCP_CREO_MechDog/blob/v0.46.0/src/creo_mechdog/panel_receipt.py#L91-L146) 根据面组、面积、feature/quilt 关联及重载证据重新生成判定。与实际回执吻合：操作层的 false 不是本次几何测量失败，也不是零导线配对导致；`curve_fit_check` 单独报告 `blocking=false`、`guides=0`、`pairs=[]`。对 resident_panel 的几何判定应读取 `result.panel_receipt.geometry_check`，原生操作层用于追溯测量数据。若通用消费者直接使用操作层标志，建议另行明确该字段语义并加离线回执用例，不必重跑此模型。
 
 结论：两条入口未加载时的公开拦截观察通过；同一请求的 `resident_panel` 恢复与保存重载通过。未测已加载态的 `creo_loft` 建模、Creo 9 / 12.4；瞬时通道锁未测。结论不外推到其他会话或版本。
