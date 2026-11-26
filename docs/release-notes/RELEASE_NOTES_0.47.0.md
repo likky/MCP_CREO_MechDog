@@ -1,6 +1,6 @@
 # MCP_CREO_MechDog 0.47.0 版本说明
 
-2026-11-26 MINOR，公开工具数 112（新增只读 `creo_server_info`）。上一版本：0.46.1（`v0.46.1`，提交 `857a7c728669fbe449a79ca621c12aa1d96a498c`）。
+2026-11-26 MINOR，公开工具数 112（新增只读 `creo_server_info`）。上一版本：0.46.1（`v0.46.1`，提交 `742b2736d209a48629eb965b0c7662fb3d42c601`）。
 
 - **`auto` 求解器回归修复与自助出口提示（[BUG-194](../work-items/BUG-194.md)）**：`profile_dimensioning_choice` 在 `dimensioning="auto"` 时恢复将 `b_spline`/`arc`/`spline`/`ellipse` 路由到 `autodim`（`unsupported_coordinate_entity`），避免 Creo 自身坐标标注量化（`1e-4`–`1e-3 mm`）触发 `coordinates` 的 `1e-5 mm` 硬拒；`line`/`centerline`/`rectangle`/`polyline`/`circle` 继续默认走 `coordinates`（保留 `BUG-108` 位置保护），显式 `dimensioning="coordinates"` 仍支持精确 `b_spline` 与 `arc`。`verify_coordinate_plan` 与 `enforce_geometry_deviation` 拒绝消息新增 `dimensioning='autodim'` 与 `geometry_tolerance_mm=<cap>` 自助提示，并同步更新 `creo_capabilities` 文档。
 - **包围盒误差披露、空件平面报错与边选择器歧义提示（[BUG-195](../work-items/BUG-195.md)）**：`solid_bounds.h` 在 `bounding_box_status` 中新增 `measurement_method="tessellated"`、`method_error_bound_mm=0.001` 与 `error_bound_direction="inward"`；`generic.cpp` 对无实体面（`has_solid=false`）模型使用 `{kind:'plane', normal, offset}` 给出指向 `{kind:'datum_plane', axis, offset}` / `{kind:'datum_plane', id}` 的明确报错；`geometry_selectors.cpp` 在多边歧义报错中附带各命中边的 `adjacent_surfaces` 并提示 `on_face:{kind:'surface',id:N}` 与 `ambiguity:'nearest'`。
