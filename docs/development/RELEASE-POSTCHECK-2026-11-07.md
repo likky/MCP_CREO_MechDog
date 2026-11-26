@@ -8,6 +8,21 @@
 - 四件附件为 `MCP_CREO_MechDog-0.46.0-source.zip`、`MCP_CREO_MechDog-0.46.0-source.zip.sha256`、`MCP_CREO_MechDog-0.46.0-seed-library.zip` 和 `MCP_CREO_MechDog-0.46.0-seed-library.zip.sha256`。种子包 SHA256 为 `7ccae6e93dd1d7ed413c796a605d1488901e42abe93e8edbeb4e0fb190446384`。两份同名 sidecar 分别记录对应 ZIP 的摘要。
 - 远端校验发布后执行，当前未验证。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.46.0)
 
+### v0.46.0 发布后核对
+
+- 正式 Release `458917064` 发布于 2026-11-26（非 draft、非 prerelease），附注标签 `v0.46.0` 指向发布主干提交 `d6055f9b101aa40013a6f8daf8330ccff837b824`。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.46.0)
+- 干净主干提交 `d6055f9b101aa40013a6f8daf8330ccff837b824` 在 Windows x64 / Python 3.12.10 运行 `tools/test_unit.py` 共 **4,542** 项，0 失败、0 错误、6 跳过（`run_id=fe5df2953b65475f8c8b78ca600e5d69`）；`tools/dev_check.py --skip-unit` 通过（Ruff 0 lint / 0 unformatted，`test_update_check`、`test_model_reconciliation`、`test_mcp --offline` 全通过）。
+- `PYTHONUTF8=1 tools/check_release_assets.py --tag v0.46.0` 退出码 0（`v0.46.0: four assets downloaded and verified; both sidecars match; release body self-proof verified`）：
+
+| 远端附件 | 字节 | 核对实算 SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.46.0-source.zip` | 12,360,590 | `4d9b789a44cca7c5ca3d2f835c4e6a25d4d8da27bf1de9238daf8e3f12d612bc` |
+| `MCP_CREO_MechDog-0.46.0-source.zip.sha256` | 101 | 与对应 ZIP 摘要一致 |
+| `MCP_CREO_MechDog-0.46.0-seed-library.zip` | 493,442 | `7ccae6e93dd1d7ed413c796a605d1488901e42abe93e8edbeb4e0fb190446384` |
+| `MCP_CREO_MechDog-0.46.0-seed-library.zip.sha256` | 107 | 与对应 ZIP 摘要一致 |
+
+- 本机 Creo 10.0.0.0（`release_numeric=42`）实机验收覆盖 `BUG-192`（8/8 拔模方向与 `material_effect`）、`FEAT-090`（40 弧 10 轮廓微间隙吸附拉伸，作业 `5ced5a2ea83a40049ebe5499299853b9`，体积 `1047.002224 mm³`，保存重载 true）与 `BUG-193`（ready 态 `callback_status` 与 compact `runtime_ready`）。Creo 9 / Creo 12.4、外部原始 `gear10.json` 文件、未加载 callback 实机会话及 WorkBuddy 黑盒仍未验收。
+
 ## v0.45.2（2026-11-26，打包时点）
 
 - DEV-002 第四、五批交付 Python 实现包化、新安装入口和 AI Agent 兼容说明。发布回归覆盖 Windows x64 / Python 3.12.10 的离线 stdio、安装配置和源码分发。 [版本说明](../RELEASE_NOTES_0.45.2.md) · [验证与发布记录](../validation/RELEASE-0.45.2.md)
