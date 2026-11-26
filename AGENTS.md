@@ -56,3 +56,27 @@
 
 - `config.json`、`client-config.json`、`native/constants.inc`（由 `tools/generate_constants.py` 生成）不得提交或进入发布包；保留第三方许可，不提交 PTC SDK/许可数据（DEV-092 `references/creo13.4.0.0-sdk/` 仅作本地查证例外，见 [GOVERNANCE_HISTORY.md](docs/development/GOVERNANCE_HISTORY.md)）。
 - **本机实机常设授权（2026-11-19）**：无需逐次确认，即可新建 Toolkit 连接、启动/重启 Creo 与 nmsd、结束卡死或异常 Creo/worker 进程（先确认无残留 worker 并记录原因）、清理残留 `toolkit.lock` 与 `unknown` 保护状态、编译执行器、建模、GUI 操作及几何/保存重载验收；不得删除或改写用户模型、历史证据与已发布产物。
+
+## 本机 fork 与上游同步（2026-11-26 用户确认）
+
+- 远端：`origin` = 公开 fork `likky/MCP_CREO_MechDog`（默认推送目标，`remote.pushDefault=origin`）；`upstream` = `wudahua/MCP_CREO_MechDog`（其 `push` URL 已设为 `DISABLED`，禁止直接推送原项目）。
+- 同步流程：`git fetch upstream` → `git rebase upstream/main` → `git push --force-with-lease origin main`。不得使用 `--force`，不得为了干净历史丢弃本地提交。
+- 每次同步**先查上游占用**：`docs/work-items/` 的最大 BUG/FEAT/DEV 编号与 `docs/BACKLOG.md` 的「当前唯一 ID」。上游可能先用掉本地已分配的编号——2026-11-26 已发生：本地 `BUG-194` 与上游 0.47.0 的 `BUG-194` 撞号，本地卡片改为 `BUG-196`，上游卡片必须原样保留（曾被误覆盖一次，须避免）。
+- 新文档随上游归档规范：不再直接放 `docs/` 根，放 `docs/archive/<主题>-<年月>/` 并登记到 `docs/archive/README.md`。
+- 标签：本地 `backup/*` 只作回退，不推送；需要同步上游发布标签时单独 `git push origin v<版本>`。发布自有版本时使用不与上游冲突的标签命名。
+
+## 本地保留改动（回流内容，勿在同步时丢弃）
+
+- `src/creo_mechdog/bridge.py::windows_process_environment()`：白名单含 `PTCNMSPORT`、`PRO_DIRECTORY`（Creo 11 异步连接缺 `PTCNMSPORT` 时 `ProEngineerConnect` 返回 `-4`）。**不要**把 `PTC_D_LICENSE_FILE` 加入该白名单：它只由 `resolve_license_environment()` 授予，且 `tests/test_creo_startup.py` 有“不得从用户环境块导入”的用例。
+- `src/creo_mechdog/job_pages.py::INLINE_WHOLE_BUDGET = 64 KiB`：只放宽 `creo_get_job` 整份内联门槛（35 KB 作业保留顶层 `result`）；`RESPONSE_BUDGET` 与分页单页仍 32 KiB。
+- 已废弃、不要重新引入的两项老补丁：探测超时 `2→10` 秒（改为 `creo_probe_timeout_seconds`，默认 15）、`CURSOR_RESERVE`（被 FEAT-023 的裁剪循环取代）。
+- 钣金演示：`tools/demo_bend_box.py`、`tools/demo_cable_tray.py`；示例方案 `examples/sheetmetal_bend_u.json`；参考文档 `docs/archive/creo11-2026-11/`；条目 `docs/work-items/BUG-196.md`。机箱演示（`demo_chassis.py`）已按用户要求删除，不要再加回。
+
+## 实测经验（Creo 11 会话内验证，2026-11-26）
+
+- `creo_inspect_model` 的 `limit` 上限为 200，且必须跟随 `next_cursor` 取全；只读第一页会漏（同一零件 45 vs 78 个特征节点）。
+- 圆形边被拆成两条半圆弧：倒角/圆角对**每个圆只引用一个 id**（取最小），否则被拒并提示 `keep the smallest id`。圆柱面同样拆两半，按面选择时可能需要两片一起引用。
+- 草图平面轴向与切除方向不在 `dimensions` 里：结合 `*_SK_PLANE.offset` 与 `W/T/L` 关系判断；`direction="symmetric"` 会切穿对侧墙。
+- 特征重建：按特征树 + 驱动尺寸可重建到逐位一致，但尺寸语义需先消歧（`d27=4.1416` 是展开补偿，不是折弯半径；半径是 `2.0`）。
+- 工程图：图纸内中文会乱码（缺字体），注记/标题栏用 ASCII；视图自带的“比例”注记也乱码且无关闭开关；`creo_drawing_dimension` 只能显示**草图尺寸**，特征级尺寸报 `Toolkit drawing operation failed`；图纸 JPEG 导出失败（`raster code -1`），改用 PDF 导出。
+- 钣金：墙顶再折必须带 `miter_cuts{width:2}`；`end_trim_mm` 与 `relief` 都不能解除 `adjacent_bend_ends` 守卫。
