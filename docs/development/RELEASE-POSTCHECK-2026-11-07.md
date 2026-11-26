@@ -8,6 +8,21 @@
 - 四件附件为 `MCP_CREO_MechDog-0.46.1-source.zip`、`MCP_CREO_MechDog-0.46.1-source.zip.sha256`、`MCP_CREO_MechDog-0.46.1-seed-library.zip` 和 `MCP_CREO_MechDog-0.46.1-seed-library.zip.sha256`。种子包 SHA256 为 `8305c26aa2c91e20c0260ec7d61532ce64595e9d033084266b646adad0f46b0d`。两份同名 sidecar 分别记录对应 ZIP 的摘要。
 - 远端校验发布后执行，当前未验证。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.46.1)
 
+### v0.46.1 发布后核对
+
+- 正式 Release `459283150` 发布于 2026-11-26 10:53:15 UTC（非 draft、非 prerelease），附注标签 `v0.46.1` 指向发布主干提交 `742b2736d209a48629eb965b0c7662fb3d42c601`。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.46.1)
+- 干净主干提交 `742b2736d209a48629eb965b0c7662fb3d42c601` 在 Windows x64 / Python 3.12.10 运行 `tools/test_unit.py` 共 **4,543** 项，0 失败、0 错误、6 跳过（`run_id=7f8d5d2b2c3641cca299b9dfe5be1572`，受测源码指纹 `049c3ccb46765405455e3c13277038bf73c045a5510e88b79164e743496e37f8`）；随后 `tools/dev_check.py` 通过（Ruff 0 lint / 0 unformatted）。合并前分支门禁中 `tools/test_mcp.py --offline` 与 `--offline --legacy-entry` 均 exit 0（`tool_count=111`，`capability_contract_verified=true`）。
+- `PYTHONUTF8=1 tools/check_release_assets.py --tag v0.46.1` 退出码 0（`v0.46.1: four assets downloaded and verified; both sidecars match; release body self-proof verified`）：
+
+| 远端附件 | 字节 | 核对实算 SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.46.1-source.zip` | 12,379,997 | `a371c74c59143e319975791a40defe9b3d5a8fbaedb0514bce0fff20ea7dd514` |
+| `MCP_CREO_MechDog-0.46.1-source.zip.sha256` | 101 | 与对应 ZIP 摘要一致 |
+| `MCP_CREO_MechDog-0.46.1-seed-library.zip` | 493,442 | `8305c26aa2c91e20c0260ec7d61532ce64595e9d033084266b646adad0f46b0d` |
+| `MCP_CREO_MechDog-0.46.1-seed-library.zip.sha256` | 107 | 与对应 ZIP 摘要一致 |
+
+- 未测范围与打包时点记录一致：Creo 9 / Creo 12.4 实机、本版零锁预检提交后的外部 WorkBuddy 黑盒复测。
+
 ## v0.46.0（2026-11-26，打包时点）
 
 - 交付 [BUG-192](../work-items/BUG-192.md)、[FEAT-090](../work-items/FEAT-090.md)、[BUG-193](../work-items/BUG-193.md) 与 [DEV-102](../work-items/DEV-102.md)：拔模基准面方向说明与 `material_effect`、近容差 `arc-arc` 端点焊接与草图参数公开、`loft`/`surface_loft` 统一 `runtime_ready` 与 before-job callback 预检、`creo_capabilities` 操作列表口径与 `region.interior_point_yz_mm` 文档。环境为 Windows x64 / Python 3.12.10 / Creo 10.0.0.0（release 42）。 [版本说明](../RELEASE_NOTES_0.46.0.md) · [验证与发布记录](../validation/RELEASE-0.46.0.md)
