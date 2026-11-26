@@ -13,8 +13,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import bridge
-import generic_bridge as general
 from creo_mechdog import assembly_replay
+from creo_mechdog import generic_bridge as general
 from creo_mechdog.schema import validate_operations
 
 ROOT = Path(__file__).resolve().parents[2]

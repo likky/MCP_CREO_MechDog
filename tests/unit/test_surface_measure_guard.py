@@ -346,7 +346,7 @@ class NativeWiringTests(unittest.TestCase):
         self.assertNotIn("; quilt)", native)
 
     def test_c4552_is_an_error_for_the_repository_native_sources(self):
-        bridge = (ROOT / "bridge.py").read_text(encoding="utf-8")
+        bridge = (ROOT / "src/creo_mechdog/bridge.py").read_text(encoding="utf-8")
         cl_lines = [line for line in bridge.splitlines() if line.startswith("cl ")]
         native_lines = [line for line in cl_lines if "native/" in line]
         self.assertTrue(native_lines)

@@ -53,9 +53,11 @@ class ReportEntrypointTests(unittest.TestCase):
             root = Path(directory)
             for name in (
                 "bridge.py",
-                "generic_bridge.py",
-                "creo_startup.py",
+                "src/creo_mechdog/bridge.py",
+                "src/creo_mechdog/generic_bridge.py",
+                "src/creo_mechdog/creo_startup.py",
                 "server.py",
+                "src/creo_mechdog/server.py",
                 "src/creo_mechdog/startup_state.py",
                 "src/creo_mechdog/windows_boot.py",
                 "src/creo_mechdog/recovery.py",

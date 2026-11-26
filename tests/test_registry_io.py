@@ -15,7 +15,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import bridge
-import generic_bridge
+from creo_mechdog import generic_bridge
 
 
 def windows_error(code: int) -> OSError:

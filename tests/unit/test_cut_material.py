@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 
 import bridge
-import generic_bridge as general
+from creo_mechdog import generic_bridge as general
 from tests.unit import test_toolkit_channel as channel_tests
 
 

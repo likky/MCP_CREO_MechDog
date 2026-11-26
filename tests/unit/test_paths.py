@@ -10,14 +10,17 @@ import unittest
 from pathlib import Path
 
 import bridge
-import generic_bridge
 import server
-from creo_mechdog import capability_pages, update_check
+from creo_mechdog import capability_pages, generic_bridge, update_check
 from creo_mechdog.paths import SOURCE_PATHS, ProjectPaths
 from tools import package
 from version import VERSION
 
 ROOT = Path(__file__).resolve().parents[2]
+MIGRATED_IMPLEMENTATIONS = {
+    f"src/creo_mechdog/{name}.py"
+    for name in ("server", "bridge", "creo_startup", "generic_bridge", "desktop_worker")
+}
 
 
 class SourceLayoutTests(unittest.TestCase):
@@ -73,22 +76,28 @@ print(json.dumps({'module':update_check.__file__,'version_file':version.__file__
         self.assertEqual(Path(value["resource_root"]), ROOT)
         self.assertEqual(Path(value["data_root"]), ROOT)
 
-    def test_server_rejects_package_from_another_checkout(self):
+    def test_root_launchers_reject_package_from_another_checkout(self):
         code = """
+import importlib, sys
 from pathlib import Path
 from creo_mechdog import paths
 paths.SOURCE_PATHS = paths.ProjectPaths.source_checkout(Path('wrong-checkout'))
 try:
- import server
+ importlib.import_module(sys.argv[1])
 except RuntimeError as exc:
  assert 'another source checkout' in str(exc)
 else:
- raise AssertionError('mixed source copies must not initialize the service')
+ raise AssertionError('mixed source copies must not initialize the launcher')
 """
-        result = subprocess.run(
-            [sys.executable, "-c", code], cwd=ROOT, capture_output=True, timeout=15
-        )
-        self.assertEqual(result.returncode, 0, result.stderr)
+        for launcher in ("server", "bridge"):
+            with self.subTest(launcher=launcher):
+                result = subprocess.run(
+                    [sys.executable, "-c", code, launcher],
+                    cwd=ROOT,
+                    capture_output=True,
+                    timeout=15,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_runtime_identifies_roots_and_migrated_source(self):
         capability_pages.reset_snapshot()
@@ -98,6 +107,10 @@ else:
         self.assertEqual(Path(runtime["python_package_root"]), SOURCE_PATHS.code_root)
         self.assertEqual(Path(runtime["resource_root"]), SOURCE_PATHS.resource_root)
         self.assertEqual(Path(runtime["data_root"]), SOURCE_PATHS.data_root)
+        self.assertTrue(
+            {"server.py", "bridge.py", *MIGRATED_IMPLEMENTATIONS}
+            <= set(runtime["source_fingerprints_at_startup"])
+        )
         self.assertIn("src/creo_mechdog/update_check.py", runtime["source_fingerprints_at_startup"])
         self.assertNotIn("update_check.py", runtime["source_fingerprints_at_startup"])
         self.assertFalse(runtime["source_changed_since_startup"])
@@ -112,10 +125,16 @@ else:
                 "tests/unit/__init__.py",
                 "tests/unit/test_update_check.py",
                 "tests/unit/test_paths.py",
+                "server.py",
+                "bridge.py",
+                *MIGRATED_IMPLEMENTATIONS,
             }
             <= names
         )
         self.assertNotIn("update_check.py", names)
+        for name in ("generic_bridge.py", "creo_startup.py", "desktop_worker.py"):
+            self.assertNotIn(name, names)
+        self.assertFalse(any(name.startswith("toolkit-owner.lock.") for name in names))
         self.assertFalse(any(".egg-info/" in name or "__pycache__/" in name for name in names))
 
 

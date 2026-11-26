@@ -50,6 +50,7 @@ def main():
         )
     code_paths = [
         "server.py",
+        "src/creo_mechdog/server.py",
         "schema.py",
         "seeds.py",
         "src/creo_mechdog/seeds.py",
@@ -58,7 +59,7 @@ def main():
         "src/creo_mechdog/schema.py",
         "src/creo_mechdog/airfoil.py",
         "src/creo_mechdog/profile_checks.py",
-        "generic_bridge.py",
+        "src/creo_mechdog/generic_bridge.py",
         "capabilities.py",
         "native/generic.cpp",
         "native/sketch_edit.cpp",

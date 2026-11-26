@@ -1,0 +1,2465 @@
+"""Local, file-backed job runner for the Creo Toolkit worker. Never logs licenses."""
+
+from __future__ import annotations
+
+import argparse
+import ctypes
+import errno
+import hashlib
+import json
+import math
+import msvcrt
+import os
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import time
+import uuid
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import BinaryIO, TextIO
+
+from creo_mechdog.blend_callback import callback_setup_status, prepare_callback, unknown_readiness
+from creo_mechdog.build_fingerprints import (
+    FINGERPRINT_ALGORITHM,
+    legacy_digest_candidates,
+    match_cached_fingerprint,
+    normalize_lf,
+    normalized_digest,
+    read_dependency_snapshot,
+)
+from creo_mechdog.build_support import (
+    compiler_setup_script,
+    diagnose_build_failure,
+    read_build_log_tail,
+    validate_compiler_env,
+    validate_local_path,
+)
+from creo_mechdog.capabilities import REGISTERED_OPERATIONS, UNAVAILABLE_OPERATIONS
+from creo_mechdog.compact_sections import RESULT_KEYS, apply_sections, resolve_sections
+from creo_mechdog.job_projection import (
+    FULL_DETAIL_HINT,
+    compact_job_list_item,
+    compact_operation,
+    compact_progress,
+    operation_keys,
+)
+from creo_mechdog.lock_files import open_lock_file
+from creo_mechdog.paths import SOURCE_PATHS
+from creo_mechdog.recovery import job_evidence, process_identity
+from creo_mechdog.session_choice import selected as selected_session
+
+ROOT = SOURCE_PATHS.resource_root
+JOBS = ROOT / "jobs"
+HIDDEN = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+
+
+def spawn_detached_runner(command: list[str], *, cwd: Path, log_file, popen=None):
+    """BUG-174: spawn a background runner detached from the client Job Object when allowed.
+
+    On Windows, MCP stdio clients (e.g. Electron/Node wrappers) often assign the
+    server process to a Job Object with ``JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE``.
+    When that Job Object permits breakaway, passing ``CREATE_BREAKAWAY_FROM_JOB |
+    CREATE_NEW_PROCESS_GROUP`` lets the runner finish after the client disconnects.
+    When breakaway is denied (WinError 5), falls back cleanly to
+    ``CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP`` and returns
+    ``detached_from_job=False`` so the job receipt can disclose that the runner
+    depends on the client/server staying alive.
+    """
+    factory = popen or subprocess.Popen
+    if os.name != "nt":
+        proc = factory(
+            command,
+            cwd=cwd,
+            stdin=subprocess.DEVNULL,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            creationflags=0,
+            close_fds=True,
+            start_new_session=True,
+        )
+        return proc, True
+    new_group = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+    breakaway = getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0x01000000)
+    try:
+        proc = factory(
+            command,
+            cwd=cwd,
+            stdin=subprocess.DEVNULL,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            creationflags=HIDDEN | new_group | breakaway,
+            close_fds=True,
+        )
+        return proc, True
+    except OSError as exc:
+        if getattr(exc, "winerror", None) != 5 and not isinstance(exc, PermissionError):
+            raise
+        proc = factory(
+            command,
+            cwd=cwd,
+            stdin=subprocess.DEVNULL,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            creationflags=HIDDEN | new_group,
+            close_fds=True,
+        )
+        return proc, False
+
+
+JOB_ID = re.compile(r"[a-f0-9]{32}\Z")
+MODEL_NAME = re.compile(r"[a-z0-9][a-z0-9_]{0,30}\Z")
+#: FEAT-007: a job is final in these states; a long poll returns immediately.
+TERMINAL_JOB_STATUSES = ("succeeded", "failed", "cancelled", "aborted", "unknown_outcome")
+MAX_JOB_WAIT_SECONDS = 300
+JOB_WAIT_POLL_SECONDS = 0.25
+MODEL_NAME_RULE = (
+    "model_name must be 1-31 characters of lowercase letters, digits and "
+    "underscores, starting with a letter or digit; uppercase input is normalized "
+    "to lowercase (BUG-069)"
+)
+#: Prefix every rejection keeps, so a caller can key on one stable sentence.
+MODEL_NAME_PREFIX = "model_name must be 1-31 characters"
+MODEL_NAME_CHARACTERS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789_")
+MODEL_NAME_MAX_LENGTH = 31
+
+
+def normalize_model_name(value: str) -> str:
+    """Validate and normalize a managed model name (see MODEL_NAME_RULE).
+
+    A rejection names the actual cause - type, empty input, length, first
+    character or the illegal characters themselves - instead of repeating the
+    whole rule (which used to mention the uppercase normalization even when the
+    name was refused for its length). Uppercase is still accepted and lowered.
+    """
+    if not isinstance(value, str):
+        raise ValueError(
+            f"{MODEL_NAME_PREFIX}; got {type(value).__name__}, not a string. Example: 'bracket_01'"
+        )
+    normalized = value.lower()
+    if not normalized:
+        raise ValueError(f"{MODEL_NAME_PREFIX}; it is empty. Example: 'bracket_01'")
+    if len(normalized) > MODEL_NAME_MAX_LENGTH:
+        raise ValueError(
+            f"{MODEL_NAME_PREFIX}; {len(normalized)} characters were given, at most "
+            f"{MODEL_NAME_MAX_LENGTH} are allowed"
+        )
+    illegal = sorted({character for character in normalized} - MODEL_NAME_CHARACTERS)
+    if illegal:
+        listed = ", ".join(repr(character) for character in illegal)
+        raise ValueError(
+            f"{MODEL_NAME_PREFIX} of lowercase letters, digits and underscores; "
+            f"{listed} cannot be used"
+            + (" (uppercase is lowercased)" if value != normalized else "")
+        )
+    if not MODEL_NAME.fullmatch(normalized):
+        raise ValueError(
+            f"{MODEL_NAME_PREFIX} and must start with a letter or digit; "
+            f"{normalized[0]!r} cannot start a model name"
+        )
+    return normalized
+
+
+JSON_REPLACE_TIMEOUT = 1.0
+JSON_REPLACE_MAX_ATTEMPTS = 25
+
+if os.name == "nt":
+    from ctypes import wintypes
+
+    _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _create_file = _kernel32.CreateFileW
+    _create_file.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    _create_file.restype = wintypes.HANDLE
+    _close_handle = _kernel32.CloseHandle
+    _close_handle.argtypes = (wintypes.HANDLE,)
+    _close_handle.restype = wintypes.BOOL
+    _set_file_information = _kernel32.SetFileInformationByHandle
+    _set_file_information.argtypes = (
+        wintypes.HANDLE,
+        ctypes.c_int,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+    )
+    _set_file_information.restype = wintypes.BOOL
+
+    class _FileRenameInfo(ctypes.Structure):
+        _fields_ = (
+            ("flags", wintypes.DWORD),
+            ("root_directory", wintypes.HANDLE),
+            ("name_length", wintypes.DWORD),
+            ("name", wintypes.WCHAR * 1),
+        )
+
+
+def now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _open_json_reader(path: Path) -> TextIO:
+    if os.name != "nt":
+        return path.open(encoding="utf-8-sig")
+    # CRT readers omit FILE_SHARE_DELETE and can block an otherwise atomic rename.
+    # Share read/write/delete; the handle still reads one complete file version.
+    handle = _create_file(str(path), 0x80000000, 0x1 | 0x2 | 0x4, None, 3, 0x80, None)
+    if handle == ctypes.c_void_p(-1).value:
+        error = ctypes.WinError(ctypes.get_last_error())
+        error.filename = str(path)
+        raise error
+    try:
+        descriptor = msvcrt.open_osfhandle(handle, os.O_RDONLY | os.O_BINARY)
+    except BaseException:
+        _close_handle(handle)
+        raise
+    # open_osfhandle transfers ownership to the descriptor; never close both.
+    try:
+        return os.fdopen(descriptor, encoding="utf-8-sig")
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def read_json(path: Path) -> dict:
+    with _open_json_reader(path) as stream:
+        return json.load(stream)
+
+
+def _atomic_replace(temp: Path, path: Path) -> None:
+    if os.name != "nt":
+        os.replace(temp, path)
+        return
+    # MoveFileEx (os.replace) rejects an open destination even with shared delete.
+    # FileRenameInfoEx replaces in one filesystem operation, keeping old readers
+    # on the old file. Do not use ReplaceFileW: some failures remove the target.
+    handle = _create_file(str(temp), 0x10000, 0x1 | 0x2 | 0x4, None, 3, 0x80, None)
+    if handle == ctypes.c_void_p(-1).value:
+        error = ctypes.WinError(ctypes.get_last_error())
+        error.filename = str(temp)
+        raise error
+    try:
+        name = str(path.absolute()).encode("utf-16-le")
+        buffer = ctypes.create_string_buffer(
+            max(ctypes.sizeof(_FileRenameInfo), _FileRenameInfo.name.offset + len(name) + 2)
+        )
+        info = _FileRenameInfo.from_buffer(buffer)
+        info.flags = 0x1 | 0x2  # REPLACE_IF_EXISTS | POSIX_SEMANTICS; respects read-only/ACLs.
+        info.name_length = len(name)
+        ctypes.memmove(ctypes.addressof(buffer) + _FileRenameInfo.name.offset, name, len(name))
+        if not _set_file_information(handle, 22, buffer, len(buffer)):  # FileRenameInfoEx
+            code = ctypes.get_last_error()
+            if code in (1, 50, 87):  # Filesystem/Windows lacks the extended rename API.
+                os.replace(temp, path)
+            else:
+                error = ctypes.WinError(code)
+                error.filename = str(temp)
+                error.filename2 = str(path)
+                raise error
+    finally:
+        _close_handle(handle)
+
+
+def _replace_json(temp: Path, path: Path) -> None:
+    deadline = time.monotonic() + JSON_REPLACE_TIMEOUT
+    delay = 0.005
+    for attempt in range(1, JSON_REPLACE_MAX_ATTEMPTS + 1):
+        try:
+            _atomic_replace(temp, path)
+            return
+        except OSError as exc:
+            winerror = getattr(exc, "winerror", None)
+            retryable = os.name == "nt" and winerror in (5, 32, 33)
+            # WinError 5 also covers permanent ACL/read-only failures. Read-only
+            # is identifiable; ambiguous ACL/external-handle cases share a bound.
+            if retryable and winerror == 5:
+                try:
+                    retryable = not (path.stat().st_file_attributes & stat.FILE_ATTRIBUTE_READONLY)
+                except OSError:
+                    retryable = False
+            remaining = deadline - time.monotonic()
+            if not retryable or remaining <= 0 or attempt == JSON_REPLACE_MAX_ATTEMPTS:
+                exc.add_note(
+                    f"JSON atomic replace failed: {path}; attempts={attempt}; budget={JSON_REPLACE_TIMEOUT}s"
+                )
+                raise
+            time.sleep(min(delay, remaining))
+            delay = min(delay * 2, 0.05)
+
+
+def write_json(path: Path, value: dict, *, durable: bool = False) -> None:
+    content = json.dumps(value, ensure_ascii=False, indent=2)
+    # The final path can fit under the Windows limit while the old name with
+    # an appended UUID does not. Only the directory must match for replacement.
+    temp = path.with_name(f".{uuid.uuid4().hex}.tmp")
+    owned = False
+    try:
+        with temp.open("x", encoding="utf-8") as stream:
+            owned = True
+            stream.write(content)
+            if durable:
+                stream.flush()
+                os.fsync(stream.fileno())
+        _replace_json(temp, path)
+    except BaseException as exc:
+        if owned:
+            try:
+                temp.unlink(missing_ok=True)
+            except OSError as cleanup_error:
+                exc.add_note(
+                    f"Could not remove this writer's temporary file {temp}: {cleanup_error}"
+                )
+        raise
+
+
+def _write_stamp_text(path: Path, text: str) -> None:
+    """Replace a plain-text cache marker atomically."""
+    temp = path.with_suffix(path.suffix + f".{uuid.uuid4().hex}.tmp")
+    try:
+        temp.write_text(text, encoding="utf-8")
+        os.replace(temp, path)
+    except BaseException:
+        temp.unlink(missing_ok=True)
+        raise
+
+
+def config() -> dict:
+    if not (ROOT / "config.json").is_file():
+        raise ValueError(
+            "Missing config.json: run setup.ps1, or copy config.example.json and set your installation paths"
+        )
+    value = read_json(ROOT / "config.json")
+    validate_local_path(value.get("creo_root"), "creo_root")
+    value["vcvars64_env"] = validate_compiler_env(value.get("vcvars64_env"))
+    if value["vcvars64_env"] is None:
+        validate_local_path(value.get("vcvars64"), "vcvars64")
+    return value
+
+
+def job_path(job_id: str) -> Path:
+    if not JOB_ID.fullmatch(job_id):
+        raise ValueError(
+            "job_id must be the 32 hexadecimal characters returned by an MCP modeling tool"
+        )
+    path = JOBS / job_id
+    if path.is_symlink() or path.is_junction():
+        raise ValueError("Job directories cannot be links")
+    return path
+
+
+def validate_spec(
+    length: float,
+    width: float,
+    thickness: float,
+    radius: float,
+    holes: list[dict],
+    model_name: str | None = None,
+) -> dict:
+    values = {"length": length, "width": width, "thickness": thickness, "radius": radius}
+    for name, v in values.items():
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+            raise ValueError(f"{name} must be a finite number in mm")
+    if not 1 <= length <= 1000 or not 1 <= width <= 1000 or not 0.1 <= thickness <= 1000:
+        raise ValueError("Supported size: length/width 1–1000 mm, thickness 0.1–1000 mm")
+    if radius < 0 or radius >= min(length, width) / 2:
+        raise ValueError("corner_radius must be >= 0 and less than half the shorter side")
+    if model_name is not None:
+        model_name = normalize_model_name(model_name)
+    if len(holes) > 50:
+        raise ValueError("At most 50 through holes are supported")
+    checked: list[dict] = []
+    for i, h in enumerate(holes):
+        if set(h) != {"x", "y", "diameter"}:
+            raise ValueError(f"Hole {i + 1} requires exactly x, y and diameter")
+        for v in h.values():
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+                raise ValueError(f"Hole {i + 1} contains a non-finite number")
+        if h["diameter"] <= 0:
+            raise ValueError(f"Hole {i + 1}: diameter must be positive")
+        qx = abs(h["x"]) - (length / 2 - radius)
+        qy = abs(h["y"]) - (width / 2 - radius)
+        signed_distance = math.hypot(max(qx, 0), max(qy, 0)) + min(max(qx, qy), 0) - radius
+        if signed_distance + h["diameter"] / 2 >= -1e-4:
+            raise ValueError(f"Hole {i + 1} intersects or touches the outer boundary")
+        for j, prior in enumerate(checked):
+            if (
+                math.hypot(h["x"] - prior["x"], h["y"] - prior["y"])
+                <= (h["diameter"] + prior["diameter"]) / 2 + 1e-4
+            ):
+                raise ValueError(f"Holes {j + 1} and {i + 1} overlap or touch")
+        checked.append({k: float(v) for k, v in h.items()})
+    return {**{k: float(v) for k, v in values.items()}, "holes": checked, "model_name": model_name}
+
+
+def toolkit_owner() -> dict:
+    """Best-effort owner snapshot; only a failed OS lock proves channel contention."""
+    try:
+        value = read_json(ROOT / "toolkit-owner.lock")
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(value, dict):
+        return {}
+    return {
+        key: value[key]
+        for key in ("job_id", "model_id", "operation", "pid", "since")
+        if key in value
+    }
+
+
+CHANNEL_CLAIM_FILE = "toolkit-channel.json"
+
+
+def channel_claim() -> dict:
+    """The accepted job currently holding the channel reservation (BUG-100)."""
+    try:
+        value = read_json(ROOT / CHANNEL_CLAIM_FILE)
+    except (OSError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _pid_alive(pid: object) -> bool:
+    """True only when pid provably names a running process.
+
+    An unverifiable identity (None, malformed, or an OS answer other than
+    "no such process") keeps the channel claim: the channel is never freed by
+    guessing from missing evidence.
+    """
+    if not isinstance(pid, int) or pid <= 0:
+        return True
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    open_process = kernel.OpenProcess
+    open_process.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+    open_process.restype = ctypes.c_void_p
+    handle = open_process(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        # Only ERROR_INVALID_PARAMETER states the process is gone; anything
+        # else (e.g. access denied) still proves the process exists.
+        return ctypes.get_last_error() != 87
+    try:
+        get_exit_code = kernel.GetExitCodeProcess
+        get_exit_code.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)]
+        get_exit_code.restype = ctypes.c_int
+        exit_code = ctypes.c_uint32()
+        if not get_exit_code(handle, ctypes.byref(exit_code)):
+            return True  # cannot determine; keep the claim
+        return exit_code.value == 0x103  # STILL_ACTIVE
+    finally:
+        kernel.CloseHandle(ctypes.c_void_p(handle))
+
+
+def admission_holder() -> dict | None:
+    """Holder a new submission must be rejected against, or None if free.
+
+    BUG-100: submit releases the Toolkit lock before its spawned runner
+    acquires the channel, so a back-to-back submission in that window used to
+    be accepted and queued. The claim closes the window: any accepted-but-
+    unfinished job rejects new submissions immediately. A claim is stale — and
+    the channel freed — when its job already reached a terminal status or its
+    runner provably died before taking the channel; the job itself keeps its
+    own state for inspection either way. A claim that cannot be evaluated is
+    unknown ownership and keeps blocking.
+    """
+    claim = channel_claim()
+    if not claim:
+        return None
+    job_id = claim.get("job_id")
+    if not isinstance(job_id, str) or not job_id:
+        return {"operation": claim.get("operation") or "channel_reservation"}
+    try:
+        manifest = read_json(job_path(job_id) / "job.json")
+        status = manifest.get("status") if isinstance(manifest, dict) else None
+    except (OSError, ValueError):
+        status = None
+    if status not in ("queued", "running"):
+        clear_channel_claim(job_id)
+        return None
+    if not _pid_alive(claim.get("runner_pid")):
+        clear_channel_claim(job_id)
+        return None
+    return {
+        "job_id": job_id,
+        "model_id": claim.get("model_id"),
+        "operation": claim.get("operation") or "execute_plan",
+    }
+
+
+def write_channel_claim(
+    job_id: str,
+    *,
+    model_id: str | None = None,
+    operation: str = "execute_plan",
+    runner_pid: object = None,
+) -> None:
+    """Reserve the channel for an accepted job until its runner finishes."""
+    pid = runner_pid if isinstance(runner_pid, int) else None
+    write_json(
+        ROOT / CHANNEL_CLAIM_FILE,
+        {
+            "job_id": job_id,
+            "model_id": model_id,
+            "operation": operation,
+            "runner_pid": pid,
+            "since": now(),
+        },
+    )
+
+
+def clear_channel_claim(job_id: str) -> None:
+    """Free the reservation only when it still names this job."""
+    if channel_claim().get("job_id") == job_id:
+        (ROOT / CHANNEL_CLAIM_FILE).unlink(missing_ok=True)
+
+
+def _open_toolkit_lock(path: Path) -> BinaryIO:
+    """Open via the shared lock-file discipline (BUG-057: OPEN_EXISTING, then
+    CREATE_NEW, one shared-open fallback on the first-create race)."""
+    return open_lock_file(path)
+
+
+@contextmanager
+def toolkit_lock(
+    wait_seconds: float = 0,
+    *,
+    operation: str = "native_operation",
+    job_id: str | None = None,
+    model_id: str | None = None,
+):
+    """Serialize all native calls across MCP clients and detached jobs."""
+    # BUG-120/D4.4: a resident panel that may still be open holds the whole Creo
+    # session, not one model. This is the single place every Toolkit entry passes,
+    # so the guard is checked here as well as being advertised in status.
+    from creo_mechdog import panel_session_guard
+
+    panel_session_guard.require_clear(job_id=job_id, operation=operation, root=ROOT)
+    lock = ROOT / "toolkit.lock"
+    with _open_toolkit_lock(lock) as f:
+        # Windows byte-range locking also covers empty files; no pre-lock write.
+        deadline = time.monotonic() + wait_seconds
+        while True:
+            try:
+                f.seek(0)
+                msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+                break
+            except OSError as exc:
+                if exc.errno not in (errno.EACCES, errno.EAGAIN, errno.EDEADLK):
+                    raise
+                if time.monotonic() >= deadline:
+                    raise ToolkitBusy(holder=toolkit_owner()) from None
+                time.sleep(0.25)
+        try:
+            write_json(
+                ROOT / "toolkit-owner.lock",
+                {
+                    "job_id": job_id,
+                    "model_id": model_id,
+                    "operation": operation,
+                    "pid": os.getpid(),
+                    "since": now(),
+                },
+            )
+            yield
+        finally:
+            try:
+                # Remove before unlock: deleting afterwards could erase the next owner.
+                (ROOT / "toolkit-owner.lock").unlink(missing_ok=True)
+            finally:
+                f.seek(0)
+                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+
+
+class ToolkitBusy(RuntimeError):
+    """A native call is active; startup must wait without launching another Creo."""
+
+    def __init__(self, message: str | None = None, *, holder: dict | None = None):
+        holder = holder or {}
+        job_id = holder.get("job_id")
+        guidance = (
+            f"Poll creo_get_job(job_id='{job_id}', detail='compact') until terminal; "
+            "inspect unknown_outcome before retrying. "
+            if job_id
+            else "No occupying job could be determined; the owner may be a session probe, "
+            "build or another client. "
+        )
+        guidance += (
+            "This request was not accepted. A suggested retry interval is 5 seconds, not "
+            "a completion estimate; retry only when the occupying operation has finished. "
+            "Re-read the model revision before writing. "
+            "Do not resubmit an already accepted job."
+        )
+        self.payload = {
+            "status": "busy",
+            "code": "toolkit_busy",
+            "accepted": False,
+            "blocking_job_id": job_id,
+            "blocking_model_id": holder.get("model_id"),
+            "blocking_operation": holder.get("operation"),
+            "owner_snapshot": holder or None,
+            "owner_determined": bool(holder),
+            "retry_after_seconds": 5,
+            "retry_guidance": guidance,
+            "message": message or "Creo Toolkit is busy with another operation",
+        }
+        super().__init__(f"{self.payload['message']}. {guidance}")
+
+
+def license_setting_state(value: str | None) -> str:
+    """Describe local paths/server specs without exposing the license value."""
+    if not value or not value.strip():
+        return "unset"
+    states = []
+    for item in value.split(";"):
+        item = os.path.expandvars(item.strip().strip('"'))
+        if not item:
+            continue
+        if re.fullmatch(r"(?:\d+)?@[^\s;]+", item):
+            states.append("server_unverified")
+        elif Path(item).is_file():
+            states.append("local_file_exists")
+        elif Path(item).is_dir():
+            states.append("local_directory_exists")
+        elif any(c in item for c in "\\/:") or item.lower().endswith((".dat", ".lic")):
+            states.append("missing_local_path")
+        else:
+            states.append("unrecognized_unverified")
+    if not states:
+        return "unset"
+    if len(set(states)) == 1:
+        return states[0]
+    return "partially_missing" if "missing_local_path" in states else "mixed_unverified"
+
+
+def resolve_license_environment() -> tuple[str | None, dict]:
+    """Fallback only for an unset value or an entirely missing local path list."""
+    configured = os.environ.get("PTC_D_LICENSE_FILE")
+    env_state = license_setting_state(configured)
+    psf_value = None
+    psf = Path(config()["creo_root"]) / "Parametric/bin/parametric.psf"
+    if psf.is_file():
+        for line in psf.read_text(encoding="utf-8", errors="replace").splitlines():
+            match = re.search(r"PTC_D_LICENSE_FILE[^=]*=(.+)$", line, re.I)
+            if match and not line.lstrip().startswith("#"):
+                psf_value = match[1].strip()
+                break
+    psf_state = license_setting_state(psf_value)
+    use_psf = env_state in ("unset", "missing_local_path") and psf_state not in (
+        "unset",
+        "missing_local_path",
+    )
+    selected = psf_value if use_psf else configured
+    selected_state = psf_state if use_psf else env_state
+    warnings = []
+    if env_state == "missing_local_path":
+        warnings.append(
+            "Environment license paths do not exist; using parametric.psf"
+            if use_psf
+            else "Environment license paths do not exist and parametric.psf has no usable fallback; correct the local license setting"
+        )
+    if selected_state == "partially_missing":
+        warnings.append("Some local license paths do not exist; retained other configured entries")
+    return selected, {
+        "source": "parametric.psf" if use_psf else ("environment" if configured else "unset"),
+        "environment_state": env_state,
+        "psf_state": psf_state,
+        "selected_state": selected_state,
+        "fallback_used": use_psf and env_state != "unset",
+        "warnings": warnings,
+    }
+
+
+def windows_process_environment() -> dict[str, str]:
+    """Supply Windows prerequisites omitted by restricted stdio host environments."""
+    import win32api
+    import win32profile
+    import win32security
+
+    env = os.environ.copy()
+    token = win32security.OpenProcessToken(win32api.GetCurrentProcess(), 10)
+    try:
+        defaults = win32profile.CreateEnvironmentBlock(token, False)
+    finally:
+        token.Close()
+    # Restore only Windows runtime variables, without importing unrelated user
+    # credentials, third-party configuration or overriding the MCP host's PATH.
+    prerequisites = {
+        "ALLUSERSPROFILE",
+        "COMPUTERNAME",
+        "COMSPEC",
+        "COMMONPROGRAMFILES",
+        "COMMONPROGRAMFILES(X86)",
+        "COMMONPROGRAMW6432",
+        "NUMBER_OF_PROCESSORS",
+        "OS",
+        "PROCESSOR_IDENTIFIER",
+        "PROCESSOR_LEVEL",
+        "PROCESSOR_REVISION",
+        "PROGRAMDATA",
+        "PROGRAMFILES",
+        "PROGRAMFILES(X86)",
+        "PROGRAMW6432",
+        "PUBLIC",
+        "SYSTEMROOT",
+        "SYSTEMDRIVE",
+        "TMP",
+        "USERDOMAIN",
+        "USERDOMAIN_ROAMINGPROFILE",
+        "WINDIR",
+    }
+    for key, value in defaults.items():
+        if key.upper() in prerequisites:
+            env.setdefault(key.upper(), value)
+    windows_root = env.get("SYSTEMROOT") or env.get("SystemRoot")
+    if not windows_root:
+        raise ValueError("SYSTEMROOT is required for Creo processes")
+    env.setdefault("COMSPEC", str(Path(windows_root) / "System32/cmd.exe"))
+    if "TEMP" in env and "TMP" not in os.environ:
+        env["TMP"] = env["TEMP"]
+    return env
+
+
+def native_environment() -> dict[str, str]:
+    settings = config()
+    common = Path(settings["creo_root"]) / "Common Files"
+    env = windows_process_environment()
+    # FEAT-072: a session selected at runtime outranks config.json for every
+    # worker this service starts, so a client can leave `selection_required`
+    # without editing the file or restarting the connector. The native worker
+    # still rejects a fallback when the id is gone.
+    selected = selected_session(settings)
+    if selected:
+        env["MECHDOG_CREO_SESSION_ID"] = selected
+    else:
+        env.pop("MECHDOG_CREO_SESSION_ID", None)
+    # An explicit setting overrides the inherited diagnostic environment.
+    if settings.get("stl_deviation") is True:
+        env["MECHDOG_STL_DEVIATION"] = "1"
+    elif settings.get("stl_deviation") is False:
+        env.pop("MECHDOG_STL_DEVIATION", None)
+    env["PRO_COMM_MSG_EXE"] = str(common / "x86e_win64/obj/pro_comm_msg.exe")
+    env["PATH"] = (
+        os.pathsep.join(
+            str(common / p) for p in ("x86e_win64/lib", "x86e_win64/obj", "libs/dfor/lib")
+        )
+        + os.pathsep
+        + env.get("PATH", "")
+    )
+    # Child-process environment only; do not return or log the license value.
+    license_value, _ = resolve_license_environment()
+    if license_value:
+        env["PTC_D_LICENSE_FILE"] = license_value
+    return env
+
+
+def check_environment() -> dict:
+    c = config()
+    root = Path(c["creo_root"])
+    common = root / "Common Files"
+    sdk = common / "protoolkit"
+    files = {
+        "creo_executable": root / "Parametric/bin/parametric.exe",
+        "toolkit_headers": sdk / "includes/ProToolkit.h",
+        "async_library": sdk / "x86e_win64/obj/ptasyncmd.lib",
+        "toolkit_library": sdk / "x86e_win64/obj/protkmd_NU.lib",
+        "toolkit_dll_library": sdk / "x86e_win64/obj/protk_dllmd_NU.lib",
+        "ucore_library": sdk / "x86e_win64/obj/ucore.lib",
+        "udata_library": sdk / "x86e_win64/obj/udata.lib",
+        "communication_executable": common / "x86e_win64/obj/pro_comm_msg.exe",
+        "metric_template": common / "templates/mmns_part_solid_abs.prt",
+        "metric_assembly_template": common / "templates/mmns_asm_design_abs.asm",
+    }
+    checks = {key: {"exists": p.is_file(), "path": str(p)} for key, p in files.items()}
+    explicit_env = validate_compiler_env(c.get("vcvars64_env")) is not None
+    checks["compiler_setup"] = (
+        {"exists": True, "path": "config.json:vcvars64_env", "source": "vcvars64_env"}
+        if explicit_env
+        else {"exists": Path(c["vcvars64"]).is_file(), "path": c["vcvars64"]}
+    )
+    license_value, license_diagnostics = resolve_license_environment()
+    return {
+        "platform": sys.platform,
+        "creo_root": str(root),
+        "checks": checks,
+        "ready_to_build": all(item["exists"] for item in checks.values()),
+        "compiler_environment": (
+            "unverified_here; build uses explicit vcvars64_env and checks compiler, UCRT and Windows SDK"
+            if explicit_env
+            else "unverified_here; build runs vcvars64 and checks compiler, UCRT and Windows SDK"
+        ),
+        "license_setting_present": bool(license_value),
+        "license_diagnostics": license_diagnostics,
+        "license_usable": "unverified_here; only successful native feature creation proves it",
+        "transport": "stdio",
+        "development_tools": {
+            "git_available": shutil.which("git") is not None,
+            "git_required_for_mcp": False,
+            "scope": "Optional Git provenance only; extracted releases use directory source hashes",
+        },
+        "supported_features": [
+            op for op in REGISTERED_OPERATIONS if op not in UNAVAILABLE_OPERATIONS
+        ],
+        "complete_creo_coverage": False,
+    }
+
+
+def _published_callback_generation(build: Path) -> str:
+    """The generation this build tree already publishes, or the blend default.
+
+    ``build_native`` republishes the callback metadata on every startup
+    preparation. Publishing the blend generation over a panel deployment would
+    trip the immutable-bootstrap check and strand the session, so the republish
+    has to keep whichever generation the operator deployed.
+    """
+    setup = build / "blend_callback_setup.json"
+    try:
+        recorded = read_json(setup)
+    except (OSError, ValueError, KeyError):
+        return "blend"
+    generation = recorded.get("generation") if isinstance(recorded, dict) else None
+    return generation if generation in ("blend", "panel") else "blend"
+
+
+def build_native() -> Path:
+    """Caller holds toolkit_lock. Source hash invalidates the local build."""
+    c = config()
+    build = ROOT / "build"
+    build.mkdir(exist_ok=True)
+    # BUG-120/D6: keep the generation the operator deployed (blend or panel).
+    published_generation = _published_callback_generation(build)
+    exe = build / "creo_worker.exe"
+    blend_dll = build / "creo_blend_sync.dll"
+    loader_dll = build / "creo_blend_loader.dll"
+    # Always refresh before checking the cached binary. The generator only writes
+    # changed content, so upgrades and SDK changes cannot retain an obsolete map.
+    with (build / "generate_constants.log").open("wb") as log:
+        generated = subprocess.run(
+            [sys.executable, str(ROOT / "tools/generate_constants.py")],
+            cwd=ROOT,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            timeout=30,
+            creationflags=HIDDEN,
+        )
+    if generated.returncode:
+        raise RuntimeError(
+            f"SDK constant generation failed; see {build / 'generate_constants.log'}"
+        )
+    # Repository-native text dependencies hash CRLF→LF-normalized content so a
+    # line-ending-only change never invalidates the build or the registered
+    # loader generation (DEV-027). SDK headers, effective settings and every
+    # binary integrity digest below keep using raw bytes.
+    digest = hashlib.sha256()
+    for p in sorted(
+        p for p in (ROOT / "native").rglob("*") if p.suffix in (".cpp", ".h", ".hpp", ".inc")
+    ):
+        digest.update(normalize_lf(p.read_bytes()))
+    # Enum values and ABI declarations come from SDK headers. A names-only map
+    # can stay identical while these change during an SDK maintenance upgrade.
+    includes = Path(c["creo_root"]) / "Common Files/protoolkit/includes"
+    abi = hashlib.sha256()
+    for p in sorted(includes.rglob("*.h")):
+        data = b"\0SDK_HEADER\0" + p.relative_to(includes).as_posix().encode() + p.read_bytes()
+        digest.update(data)
+        abi.update(data)
+    startup_keys = {
+        "auto_start_creo",
+        "creo_startup_timeout_seconds",
+        "creo_startup_psf",
+        "creo_startup_args",
+        "creo_worker_launch",
+    }
+    settings = json.dumps(
+        {key: value for key, value in c.items() if key not in startup_keys}, sort_keys=True
+    ).encode()
+    # BUG-142: compiler flags are part of the produced binary. Sources compiled
+    # without /utf-8 mangle non-ASCII string literals under the system code page,
+    # which put invalid UTF-8 into JSON receipts; keep the flag set in the cache
+    # key so an existing worker is rebuilt instead of silently reused.
+    digest.update(b"\0NATIVE_BUILD_FLAGS\0/utf-8-v1\0")
+    digest.update(settings)
+    abi.update(settings)
+    callback_relatives = (
+        "native/blend_sync.cpp",
+        "native/callback_identity.h",
+        "native/callback_api.h",
+        # BUG-120/D7: blend_sync.cpp includes the panel route headers. Without
+        # them a header-only change (the direction split, the point role or the
+        # position bound) kept the cached DLL and silently ran the previous rules.
+        "native/panel_protocol.h",
+        "native/panel_selection_state.h",
+        # BUG-120 tasks 2-3: panel_run.h includes the fit diagnostics header.
+        # Without this entry a pure panel_fit.h change would reuse the cached
+        # callback DLL.
+        "native/panel_fit.h",
+        "native/panel_run.h",
+        "native/panel_references.h",
+        "native/panel_references_sdk.h",
+        "native/third_party/json.hpp",
+    )
+    loader_relatives = (
+        "native/blend_loader.cpp",
+        "native/callback_identity.h",
+        "native/callback_api.h",
+        "native/third_party/json.hpp",
+    )
+    # One consistent snapshot backs the current fingerprints and the legacy
+    # comparison, so a concurrent file edit cannot split one decision.
+    snapshot = read_dependency_snapshot(ROOT, callback_relatives + loader_relatives)
+    callback_snapshot = {r: snapshot[r] for r in callback_relatives if r in snapshot}
+    loader_snapshot = {r: snapshot[r] for r in loader_relatives if r in snapshot}
+    callback_fingerprint = normalized_digest(b"MSVC17_MD_DLL_v2", abi.digest(), callback_snapshot)
+    callback_stamp = build / "blend_sync_build.json"
+    loader_fingerprint = normalized_digest(b"MSVC17_MD_LOADER_v2", abi.digest(), loader_snapshot)
+    loader_stamp = build / "blend_loader_build.json"
+    callback_cache = read_json(callback_stamp) if callback_stamp.is_file() else {}
+    loader_cache = read_json(loader_stamp) if loader_stamp.is_file() else {}
+    # A legacy cache proves line-ending-only equivalence when its raw-byte
+    # fingerprint reappears among the original/LF/CRLF recombinations.
+    callback_matched, _ = match_cached_fingerprint(
+        callback_cache,
+        callback_fingerprint,
+        lambda: legacy_digest_candidates(b"MSVC17_MD_DLL_v1", abi.digest(), callback_snapshot),
+    )
+    loader_matched, cached_loader_generation = match_cached_fingerprint(
+        loader_cache,
+        loader_fingerprint,
+        lambda: legacy_digest_candidates(b"MSVC17_MD_LOADER_v1", abi.digest(), loader_snapshot),
+    )
+    reuse_callback = (
+        blend_dll.is_file()
+        and callback_matched
+        and callback_cache.get("sha256") == hashlib.sha256(blend_dll.read_bytes()).hexdigest()
+    )
+    # The physical generation key keeps the registered loader directory stable:
+    # it only becomes the normalized fingerprint when a rebuild is unavoidable.
+    loader_generation = loader_fingerprint
+    reuse_loader = False
+    if loader_matched:
+        cached_sha = loader_cache.get("sha256")
+        if (
+            loader_dll.is_file()
+            and hashlib.sha256(loader_dll.read_bytes()).hexdigest() == cached_sha
+        ):
+            loader_generation = cached_loader_generation
+            reuse_loader = True
+        else:
+            pinned_loader = build / "blend_loader" / cached_loader_generation / "loader.dll"
+            if (
+                pinned_loader.is_file()
+                and hashlib.sha256(pinned_loader.read_bytes()).hexdigest() == cached_sha
+            ):
+                # Recover the disposable build output from the verified immutable
+                # image; never relink or modify the registered loader for an
+                # unchanged generation.
+                shutil.copyfile(pinned_loader, loader_dll)
+                loader_generation = cached_loader_generation
+                reuse_loader = True
+            else:
+                print(
+                    "loader cache could not be verified against the DLL or its immutable "
+                    "copy; rebuilding the loader DLL",
+                    file=sys.stderr,
+                )
+    else:
+        print(
+            "loader fingerprint changed under the normalized algorithm; rebuilding the loader DLL",
+            file=sys.stderr,
+        )
+
+    def record_callback():
+        """Publish metadata first; cache markers only after full success."""
+        callback_sha256 = hashlib.sha256(blend_dll.read_bytes()).hexdigest()
+        loader_sha256 = hashlib.sha256(loader_dll.read_bytes()).hexdigest()
+        generation = loader_generation
+        historical = build / "blend_loader" / generation / "loader.dll"
+        if historical.is_file() and (
+            hashlib.sha256(historical.read_bytes()).hexdigest() != loader_sha256
+        ):
+            # A rebuilt DLL meets an immutable copy recorded under the same
+            # fingerprint (the cache moved on and back). Keep the historical
+            # directory untouched and publish under a distinct physical key.
+            generation = f"{generation}-{loader_sha256[:12]}"
+            print(
+                "loader generation directory already holds a different image; "
+                f"publishing under {generation}",
+                file=sys.stderr,
+            )
+        prepare_callback(build, callback_sha256, generation, generation=published_generation)
+        write_json(
+            callback_stamp,
+            {
+                "algorithm": FINGERPRINT_ALGORITHM,
+                "fingerprint": callback_fingerprint,
+                "sha256": callback_sha256,
+            },
+        )
+        write_json(
+            loader_stamp,
+            {
+                "algorithm": FINGERPRINT_ALGORITHM,
+                "fingerprint": loader_fingerprint,
+                "generation_key": generation,
+                "sha256": loader_sha256,
+            },
+        )
+
+    fingerprint = digest.hexdigest()
+    stamp = build / "source.sha256"
+    if (
+        exe.exists()
+        and reuse_callback
+        and reuse_loader
+        and stamp.exists()
+        and stamp.read_text() == fingerprint
+    ):
+        # Fully verified combined cache: republish metadata idempotently and
+        # keep the identical DLL images in place. A reused legacy generation
+        # upgrades its cache markers to the current format on the way out.
+        cache_current = (
+            callback_cache.get("algorithm") == FINGERPRINT_ALGORITHM
+            and callback_cache.get("fingerprint") == callback_fingerprint
+            and loader_cache.get("algorithm") == FINGERPRINT_ALGORITHM
+            and loader_cache.get("fingerprint") == loader_fingerprint
+            and loader_cache.get("generation_key") == loader_generation
+        )
+        if cache_current:
+            prepare_callback(
+                build, callback_cache["sha256"], loader_generation, generation=published_generation
+            )
+        else:
+            record_callback()
+        return exe
+    if not check_environment()["ready_to_build"]:
+        raise RuntimeError("Creo SDK, template or MSVC is missing; call creo_check_environment")
+    sdk = Path(c["creo_root"]) / "Common Files/protoolkit"
+    libs = " ".join(
+        f'"{sdk / "x86e_win64/obj" / name}"'
+        for name in ("protkmd_NU.lib", "ptasyncmd.lib", "ucore.lib", "udata.lib")
+    )
+    dll_libs = " ".join(
+        f'"{sdk / "x86e_win64/obj" / name}"'
+        for name in ("protk_dllmd_NU.lib", "ucore.lib", "udata.lib")
+    )
+    callback_script = (
+        ""
+        if reuse_callback
+        else f'''
+cl /nologo /MD /EHsc /std:c++17 /utf-8 /W3 /we4552 /DPRO_MACHINE=36 /DPRO_OS=4 /I"{sdk / "includes"}" /c "{ROOT / "native/blend_sync.cpp"}" /Fo"{build / "blend_sync.obj"}"
+if errorlevel 1 exit /b 2
+link /nologo /DLL /MACHINE:X64 /OUT:"{blend_dll}" "{build / "blend_sync.obj"}" kernel32.lib user32.lib wsock32.lib advapi32.lib mpr.lib winspool.lib netapi32.lib psapi.lib gdi32.lib shell32.lib comdlg32.lib ole32.lib ws2_32.lib
+if errorlevel 1 exit /b 3
+'''
+    )
+    loader_script = (
+        ""
+        if reuse_loader
+        else f'''
+cl /nologo /MD /EHsc /std:c++17 /utf-8 /W3 /we4552 /DPRO_MACHINE=36 /DPRO_OS=4 /I"{sdk / "includes"}" /c "{ROOT / "native/blend_loader.cpp"}" /Fo"{build / "blend_loader.obj"}"
+if errorlevel 1 exit /b 2
+link /nologo /DLL /MACHINE:X64 /OUT:"{loader_dll}" "{build / "blend_loader.obj"}" {dll_libs} kernel32.lib user32.lib wsock32.lib advapi32.lib mpr.lib winspool.lib netapi32.lib psapi.lib gdi32.lib shell32.lib comdlg32.lib ole32.lib ws2_32.lib
+if errorlevel 1 exit /b 3
+'''
+    )
+    script = build / "build.cmd"
+    script.write_text(
+        f'''@echo off
+setlocal DisableDelayedExpansion
+{compiler_setup_script(c)}
+"{sys.executable}" "{ROOT / "tools/compiler_preflight.py"}"
+if errorlevel 1 exit /b 4
+cl /nologo /MD /EHsc /std:c++17 /utf-8 /bigobj /W3 /we4552 /DPRO_MACHINE=36 /DPRO_OS=4 /DPRO_USE_VAR_ARGS /DMECHDOG_BUILD_SOURCE_DIGEST=\\"{fingerprint}\\" /I"{sdk / "includes"}" /c "{ROOT / "native/worker.cpp"}" /Fo"{build / "worker.obj"}"
+if errorlevel 1 exit /b 2
+link /nologo /MACHINE:X64 /SUBSYSTEM:CONSOLE /OUT:"{exe}" "{build / "worker.obj"}" {libs} bcrypt.lib kernel32.lib user32.lib wsock32.lib advapi32.lib mpr.lib winspool.lib netapi32.lib psapi.lib gdi32.lib shell32.lib comdlg32.lib ole32.lib ws2_32.lib
+if errorlevel 1 exit /b 3
+{callback_script}
+{loader_script}
+exit /b 0
+''',
+        encoding="utf-8",
+    )
+    with (build / "build.log").open("wb") as log:
+        result = subprocess.run(
+            ["cmd.exe", "/d", "/c", str(script)],
+            cwd=build,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            timeout=120,
+            creationflags=HIDDEN,
+        )
+    if result.returncode:
+        diagnostic = diagnose_build_failure(
+            result.returncode, read_build_log_tail(build / "build.log")
+        )
+        if result.returncode == 4:
+            raise RuntimeError(
+                f"MSVC/Windows SDK environment preflight failed; inspect {build / 'build.log'} (SDK discovery or registry access may be blocked)\n{diagnostic}"
+            )
+        raise RuntimeError(
+            f"Native build failed ({result.returncode}); see {build / 'build.log'}\n{diagnostic}"
+        )
+    # Publish callback metadata and DLL cache markers first; the worker cache
+    # marker lands only after every earlier step succeeded, so an interrupted
+    # publish is re-verified by the next locked build instead of trusted.
+    record_callback()
+    _write_stamp_text(stamp, fingerprint)
+    constants = subprocess.run(
+        [str(exe), "constants"],
+        env=native_environment(),
+        capture_output=True,
+        timeout=20,
+        creationflags=HIDDEN,
+    )
+    if constants.returncode == 0:
+        (build / "constants.json").write_bytes(constants.stdout)
+    return exe
+
+
+def channel_health() -> dict:
+    try:
+        return read_json(ROOT / "build/toolkit_health.json")
+    except (OSError, ValueError):
+        return {}
+
+
+_WORKER_IDENTITY_CACHE: dict[tuple[str, int, int, str], dict] = {}
+_SOURCE_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+
+
+def _parse_worker_build_info(payload: object, worker_sha256: str) -> dict | None:
+    """Validate the executor's own build-info projection (H13)."""
+    if not isinstance(payload, dict) or payload.get("identity_schema") != 1:
+        return None
+    digest = payload.get("source_digest")
+    features = payload.get("features")
+    if not isinstance(digest, str) or not _SOURCE_DIGEST.fullmatch(digest):
+        return None
+    loft = features.get("surface_loft") if isinstance(features, dict) else None
+    if not isinstance(loft, dict) or not isinstance(loft.get("available"), bool):
+        return None
+    requirements = loft.get("sdk_requirements")
+    missing = loft.get("missing_sdk_requirements")
+    projected = {
+        "surface_loft": {
+            "available": loft["available"],
+            "state": loft.get("state"),
+            "sdk_requirements": (
+                list(requirements) if isinstance(requirements, list) else ["Probbl.h"]
+            ),
+            "missing_sdk_requirements": (list(missing) if isinstance(missing, list) else []),
+        }
+    }
+    # BUG-120/D1: the resident panel route is a separate backend and its own
+    # declaration. A worker that predates it simply omits the key, which admission
+    # reads as "not declared" rather than as a supported route.
+    panel = features.get("surface_loft_panel")
+    if isinstance(panel, dict) and isinstance(panel.get("available"), bool):
+        projected["surface_loft_panel"] = {
+            "available": panel["available"],
+            "state": panel.get("state"),
+            "sdk_requirements": (
+                list(panel["sdk_requirements"])
+                if isinstance(panel.get("sdk_requirements"), list)
+                else []
+            ),
+            "missing_sdk_requirements": (
+                list(panel["missing_sdk_requirements"])
+                if isinstance(panel.get("missing_sdk_requirements"), list)
+                else []
+            ),
+        }
+    return {
+        "identity_status": "verified",
+        "identity_schema": payload["identity_schema"],
+        "source_digest": digest,
+        "worker_sha256": worker_sha256,
+        "identity_source": "worker_self_report",
+        "features": projected,
+    }
+
+
+def _env_fingerprint(env: object) -> str:
+    """Stable short hash of the probe environment for attribution (BUG-139)."""
+    if not isinstance(env, dict):
+        env = {}
+    material = json.dumps({key: env.get(key) for key in sorted(env)}, sort_keys=True, default=str)
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
+
+
+# Failure-only fields that must never survive a transition to a verified
+# identity, so a healed build does not keep advertising an old exit code.
+_IDENTITY_FAILURE_FIELDS = ("worker_exit_code", "message", "budget_seconds")
+
+
+def worker_build_identity(*, refresh: bool = False) -> dict:
+    """Read build facts from the built executor itself; never infer its SDK.
+
+    The probe reads only compile-time constants embedded in ``creo_worker.exe``.
+    It does not connect to Creo, call Toolkit or inspect this machine's SDK
+    headers, so a stale worker or a worker built against another SDK generation
+    cannot be mistaken for the current Python environment. A missing or
+    unverifiable identity stays explicit; callers must not turn it into an
+    availability claim.
+
+    BUG-139: every observation carries ``observed_at`` and ``env_fingerprint``
+    so a cached failure can be attributed to the machine/environment that
+    produced it. The cache key includes the environment fingerprint, so fixing a
+    broken PATH/Creo environment invalidates a stale ``invalid_build_info`` and
+    re-probes. A verified identity never carries stale failure fields.
+    """
+    exe = ROOT / "build/creo_worker.exe"
+    observed_at = now()
+    try:
+        env = native_environment()
+    except (OSError, ValueError, KeyError):
+        env = None
+    env_fingerprint = _env_fingerprint(env)
+    try:
+        info = exe.stat()
+    except OSError:
+        return {
+            "identity_status": "worker_missing",
+            "identity_source": "worker_self_report",
+            "observed_at": observed_at,
+            "env_fingerprint": env_fingerprint,
+        }
+    key = (str(exe), info.st_mtime_ns, info.st_size, env_fingerprint)
+    if not refresh and key in _WORKER_IDENTITY_CACHE:
+        return dict(_WORKER_IDENTITY_CACHE[key])
+    try:
+        result = subprocess.run(
+            [str(exe), "build-info"],
+            cwd=ROOT / "build",
+            env=env,
+            capture_output=True,
+            timeout=15,
+            creationflags=HIDDEN,
+        )
+    except subprocess.TimeoutExpired:
+        identity = {
+            "identity_status": "probe_timeout",
+            "identity_source": "worker_self_report",
+            "budget_seconds": 15,
+        }
+    except OSError as exc:
+        identity = {
+            "identity_status": "probe_failed",
+            "identity_source": "worker_self_report",
+            "message": str(exc),
+        }
+    else:
+        try:
+            payload = json.loads(result.stdout.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            payload = None
+        parsed = _parse_worker_build_info(payload, hashlib.sha256(exe.read_bytes()).hexdigest())
+        if result.returncode != 0 or parsed is None:
+            identity = {
+                "identity_status": "invalid_build_info",
+                "identity_source": "worker_self_report",
+                "worker_exit_code": result.returncode,
+            }
+        else:
+            identity = parsed
+    identity["observed_at"] = observed_at
+    identity["env_fingerprint"] = env_fingerprint
+    if identity.get("identity_status") == "verified":
+        for stale_key in _IDENTITY_FAILURE_FIELDS:
+            identity.pop(stale_key, None)
+    _WORKER_IDENTITY_CACHE[key] = identity
+    return dict(identity)
+
+
+def record_channel_health(connected: bool, **fields) -> dict:
+    path = ROOT / "build/toolkit_health.json"
+    value = {"connected": connected, "checked_at": now(), **fields}
+    try:
+        previous = read_json(path)
+    except (OSError, ValueError):
+        previous = {}
+    if isinstance(previous, dict):
+        # A probe rewrites the channel status. The observations these writers keep
+        # are keyed by worker SHA and own their own records, so a status refresh
+        # must not erase them.
+        for key in ("surface_loft_runtime", "host_release"):
+            if key not in value and isinstance(previous.get(key), dict):
+                value[key] = previous[key]
+    (ROOT / "build").mkdir(exist_ok=True)
+    write_json(path, value)
+    return value
+
+
+def record_surface_loft_runtime(manifest: dict) -> None:
+    """Persist the last kernel-completion observation from a job receipt.
+
+    BUG-120 published this record; BUG-122 lets admission read it, but only the
+    measured signature (same worker SHA, create_code=0, extract_code=-18) refuses a
+    later request, so a transient rollback or another executor's record cannot lock
+    the route. The record is keyed by worker SHA and a new build clears it.
+    """
+    try:
+        result = manifest.get("result")
+        operations = result.get("operations") if isinstance(result, dict) else None
+        if not isinstance(operations, list):
+            return
+        record = next(
+            (
+                entry
+                for entry in operations
+                if isinstance(entry, dict)
+                and entry.get("op") == "surface_loft"
+                and entry.get("kernel_completion") in ("supported", "unsupported")
+            ),
+            None,
+        )
+        if record is None:
+            return
+        identity = worker_build_identity()
+        worker_sha = identity.get("worker_sha256")
+        if not worker_sha:
+            return
+        evidence = record.get("kernel_evidence")
+        path = ROOT / "build/toolkit_health.json"
+        try:
+            health = read_json(path)
+        except (OSError, ValueError):
+            health = {}
+        if not isinstance(health, dict):
+            health = {}
+        health["surface_loft_runtime"] = {
+            "kernel_completion": record["kernel_completion"],
+            "worker_sha256": worker_sha,
+            "release_numeric": (
+                evidence.get("release_numeric") if isinstance(evidence, dict) else None
+            ),
+            "job_id": manifest.get("job_id"),
+            "observed_at": now(),
+            "evidence": evidence if isinstance(evidence, dict) else None,
+        }
+        (ROOT / "build").mkdir(exist_ok=True)
+        write_json(path, health)
+    except Exception:
+        # A disclosure record must never change the task's terminal outcome.
+        return
+
+
+def surface_loft_runtime_observation(identity: dict) -> dict:
+    """The kernel-completion observation that belongs to ``identity``."""
+    health = channel_health()
+    observed = health.get("surface_loft_runtime") if isinstance(health, dict) else None
+    worker_sha = identity.get("worker_sha256") if isinstance(identity, dict) else None
+    if not isinstance(observed, dict) or not worker_sha:
+        return {"kernel_completion": "unknown"}
+    if observed.get("worker_sha256") != worker_sha:
+        return {"kernel_completion": "unknown"}
+    return observed
+
+
+def record_host_release(manifest: dict) -> None:
+    """Persist the Creo release a completed native job ran on.
+
+    A certified panel profile is bound to one Creo release, and admission must
+    decide before a job exists — before this process may ask Creo anything. The
+    only verified host fact a request can carry is one a connected job already
+    reported, so keep it keyed by the worker SHA that produced it. A worker
+    rebuild invalidates the record rather than lending it a new build.
+    """
+    try:
+        result = manifest.get("result")
+        if not isinstance(result, dict):
+            return
+        release = result.get("creo_release_numeric")
+        if type(release) is not int:
+            return
+        if result.get("creo_release_query_code") not in (0, None):
+            return
+        identity = worker_build_identity()
+        worker_sha = identity.get("worker_sha256")
+        if not worker_sha:
+            return
+        path = ROOT / "build/toolkit_health.json"
+        try:
+            health = read_json(path)
+        except (OSError, ValueError):
+            health = {}
+        if not isinstance(health, dict):
+            health = {}
+        health["host_release"] = {
+            "worker_sha256": worker_sha,
+            "release_numeric": release,
+            "job_id": manifest.get("job_id"),
+            "observed_at": now(),
+        }
+        (ROOT / "build").mkdir(exist_ok=True)
+        write_json(path, health)
+    except Exception:
+        # A disclosure record must never change the task's terminal outcome.
+        return
+
+
+def record_probe_host_release(identity: dict, value: dict) -> None:
+    """Persist the Creo release a connected read-only probe reported.
+
+    A certified panel profile is matched to the host release before any job
+    exists. A status probe already connects and reads that number, so recording
+    it here lets a client make the panel route usable by reading status once,
+    instead of running a job that the old refusal told it to expect to fail.
+    Keyed by the worker SHA like ``record_host_release``: a rebuild invalidates
+    the record instead of lending it a new build.
+    """
+    try:
+        if not value.get("connected"):
+            return
+        release = value.get("release_numeric")
+        if type(release) is not int:
+            return
+        worker_sha = identity.get("worker_sha256") if isinstance(identity, dict) else None
+        if not worker_sha:
+            return
+        path = ROOT / "build/toolkit_health.json"
+        try:
+            health = read_json(path)
+        except (OSError, ValueError):
+            health = {}
+        if not isinstance(health, dict):
+            health = {}
+        health["host_release"] = {
+            "worker_sha256": worker_sha,
+            "release_numeric": release,
+            "job_id": None,
+            "source": "session_probe",
+            "observed_at": now(),
+        }
+        (ROOT / "build").mkdir(exist_ok=True)
+        write_json(path, health)
+    except Exception:
+        # A disclosure record must never change the probe outcome.
+        return
+
+
+def host_release_observation(identity: dict) -> int | None:
+    """The Creo release this exact worker reported on a connected job."""
+    health = channel_health()
+    observed = health.get("host_release") if isinstance(health, dict) else None
+    worker_sha = identity.get("worker_sha256") if isinstance(identity, dict) else None
+    if not isinstance(observed, dict) or not worker_sha:
+        return None
+    if observed.get("worker_sha256") != worker_sha:
+        return None
+    release = observed.get("release_numeric")
+    return release if type(release) is int else None
+
+
+def surface_loft_admission_identity() -> dict:
+    """Copy worker build facts and attach only this worker's recorded loft result.
+
+    Admission uses the same read-only observation as status disclosure. Keep the
+    cached build identity untouched so a later worker or probe cannot inherit a
+    previous worker's kernel result. The recorded host release rides along for the
+    same reason: a certified panel profile is matched to it before any job exists.
+    """
+    identity = worker_build_identity()
+    projected = dict(identity)
+    features = identity.get("features")
+    feature = features.get("surface_loft") if isinstance(features, dict) else None
+    if isinstance(feature, dict):
+        projected["features"] = {
+            **features,
+            "surface_loft": {**feature, **surface_loft_runtime_observation(identity)},
+        }
+    release = host_release_observation(identity)
+    if release is not None:
+        projected.setdefault("release_numeric", release)
+    return projected
+
+
+def note_native_outcome(manifest: dict) -> None:
+    result = manifest.get("result", {})
+    if (
+        manifest["status"] == "unknown_outcome"
+        or result.get("connected") is False
+        or result.get("toolkit_code") == -38
+        or result.get("disconnect_code") not in (None, 0)
+    ):
+        record_channel_health(
+            False,
+            job_id=manifest["job_id"],
+            model_id=manifest.get("model_id"),
+            connection_state="recheck_required",
+            message=manifest.get("message"),
+        )
+
+
+def timeout_message(progress: dict | None) -> str:
+    """Name the last native sub-stage when the worker budget expired (BUG-109).
+
+    ``progress`` is the bounded projection from ``creo_mechdog.native_stage``;
+    an empty or partial report keeps today's wording rather than inventing a
+    stage. The budget, the unknown_outcome protection and the absence of
+    retries are unchanged.
+    """
+    base = (
+        "Native helper timed out and was stopped; inspect native checkpoint and Creo "
+        "before retrying."
+    )
+    sub_stage = (progress or {}).get("sub_stage")
+    if not isinstance(sub_stage, str) or not sub_stage:
+        return base
+    message = f"{base} Last sub-stage: {sub_stage}"
+    idle = (progress or {}).get("idle_seconds")
+    if isinstance(idle, (int, float)) and not isinstance(idle, bool):
+        message += f" (idle {float(idle):.1f} s)"
+    return message + "."
+
+
+def apply_terminal_stage(manifest: dict) -> None:
+    """Use the native failure stage when one was actually reported."""
+    if manifest.get("status") == "failed":
+        result = manifest.get("result")
+        if (
+            isinstance(result, dict)
+            and isinstance(result.get("failed_stage"), str)
+            and result["failed_stage"]
+        ):
+            manifest["stage"] = result["failed_stage"]
+
+
+WORKER_LAUNCH_MODES = ("auto", "direct", "desktop")
+TOOLKIT_HINTS = {
+    0: "Toolkit connection verified",
+    -4: (
+        "PRO_TK_E_NOT_FOUND: Toolkit could not find the requested Creo session or read "
+        "its registration. Check startup readiness and the configured session selection"
+    ),
+    -8: "PRO_TK_BAD_CONTEXT: this Toolkit call has no valid context",
+    -36: "Multiple Creo sessions match; configure creo_session_id before retrying",
+    -38: (
+        "PRO_TK_E_BUSY: Creo's message loop is blocked, typically by a modal dialog "
+        "such as a GPU driver error window. Check the xtop.exe window title before "
+        "retrying; a retry cannot clear the dialog"
+    ),
+}
+
+
+def worker_launch_mode() -> str:
+    """How the status probe starts the worker; see BUG-127."""
+    value = config().get("creo_worker_launch")
+    if value is None:
+        return "auto"
+    if not isinstance(value, str) or value not in WORKER_LAUNCH_MODES:
+        raise ValueError("creo_worker_launch must be 'auto', 'direct' or 'desktop'")
+    return value
+
+
+def toolkit_hint(value: dict) -> str:
+    """Actionable text for a Toolkit return code without exposing local paths."""
+    message = TOOLKIT_HINTS.get(
+        value.get("toolkit_code"),
+        f"Toolkit returned {value.get('toolkit_code')}; inspect native.log and the Creo session",
+    )
+    if value.get("worker_exit_code"):
+        message += (
+            f". The probe exited {value['worker_exit_code']}; exit 20 is its convention "
+            "for any failed connection, not a separate Creo error"
+        )
+    return message
+
+
+def _desktop_probe(command: list[str], env: dict[str, str], budget: float, identity: dict) -> dict:
+    """Probe once through Explorer; report a launch failure separately from Toolkit."""
+    from creo_mechdog import desktop_worker
+
+    try:
+        result = desktop_worker.run(
+            command, ROOT / "build", env, budget, ROOT / "build/desktop_runs"
+        )
+    except desktop_worker.DesktopUnavailable as exc:
+        return {"desktop_error": str(exc)}
+    try:
+        payload = json.loads(result.stdout.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return {"desktop_error": "Desktop worker output was not valid status JSON"}
+    if not isinstance(payload, dict) or not isinstance(payload.get("connected"), bool):
+        return {"desktop_error": "Desktop worker did not return a connection status"}
+    return _record_probe_result(result, worker_identity=identity)
+
+
+def _probe_timeout_result(budget: float) -> dict:
+    return record_channel_health(
+        False,
+        connection_state="probe_timeout",
+        toolkit_code=None,
+        probe_budget_seconds=budget,
+        message="Toolkit connection probe ran out of time. "
+        "Inspect Creo dialogs and occupying jobs; preserve unknown jobs/models, then "
+        "request creo_startup_status(retry=true). No Creo process was closed.",
+    )
+
+
+def session_status(
+    connect_timeout_seconds: int = 30, *, build_worker: bool = True, deadline: float | None = None
+) -> dict:
+    if (
+        isinstance(connect_timeout_seconds, bool)
+        or not isinstance(connect_timeout_seconds, int)
+        or not 1 <= connect_timeout_seconds <= 60
+    ):
+        raise ValueError("connect_timeout_seconds must be 1–60")
+    mode = worker_launch_mode()
+    with toolkit_lock(operation="session_status"):
+        exe = build_native() if build_worker else ROOT / "build/creo_worker.exe"
+        if not build_worker and not exe.is_file():
+            return {
+                "connected": False,
+                "connection_state": "worker_unavailable",
+                "message": "Native worker is unavailable; request creo_startup_status(retry=true)",
+            }
+        default_budget = connect_timeout_seconds + min(connect_timeout_seconds, 15) + 5
+
+        def probe_limits() -> tuple[list[str], float]:
+            budget = (
+                default_budget
+                if deadline is None
+                else max(0.0, min(default_budget, deadline - time.monotonic()))
+            )
+            seconds = min(connect_timeout_seconds, max(1, math.ceil(budget)))
+            return [str(exe), "status", str(seconds)], budget
+
+        env = native_environment()
+        identity = worker_build_identity()
+        value = None
+        if mode != "desktop":
+            command, budget = probe_limits()
+            if not budget:
+                return _probe_timeout_result(budget)
+            try:
+                result = subprocess.run(
+                    command,
+                    cwd=ROOT / "build",
+                    env=env,
+                    capture_output=True,
+                    timeout=budget,
+                    creationflags=HIDDEN,
+                )
+            except subprocess.TimeoutExpired:
+                return _probe_timeout_result(budget)
+            value = _record_probe_result(result, worker_identity=identity)
+            value["worker_launch"] = "direct"
+        # A worker that cannot see the Toolkit channel in this process tree can
+        # still connect when explorer.exe starts it outside the MCP host's job.
+        if mode == "desktop" or (
+            mode == "auto" and value is not None and value.get("toolkit_code") == -4
+        ):
+            command, budget = probe_limits()
+            desktop = (
+                _desktop_probe(command, env, budget, identity)
+                if budget
+                else {"desktop_error": "No startup probe budget remains"}
+            )
+            if "desktop_error" in desktop:
+                reason = desktop["desktop_error"]
+                if value is None:
+                    if deadline is not None and time.monotonic() >= deadline:
+                        return _probe_timeout_result(budget)
+                    return record_channel_health(
+                        False,
+                        connection_state="worker_unavailable",
+                        desktop_retry_reason=reason,
+                        message="Toolkit worker could not be started through the desktop; check "
+                        "the interactive Explorer session, or set creo_worker_launch to direct",
+                    )
+                value["desktop_retry"] = "unavailable"
+                value["desktop_retry_reason"] = reason
+            elif mode == "desktop" or desktop.get("connected") or desktop.get("toolkit_code") != -4:
+                desktop["worker_launch"] = "desktop"
+                value = desktop
+            else:
+                value["desktop_retry"] = {
+                    "connected": desktop.get("connected"),
+                    "toolkit_code": desktop.get("toolkit_code"),
+                }
+        value["toolkit_hint"] = toolkit_hint(value)
+        return value
+
+
+def _record_probe_result(
+    result: subprocess.CompletedProcess, *, worker_identity: dict | None = None
+) -> dict:
+    try:
+        value = json.loads(result.stdout.decode("utf-8"))
+        if not isinstance(value, dict) or not isinstance(value.get("connected"), bool):
+            raise ValueError("Invalid status object")
+    except (ValueError, UnicodeDecodeError):
+        return record_channel_health(
+            False,
+            connection_state="invalid_probe_result",
+            worker_exit_code=result.returncode,
+            message="Toolkit worker returned no valid status result; inspect the Creo session and runtime libraries, then request explicit startup retry",
+        )
+    value["worker_exit_code"] = result.returncode
+    if result.returncode != 0 and value.get("connected"):
+        value.update(connected=False, connection_state="probe_worker_failed")
+    if value.get("disconnect_code") not in (None, 0):
+        value.update(connected=False, connection_state="disconnect_failed")
+    if worker_identity is not None:
+        identity = dict(worker_identity)
+        features = identity.get("features")
+        feature = features.get("surface_loft") if isinstance(features, dict) else None
+        if isinstance(feature, dict):
+            identity["features"] = {
+                **features,
+                "surface_loft": {
+                    **feature,
+                    **surface_loft_runtime_observation(identity),
+                },
+            }
+        value["worker_build_identity"] = identity
+        record_probe_host_release(identity, value)
+    record_channel_health(
+        bool(value.get("connected")), **{k: v for k, v in value.items() if k != "connected"}
+    )
+    return value
+
+
+def callback_status() -> dict:
+    """Nine-second read-only native probe; no build, DLL loading or GUI launch."""
+    build = ROOT / "build"
+    artifacts = callback_setup_status(build)
+    if artifacts["artifact_status"] != "prepared":
+        return {
+            **artifacts,
+            "reason": artifacts.get("reason", "artifacts_not_prepared"),
+            "checked_at": now(),
+            "snapshot": True,
+        }
+    exe = build / "creo_worker.exe"
+    if not exe.is_file():
+        return unknown_readiness(artifacts, "worker_unavailable")
+    try:
+        with toolkit_lock(operation="callback_status"):
+            result = subprocess.run(
+                [str(exe), "callback-status", "2"],
+                cwd=build,
+                env=native_environment(),
+                capture_output=True,
+                timeout=9,
+                creationflags=HIDDEN,
+            )
+            session = _record_probe_result(result)
+    except ToolkitBusy as exc:
+        return unknown_readiness(
+            artifacts, "channel_busy", session=exc.payload, probe_budget_seconds=9
+        )
+    except subprocess.TimeoutExpired:
+        record_channel_health(False, connection_state="callback_probe_timeout")
+        return unknown_readiness(artifacts, "probe_timeout", probe_budget_seconds=9)
+    except (OSError, RuntimeError) as exc:
+        return unknown_readiness(
+            artifacts, "probe_failed", probe_error=str(exc), probe_budget_seconds=9
+        )
+    native = session.pop("direct_blend_callback", None)
+    if not session.get("connected"):
+        return unknown_readiness(
+            artifacts,
+            session.get("connection_state", "connection_failed"),
+            session=session,
+            probe_budget_seconds=9,
+        )
+    if not isinstance(native, dict) or native.get("readiness") not in (
+        "ready",
+        "not_loaded",
+        "version_mismatch",
+        "unknown",
+    ):
+        return unknown_readiness(artifacts, "invalid_probe_result", session=session)
+    if callback_setup_status(build) != artifacts:
+        return unknown_readiness(artifacts, "deployment_changed_during_probe", session=session)
+    return {
+        **artifacts,
+        **native,
+        "session": session,
+        "checked_at": now(),
+        "snapshot": True,
+        "probe_budget_seconds": 9,
+    }
+
+
+def create_job(spec: dict) -> dict:
+    with toolkit_lock(operation="submit_plate"):
+        # BUG-100: same admission rule as execute_plan — an accepted-but-
+        # unfinished job rejects this submission instead of queueing it.
+        holder = admission_holder()
+        if holder:
+            raise ToolkitBusy(holder=holder)
+        JOBS.mkdir(exist_ok=True)
+        job_id = uuid.uuid4().hex
+        directory = job_path(job_id)
+        directory.mkdir()
+        output = directory / "output"
+        output.mkdir()
+        if len(str(output)) >= 230:
+            raise ValueError("Project path is too long for this Creo Toolkit build")
+        spec = dict(spec)
+        spec["model_name"] = spec["model_name"] or f"ai_plate_{job_id[:12]}"
+        manifest = {
+            "job_id": job_id,
+            "status": "queued",
+            "created_at": now(),
+            "spec": spec,
+            "job_directory": str(directory),
+            "output_directory": str(output),
+            "message": "Call creo_get_job until succeeded, failed or unknown_outcome. Do not repeat create_plate to poll.",
+        }
+        write_json(directory / "job.json", manifest)
+        try:
+            with (directory / "runner.log").open("ab") as log:
+                proc = subprocess.Popen(
+                    [sys.executable, str(ROOT / "bridge.py"), "run-job", job_id],
+                    cwd=ROOT,
+                    stdin=subprocess.DEVNULL,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    creationflags=HIDDEN,
+                    close_fds=True,
+                )
+        except Exception as exc:
+            manifest.update(status="failed", message=str(exc), finished_at=now())
+            write_json(directory / "job.json", manifest)
+            raise
+        write_channel_claim(job_id, operation="create_plate", runner_pid=proc.pid)
+        return manifest
+
+
+def run_job(job_id: str) -> None:
+    try:
+        _run_job_dispatch(job_id)
+    finally:
+        # The channel reservation outlives the submit lock (BUG-100); the
+        # runner owns its release whatever terminal state it records.
+        clear_channel_claim(job_id)
+
+
+def _run_job_dispatch(job_id: str) -> None:
+    directory = job_path(job_id)
+    manifest = read_json(directory / "job.json")
+    manifest.update(runner_identity=process_identity(os.getpid()), stage="waiting_for_channel")
+    write_json(directory / "job.json", manifest)
+    if manifest.get("kind") == "reconciliation":
+        from creo_mechdog.reconciliation import run
+
+        run(job_id, manifest)
+        return
+    if manifest.get("kind") == "adoption_file":
+        from creo_mechdog.file_adoption import run
+
+        run(job_id, manifest)
+        return
+    if manifest.get("kind") == "adoption":
+        from creo_mechdog.adoption import run
+
+        run(job_id, manifest)
+        return
+    if manifest.get("kind") == "open_file":
+        from creo_mechdog.open_file import run
+
+        run(job_id, manifest)
+        return
+    if manifest.get("kind") == "session_erase":
+        from creo_mechdog.session_erase import run
+
+        run(job_id, manifest)
+        return
+    if manifest.get("kind") == "generic":
+        from creo_mechdog.generic_bridge import run_generic_job
+
+        run_generic_job(job_id, manifest)
+        return
+    worker_started = False
+    try:
+        with toolkit_lock(wait_seconds=120, operation="create_plate", job_id=job_id):
+            manifest.update(
+                status="running", stage="building_worker", started_at=now(), runner_pid=os.getpid()
+            )
+            write_json(directory / "job.json", manifest)
+            exe = build_native()
+            spec = validate_spec(
+                **{
+                    k: manifest["spec"][k]
+                    for k in ("length", "width", "thickness", "radius", "holes", "model_name")
+                }
+            )
+            common = Path(config()["creo_root"]) / "Common Files"
+            lines = [
+                spec["model_name"],
+                manifest["output_directory"],
+                str(common / "templates/mmns_part_solid_abs.prt"),
+                " ".join(
+                    format(spec[k], ".17g") for k in ("length", "width", "thickness", "radius")
+                ),
+                str(len(spec["holes"])),
+            ]
+            lines.extend(
+                " ".join(format(h[k], ".17g") for k in ("x", "y", "diameter"))
+                for h in spec["holes"]
+            )
+            (directory / "native_spec.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+            manifest.update(stage="creating_native_features")
+            write_json(directory / "job.json", manifest)
+            with (directory / "worker.log").open("wb") as log:
+                worker_started = True
+                proc = subprocess.run(
+                    [str(exe), "create", str(directory)],
+                    cwd=directory,
+                    env=native_environment(),
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    timeout=config()["native_timeout_seconds"],
+                    creationflags=HIDDEN,
+                )
+            result_path = directory / "native_result.json"
+            if not result_path.exists():
+                manifest.update(
+                    status="unknown_outcome",
+                    message=f"Worker exited {proc.returncode} without a result; inspect Creo and native.log before retrying",
+                )
+            else:
+                result = read_json(result_path)
+                manifest["result"] = result
+                if (
+                    result.get("disconnect_code") not in (None, 0)
+                    or result.get("delivery_complete") is False
+                ):
+                    manifest.update(
+                        status="unknown_outcome",
+                        message="Native finalization was not confirmed; preserve saved files and inspect the checkpoint",
+                    )
+                elif (
+                    proc.returncode == 0
+                    and result.get("success")
+                    and result.get("saved_file_reloaded_and_verified")
+                ):
+                    part = Path(result["part_file"])
+                    if (
+                        part.parent.resolve() != (directory / "output").resolve()
+                        or not part.is_file()
+                    ):
+                        raise RuntimeError(
+                            "Native result references a missing or unexpected part file"
+                        )
+                    result["sha256"] = hashlib.sha256(part.read_bytes()).hexdigest()
+                    # Same preview projection as the generic plan path (T07).
+                    # A capture failure is reported beside the verified save and
+                    # never changes this job's succeeded status.
+                    from creo_mechdog import preview
+
+                    preview.apply_preview_projection(result, directory=directory)
+                    manifest.update(
+                        status="succeeded",
+                        stage="verified",
+                        message="Native PRT saved, reloaded and verified; sketch/extrude/round/hole features are editable",
+                    )
+                else:
+                    manifest.update(
+                        status="failed",
+                        message=f"Toolkit code {result['toolkit_code']}; inspect native.log. Partial new model may remain in Creo. Do not blindly retry.",
+                    )
+    except subprocess.TimeoutExpired:
+        # BUG-109: name the last sub-stage and how long it has been silent instead
+        # of only reporting that the budget expired. The budget itself, the
+        # unknown_outcome protection and the absence of retries are unchanged.
+        progress = {}
+        if worker_started:
+            from creo_mechdog.native_stage import stall_report
+
+            progress = stall_report(directory)
+        manifest.update(
+            status="unknown_outcome" if worker_started else "failed",
+            message=timeout_message(progress)
+            if worker_started
+            else "Native build exceeded its subprocess budget; inspect build logs. No native modeling worker started.",
+        )
+        if progress:
+            manifest["native_progress"] = progress
+    except Exception as exc:
+        manifest.update(status="unknown_outcome" if worker_started else "failed", message=str(exc))
+    apply_terminal_stage(manifest)
+    note_native_outcome(manifest)
+    record_host_release(manifest)
+    manifest["finished_at"] = now()
+    write_json(directory / "job.json", manifest)
+
+
+def _validate_wait_seconds(value: object) -> int:
+    """FEAT-007: wait_seconds is an explicit integer in 0..300 (no floats/bools)."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"wait_seconds must be an integer between 0 and {MAX_JOB_WAIT_SECONDS}")
+    if not 0 <= value <= MAX_JOB_WAIT_SECONDS:
+        raise ValueError(f"wait_seconds must be an integer between 0 and {MAX_JOB_WAIT_SECONDS}")
+    return value
+
+
+def _manifest_status(job_id: str) -> str | None:
+    """Read only the persisted job status for the long-poll loop (FEAT-007)."""
+    path = job_path(job_id) / "job.json"
+    if not path.exists():
+        return None
+    return read_json(path).get("status")
+
+
+def get_job(
+    job_id: str,
+    detail: str = "full",
+    section: str | None = None,
+    limit: int = 50,
+    cursor: str | None = None,
+    sections: list[str] | None = None,
+    wait_seconds: int = 0,
+    *,
+    clock=time.monotonic,
+    sleep=time.sleep,
+) -> dict:
+    """Read one job, optionally waiting for a terminal state (FEAT-007).
+
+    ``wait_seconds`` long-polls only the persisted job record: it never creates
+    a job, holds the Toolkit channel lock, changes a timeout or resubmits.
+    Terminal statuses return immediately; expiry returns the current status
+    with ``wait_expired=true``, never a completion claim. An interruption only
+    ends the wait and cannot cancel the job.
+    """
+    wait_seconds = _validate_wait_seconds(wait_seconds)
+    started = clock()
+    view = _read_job(job_id, detail, section, limit, cursor, sections)
+    waited = 0.0
+    expired = False
+    if wait_seconds and view.get("status") not in TERMINAL_JOB_STATUSES:
+        deadline = started + wait_seconds
+        while True:
+            remaining = deadline - clock()
+            if remaining <= 0:
+                expired = True
+                break
+            sleep(min(JOB_WAIT_POLL_SECONDS, remaining))
+            status = _manifest_status(job_id)
+            if status is None or status in TERMINAL_JOB_STATUSES:
+                break
+        waited = max(waited, clock() - started)
+        view = _read_job(job_id, detail, section, limit, cursor, sections)
+    terminal = view.get("status") in TERMINAL_JOB_STATUSES
+    view["wait_seconds"] = wait_seconds
+    view["waited_seconds"] = round(waited, 3)
+    view["wait_expired"] = bool(
+        wait_seconds and not terminal and (expired or waited >= wait_seconds)
+    )
+    return view
+
+
+def expected_lifetime_seconds(manifest: dict) -> float:
+    """How long a queued/running job may live before the watchdog calls it unknown.
+
+    FEAT-033: a job that accepted its own budget must be judged against that
+    budget, not the server default, or a legitimately long native run is
+    declared unknown while the executor is still working.
+    """
+    if manifest.get("kind") in ("adoption_file", "adoption_file_inspect"):
+        from creo_mechdog.file_adoption import lifetime_seconds
+
+        return lifetime_seconds(manifest["item_count"])
+    if manifest.get("kind") in ("generic", "reconciliation", "adoption", "open_file"):
+        budget = manifest.get("timeout_seconds")
+        if isinstance(budget, bool) or not isinstance(budget, int) or budget <= 0:
+            budget = config().get("generic_timeout_seconds", 600)
+    else:
+        budget = config()["native_timeout_seconds"]
+    return 120 + 180 + budget + 30
+
+
+def _read_job(
+    job_id: str,
+    detail: str = "full",
+    section: str | None = None,
+    limit: int = 50,
+    cursor: str | None = None,
+    sections: list[str] | None = None,
+) -> dict:
+    if detail not in ("compact", "full"):
+        raise ValueError("detail must be compact or full")
+    if sections is not None:
+        if detail != "compact":
+            raise ValueError("sections require detail=compact")
+        # FEAT-023: reject unknown block names before reading the job directory,
+        # so a rejected selection never touches the job (read-only query).
+        sections = resolve_sections(sections)
+    if detail == "compact" and (section is not None or cursor is not None):
+        raise ValueError(
+            'section/cursor require detail=full (pass detail="full" alongside section/cursor, '
+            'or use sections=[...] with detail="compact")'
+        )
+    directory = job_path(job_id)
+    if not (directory / "job.json").exists():
+        raise ValueError("Unknown job_id")
+    manifest = read_json(directory / "job.json")
+    # DEV-071: older executors stored some receipts only in aliases. Resolve
+    # this job's own verified sidecar, never today's model or raw logs, so
+    # full/compact/pages expose the same historical evidence without writes.
+    result = manifest.get("result")
+    if isinstance(result, dict):
+        from creo_mechdog.operation_results import alias_receipts_needed, annotate_alias_receipts
+
+        if alias_receipts_needed(result):
+            from creo_mechdog.model_registry import aliases_of
+
+            annotate_alias_receipts(result, aliases_of(result))
+    if manifest.get("kind") == "reconciliation":
+        from creo_mechdog.reconciliation import resume_committed
+
+        manifest = resume_committed(job_id) or manifest
+    elif manifest.get("kind") == "adoption":
+        from creo_mechdog.adoption import resume_committed
+
+        manifest = resume_committed(job_id) or manifest
+    elif manifest.get("kind") == "adoption_file":
+        from creo_mechdog.file_adoption import resume_committed
+
+        manifest = resume_committed(job_id) or manifest
+    native_log = directory / "native.log"
+    if native_log.exists():
+        tail = native_log.read_bytes()[-8000:].decode("utf-8", errors="replace")
+        stages = re.findall(r"PHASE=([^\r\n]+)", tail)
+        if stages and manifest["status"] == "running":
+            manifest["stage"] = stages[-1]
+        if manifest["status"] in ("failed", "unknown_outcome"):
+            manifest["native_log_tail"] = tail[-4000:]
+        if manifest["status"] in ("queued", "running", "failed", "unknown_outcome"):
+            # BUG-109: bounded read-only attribution of the last phase/sub-stage.
+            # It never replaces `stage`, never touches the worker and never
+            # infers a timing that the log does not contain.
+            from creo_mechdog.native_stage import stall_report
+
+            job_result = manifest.get("result")
+            verify_stages = (
+                job_result.get("verify_stages") if isinstance(job_result, dict) else None
+            )
+            manifest["native_progress"] = stall_report(directory, verify_stages=verify_stages)
+    apply_terminal_stage(manifest)
+    if manifest["status"] in ("queued", "running"):
+        age = (
+            datetime.now(timezone.utc) - datetime.fromisoformat(manifest["created_at"])
+        ).total_seconds()
+        if age > expected_lifetime_seconds(manifest):
+            manifest.update(
+                status="unknown_outcome",
+                message="Job exceeded its expected lifetime; inspect runner.log and Creo before retrying",
+            )
+    if manifest["status"] == "unknown_outcome" or manifest.get("recovery_required"):
+        model = None
+        if manifest.get("model_id"):
+            from creo_mechdog.generic_bridge import model_info
+
+            try:
+                model = model_info(manifest["model_id"])
+            except (OSError, ValueError) as exc:
+                manifest["model_evidence_error"] = (
+                    f"Model registry could not be read ({type(exc).__name__}); preserve it for operator reconciliation"
+                )
+        manifest["recovery"] = job_evidence(directory, manifest, model)
+        manifest.setdefault(
+            "recovery_required",
+            ("Outcome is unconfirmed; preserve reservation and inspect recovery evidence"),
+        )
+    # BUG-096: register an honest failed-model-cleanup receipt on terminal
+    # generic jobs. A delivered native block is validated in place; a missing
+    # one is synthesized as unknown (never as a success claim), so "the failed
+    # new model was erased" only ever comes from real absence evidence.
+    if manifest.get("kind") == "generic" and manifest["status"] in (
+        "failed",
+        "unknown_outcome",
+    ):
+        from creo_mechdog import failed_model_cleanup
+
+        failed_model_cleanup.ensure_terminal_receipt(manifest)
+    # BUG-096 tail note: name the rollback outcome explicitly. "not attempted"
+    # (no checkpoint) and "attempted and failed" used to share
+    # rollback_succeeded=false; the new field separates them without changing
+    # the old field's meaning (BUG-012 stays closed).
+    if manifest.get("kind") == "generic" and manifest["status"] in (
+        "failed",
+        "unknown_outcome",
+    ):
+        from creo_mechdog import rollback_status
+
+        rollback_status.ensure_rollback_status(manifest)
+    # BUG-158: running/terminal job views expose the same two budgets the submit
+    # receipt froze, so a caller never has to probe with timeout_seconds to learn
+    # whether the stall watchdog moved. Read the frozen manifest fields; querying
+    # config here would re-validate local paths for an already accepted job.
+    if manifest.get("kind") == "generic":
+        manifest["budgets"] = {
+            "job_timeout_seconds": manifest.get("timeout_seconds"),
+            "timeout_source": manifest.get("timeout_source"),
+            "stall_watchdog_seconds": manifest.get("stall_watchdog_seconds"),
+            "stall_watchdog_source": manifest.get("stall_watchdog_source"),
+            "watch_files": manifest.get("watch_files"),
+        }
+    # BUG-190: surface structured failure coordinates and native_result.json path
+    # at top level on failed / unknown_outcome jobs; keep successful jobs clean.
+    if manifest.get("status") in ("failed", "unknown_outcome"):
+        res = manifest.get("result") if isinstance(manifest.get("result"), dict) else {}
+        failed_op = (
+            res.get("failed_operation") if isinstance(res.get("failed_operation"), dict) else {}
+        )
+        f_idx = res.get("failed_operation_index")
+        if f_idx is None:
+            f_idx = failed_op.get("index")
+        if f_idx is not None:
+            manifest["failed_operation_index"] = f_idx
+        f_stage = res.get("failed_stage") or failed_op.get("stage") or manifest.get("stage")
+        if f_stage is not None:
+            manifest["failed_stage"] = f_stage
+        if not manifest.get("failure_phase") and f_stage is not None:
+            manifest["failure_phase"] = f_stage
+        native_result_file = directory / "native_result.json"
+        if native_result_file.exists():
+            manifest["native_result_path"] = str(native_result_file)
+        ops_list = res.get("operations") if isinstance(res.get("operations"), list) else []
+        rf = None
+        if (
+            isinstance(f_idx, int)
+            and 0 <= f_idx < len(ops_list)
+            and isinstance(ops_list[f_idx], dict)
+        ):
+            rf = ops_list[f_idx].get("round_failure")
+        if isinstance(rf, dict):
+            summary_rf: dict = {}
+            if "failed_reference_index" in rf:
+                summary_rf["failed_reference_index"] = rf["failed_reference_index"]
+            edge_diags = rf.get("edge_diagnostics")
+            if isinstance(edge_diags, list):
+                min_adj = []
+                for ed in edge_diags[:5]:
+                    if not isinstance(ed, dict):
+                        continue
+                    v_mins = []
+                    for vkey in ("start_vertex", "end_vertex"):
+                        v = ed.get(vkey)
+                        if isinstance(v, dict) and v.get("min_adjacent_edge_mm") is not None:
+                            v_mins.append(v["min_adjacent_edge_mm"])
+                    min_adj.append(
+                        {
+                            "edge_id": ed.get("edge_id"),
+                            "min_adjacent_edge_mm": v_mins,
+                        }
+                    )
+                if min_adj:
+                    summary_rf["edge_min_adjacent_mm"] = min_adj
+            if summary_rf:
+                manifest["round_failure_summary"] = summary_rf
+    if detail == "compact":
+        manifest = compact_job(manifest, sections)
+        return manifest
+    # FEAT-008/BUG-088: detail=full keeps the whole manifest view when it fits
+    # the response budget and pages the rest through the shared query cursor,
+    # so a large plan echo is never returned unbounded.
+    from creo_mechdog.job_pages import job_page
+
+    return job_page(manifest, section=section, limit=limit, cursor=cursor)
+
+
+def compact_job(manifest: dict, sections: list[str] | None = None) -> dict:
+    """Bound polling payloads without losing the outcome or recovery information.
+
+    FEAT-008/BUG-088: every value is projected through the shared bounded
+    summary (``operation_results.bounded_summary``) and the finished summary
+    is held to the 32 KiB response budget. Failure reasons, revision, rollback
+    and save/reload evidence are never cut; truncations carry their
+    total/truncated markers.
+
+    FEAT-023: an optional ``sections`` selection keeps only the named result
+    blocks (``compact_sections``) and adds ``sections_applied`` plus
+    ``omitted_sections`` to the response. The projection runs before the
+    budget enforcement, so it never bypasses the shared trimming.
+
+    R04: the operation records are projected onto the shared whitelist
+    (``job_projection.compact_operation``), which keeps the surface-chain
+    criteria the native executor measured. Raw log text (top-level
+    ``native_log_tail`` and any nested ``log_tail``) is not part of compact;
+    ``detail=full`` keeps the original log and pagination path.
+    """
+    from creo_mechdog.operation_results import bounded_summary, enforce_compact_budget
+
+    if sections is not None:
+        sections = resolve_sections(sections)
+    manifest = dict(manifest)
+    apply_terminal_stage(manifest)
+    keys = (
+        "job_id",
+        "kind",
+        "model_id",
+        "status",
+        "stage",
+        "revision",
+        "readonly",
+        "created_at",
+        "started_at",
+        "finished_at",
+        "message",
+        "reason",
+        "reason_details",
+        "failure_read_budget_exceeded",
+        "commit_read_budget_exceeded",
+        "failure_phase",
+        "failed_operation_index",
+        "failed_stage",
+        "native_result_path",
+        "round_failure_summary",
+        "recovery_pending_released",
+        "recovery_pending_cleanup_error",
+        "channel_finalization_error",
+        "construction",
+        "busy",
+        "recovery_required",
+        "recovery",
+        "runner_identity",
+        "recovery_id",
+        "commit_pending",
+        "action",
+        "idempotency_key",
+        "adoption_action",
+        "parent_job_id",
+        "batch_id",
+        "items",
+        "item_count",
+        "item_counts",
+        "all_adopted",
+        "partial_result",
+        "evidence_token",
+        "expires_in_seconds",
+        "available",
+        "model_evidence_error",
+        "component_changes",
+        "inspection_warnings",
+        "native_progress",
+        "stall_watchdog",
+        # BUG-158: the budget pair travels with the compact view too; dropping it
+        # here would make the terminal projection disagree with the receipt.
+        "budgets",
+    )
+    summary = {key: manifest[key] for key in keys if key in manifest}
+    summary["detail"] = "compact"
+    summary["operation_count"] = len(manifest.get("operations", []))
+    result = manifest.get("result")
+    if result:
+        native = {key: result[key] for key in RESULT_KEYS if key in result}
+        from creo_mechdog.model_queries import inspection_summary
+
+        # Legacy results inline a full inspection; split results carry only a
+        # summary plus a controlled reference (BUG-076). Both stay small here.
+        native["inspection"] = inspection_summary(result.get("inspection"))
+        if "inspection_summary" in result:
+            native["inspection_summary"] = result["inspection_summary"]
+        if "inspection_ref" in result:
+            native["inspection_ref"] = result["inspection_ref"]
+        if "aliases_ref" in result:
+            # Split job results carry a controlled aliases reference (BUG-077).
+            native["aliases_ref"] = result["aliases_ref"]
+            native["alias_count"] = result.get("alias_count")
+        live = result.get("live")
+        if isinstance(live, dict):
+            visible = dict(live)
+            inline = visible.pop("inspection", None)
+            if inline is not None:
+                visible.setdefault("inspection_summary", inspection_summary(inline))
+            native["live"] = visible
+        # R04: carry every compact key plus the surface-chain criteria so the
+        # optional ``sections`` selection sees the full set before projection.
+        native["operations"] = [
+            {key: op[key] for key in operation_keys(op) if key in op}
+            for op in result.get("operations", [])
+        ]
+        if "operations" in native:
+            # Population markers stay visible even before any trim; the budget
+            # enforcement updates them when a cut actually happens.
+            native["operations_total"] = len(native["operations"])
+            native["operations_truncated"] = False
+        if "recolor" in result:
+            # FEAT-052: compact keeps counts and verification status only;
+            # the full per-component readbacks stay on detail=full.
+            from creo_mechdog.appearance import compact_recolor
+
+            native["recolor"] = compact_recolor(result["recolor"])
+        for key in list(native):
+            if key != "operations":
+                native[key] = bounded_summary(native[key])
+        summary["result"] = native
+    if "native_progress" in summary:
+        summary["native_progress"] = compact_progress(summary["native_progress"])
+    summary["full_result_available"] = bool(result)
+    summary["full_detail_hint"] = FULL_DETAIL_HINT
+    for key in list(summary):
+        if key not in ("result", "full_detail_hint"):
+            summary[key] = bounded_summary(summary[key])
+    if sections is not None:
+        summary = apply_sections(summary, sections)
+    # R04: sections select blocks first; the operation whitelist and sampling
+    # run afterwards, so a named block is never re-expanded and failure
+    # evidence stays on every record.
+    projected_result = summary.get("result")
+    if isinstance(projected_result, dict) and isinstance(projected_result.get("operations"), list):
+        projected_result["operations"] = [
+            bounded_summary(compact_operation(op)) for op in projected_result["operations"]
+        ]
+    return enforce_compact_budget(summary)
+
+
+def list_jobs(
+    limit: int = 10, detail: str = "compact", sections: list[str] | None = None
+) -> list[dict]:
+    """List recent jobs without inlining each job's result.
+
+    R04: ``detail=compact`` returns one bounded item per job
+    (``job_projection.compact_job_list_item``): identity, status, times, stage,
+    outcome classification and a bounded message. The result, revision,
+    rollback and failure context are read with ``creo_get_job(job_id)``, so a
+    list entry never trades detail for the detail entry. ``detail=full`` keeps
+    the previous per-job view. ``sections`` is validated for compatibility but
+    applies to ``creo_get_job`` polls, not to these fixed items.
+    """
+    if not 1 <= limit <= 50:
+        raise ValueError("limit must be 1–50")
+    if detail not in ("compact", "full"):
+        raise ValueError("detail must be compact or full")
+    if sections is not None:
+        if detail != "compact":
+            raise ValueError("sections require detail=compact")
+        sections = resolve_sections(sections)
+    paths = sorted(JOBS.glob("*/job.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if detail == "compact":
+        return [
+            compact_job_list_item(get_job(p.parent.name, detail="compact")) for p in paths[:limit]
+        ]
+    return [get_job(p.parent.name, detail=detail) for p in paths[:limit]]
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("action", choices=["build", "status", "environment", "run-job"])
+    parser.add_argument("job_id", nargs="?")
+    args = parser.parse_args(argv)
+    if args.action == "run-job":
+        run_job(args.job_id)
+    elif args.action == "build":
+        with toolkit_lock(operation="build_native"):
+            print(build_native())
+    else:
+        print(
+            json.dumps(
+                session_status() if args.action == "status" else check_environment(),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )

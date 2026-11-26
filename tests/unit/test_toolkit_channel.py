@@ -17,8 +17,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import bridge
-import generic_bridge as general
 import server
+from creo_mechdog import generic_bridge as general
 
 
 class ToolkitChannel(unittest.TestCase):
@@ -270,7 +270,8 @@ except bridge.ToolkitBusy as exc:
             },
         )
         bootstrap = """
-import bridge,generic_bridge,server,sys
+import sys
+from creo_mechdog import bridge, generic_bridge, server
 from pathlib import Path
 bridge.ROOT=Path(sys.argv[1])
 bridge.JOBS=bridge.ROOT/'jobs'

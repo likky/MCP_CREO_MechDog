@@ -8,8 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import bridge
-import generic_bridge
-from creo_mechdog import seeds
+from creo_mechdog import generic_bridge, seeds
 from version import VERSION
 
 

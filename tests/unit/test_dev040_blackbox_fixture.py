@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 
 import bridge
-import generic_bridge as general
+from creo_mechdog import generic_bridge as general
 from tools import dev040_blackbox_fixture as fixture
 
 

@@ -11,8 +11,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import bridge
-import generic_bridge as general
 from creo_mechdog import feature_state, model_registry
+from creo_mechdog import generic_bridge as general
 from creo_mechdog.operation_results import annotate_native_result
 from creo_mechdog.schema import validate_operations
 

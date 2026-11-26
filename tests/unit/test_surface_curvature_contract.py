@@ -34,7 +34,7 @@ from creo_mechdog.schema import validate_operations
 ROOT = Path(__file__).resolve().parents[2]
 NATIVE = ROOT / "native" / "surface_curvature.cpp"
 GENERIC = ROOT / "native" / "generic.cpp"
-SERVER = ROOT / "server.py"
+SERVER = ROOT / "src/creo_mechdog/server.py"
 
 
 def curvature(**overrides):
@@ -156,7 +156,7 @@ class SurfaceCurvatureRegistrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("general.measure_surface_curvature", text)
 
     def test_readonly_admission_accepts_the_curvature_query(self):
-        source = (ROOT / "generic_bridge.py").read_text(encoding="utf-8")
+        source = (ROOT / "src/creo_mechdog/generic_bridge.py").read_text(encoding="utf-8")
         whitelist = source[source.index("INSPECTION_ONLY_OPERATIONS = (") :][:400]
         self.assertIn('"surface_curvature"', whitelist)
         readonly_block = source[source.index("if readonly and any(") :][:200]

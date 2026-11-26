@@ -33,7 +33,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import bridge
-import generic_bridge as general
+from creo_mechdog import generic_bridge as general
 from creo_mechdog import model_registry
 from tools.test_assembly_pipeline import (
     REFRESHED_PLATE_A_LABEL,

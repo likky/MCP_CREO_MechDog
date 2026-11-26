@@ -243,7 +243,7 @@ def main() -> int:
         return 0
     if not args.confirm_session_usable:
         raise SystemExit("pass --confirm-session-usable after checking the live session")
-    import generic_bridge
+    from creo_mechdog import generic_bridge
 
     cases, ok = run_live(generic_bridge)
     report = {"mode": "live", "creo": "12.4.0.0", "cases": cases, "passed": ok}

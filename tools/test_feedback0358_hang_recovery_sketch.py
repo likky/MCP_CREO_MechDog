@@ -41,9 +41,8 @@ if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
 import bridge
-import creo_startup
-import generic_bridge as general
-from creo_mechdog import model_registry, reconciliation, schema
+from creo_mechdog import creo_startup, model_registry, reconciliation, schema
+from creo_mechdog import generic_bridge as general
 
 
 def unit(v):

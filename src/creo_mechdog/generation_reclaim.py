@@ -24,7 +24,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-import bridge
+from creo_mechdog import bridge
 from creo_mechdog.blend_callback import generation_inventory
 
 TOKEN_SECONDS = 600

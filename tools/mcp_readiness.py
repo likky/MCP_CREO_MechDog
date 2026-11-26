@@ -10,7 +10,7 @@ from pathlib import Path
 
 from mcp import Client
 
-import creo_startup
+from creo_mechdog import creo_startup
 
 ACTIVE_STATES = frozenset(creo_startup.ACTIVE)
 

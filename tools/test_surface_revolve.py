@@ -238,7 +238,7 @@ def case_offline() -> dict:
 
     check("revolve_registered", "revolve" in REGISTERED_OPERATIONS)
     check("revolve_published", "revolve" not in UNAVAILABLE_OPERATIONS)
-    server = (ROOT / "server.py").read_text(encoding="utf-8")
+    server = (ROOT / "src/creo_mechdog/server.py").read_text(encoding="utf-8")
     check(
         "server_tool_exposes_surface_mode",
         '"mode": mode' in server and "async def creo_revolve(" in server,

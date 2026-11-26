@@ -40,6 +40,8 @@ async def capture(args: argparse.Namespace) -> dict:
                 for p in [
                     ROOT / "bridge.py",
                     ROOT / "server.py",
+                    ROOT / "src/creo_mechdog/bridge.py",
+                    ROOT / "src/creo_mechdog/server.py",
                     *ROOT.glob("native/*callback*.h"),
                     ROOT / "native/blend_loader.cpp",
                     ROOT / "native/blend_sync.cpp",

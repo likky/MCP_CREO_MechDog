@@ -138,7 +138,7 @@ class AvailabilityTests(unittest.TestCase):
 
     def test_submit_refuses_an_unmeasured_condition_before_the_toolkit_channel(self):
         import bridge
-        import generic_bridge
+        from creo_mechdog import generic_bridge
 
         with (
             patch.object(bridge, "toolkit_lock") as lock,

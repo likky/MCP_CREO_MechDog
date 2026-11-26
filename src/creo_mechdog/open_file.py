@@ -18,7 +18,7 @@ import sys
 import uuid
 from pathlib import Path, PureWindowsPath
 
-import bridge
+from creo_mechdog import bridge
 
 WORKER_SECONDS = 115
 KIND_BY_EXTENSION = {"prt": "part", "asm": "assembly"}

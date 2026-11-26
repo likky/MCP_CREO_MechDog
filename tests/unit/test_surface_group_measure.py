@@ -167,7 +167,7 @@ class SurfaceGroupMeasureToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(references["maxItems"], 8)
 
     def test_readonly_admission_accepts_the_measurement_operation(self):
-        source = (ROOT / "generic_bridge.py").read_text(encoding="utf-8")
+        source = (ROOT / "src/creo_mechdog/generic_bridge.py").read_text(encoding="utf-8")
         whitelist = source[source.index("INSPECTION_ONLY_OPERATIONS = (") :][:400]
         self.assertIn('"surface_group_measure"', whitelist)
         readonly_block = source[source.index("if readonly and any(") :][:200]

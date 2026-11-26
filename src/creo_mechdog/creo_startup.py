@@ -24,8 +24,7 @@ import win32com.client
 import win32process
 import win32security
 
-import bridge
-from creo_mechdog import session_candidates, session_choice
+from creo_mechdog import bridge, session_candidates, session_choice
 from creo_mechdog.lock_files import open_lock_file
 from creo_mechdog.startup_state import StartupStateError, archive_preboot_state, read_startup_state
 from creo_mechdog.window_observations import connection_guidance, window_observations

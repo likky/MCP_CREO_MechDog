@@ -4,8 +4,8 @@ import unittest
 from unittest.mock import patch
 
 import bridge
-import generic_bridge
 import server
+from creo_mechdog import generic_bridge
 from creo_mechdog.schema import validate_operations
 
 

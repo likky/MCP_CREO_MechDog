@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import bridge
-import creo_startup
+from creo_mechdog import creo_startup
 
 ROOT = Path(__file__).resolve().parents[2]
 

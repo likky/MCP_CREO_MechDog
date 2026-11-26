@@ -19,9 +19,8 @@ import os
 import re
 from pathlib import Path
 
-import bridge
-import generic_bridge as general
-from creo_mechdog import model_queries, model_registry
+from creo_mechdog import bridge, model_queries, model_registry
+from creo_mechdog import generic_bridge as general
 
 WARNING_RATIO = 0.8
 PROBLEM_LIMIT = 50

@@ -5,8 +5,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from creo_mechdog.generic_bridge import submit
 from creo_mechdog.schema import validate_operations
-from generic_bridge import submit
 
 
 class DevelopmentValidation(unittest.TestCase):
@@ -19,9 +19,9 @@ class DevelopmentValidation(unittest.TestCase):
         ]:
             with (
                 self.subTest(op=op),
-                patch("generic_bridge.bridge.toolkit_lock"),
+                patch("creo_mechdog.generic_bridge.bridge.toolkit_lock"),
                 patch("pathlib.Path.mkdir") as mkdir,
-                patch("generic_bridge.subprocess.Popen") as start,
+                patch("creo_mechdog.generic_bridge.subprocess.Popen") as start,
             ):
                 with self.assertRaises(ValueError):
                     submit([op], model_type=model_type)
@@ -43,12 +43,16 @@ class DevelopmentValidation(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 validate_operations([{**op, **change}])
         with (
-            patch("generic_bridge.bridge.toolkit_lock"),
-            patch("generic_bridge.bridge.admission_holder", return_value=None) as holder,
+            patch("creo_mechdog.generic_bridge.bridge.toolkit_lock"),
+            patch(
+                "creo_mechdog.generic_bridge.bridge.admission_holder", return_value=None
+            ) as holder,
             patch("pathlib.Path.is_file", return_value=True),
-            patch("generic_bridge.bridge.config", return_value={"creo_root": "C:/Creo"}),
+            patch(
+                "creo_mechdog.generic_bridge.bridge.config", return_value={"creo_root": "C:/Creo"}
+            ),
             patch("pathlib.Path.mkdir") as mkdir,
-            patch("generic_bridge.subprocess.Popen") as start,
+            patch("creo_mechdog.generic_bridge.subprocess.Popen") as start,
         ):
             with self.assertRaisesRegex(ValueError, "absolute path"):
                 submit([op])

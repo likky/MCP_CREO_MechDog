@@ -26,12 +26,20 @@ sys.path.insert(0, str(ROOT))
 from version import VERSION
 
 OFFLINE_SERVER = """
+import sys
+from contextlib import nullcontext
+
 import server
 from creo_mechdog import update_check
+from tools.test_mcp import without_creo
+
 async def offline(timeout_seconds=None):
     raise update_check.UpdateFailure('Controlled developer-test network failure')
+
 update_check.fetch_releases = offline
-server.mcp.run(transport='stdio')
+session = nullcontext() if '--create' in sys.argv[1:] else without_creo(server)
+with session:
+    server.mcp.run(transport='stdio')
 """
 
 
@@ -100,11 +108,12 @@ async def run(args: argparse.Namespace) -> dict:
         "modeling": {"status": "not_requested"},
         "success": False,
     }
-    params = StdioServerParameters(
-        command=sys.executable,
-        args=["-c", OFFLINE_SERVER] if args.network_failure else [str(ROOT / "server.py")],
-        cwd=ROOT,
-    )
+    server_args = [str(ROOT / "server.py")]
+    if args.network_failure:
+        server_args = ["-c", OFFLINE_SERVER]
+        if args.create:
+            server_args.append("--create")
+    params = StdioServerParameters(command=sys.executable, args=server_args, cwd=ROOT)
 
     async def call(client, name, inputs):
         started = time.monotonic()

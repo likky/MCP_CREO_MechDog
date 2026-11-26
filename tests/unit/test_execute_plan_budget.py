@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import bridge
-import generic_bridge
+from creo_mechdog import generic_bridge
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -102,23 +102,23 @@ class WatchdogLifetimeTests(unittest.TestCase):
 
 class WiringTests(unittest.TestCase):
     def test_tool_passes_the_budget_to_submit(self):
-        text = (ROOT / "server.py").read_text(encoding="utf-8")
+        text = (ROOT / "src/creo_mechdog/server.py").read_text(encoding="utf-8")
         self.assertIn("timeout_seconds: int | None = None", text)
         self.assertIn("timeout_seconds=timeout_seconds", text)
 
     def test_runner_and_watchdog_read_the_frozen_request_value(self):
-        runner = (ROOT / "generic_bridge.py").read_text(encoding="utf-8")
+        runner = (ROOT / "src/creo_mechdog/generic_bridge.py").read_text(encoding="utf-8")
         # BUG-131 moved the worker launch into the watchdog wrapper; the budget
         # still comes from the frozen request value, not from a fresh read.
         self.assertIn("budget = job_timeout_seconds(request)", runner)
         self.assertIn("timeout=budget", runner)
         self.assertIn('"timeout_seconds": effective_timeout', runner)
         self.assertIn('"timeout_source": timeout_source', runner)
-        watchdog = (ROOT / "bridge.py").read_text(encoding="utf-8")
+        watchdog = (ROOT / "src/creo_mechdog/bridge.py").read_text(encoding="utf-8")
         self.assertIn("expected_lifetime_seconds(manifest)", watchdog)
 
     def test_timeout_message_names_the_budget(self):
-        text = (ROOT / "generic_bridge.py").read_text(encoding="utf-8")
+        text = (ROOT / "src/creo_mechdog/generic_bridge.py").read_text(encoding="utf-8")
         self.assertIn("Native worker exceeded its {budget}s budget", text)
         self.assertIn("not a completion", " ".join(text.split()))
 

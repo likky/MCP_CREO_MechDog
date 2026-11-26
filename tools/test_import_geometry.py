@@ -130,7 +130,7 @@ def case_offline() -> dict:
 
         # The admission rules must keep working on the day the gate is deleted,
         # so they are exercised with the gate lifted in-process only.
-        import generic_bridge
+        from creo_mechdog import generic_bridge
 
         with patch.dict(capabilities.UNAVAILABLE_OPERATIONS, clear=True):
             try:

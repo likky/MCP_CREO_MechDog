@@ -224,8 +224,8 @@ def prepare_root(directory: Path) -> dict[str, str]:
 
 def child_serve(directory: Path) -> None:
     """Serve the real server.py over stdio against the isolated data root."""
-    import generic_bridge as general
     import server
+    from creo_mechdog import generic_bridge as general
 
     bridge.ROOT = directory
     bridge.JOBS = directory / "jobs"

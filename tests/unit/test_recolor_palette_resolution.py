@@ -10,8 +10,8 @@ import unittest
 from unittest.mock import patch
 
 import bridge
-import generic_bridge as general
 from creo_mechdog import appearance
+from creo_mechdog import generic_bridge as general
 from creo_mechdog.schema import validate_operations
 from tests.unit.test_assembly_appearance import (
     SRC_A,

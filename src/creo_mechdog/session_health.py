@@ -20,7 +20,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-import bridge
+from creo_mechdog import bridge
 
 FRESHNESS_SECONDS = 600
 JOB_LIMIT = 120

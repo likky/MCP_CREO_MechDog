@@ -23,7 +23,7 @@ from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 
 import bridge
-import creo_startup
+from creo_mechdog import creo_startup
 from creo_mechdog.mcp_contract import call_capabilities_section
 from creo_mechdog.query_client import read_full_model
 from tools.dev_check import git_state, source_hash
@@ -89,8 +89,10 @@ async def run(args: argparse.Namespace) -> dict:
                 name: source_hash(ROOT / name)
                 for name in (
                     "server.py",
+                    "src/creo_mechdog/server.py",
                     "bridge.py",
-                    "creo_startup.py",
+                    "src/creo_mechdog/bridge.py",
+                    "src/creo_mechdog/creo_startup.py",
                     "native/worker.cpp",
                     "tools/test_creo_startup.py",
                 )

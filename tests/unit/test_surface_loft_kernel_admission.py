@@ -12,8 +12,8 @@ import unittest
 from unittest.mock import patch
 
 import bridge
-import generic_bridge as general
 from creo_mechdog import capabilities
+from creo_mechdog import generic_bridge as general
 from tests.unit import test_toolkit_channel as channel_tests
 
 WORKER_SHA = "b95cd7c2655b0799bb8efb6f68e21ac891157af970b42d78c135f53e5326864a"

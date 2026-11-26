@@ -11,9 +11,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import generic_bridge
 import server
-from creo_mechdog import capability_pages, schema
+from creo_mechdog import capability_pages, generic_bridge, schema
 from tools import package
 
 ROOT = Path(__file__).resolve().parents[2]

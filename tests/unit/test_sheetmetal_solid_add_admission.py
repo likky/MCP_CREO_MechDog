@@ -14,11 +14,11 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
+from creo_mechdog.generic_bridge import submit
 from creo_mechdog.sheetmetal import (
     SOLID_ADD_UNSUPPORTED,
     solid_add_on_sheetmetal_problem,
 )
-from generic_bridge import submit
 
 
 def sketch() -> dict:
@@ -85,8 +85,8 @@ class SolidAddOnSheetmetalTest(unittest.TestCase):
 class SubmitAdmissionTest(unittest.TestCase):
     def test_sheetmetal_plan_rejected_before_a_job_exists(self) -> None:
         with (
-            patch("generic_bridge.bridge.toolkit_lock"),
-            patch("generic_bridge.bridge.job_path") as job_path,
+            patch("creo_mechdog.generic_bridge.bridge.toolkit_lock"),
+            patch("creo_mechdog.generic_bridge.bridge.job_path") as job_path,
         ):
             with self.assertRaisesRegex(ValueError, SOLID_ADD_UNSUPPORTED):
                 submit([sketch(), extrude()], model_type="sheetmetal")
@@ -96,8 +96,10 @@ class SubmitAdmissionTest(unittest.TestCase):
         # The same plan on a normal part must get past this rule; the template
         # check is the next admission step, so the error proves the rule did not fire.
         with (
-            patch("generic_bridge.bridge.toolkit_lock"),
-            patch("generic_bridge.bridge.config", return_value={"creo_root": "C:/Creo"}),
+            patch("creo_mechdog.generic_bridge.bridge.toolkit_lock"),
+            patch(
+                "creo_mechdog.generic_bridge.bridge.config", return_value={"creo_root": "C:/Creo"}
+            ),
             patch("pathlib.Path.is_file", return_value=False),
         ):
             with self.assertRaisesRegex(ValueError, "Missing local model template"):

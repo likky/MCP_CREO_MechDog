@@ -189,7 +189,7 @@ class SurfaceTrimSchemaTests(unittest.TestCase):
 
         self.assertIn("surface_trim", REGISTERED_OPERATIONS)
         self.assertNotIn("surface_trim", UNAVAILABLE_OPERATIONS)
-        server = (ROOT / "server.py").read_text(encoding="utf-8")
+        server = (ROOT / "src/creo_mechdog/server.py").read_text(encoding="utf-8")
         self.assertIn("async def creo_surface_trim(", server)
 
 

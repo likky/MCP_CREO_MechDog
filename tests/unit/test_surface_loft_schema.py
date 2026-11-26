@@ -20,7 +20,7 @@ from creo_mechdog.schema import validate_operations
 ROOT = Path(__file__).resolve().parents[2]
 NATIVE = ROOT / "native" / "surface_loft.cpp"
 GENERIC = ROOT / "native" / "generic.cpp"
-SERVER = ROOT / "server.py"
+SERVER = ROOT / "src/creo_mechdog/server.py"
 DRIVER = ROOT / "tools" / "test_surface_loft.py"
 
 

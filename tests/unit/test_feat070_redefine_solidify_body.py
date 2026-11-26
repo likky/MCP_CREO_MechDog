@@ -17,14 +17,14 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import bridge
-import generic_bridge
+from creo_mechdog import generic_bridge
 from creo_mechdog.capabilities import REGISTERED_OPERATIONS, require_available
 from creo_mechdog.operation_results import annotate_native_result
 from creo_mechdog.schema import validate_operations
 
 REPO = Path(__file__).resolve().parents[2]
 GENERIC_CPP = REPO / "native" / "generic.cpp"
-SERVER_PY = REPO / "server.py"
+SERVER_PY = REPO / "src/creo_mechdog/server.py"
 SCHEMA_PY = REPO / "src" / "creo_mechdog" / "schema.py"
 CAPABILITIES_PY = REPO / "src" / "creo_mechdog" / "capabilities.py"
 
@@ -156,10 +156,10 @@ class AdmissionTests(unittest.TestCase):
     def test_require_available_does_not_reject(self):
         require_available([{"op": OP, "feature": 250, "body_strategy": "new"}])
 
-    @patch("generic_bridge.subprocess.Popen")
-    @patch("generic_bridge.model_path")
-    @patch("generic_bridge.model_info")
-    @patch("generic_bridge.bridge.toolkit_lock")
+    @patch("creo_mechdog.generic_bridge.subprocess.Popen")
+    @patch("creo_mechdog.generic_bridge.model_path")
+    @patch("creo_mechdog.generic_bridge.model_info")
+    @patch("creo_mechdog.generic_bridge.bridge.toolkit_lock")
     def test_stale_revision_refused_before_worker(self, lock, model_info, model_path, popen):
         lock.return_value = self._noop_lock()
         model_path.return_value = Path("unused")
@@ -178,10 +178,10 @@ class AdmissionTests(unittest.TestCase):
         popen.assert_not_called()
         lock.assert_called_once()
 
-    @patch("generic_bridge.subprocess.Popen")
-    @patch("generic_bridge.model_path")
-    @patch("generic_bridge.model_info")
-    @patch("generic_bridge.bridge.toolkit_lock")
+    @patch("creo_mechdog.generic_bridge.subprocess.Popen")
+    @patch("creo_mechdog.generic_bridge.model_path")
+    @patch("creo_mechdog.generic_bridge.model_info")
+    @patch("creo_mechdog.generic_bridge.bridge.toolkit_lock")
     def test_pending_job_rejected_as_busy(self, lock, model_info, model_path, popen):
         lock.return_value = self._noop_lock()
         model_path.return_value = Path("unused")
@@ -199,10 +199,10 @@ class AdmissionTests(unittest.TestCase):
             )
         popen.assert_not_called()
 
-    @patch("generic_bridge.subprocess.Popen")
-    @patch("generic_bridge.model_path")
-    @patch("generic_bridge.model_info")
-    @patch("generic_bridge.bridge.toolkit_lock")
+    @patch("creo_mechdog.generic_bridge.subprocess.Popen")
+    @patch("creo_mechdog.generic_bridge.model_path")
+    @patch("creo_mechdog.generic_bridge.model_info")
+    @patch("creo_mechdog.generic_bridge.bridge.toolkit_lock")
     def test_busy_channel_rejected_immediately(self, lock, model_info, model_path, popen):
         busy = MagicMock()
         busy.__enter__.side_effect = bridge.ToolkitBusy("channel busy")

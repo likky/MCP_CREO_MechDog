@@ -8,8 +8,8 @@ import time
 import uuid
 from pathlib import Path
 
-import bridge
-import generic_bridge as general
+from creo_mechdog import bridge
+from creo_mechdog import generic_bridge as general
 from creo_mechdog.model_queries import decode_cursor, encode_cursor, fingerprint
 from creo_mechdog.reconciliation import identity, owned_file
 

@@ -393,7 +393,7 @@ def main() -> int:
         return 0
     if not args.confirm_session_usable:
         raise SystemExit("pass --confirm-session-usable after checking the live session")
-    import generic_bridge
+    from creo_mechdog import generic_bridge
 
     cases, ok = run_live(generic_bridge)
     health = ROOT / "build" / "toolkit_health.json"

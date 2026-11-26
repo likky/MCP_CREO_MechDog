@@ -31,7 +31,7 @@ from tests.unit import test_sheetmetal_flange as fx
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 NATIVE = REPO_ROOT / "native" / "advanced.cpp"
-SERVER = REPO_ROOT / "server.py"
+SERVER = REPO_ROOT / "src/creo_mechdog/server.py"
 
 # --- Creo 12.4 Toolkit facts, transcribed from the installed SDK -----------
 SDK_VERSION = "Creo 12.4.0.0"

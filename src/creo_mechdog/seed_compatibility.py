@@ -6,7 +6,7 @@ import json
 import re
 from pathlib import Path
 
-import bridge
+from creo_mechdog import bridge
 from creo_mechdog.recovery import file_identity
 
 OBSERVATION_FIELDS = (

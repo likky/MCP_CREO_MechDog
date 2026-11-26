@@ -83,8 +83,10 @@ STAMP = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 RUN_ID = format(int(time.time()), "x")
 SOURCE_FILES = (
     "bridge.py",
-    "generic_bridge.py",
+    "src/creo_mechdog/bridge.py",
+    "src/creo_mechdog/generic_bridge.py",
     "server.py",
+    "src/creo_mechdog/server.py",
     "src/creo_mechdog/native_planar_wall.py",
     "src/creo_mechdog/schema.py",
     "src/creo_mechdog/capabilities.py",
@@ -663,7 +665,7 @@ class Live:
     """Thin wrapper over generic_bridge for one model at a time."""
 
     def __init__(self) -> None:
-        import generic_bridge
+        from creo_mechdog import generic_bridge
 
         self.bridge = generic_bridge
 

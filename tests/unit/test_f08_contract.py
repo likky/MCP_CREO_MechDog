@@ -304,7 +304,7 @@ class F08NativeWiring(unittest.TestCase):
     def test_creo_extrude_forwards_the_scope_into_the_operation(self):
         from pathlib import Path
 
-        source = (Path(__file__).resolve().parents[2] / "server.py").read_text(
+        source = (Path(__file__).resolve().parents[2] / "src/creo_mechdog/server.py").read_text(
             encoding="utf-8", errors="replace"
         )
         self.assertIn('op["scope"] = scope', source)

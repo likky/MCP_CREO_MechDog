@@ -12,7 +12,7 @@ import re
 import unittest
 from pathlib import Path
 
-import creo_startup
+from creo_mechdog import creo_startup
 from creo_mechdog.references import reference_capabilities
 from creo_mechdog.schema import validate_operations
 
@@ -93,7 +93,7 @@ class QuiltMergeReferenceGuidanceTests(unittest.TestCase):
 
 class AmbiguousSessionMessageTests(unittest.TestCase):
     def test_message_names_both_recovery_paths_and_the_restart(self):
-        text = (ROOT / "creo_startup.py").read_text(encoding="utf-8")
+        text = (ROOT / "src/creo_mechdog/creo_startup.py").read_text(encoding="utf-8")
         start = text.index('native.get("connection_state") == "ambiguous"')
         # Drop the seam between adjacent literals so a sentence that wraps in
         # source can still be asserted as the caller will read it.
@@ -115,7 +115,7 @@ class AmbiguousSessionMessageTests(unittest.TestCase):
         # The report's dead end was "edit config.json and retry" against a
         # service that had already loaded the value. Settings.load() must stay
         # a read of bridge.config(), not a cached snapshot.
-        source = (ROOT / "creo_startup.py").read_text(encoding="utf-8")
+        source = (ROOT / "src/creo_mechdog/creo_startup.py").read_text(encoding="utf-8")
         self.assertIn("value = bridge.config()", source)
         self.assertTrue(hasattr(creo_startup.Settings, "load"))
 

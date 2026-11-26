@@ -5,8 +5,8 @@ import inspect
 import json
 import unittest
 
-import generic_bridge
 import server
+from creo_mechdog import generic_bridge
 from creo_mechdog.submission_receipts import (
     COMPACT_MESSAGE,
     normalize_detail,

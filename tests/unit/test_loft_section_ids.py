@@ -8,8 +8,8 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import bridge
-import generic_bridge as general
 import server
+from creo_mechdog import generic_bridge as general
 from creo_mechdog.schema import validate_operations
 
 

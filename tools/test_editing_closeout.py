@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import bridge
-import generic_bridge as general
+from creo_mechdog import generic_bridge as general
 from creo_mechdog import inspection_refs, model_registry
 from tools.dev_check import git_state
 from tools.mcp_readiness import wait_for_startup

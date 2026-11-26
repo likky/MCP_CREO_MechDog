@@ -24,7 +24,7 @@ from creo_mechdog.schema import validate_operations
 ROOT = Path(__file__).resolve().parents[2]
 NATIVE_GROUP = ROOT / "native" / "surface_group.cpp"
 NATIVE_TRIM = ROOT / "native" / "surface_trim.cpp"
-GENERIC_BRIDGE = ROOT / "generic_bridge.py"
+GENERIC_BRIDGE = ROOT / "src/creo_mechdog/generic_bridge.py"
 
 DIGEST = "a" * 64
 

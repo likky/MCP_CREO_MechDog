@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 import bridge
-import generic_bridge as general
+from creo_mechdog import generic_bridge as general
 
 
 class NormalizeModelName(unittest.TestCase):

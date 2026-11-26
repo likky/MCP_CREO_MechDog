@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 from pydantic import TypeAdapter, ValidationError
 
-import generic_bridge
 import server
+from creo_mechdog import generic_bridge
 from creo_mechdog.schema import Label, validate_operations
 
 

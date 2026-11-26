@@ -23,7 +23,7 @@ from creo_mechdog.schema import validate_operations
 ROOT = Path(__file__).resolve().parents[2]
 IMPORT_NATIVE = ROOT / "native" / "import_geometry.cpp"
 GENERIC_NATIVE = ROOT / "native" / "generic.cpp"
-SERVER = ROOT / "server.py"
+SERVER = ROOT / "src/creo_mechdog/server.py"
 
 
 def write(path: Path, content: bytes = b"ISO-10303-21;") -> Path:
@@ -129,7 +129,7 @@ class ImportGeometryAdmission(unittest.TestCase):
         }
 
     def submit(self, operations, **kwargs):
-        import generic_bridge
+        from creo_mechdog import generic_bridge
 
         return generic_bridge.submit(operations, **kwargs)
 
@@ -173,7 +173,7 @@ class ImportGeometryReleaseGate(unittest.TestCase):
         self.assertIn("never into an existing model", family["limits"])
 
     def test_it_is_not_smuggled_into_the_read_only_allowlist(self):
-        import generic_bridge
+        from creo_mechdog import generic_bridge
 
         self.assertNotIn("import_geometry", generic_bridge.INSPECTION_ONLY_OPERATIONS)
 

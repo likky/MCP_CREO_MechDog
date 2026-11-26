@@ -9,8 +9,8 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import bridge
-import creo_startup
-import generic_bridge as general
+from creo_mechdog import creo_startup
+from creo_mechdog import generic_bridge as general
 from creo_mechdog.recovery import process_identity
 from tests.unit import test_toolkit_channel as channel_tests
 

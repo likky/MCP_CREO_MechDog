@@ -14,8 +14,8 @@ from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import ValidationError
 
 import bridge
-import generic_bridge as general
 import server
+from creo_mechdog import generic_bridge as general
 from creo_mechdog.references import reference_capabilities
 from creo_mechdog.schema import OPERATIONS, validate_operations
 

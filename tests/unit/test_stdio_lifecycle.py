@@ -1,7 +1,8 @@
 """BUG-092: stdio MCP server bounded-exit lifecycle (offline).
 
-A minimal stdio client (raw pipes, no SDK client) starts server.py, performs
-only initialize + tools/list, then exercises a lifecycle edge and asserts the
+A minimal stdio client (raw pipes, no SDK client) launches server.py through
+the offline driver, performs initialize + tools/list and exercises a lifecycle
+edge. It asserts the
 server process exits within the idle budget (10 s), preserving evidence on
 failure. No creo_* tool is ever called: no Toolkit connection and no
 toolkit.lock interaction from the test side.
@@ -26,7 +27,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SERVER = ROOT / "server.py"
+OFFLINE_SERVER = ROOT / "tools/test_mcp.py"
 PYTHON = sys.executable
 
 #: Idle-service exit budget fixed by the P02 test spec (seconds).
@@ -45,7 +46,7 @@ from pathlib import Path
 
 root, pid_file = sys.argv[1], sys.argv[2]
 proc = subprocess.Popen(
-    [sys.executable, str(Path(root) / "server.py")],
+    [sys.executable, str(Path(root) / "tools/test_mcp.py"), "--serve-offline"],
     cwd=root,
     stdin=subprocess.PIPE,
     stdout=subprocess.PIPE,
@@ -97,10 +98,11 @@ class MinimalStdioClient:
     observable, exactly like the residual seen after live drivers ended.
     """
 
-    def __init__(self, *, consume_output: bool = True, server_path: Path = SERVER):
+    def __init__(self, *, consume_output: bool = True, server_path: Path | None = None):
         self.consume_output = consume_output
+        args = [str(server_path)] if server_path else [str(OFFLINE_SERVER), "--serve-offline"]
         self.proc = subprocess.Popen(
-            [PYTHON, str(server_path)],
+            [PYTHON, *args],
             cwd=str(ROOT),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,

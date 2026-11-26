@@ -9,7 +9,7 @@ import uuid
 import zipfile
 from pathlib import Path, PurePosixPath
 
-import bridge
+from creo_mechdog import bridge
 from creo_mechdog.release_integrity import (
     trusted_seed_archive_digest,
     validate_seed_archive,

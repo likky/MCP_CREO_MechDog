@@ -62,7 +62,7 @@ class PublicBoundaryWording(unittest.TestCase):
     """The published texts must state the current conclusion, not the old one."""
 
     def setUp(self):
-        self.server = (ROOT / "server.py").read_text(encoding="utf-8")
+        self.server = (ROOT / "src/creo_mechdog/server.py").read_text(encoding="utf-8")
         self.syntax = (ROOT / "docs" / "REFERENCE_SYNTAX.md").read_text(encoding="utf-8")
         self.compatibility = (ROOT / "docs" / "COMPATIBILITY.md").read_text(encoding="utf-8")
 

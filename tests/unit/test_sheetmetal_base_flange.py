@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 from pydantic import ValidationError
 
-import generic_bridge as general
 import server
+from creo_mechdog import generic_bridge as general
 from creo_mechdog.schema import SheetmetalBaseFlangeOp
 from creo_mechdog.sheetmetal import (
     base_flange_create_problem,

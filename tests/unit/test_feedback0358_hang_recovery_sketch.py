@@ -79,6 +79,7 @@ class Bug171RecoveryBudgetAndTimeoutTests(unittest.TestCase):
             completed = subprocess.CompletedProcess(["worker"], 31)
             with (
                 patch.object(bridge, "build_native", return_value=directory / "worker.exe"),
+                patch.object(bridge, "native_environment", return_value={}),
                 patch.object(rec.subprocess, "run", return_value=completed),
             ):
                 with self.assertRaisesRegex(

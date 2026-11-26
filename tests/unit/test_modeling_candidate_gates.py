@@ -49,7 +49,7 @@ class ModelingCandidateGateTests(unittest.TestCase):
                     require_available(normalized)
 
     def test_plan_gate_rejects_before_creo_or_registry_work(self):
-        import generic_bridge
+        from creo_mechdog import generic_bridge
 
         for op in candidate_operations():
             with self.subTest(op=op["op"]), patch("bridge.toolkit_lock") as channel:

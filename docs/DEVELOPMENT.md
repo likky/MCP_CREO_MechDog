@@ -100,7 +100,7 @@ Creo TOOLKIT 的官方资料导航、API/元素树查证及接入方法见 [中�
 
 ## 架构与环境
 
-MCP stdio → `server.py` 工具注册 → `bridge.py` 单通道调度/保护 → `generic_bridge.py` 计划校验/登记 → 原生 Toolkit 执行器 → Creo。几何在原生端计算，Python 不模拟 Creo。新业务实现进入 `src/creo_mechdog/`，根级兼容包装与包内必须共享类型；根级实现入口及资源/生成物边界见 AGENTS 与 ARCHITECTURE。
+MCP stdio 从根 `server.py` 启动包内服务，经 `creo_mechdog.bridge` 和 `creo_mechdog.generic_bridge` 校验、登记和单通道调度，再由原生 Toolkit 执行器调用 Creo 计算几何。新业务实现进入 `src/creo_mechdog/`，根级兼容入口与包内共享模块或类型。入口及资源和生成物边界见 AGENTS 与 ARCHITECTURE。
 
 服务 stdout 只承载 MCP。通道忙碌立即拒绝（`isError=true`、`status=busy`、`blocking_*`），不排队、不自动重试；已接受任务只轮询 `creo_get_job`，不能重复提交。现有并发边界见 [BUG-009](work-items/BUG-009.md)。长度为 mm、角度为度；特征 label 小写字母起始，仅小写字母、数字、下划线，最多 28 字符。
 

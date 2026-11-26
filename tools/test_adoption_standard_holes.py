@@ -239,7 +239,7 @@ def main() -> int:
     if not args.confirm_session_usable:
         raise SystemExit("pass --confirm-session-usable after checking the live session")
 
-    import generic_bridge
+    from creo_mechdog import generic_bridge
 
     try:
         live, ok = run_live(generic_bridge)
@@ -286,7 +286,7 @@ def wait(job_id: str, timeout: float = 300.0) -> dict:
 
 
 def submit_and_wait(plan: list[dict], **kwargs) -> dict:
-    import generic_bridge
+    from creo_mechdog import generic_bridge
 
     accepted = generic_bridge.submit(plan, **kwargs)
     return wait(accepted["job_id"])

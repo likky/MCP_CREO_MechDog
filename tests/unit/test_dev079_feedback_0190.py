@@ -10,9 +10,8 @@ from __future__ import annotations
 import json
 import unittest
 
-import generic_bridge
 import server
-from creo_mechdog import operation_results
+from creo_mechdog import generic_bridge, operation_results
 from tools import test_profile_endpoint_diagnostics as driver
 
 

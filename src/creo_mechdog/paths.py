@@ -38,3 +38,12 @@ class ProjectPaths:
 # Source installations keep resources and data beside the compatibility entries.
 # Future migrations accept explicit roots instead of deriving them from moved modules.
 SOURCE_PATHS = ProjectPaths.source_checkout(Path(__file__).resolve().parents[2])
+
+
+def require_entry_checkout(entry_file: str) -> None:
+    """Reject a root launcher paired with an editable install from another checkout."""
+    if Path(entry_file).resolve().parent != SOURCE_PATHS.resource_root:
+        raise RuntimeError(
+            "Python package belongs to another source checkout; run this installation's "
+            "python -m pip install --no-deps -e <source directory> before starting the launcher"
+        )

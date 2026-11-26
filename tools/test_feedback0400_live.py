@@ -16,7 +16,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import bridge  # noqa: E402
-import generic_bridge as general  # noqa: E402
+from creo_mechdog import generic_bridge as general  # noqa: E402
 from creo_mechdog.sketch_region_split import split_intersecting_entities  # noqa: E402
 
 RUN_TAG = str(int(time.time()) % 100000)

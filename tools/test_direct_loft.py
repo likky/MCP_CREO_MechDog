@@ -24,7 +24,7 @@ from pathlib import Path
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 
-import creo_startup
+from creo_mechdog import creo_startup
 from creo_mechdog.mcp_contract import call_capabilities_section
 from creo_mechdog.query_client import read_full_model
 

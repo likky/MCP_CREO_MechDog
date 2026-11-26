@@ -155,7 +155,7 @@ class OpenLockFile(unittest.TestCase):
 @unittest.skipIf(os.name != "nt", "Windows startup coordination")
 class CoordinatorLockClassification(unittest.TestCase):
     def test_open_failure_is_lock_access_error_not_busy_or_config(self):
-        import creo_startup
+        from creo_mechdog import creo_startup
 
         with TemporaryDirectory() as directory:
             target = Path(directory)
@@ -173,7 +173,7 @@ class CoordinatorLockClassification(unittest.TestCase):
     def test_byte_lock_contention_stays_coordinator_busy(self):
         import msvcrt
 
-        import creo_startup
+        from creo_mechdog import creo_startup
 
         with TemporaryDirectory() as directory:
             target = Path(directory)

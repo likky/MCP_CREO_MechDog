@@ -444,7 +444,14 @@ def main(argv: list[str] | None = None) -> int:
         "parent_source": git_state(ROOT),
         "parent_fingerprints": {
             name: source_hash(ROOT / name)
-            for name in ("bridge.py", "server.py", "generic_bridge.py", "tools/guarded_live_run.py")
+            for name in (
+                "bridge.py",
+                "server.py",
+                "src/creo_mechdog/bridge.py",
+                "src/creo_mechdog/server.py",
+                "src/creo_mechdog/generic_bridge.py",
+                "tools/guarded_live_run.py",
+            )
         },
         "child_source_note": (
             "children are md050 processes of this same tree; their identity is "

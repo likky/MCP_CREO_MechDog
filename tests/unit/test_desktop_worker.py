@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-import desktop_worker
+from creo_mechdog import desktop_worker
 
 ROOT = Path(__file__).resolve().parents[2]
 COMMAND = [r"C:\repo\build\creo_worker.exe", "status", "2"]
@@ -145,7 +145,7 @@ class DesktopRunTests(unittest.TestCase):
         with (
             self.execute(payload),
             patch.object(desktop_worker.shutil, "rmtree", side_effect=PermissionError),
-            self.assertLogs("desktop_worker", level="WARNING"),
+            self.assertLogs(desktop_worker.__name__, level="WARNING"),
         ):
             result = desktop_worker.run(COMMAND, ROOT / "build", {}, 5, parent)
         self.assertEqual(result.stdout, b"result")

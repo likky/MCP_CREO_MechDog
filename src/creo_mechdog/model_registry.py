@@ -17,8 +17,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import bridge
-from creo_mechdog import inspection_refs
+from creo_mechdog import bridge, inspection_refs
 
 BUDGET_BYTES = 16 * 1024 * 1024
 

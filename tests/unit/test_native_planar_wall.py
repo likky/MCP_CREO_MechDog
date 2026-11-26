@@ -24,7 +24,7 @@ from creo_mechdog.schema import validate_operations
 REPO_ROOT = Path(__file__).resolve().parents[2]
 NATIVE_WALL = REPO_ROOT / "native" / "planar_wall.cpp"
 NATIVE_GENERIC = REPO_ROOT / "native" / "generic.cpp"
-SERVER = REPO_ROOT / "server.py"
+SERVER = REPO_ROOT / "src/creo_mechdog/server.py"
 
 FRAME_XY = {
     "origin": [0.0, 0.0, 0.0],
@@ -345,7 +345,7 @@ class NativeWiringTest(unittest.TestCase):
         pwall.annotate_result(other)
         self.assertNotIn("planar_wall", other)
 
-        bridge_source = (REPO_ROOT / "generic_bridge.py").read_text(
+        bridge_source = (REPO_ROOT / "src/creo_mechdog/generic_bridge.py").read_text(
             encoding="utf-8", errors="replace"
         )
         self.assertIn("native_planar_wall.annotate_result", bridge_source)
@@ -392,7 +392,7 @@ class NameProtectionTest(unittest.TestCase):
         self.assertEqual(pwall.name_conflict(["wall_sk", "wall_sk"], set()), ["wall_sk"])
         self.assertEqual(pwall.name_conflict(["wall_sk"], {"wall_sk"}), ["wall_sk"])
 
-        bridge_source = (REPO_ROOT / "generic_bridge.py").read_text(
+        bridge_source = (REPO_ROOT / "src/creo_mechdog/generic_bridge.py").read_text(
             encoding="utf-8", errors="replace"
         )
         for token in ("declared_names", "internal_labels", "name_conflict"):

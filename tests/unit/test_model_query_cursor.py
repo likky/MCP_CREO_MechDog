@@ -12,8 +12,8 @@ from unittest.mock import patch
 
 from mcp.server.mcpserver.exceptions import ToolError
 
-import generic_bridge
 import server
+from creo_mechdog import generic_bridge
 
 
 class ModelCursorProtocolTests(unittest.IsolatedAsyncioTestCase):

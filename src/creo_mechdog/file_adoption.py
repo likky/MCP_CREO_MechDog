@@ -14,9 +14,8 @@ import time
 import uuid
 from pathlib import Path
 
-import bridge
-import generic_bridge as general
-from creo_mechdog import adoption, inspection_refs, model_registry
+from creo_mechdog import adoption, bridge, inspection_refs, model_registry
+from creo_mechdog import generic_bridge as general
 from creo_mechdog.open_file import select_file
 from creo_mechdog.reconciliation import HASH_SECONDS, identity
 

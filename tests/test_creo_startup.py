@@ -15,9 +15,8 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import bridge
-import creo_startup
 import server
-from creo_mechdog import capability_pages
+from creo_mechdog import capability_pages, creo_startup
 
 ROOT = Path(__file__).resolve().parents[1]
 ABSENT = {"connected": False, "connection_state": "not_found_or_unreadable", "toolkit_code": -4}
@@ -113,7 +112,7 @@ class CreoStartupTests(unittest.TestCase):
         self.assertEqual(Path(runtime["code_root"]), ROOT)
         self.assertEqual(Path(runtime["python_executable"]), Path(os.sys.executable))
         self.assertFalse(runtime["source_changed_since_startup"])
-        self.assertIn("creo_startup.py", runtime["source_fingerprints_at_startup"])
+        self.assertIn("src/creo_mechdog/creo_startup.py", runtime["source_fingerprints_at_startup"])
 
     def test_capabilities_detects_source_change_without_relabeling_loaded_code(self):
         loaded = dict(server._LOADED_FINGERPRINTS)
@@ -744,7 +743,7 @@ except bridge.ToolkitBusy:print('busy')
 import contextlib,json,sys,time
 from pathlib import Path
 from unittest.mock import patch,Mock
-import bridge,creo_startup
+from creo_mechdog import bridge, creo_startup
 root=Path(sys.argv[1]); flag=root/'launch-count.txt'
 controller=creo_startup.CreoStartup(root/'shared')
 def inventory(settings):

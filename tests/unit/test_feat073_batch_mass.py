@@ -9,8 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import bridge
-import generic_bridge
-from creo_mechdog import capabilities
+from creo_mechdog import capabilities, generic_bridge
 
 
 def native_reading(**overrides):

@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 
 import bridge
-import desktop_worker
+from creo_mechdog import desktop_worker
 
 WORKER = "C:/repo/build/creo_worker.exe"
 

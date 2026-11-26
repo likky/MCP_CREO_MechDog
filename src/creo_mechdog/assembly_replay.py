@@ -24,8 +24,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-import bridge
-from creo_mechdog import model_registry, session_assembly
+from creo_mechdog import bridge, model_registry, session_assembly
 
 SNAPSHOT_SCHEMA_VERSION = session_assembly.SNAPSHOT_SCHEMA_VERSION
 SNAPSHOT_SECONDS = session_assembly.SNAPSHOT_SECONDS

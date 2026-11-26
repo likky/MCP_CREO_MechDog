@@ -91,7 +91,7 @@ class QuiltMergeSchemaTests(unittest.TestCase):
 
         self.assertIn("quilt_merge", REGISTERED_OPERATIONS)
         self.assertNotIn("quilt_merge", UNAVAILABLE_OPERATIONS)
-        server = (ROOT / "server.py").read_text(encoding="utf-8")
+        server = (ROOT / "src/creo_mechdog/server.py").read_text(encoding="utf-8")
         self.assertIn("async def creo_quilt_merge(", server)
 
 

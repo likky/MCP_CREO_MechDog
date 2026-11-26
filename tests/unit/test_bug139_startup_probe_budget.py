@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import bridge
-import creo_startup
+from creo_mechdog import creo_startup
 from tests import test_creo_startup as startup_tests
 
 PROBE_TIMEOUT = {

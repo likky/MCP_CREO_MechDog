@@ -210,7 +210,7 @@ READONLY_NOTE = (
 
 
 def _load_model(model_id: str) -> dict:
-    import generic_bridge as general
+    from creo_mechdog import generic_bridge as general
 
     return model_registry.read_control(general.model_path(model_id))
 
@@ -682,7 +682,7 @@ def submit_recolor(
         )
         palette = resolved["palette"]
         palette_source = resolved["palette_source"]
-    import generic_bridge as general
+    from creo_mechdog import generic_bridge as general
 
     operation: dict[str, Any] = {"op": RECOLOR_OP, "palette": palette, "families": families}
     if refresh_baseline:

@@ -7,9 +7,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import generic_bridge
 import server
-from creo_mechdog import capabilities, seeds
+from creo_mechdog import capabilities, generic_bridge, seeds
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -31,11 +30,15 @@ class PackageMigrationTests(unittest.TestCase):
     def test_external_cwd_imports_resolve_same_checkout(self):
         output = self.child("""
 import importlib, json
-names = ('bridge', 'seeds', 'capabilities', 'creo_mechdog.seeds', 'creo_mechdog.capabilities')
+names = ('bridge', 'seeds', 'capabilities', 'creo_mechdog.seeds', 'creo_mechdog.capabilities',
+         'creo_mechdog.bridge', 'creo_mechdog.server', 'creo_mechdog.generic_bridge',
+         'creo_mechdog.creo_startup', 'creo_mechdog.desktop_worker')
 print(json.dumps({name: importlib.import_module(name).__file__ for name in names}))
 """)
         actual = json.loads(output)
         for name, path in actual.items():
+            if name == "bridge":
+                name = "creo_mechdog.bridge"
             expected = (
                 (ROOT / "src" / name.replace(".", "/")).with_suffix(".py")
                 if "." in name
@@ -81,9 +84,33 @@ assert seeds.list_seeds is implementation.list_seeds
 """)
 
     def test_service_uses_package_implementations(self):
+        import bridge as legacy_bridge
+        from creo_mechdog import bridge, creo_startup
+        from creo_mechdog import server as implementation
+
+        self.assertIs(server, implementation)
+        self.assertIs(legacy_bridge, bridge)
+        self.assertIs(creo_startup.bridge, bridge)
+        self.assertIs(generic_bridge.bridge, bridge)
         self.assertIs(server.seeds, seeds)
         self.assertIs(server.families, capabilities.families)
         self.assertIs(generic_bridge.require_available, capabilities.require_available)
+
+    def test_detached_runner_entry_dispatches_to_package(self):
+        self.child(
+            """
+import runpy, sys
+from unittest.mock import patch
+from creo_mechdog import bridge
+
+entry = sys.argv[1]
+sys.argv = [entry, 'run-job', 'offline-job']
+with patch.object(bridge, 'run_job') as run_job:
+    runpy.run_path(entry, run_name='__main__')
+    run_job.assert_called_once_with('offline-job')
+""",
+            str(ROOT / "bridge.py"),
+        )
 
 
 if __name__ == "__main__":

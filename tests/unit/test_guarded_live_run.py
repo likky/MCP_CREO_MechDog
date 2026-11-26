@@ -20,8 +20,9 @@ from unittest.mock import patch
 
 import bridge
 import tools.guarded_live_run as guarded
+from creo_mechdog.paths import SOURCE_PATHS
 
-REPO_ROOT = Path(bridge.__file__).resolve().parent
+REPO_ROOT = SOURCE_PATHS.resource_root
 
 PROBE = r"""
 import msvcrt

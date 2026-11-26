@@ -23,7 +23,7 @@ if __name__ == "__main__" and not __package__:
     )
 
 import bridge
-import generic_bridge
+from creo_mechdog import generic_bridge
 from tools.dev_check import git_state, source_hash
 from version import VERSION
 
@@ -116,7 +116,12 @@ def main() -> int:
             **git_state(ROOT),
             "fingerprints": {
                 name: source_hash(ROOT / name)
-                for name in ("bridge.py", "generic_bridge.py", "tools/test_registry_native.py")
+                for name in (
+                    "bridge.py",
+                    "src/creo_mechdog/bridge.py",
+                    "src/creo_mechdog/generic_bridge.py",
+                    "tools/test_registry_native.py",
+                )
             },
         },
         "environment": {"os": platform.platform(), "python": platform.python_version()},

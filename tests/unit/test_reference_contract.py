@@ -10,8 +10,8 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import bridge
-import generic_bridge as general
 import server
+from creo_mechdog import generic_bridge as general
 from creo_mechdog.capabilities import (
     REGISTERED_OPERATIONS,
     SURFACE_TRIM_OFFSET_LIMIT,

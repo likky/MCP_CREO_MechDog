@@ -173,7 +173,7 @@ def case_group_offline() -> dict:
         'details["surface_group"]'
         in (ROOT / "native" / "surface_loft.cpp").read_text(encoding="utf-8"),
     )
-    tools = (ROOT / "server.py").read_text(encoding="utf-8")
+    tools = (ROOT / "src/creo_mechdog/server.py").read_text(encoding="utf-8")
     check(
         "readonly_tool_and_source_identity",
         "creo_measure_surface_group" in tools and '"native/surface_group.cpp"' in tools,

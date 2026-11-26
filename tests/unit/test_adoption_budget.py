@@ -18,8 +18,8 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[2]
 
 import bridge
-import generic_bridge as general
 from creo_mechdog import adoption
+from creo_mechdog import generic_bridge as general
 from tests.unit.test_adoption import prepare_root, synthetic_native
 
 SMALL_BUDGET = 2048

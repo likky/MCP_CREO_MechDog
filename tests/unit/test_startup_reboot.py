@@ -10,8 +10,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, patch
 
 import bridge
-import creo_startup
-from creo_mechdog import windows_boot
+from creo_mechdog import creo_startup, windows_boot
 from creo_mechdog.startup_state import StartupStateError, archive_preboot_state
 from tests import test_creo_startup as startup_tests
 

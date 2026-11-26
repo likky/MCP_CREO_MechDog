@@ -3,7 +3,7 @@
 ## 项目结构与模块划分
 
 - `src/creo_mechdog/` 保存已迁移的 Python 实现与显式路径入口；新的业务模块放在包内，通过标准 editable 安装导入。
-- 根目录暂保留 stdio MCP 服务（`server.py`）、任务与构建桥接（`bridge.py`、`generic_bridge.py`）、版本入口（`version.py`）和尚待迁移的校验/建模模块。DEV-002 按批次迁移，保留既有入口和运行数据位置。
+- 根目录保留 MCP 启动入口 `server.py`、构建与后台任务入口 `bridge.py`、版本入口 `version.py` 和校验/建模兼容模块。服务、桥接和启动实现均位于 `src/creo_mechdog/`。
 - `native/` 保存 C++17 Creo Toolkit 执行器和各类特征实现；`native/third_party/` 保存第三方 JSON 代码及许可证。
 - `tests/unit/` 保存新增及已迁移的 Python 单元测试，根 `tests/test_*.py` 为待迁移测试；`tools/` 暂保存实机 Creo 集成测试、打包脚本及验证证据汇总工具。
 - `examples/` 保存 JSON 建模方案；`seed_library/` 保存原生 PRT 种子模板及清单；`docs/` 保存安装说明、功能边界和验证记录。
@@ -11,21 +11,21 @@
 
 当前布局与迁移目标分别记录在 `docs/development/ARCHITECTURE.md`。首批只建立规范；Python 包化、C++ 上下文提取及独立编译由 DEV-002～DEV-004 分批推进，每批同时核对入口、路径、安装和打包。
 
-根模块职责（迁移期间按此理解入口，不要在未登记条目时改写）：
+模块职责（改动前先登记条目）：
 
-- `server.py`：MCP stdio 入口与工具注册；业务逻辑不写在该文件。
-- `bridge.py`：Toolkit 调度与执行器子进程生命周期；Toolkit 通道锁的唯一持有者。
-- `generic_bridge.py`：通用建模计划校验与提交、模型登记及 revision 保护、执行结果收尾；通过 `bridge.py` 的既有入口持有 Toolkit 通道。
-- `creo_startup.py`：受限的后台 Creo 启动与跨本地 MCP 进程协调（根目录 `toolkit.lock`）；实现模块，非转发包装。
+- `src/creo_mechdog/server.py`：MCP stdio 服务与工具注册。
+- `src/creo_mechdog/bridge.py`：Toolkit 调度与执行器子进程生命周期，统一持有安装根下的 Toolkit 通道锁。
+- `src/creo_mechdog/generic_bridge.py`：通用建模计划校验与提交、模型登记及 revision 保护、执行结果收尾，通过包内桥接持有 Toolkit 通道。
+- `src/creo_mechdog/creo_startup.py`：后台 Creo 启动和跨本地 MCP 进程协调。桌面执行辅助位于同包的 `desktop_worker.py`。
 - `capabilities.py`：根目录兼容导出；工具清单及启用/禁用的唯一实现位于 `src/creo_mechdog/capabilities.py`，新增或停用工具在包内登记。
 - `schema.py`、`profile_checks.py`、`airfoil.py`、`seeds.py`：根目录兼容模块，只转发导出；新逻辑进 `src/creo_mechdog/`。
 - `version.py`：服务与源码版本的唯一来源，合入 `main` 时同步更新。
 
 ## 请求流与运行时架构
 
-一次建模请求的实际路径：MCP 客户端（stdio）→ `server.py`（公开工具数以 capabilities 为准）→ `bridge.py`（revision 校验、保护策略、子进程与终态登记）→ `generic_bridge.py` → 由 `native/*.cpp` 编译出的 Creo Toolkit 执行器（单一通道串行）→ Creo Parametric 进程。客户端只看到任务 `job_id` 与 `model_id`；几何计算全部在原生执行器内完成，Python 侧不模拟 Creo 行为。
+建模请求由根 `server.py` 进入包内 MCP 服务，经包内 `bridge` 和 `generic_bridge` 校验、保护和调度，再由原生 Toolkit 执行器串行提交给 Creo Parametric。工具数以 capabilities 为准。客户端以 `job_id` 与 `model_id` 跟踪任务，几何计算由原生执行器完成。
 
-两条并存的 Python 轨道：`src/creo_mechdog/` 是标准可编辑包（安装声明见 `pyproject.toml`），新业务模块放包内；根目录同名的 `schema.py`、`airfoil.py`、`profile_checks.py`、`seeds.py`、`capabilities.py` 保留兼容导出，`seeds.py` 另保留 CLI 转发；`server.py`、`bridge.py`、`generic_bridge.py`、`creo_startup.py` 仍是实现入口，`version.py` 保留唯一版本定义。包内实现与根包装同时进入源码身份清单，二者对同一类型必须共享定义，不能出现两套模型。
+`src/creo_mechdog/` 是标准可编辑包，安装声明见 `pyproject.toml`。根目录同名的 `schema.py`、`airfoil.py`、`profile_checks.py`、`seeds.py`、`capabilities.py` 保留兼容导出，`seeds.py` 另保留 CLI 转发。根 `server.py`、`bridge.py` 导入时共享包内模块实例，直接执行时转发各自入口。包内实现与根入口同时进入源码身份清单，`version.py` 保留唯一版本定义。
 
 只读分发资源（`seed_library/`、`examples/`、`docs/`、`native/`）与本机生成内容（`.venv/`、`build/`、`jobs/`、`models/`、`native/constants.inc`、`config.json`、`client-config.json`、根目录 `seed_registry.json` 与 `toolkit.lock`）严格分开；生成物不得进入源码包或发布附件。
 

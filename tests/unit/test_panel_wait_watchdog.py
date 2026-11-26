@@ -17,7 +17,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import generic_bridge as general
+from creo_mechdog import generic_bridge as general
 from creo_mechdog import panel_wait
 
 NONCE = "d" * 32

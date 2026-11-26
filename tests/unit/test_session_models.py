@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import bridge
-import generic_bridge as general
+from creo_mechdog import generic_bridge as general
 from creo_mechdog import session_models as inventory
 from creo_mechdog.model_queries import decode_cursor, encode_cursor
 from tests.unit import test_adoption as fixture

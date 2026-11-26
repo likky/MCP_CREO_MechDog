@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import bridge
-import creo_startup
+from creo_mechdog import creo_startup
 from creo_mechdog.preview import apply_preview_projection
 from creo_mechdog.update_check import UpdateChecker
 

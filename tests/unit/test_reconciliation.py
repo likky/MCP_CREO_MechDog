@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import bridge
-import generic_bridge as general
+from creo_mechdog import generic_bridge as general
 from creo_mechdog import inspection_refs
 from creo_mechdog import reconciliation as rec
 
@@ -568,7 +568,7 @@ class Reconciliation(unittest.TestCase):
         code = """
 import json,sys
 from pathlib import Path
-import bridge,generic_bridge
+from creo_mechdog import bridge, generic_bridge
 from creo_mechdog import reconciliation
 bridge.ROOT=Path(sys.argv[1]);bridge.JOBS=bridge.ROOT/'jobs'
 generic_bridge.MODELS=bridge.ROOT/'models'

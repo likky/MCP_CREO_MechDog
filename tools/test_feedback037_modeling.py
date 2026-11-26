@@ -362,8 +362,10 @@ async def rounds(probe: Probe) -> None:
 async def run(args: argparse.Namespace) -> bool:
     fingerprint_files = (
         "bridge.py",
-        "generic_bridge.py",
+        "src/creo_mechdog/bridge.py",
+        "src/creo_mechdog/generic_bridge.py",
         "server.py",
+        "src/creo_mechdog/server.py",
         "src/creo_mechdog/schema.py",
         "src/creo_mechdog/seed_compatibility.py",
         "native/advanced.cpp",

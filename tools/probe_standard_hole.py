@@ -128,7 +128,7 @@ def main() -> int:
     if not args.confirm_session_usable:
         raise SystemExit("pass --confirm-session-usable after checking the live session")
 
-    import generic_bridge  # noqa: E402
+    from creo_mechdog import generic_bridge  # noqa: E402
 
     def wait(job_id: str, timeout: float = 300.0) -> dict:
         """Poll the accepted job; never resubmit while it is pending."""

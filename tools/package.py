@@ -33,13 +33,9 @@ def source_files(root: Path | None = None):
         "THIRD_PARTY_NOTICES.md",
         "server.py",
         "bridge.py",
-        "creo_startup.py",
-        # BUG-127: bridge.py imports this lazily for the desktop retry path.
-        "desktop_worker.py",
         "seeds.py",
         "airfoil.py",
         "profile_checks.py",
-        "generic_bridge.py",
         "schema.py",
         "version.py",
         "capabilities.py",

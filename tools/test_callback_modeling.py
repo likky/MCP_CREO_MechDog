@@ -22,7 +22,7 @@ from pathlib import Path
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 
-import creo_startup
+from creo_mechdog import creo_startup
 from creo_mechdog.mcp_contract import call_capabilities_section
 from tools.dev_check import git_state, source_hash
 from tools.test_direct_loft import Probe, circle_sections, small_solid, verify_blend
@@ -64,7 +64,12 @@ async def run(args: argparse.Namespace) -> dict:
             **git_state(ROOT),
             "fingerprints": {
                 p.relative_to(ROOT).as_posix(): source_hash(p)
-                for p in [Path(__file__), ROOT / "native/blend_sync.cpp", ROOT / "bridge.py"]
+                for p in [
+                    Path(__file__),
+                    ROOT / "native/blend_sync.cpp",
+                    ROOT / "bridge.py",
+                    ROOT / "src/creo_mechdog/bridge.py",
+                ]
             },
         },
         "environment": {"os": platform.platform(), "python": platform.python_version()},

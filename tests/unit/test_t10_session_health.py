@@ -9,8 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import bridge
-import creo_startup
-from creo_mechdog import session_health
+from creo_mechdog import creo_startup, session_health
 
 NOW = datetime(2026, 10, 26, 12, 0, 0, tzinfo=timezone.utc)
 

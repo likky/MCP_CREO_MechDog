@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import bridge
-import generic_bridge as general
+from creo_mechdog import generic_bridge as general
 from creo_mechdog import model_registry
 from creo_mechdog.build_support import compiler_setup_script
 
@@ -27,7 +27,7 @@ class WorkerWiring(unittest.TestCase):
         # BUG-142 root cause: without /utf-8 MSVC reads the UTF-8 em dash under
         # the system code page, turning it into an invalid byte in the receipt
         # message; nlohmann's strict dump then threw and the worker aborted.
-        bridge = (ROOT / "bridge.py").read_text(encoding="utf-8")
+        bridge = (ROOT / "src/creo_mechdog/bridge.py").read_text(encoding="utf-8")
         self.assertEqual(bridge.count("/std:c++17 /utf-8"), 3)
 
     def test_modeling_exits_use_pre_disconnect_publication(self):

@@ -284,7 +284,7 @@ class Session:
     """Serial submissions on the single Toolkit channel."""
 
     def __init__(self) -> None:
-        import generic_bridge
+        from creo_mechdog import generic_bridge
 
         self.bridge = generic_bridge
         self.calls: list[dict] = []

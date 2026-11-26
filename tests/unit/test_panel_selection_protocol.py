@@ -194,7 +194,7 @@ class PanelPayloadWiring(unittest.TestCase):
 class PanelJobWiring(unittest.TestCase):
     """The job must carry what the native panel route binds its tickets to."""
 
-    SUBMIT = ROOT / "generic_bridge.py"
+    SUBMIT = ROOT / "src/creo_mechdog/generic_bridge.py"
     RUN = ROOT / "native/panel_run.h"
 
     def test_admission_identity_reaches_the_operation(self):
@@ -231,7 +231,7 @@ class PanelProfileToBackend(unittest.TestCase):
     chain and that a missing command stops the run before any dialog exists.
     """
 
-    SUBMIT = ROOT / "generic_bridge.py"
+    SUBMIT = ROOT / "src/creo_mechdog/generic_bridge.py"
     RUN = ROOT / "native/panel_run.h"
     PROTOCOL = ROOT / "native/panel_protocol.h"
     MANIFEST = ROOT / "templates/panel/manifest.json"

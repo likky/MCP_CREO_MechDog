@@ -333,7 +333,8 @@ async def run() -> None:
             name: source_hash(ROOT / name)
             for name in (
                 "server.py",
-                "generic_bridge.py",
+                "src/creo_mechdog/server.py",
+                "src/creo_mechdog/generic_bridge.py",
                 "src/creo_mechdog/schema.py",
                 "src/creo_mechdog/file_adoption.py",
                 "src/creo_mechdog/component_changes.py",

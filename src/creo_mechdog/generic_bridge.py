@@ -14,8 +14,8 @@ import time
 import uuid
 from pathlib import Path
 
-import bridge
 from creo_mechdog import (
+    bridge,
     component_changes,
     feature_state,
     model_registry,

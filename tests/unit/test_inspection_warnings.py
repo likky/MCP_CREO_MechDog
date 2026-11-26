@@ -12,8 +12,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import bridge
-import generic_bridge as general
 from creo_mechdog import adoption, inspection_refs
+from creo_mechdog import generic_bridge as general
 
 INSPECTION = {
     "healthy": True,

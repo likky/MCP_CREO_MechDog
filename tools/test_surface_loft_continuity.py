@@ -472,7 +472,7 @@ def case_offline() -> dict:
         and "not live-verified" not in limits,
     )
     check("capability_prefix_unchanged", family["limits"].startswith("2-32 sections and"))
-    server = (ROOT / "server.py").read_text(encoding="utf-8")
+    server = (ROOT / "src/creo_mechdog/server.py").read_text(encoding="utf-8")
     tool = server[server.index("async def creo_surface_loft(") :]
     tool = _flat(tool[: tool.index('"""', tool.index('"""') + 3)])
     check(

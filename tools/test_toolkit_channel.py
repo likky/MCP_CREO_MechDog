@@ -46,9 +46,11 @@ async def run(output: Path, rounds: int, resume_jobs: list[str]) -> dict:
             name: hashlib.sha256((ROOT / name).read_bytes().replace(b"\r\n", b"\n")).hexdigest()
             for name in (
                 "bridge.py",
-                "generic_bridge.py",
+                "src/creo_mechdog/bridge.py",
+                "src/creo_mechdog/generic_bridge.py",
                 "server.py",
-                "creo_startup.py",
+                "src/creo_mechdog/server.py",
+                "src/creo_mechdog/creo_startup.py",
                 "native/worker.cpp",
                 "tools/test_toolkit_channel.py",
             )

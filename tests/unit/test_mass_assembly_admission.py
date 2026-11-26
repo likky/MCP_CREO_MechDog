@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-import generic_bridge
+from creo_mechdog import generic_bridge
 
 
 class _Submitted(Exception):

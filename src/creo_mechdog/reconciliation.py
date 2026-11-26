@@ -14,9 +14,8 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
-import bridge
-import generic_bridge as general
-from creo_mechdog import inspection_refs, model_registry, panel_session_guard
+from creo_mechdog import bridge, inspection_refs, model_registry, panel_session_guard
+from creo_mechdog import generic_bridge as general
 from creo_mechdog.legacy_recovery import previous_boot_evidence
 from creo_mechdog.recovery import process_identity
 from creo_mechdog.windows_boot import boot_info
@@ -574,8 +573,10 @@ def _owners(
 def _deployment(deadline: float) -> str:
     names = (
         "bridge.py",
-        "generic_bridge.py",
         "server.py",
+        "src/creo_mechdog/bridge.py",
+        "src/creo_mechdog/server.py",
+        "src/creo_mechdog/generic_bridge.py",
         "version.py",
         "src/creo_mechdog/reconciliation.py",
         "src/creo_mechdog/legacy_recovery.py",

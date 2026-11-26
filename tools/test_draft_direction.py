@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import bridge  # noqa: E402
-import generic_bridge as general  # noqa: E402
+from creo_mechdog import generic_bridge as general  # noqa: E402
 from tools.test_feedback0358_pattern_scope import git_commit_and_dirty, sha256_file, wait_job  # noqa: E402
 
 RADIUS = 3.0

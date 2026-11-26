@@ -1,0 +1,3911 @@
+"""MCP_CREO_MechDog: Creo 10 native-feature server. stdout is reserved for MCP messages."""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import json
+import logging
+import sys
+from contextlib import asynccontextmanager
+from typing import Annotated, Any, Literal
+
+from mcp.server.mcpserver.exceptions import ToolError
+from mcp.types import CallToolResult, TextContent, ToolAnnotations
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
+
+from creo_mechdog import bridge, creo_startup, plan_files, seeds, update_check
+from creo_mechdog import generic_bridge as general
+from creo_mechdog.adoption import adopt
+from creo_mechdog.appearance import preview_recolor, submit_recolor
+from creo_mechdog.assembly_replay import plan_assembly_rebuild
+from creo_mechdog.blend_callback import callback_setup_status, unknown_readiness
+from creo_mechdog.capabilities import (
+    KNOWN_LIMITATIONS,
+    PLAN_EXAMPLES,
+    REGISTERED_OPERATIONS,
+    UNAVAILABLE_OPERATIONS,
+    families,
+    project_worker_availability,
+)
+from creo_mechdog.capability_pages import capabilities_response
+from creo_mechdog.capability_summary import release_status, support_status
+from creo_mechdog.file_adoption import adopt_file
+from creo_mechdog.generation_reclaim import reclaim_generations
+from creo_mechdog.open_file import open_file as submit_open_file
+from creo_mechdog.paths import SOURCE_PATHS
+from creo_mechdog.product_rules import build_product_plan
+from creo_mechdog.reconciliation import reconcile
+from creo_mechdog.references import (
+    PLANE_REFERENCE_DESCRIPTION,
+    PatternAxis,
+    RevolveAxis,
+    reference_capabilities,
+)
+from creo_mechdog.registry_ops import health as registry_health
+from creo_mechdog.registry_ops import migrate as registry_migrate
+from creo_mechdog.schema import (
+    AirfoilProfile,
+    AirfoilSketchOp,
+    AirfoilStation,
+    AirfoilValues,
+    Entity,
+    Operation,
+    RotationMatrix,
+    SketchConstraint,
+    SketchDimension,
+    SketchOp,
+    dump_plan_operations,
+)
+from creo_mechdog.session_assembly import inspect_session_assembly
+from creo_mechdog.session_erase import erase_session_models
+from creo_mechdog.session_health import snapshot as session_health
+from creo_mechdog.session_models import list_session_models
+from creo_mechdog.sheetmetal import project_wall_contour
+from creo_mechdog.validation_errors import ValidationMCPServer
+from version import VERSION
+
+logging.basicConfig(level=logging.WARNING)
+startup = creo_startup.CreoStartup()
+updates = update_check.UpdateChecker()
+_CODE_ROOT = SOURCE_PATHS.resource_root
+_SOURCE_NAMES = (
+    "server.py",
+    "capabilities.py",
+    "bridge.py",
+    "src/creo_mechdog/server.py",
+    "src/creo_mechdog/bridge.py",
+    "src/creo_mechdog/creo_startup.py",
+    "src/creo_mechdog/desktop_worker.py",
+    "src/creo_mechdog/__init__.py",
+    "src/creo_mechdog/paths.py",
+    "src/creo_mechdog/validation_errors.py",
+    "src/creo_mechdog/product_rules.py",
+    "examples/product_rules/box_frame.json",
+    "src/creo_mechdog/references.py",
+    "src/creo_mechdog/update_check.py",
+    "src/creo_mechdog/blend_callback.py",
+    "src/creo_mechdog/generation_reclaim.py",
+    "src/creo_mechdog/build_support.py",
+    "src/creo_mechdog/seed_distribution.py",
+    "src/creo_mechdog/seed_compatibility.py",
+    "seeds.py",
+    "src/creo_mechdog/seeds.py",
+    "src/creo_mechdog/capabilities.py",
+    "src/creo_mechdog/recovery.py",
+    "src/creo_mechdog/reconciliation.py",
+    "src/creo_mechdog/legacy_recovery.py",
+    "src/creo_mechdog/adoption.py",
+    "src/creo_mechdog/file_adoption.py",
+    "src/creo_mechdog/component_changes.py",
+    "src/creo_mechdog/compact_sections.py",
+    "src/creo_mechdog/job_projection.py",
+    "src/creo_mechdog/operation_results.py",
+    "src/creo_mechdog/terminal_effect.py",
+    "src/creo_mechdog/failure_context.py",
+    "src/creo_mechdog/inspection_refs.py",
+    "src/creo_mechdog/lock_files.py",
+    "src/creo_mechdog/stdio_lifecycle.py",
+    "src/creo_mechdog/session_models.py",
+    "src/creo_mechdog/session_assembly.py",
+    "src/creo_mechdog/assembly_replay.py",
+    "src/creo_mechdog/session_erase.py",
+    "src/creo_mechdog/session_health.py",
+    "src/creo_mechdog/model_registry.py",
+    "src/creo_mechdog/registry_ops.py",
+    "src/creo_mechdog/open_file.py",
+    "src/creo_mechdog/capability_pages.py",
+    "src/creo_mechdog/capability_summary.py",
+    "src/creo_mechdog/model_queries.py",
+    "src/creo_mechdog/appearance.py",
+    "src/creo_mechdog/startup_state.py",
+    "src/creo_mechdog/windows_boot.py",
+    "src/creo_mechdog/window_observations.py",
+    "src/creo_mechdog/schema.py",
+    "src/creo_mechdog/sketch_regions.py",
+    "src/creo_mechdog/surface_ops.py",
+    "src/creo_mechdog/sheetmetal_candidates.py",
+    "src/creo_mechdog/flange_profile.py",
+    "src/creo_mechdog/modeling_recipes.py",
+    "src/creo_mechdog/profile_checks.py",
+    "src/creo_mechdog/profile_diagnostics.py",
+    "src/creo_mechdog/airfoil.py",
+    "version.py",
+    "src/creo_mechdog/generic_bridge.py",
+    "schema.py",
+    "profile_checks.py",
+    "airfoil.py",
+    "native/worker.cpp",
+    "native/geometry.cpp",
+    "tools/generate_constants.py",
+    "native/generic.cpp",
+    # FEAT-058: the first-wall implementation and its judgement module are part
+    # of the runtime identity, otherwise a service can run them unreported.
+    "native/planar_wall.cpp",
+    "native/planar_wall.h",
+    "src/creo_mechdog/native_planar_wall.py",
+    "native/loft_seed.cpp",
+    "native/advanced.cpp",
+    "native/sheetmetal_candidates.cpp",
+    "native/sheetmetal_target_guard.h",
+    "native/flange_profile.h",
+    "native/surface_boundary_topology.h",
+    "native/surface_boundary_fill.cpp",
+    "native/geometry_diagnostics.h",
+    "native/preview.h",
+    "native/surface_measure.h",
+    "native/quilt_gauge_guard.h",
+    "native/quilt_query.h",
+    "native/surface_trim.cpp",
+    "native/surface_group.cpp",
+    "native/quilt_merge.cpp",
+    "native/project_curve.cpp",
+    "native/import_geometry.cpp",
+    "native/component_transform.h",
+    "native/assembly_pose.h",
+    "native/constraint_placement.h",
+    "native/constraint_names.h",
+    "native/constraint_compare.h",
+    "native/adoption_source.h",
+    "native/inspection_sidecar.h",
+    "native/inspection_units.h",
+    "native/stl_file_check.h",
+    "native/stl_mesh_check.h",
+    "native/stl_export.h",
+    "native/axis_geometry.h",
+    "native/assembly_units.h",
+    "native/drawing.cpp",
+    "native/result_delivery.h",
+    "native/worker_result_delivery.h",
+    "native/recovery_deadline.h",
+    "native/blend_sync.cpp",
+    "native/blend_loader.cpp",
+    "native/blend_create.cpp",
+    "native/callback_identity.h",
+    "native/callback_api.h",
+    "native/callback_runtime.h",
+)
+
+
+def _source_fingerprints() -> dict[str, str]:
+    return {
+        name: hashlib.sha256((_CODE_ROOT / name).read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+        for name in _SOURCE_NAMES
+    }
+
+
+_LOADED_FINGERPRINTS = _source_fingerprints()
+
+
+@asynccontextmanager
+async def server_lifespan(app):
+    startup.start()
+    updates.start()
+    try:
+        yield {}
+    finally:
+        await updates.stop()
+        startup.stop()
+
+
+mcp = ValidationMCPServer(
+    "MCP_CREO_MechDog",
+    version=VERSION,
+    lifespan=server_lifespan,
+    instructions="General native parametric modeling in Creo 10. Use mm and degrees. Create parts with creo_new_part "
+    "or a complete creo_execute_plan, create independent sketches, then reference them by feature label "
+    "for extrude/revolve/add/cut, and append subsequent native features. "
+    "Mutation tools return a job_id: poll creo_get_job with detail=compact, then use its model_id and latest revision. "
+    "Inspect surfaces/edges/dimensions before choosing raw references. Always provide expected_revision "
+    "when modifying an existing MCP model. Models and native files persist across clients. "
+    "creo_capabilities defaults to a compact summary page including support_status; "
+    "use detail=full with section=references and follow next_cursor for each "
+    "parameter's kind and container shape. "
+    "Open existing on-disk .prt/.asm read-only with creo_open_file (no managed model); adopt before managed editing. "
+    "Success requires status=succeeded and saved_file_reloaded_and_verified=true for mutations. "
+    "Busy errors mean this request was not accepted; inspect blocking_job_id, blocking_model_id "
+    "and retry_guidance; retry_after_seconds is a suggested interval, not a completion estimate. "
+    "Poll accepted jobs instead of resubmitting them. "
+    "Create sheetmetal/assembly models with the corresponding new-model tools or model_type in execute_plan. "
+    "Use creo_capabilities for enabled and tested operations; reserved unavailable tools reject before native mutation. "
+    "Creo startup detection runs in the background; poll creo_startup_status until ready before modeling. "
+    "Use creo_startup_status(retry=true) to recheck a failed/manual startup; no session is automatically closed. "
+    "On first use call creo_check_update and inspect update in capabilities/startup status. "
+    "If status=update_available and stale=false, tell the user the current/latest versions, prerelease flag, "
+    "release_url and download_url and the manual upgrade steps in message. "
+    "Remind only once per latest_version in the current client session; do not interrupt modeling. "
+    "Failed/unknown/checking/stale update information never proves the installation is up to date. "
+    "Do not retry unknown_outcome without inspection.",
+)
+READ = ToolAnnotations(
+    read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+)
+CREATE = ToolAnnotations(
+    read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=False
+)
+NETWORK_READ = ToolAnnotations(
+    read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=True
+)
+
+
+class Hole(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False, strict=True)
+    x: float = Field(description="Hole center X in mm, relative to plate center")
+    y: float = Field(description="Hole center Y in mm, relative to plate center")
+    diameter: float = Field(gt=0, description="Through-hole diameter in mm")
+
+
+async def invoke(fn, *args, **kwargs):
+    try:
+        if fn in (
+            bridge.create_job,
+            general.submit,
+            general.new_loft_part,
+            # FEAT-073: the batch owns several jobs, so readiness is checked once
+            # here instead of letting every item fail on its own.
+            general.get_mass_properties_batch,
+            submit_open_file,
+            submit_recolor,
+        ):
+            startup.require_ready()
+        return await asyncio.to_thread(fn, *args, **kwargs)
+    except bridge.ToolkitBusy as exc:
+        return CallToolResult(
+            is_error=True,
+            content=[TextContent(type="text", text=json.dumps(exc.payload, ensure_ascii=False))],
+            structured_content=exc.payload,
+        )
+    except (ValueError, RuntimeError, OSError) as exc:
+        # A structured payload (e.g. AdoptionMetadataBudgetExceeded) keeps the
+        # same JSON text and structuredContent contract as busy errors.
+        payload = getattr(exc, "payload", None)
+        if isinstance(payload, dict) and str(exc) == json.dumps(payload, ensure_ascii=False):
+            return CallToolResult(
+                is_error=True,
+                content=[TextContent(type="text", text=str(exc))],
+                structured_content=payload,
+            )
+        raise ToolError(str(exc)) from None
+
+
+@mcp.tool(annotations=READ)
+async def creo_plan_product_variant(template_id: str, parameters: dict[str, Any]) -> dict[str, Any]:
+    """Plan the sole template box_frame offline in mm. parameters accepts length_mm/width_mm/height_mm/wall_mm; {} defaults to 100/60/40/2. First three range 10..1000, wall 0.5..20; L-2t, W-2t and H-t must be at least 1 mm. Returns four operations for explicit creo_execute_plan use, without connecting or submitting work. executable means static capability/schema admission only; native and saved reload remain not_run."""
+    return await invoke(
+        build_product_plan,
+        template_id,
+        parameters,
+        {"operations": [op for op in REGISTERED_OPERATIONS if op not in UNAVAILABLE_OPERATIONS]},
+    )
+
+
+@mcp.tool(annotations=READ)
+async def creo_check_environment() -> dict[str, Any]:
+    """Check Creo executable, Toolkit SDK, metric template and compiler. License presence does not prove usability."""
+    return await invoke(bridge.check_environment)
+
+
+@mcp.tool(annotations=READ)
+async def creo_session_status() -> dict[str, Any]:
+    """Check the configured/unique Creo session through Toolkit using the configured probe timeout, without rebuilding. Every return branch carries server_version. Busy returns its occupying job; probe_timeout returns recovery guidance. During startup return its snapshot promptly without starting another probe. connected=true requires verification; ambiguous/stale session selections never fall back to a random session. Includes a read-only creo_process_snapshot (pid/name/created_at/matches) so a failed probe can be interpreted alongside observed processes. Use creo_startup_status(retry=true) for a bounded recheck of an unconfirmed connection. session_health reuses this completed probe plus already recorded job results; it never adds a connection, save or session probe."""
+    result = await invoke(startup.session_status)
+    return {**result, "server_version": VERSION, "session_health": session_health()}
+
+
+@mcp.tool(annotations=READ)
+async def creo_callback_status() -> dict[str, Any]:
+    """Read resident Blend readiness without building, loading a DLL, launching Creo or changing models. The native probe has a 9-second budget and verifies a fresh nonce, module/loader hashes, protocol, command and resource root. Returns ready/not_loaded/version_mismatch/unknown with identities, checked_at and next steps. not_loaded is provable (never loaded, or registered but not running) and its instruction leads with the one-time registration entry; unknown means the loaded state cannot be confirmed. GUI registration stays unknown; busy, unreachable and timeout never imply unregistered. Old protocol-2 registration requires a one-time migration; stable loader upgrades normally require a Creo restart and starting the same registration. Do not replay unknown_outcome."""
+    state = startup.status()
+    if state.get("coordinator_running"):
+        return unknown_readiness(
+            callback_setup_status(bridge.ROOT / "build"), "startup_in_progress", startup=state
+        )
+    result = await invoke(bridge.callback_status)
+    result["service"] = {
+        "version": VERSION,
+        "resource_root": str(SOURCE_PATHS.resource_root),
+        "source_fingerprints_at_startup": dict(_LOADED_FINGERPRINTS),
+        "source_changed_since_startup": _source_fingerprints() != _LOADED_FINGERPRINTS,
+    }
+    try:
+        from creo_mechdog.blend_callback import generation_inventory
+
+        result["generation_inventory"] = generation_inventory(
+            bridge.ROOT / "build",
+            probe_readiness=result.get("readiness") if isinstance(result, dict) else None,
+        )
+    except (OSError, ValueError) as error:
+        result["generation_inventory"] = {"available": False, "reason": str(error)}
+    if result["service"]["source_changed_since_startup"]:
+        result.update(
+            readiness="unknown",
+            reason="service_source_changed",
+            instruction="Restart this MCP service to load the deployed code, then query again. Preserve unknown jobs/models.",
+        )
+    return result
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        read_only_hint=False, destructive_hint=True, idempotent_hint=False, open_world_hint=False
+    )
+)
+async def creo_reclaim_generations(
+    mode: Literal["inspect", "apply"] = "inspect",
+    generation_keys: list[dict[str, Any]] | None = None,
+    evidence_token: str | None = None,
+    idempotency_key: str | None = None,
+) -> dict[str, Any]:
+    """Explicitly reclaim selected build generations of this project (DEV-027). No Toolkit connection, no DLL load, no automatic cleanup. generation_keys selects loader/payload generation directories explicitly: [{root: "blend_loader"|"blend_callback", key: <hex generation directory name>}]; only names listed by creo_callback_status.generation_inventory are valid, never paths. inspect(classifies) each target with the existing inventory references and returns per-item status reclaimable|kept with reasons, directory content digest, sizes and a 600-second evidence_token bound to the targets, digests and reference evidence; it deletes nothing. apply(evidence_token, idempotency_key) takes the shared channel lock that builds and generation publication hold (busy rejects immediately), re-verifies that evidence -- an expired token, changed content or changed/new reference refuses the old evidence -- then re-checks each directory (containment in build/blend_loader or build/blend_callback, no symlink/junction/reparse point, owned content only, file occupancy, rollback retention) immediately before deleting it. Current, locally registered, runtime-referenced, rollback-retained and unprovable (missing/corrupt/conflicting records) generations are always kept; 'not current' or 'no record found' never authorizes deletion. Each item reports reclaimed/kept/failed/unknown with reasons and the delete progress; partial deletion is not rolled back. The same idempotency_key replays the recorded result instead of deleting again, and a different target set is refused."""
+    return await invoke(reclaim_generations, mode, generation_keys, evidence_token, idempotency_key)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_startup_status(
+    retry: bool = False,
+    force_ready: bool = False,
+    session_id: str | None = None,
+    clear_session_id: bool = False,
+    force_new_session: bool = False,
+) -> dict[str, Any]:
+    """Read a background snapshot with verified_at, verification_age_seconds and stale. retry=true rechecks the channel within 180s preparation plus configured startup budget; overlapping retries share coordination. In automatic discovery, a running Creo process with toolkit_code=-4 (PRO_TK_E_NOT_FOUND) stays waiting_for_connection with diagnosis='session_not_ready' while the coordinator retries within the connection deadline. Repeated lookup failures for an existing session at the deadline report timeout and diagnosis='stale_session_needs_restart'. probe_attempts counts completed connection probes within that startup attempt. For persistent failure, next_steps include retry=true with force_new_session=true to explicitly launch a fresh session while preserving existing processes. session_id with retry=true selects the Creo session to connect to for this process (FEAT-072): it is validated by that connection, applies to every following worker, is never written to config.json, never survives a restart and is never replaced by another session when it is absent; clear_session_id=true with retry=true drops the selection and falls back to config.json. session_selection reports which source applies and its fingerprint (the raw id is never echoed); session_candidates lists the observed Creo processes as diagnostic_only (selectable_by_pid=false), because a Toolkit session id cannot be derived from a Windows PID. force_ready=true is an operator override that opens modeling admission despite a non-ready snapshot (sets force_ready/force_ready_at; verify Toolkit connectivity before modeling); force_ready=false clears it. Unreadable startup history can be archived/rebuilt only when it predates a verified Windows reboot, both recovery locks are held and no Creo session exists; startup_recovery identifies the backup. Same-boot/unverified history requires manual reconciliation. waiting_for_channel includes busy details. Never closes Creo, clears unknown job/model reservations or replays jobs. Poll until ready; inspect recovery guidance otherwise. session_health is a read-only evidence summary (unknown/suspected_damage/no_failure_observed) built from recorded save/connection results; it opens no connection, saves nothing and is not a health guarantee."""
+    if force_ready and (session_id is not None or clear_session_id or force_new_session):
+        raise ValueError(
+            "session_id, clear_session_id and force_new_session control connection/launch "
+            "behavior and cannot be combined with force_ready, which only overrides admission"
+        )
+    if force_new_session:
+        result = await invoke(startup.start, retry, None, force_new_session=True)
+    elif session_id is not None or clear_session_id:
+        # Both knobs re-verify one target; a read-only snapshot must not change
+        # which session this process would use.
+        result = await invoke(startup.start, True, session_id, clear_session_id=clear_session_id)
+    elif force_ready:
+        result = await invoke(startup.force_ready, enabled=True)
+    elif retry:
+        result = await invoke(startup.start, retry=True)
+    else:
+        result = await invoke(startup.status)
+    return {
+        **result,
+        **await asyncio.to_thread(startup.session_keys),
+        "update": updates.snapshot(),
+        "session_health": session_health(),
+    }
+
+
+@mcp.tool(annotations=NETWORK_READ)
+async def creo_check_update(force: bool = False) -> dict[str, Any]:
+    """Check public GitHub Releases, including prereleases, against the running version.
+
+    Returns the same update object as capabilities.update and startup_status.update:
+    status (not_checked/checking/update_available/up_to_date/failed/unknown),
+    current_version/latest_version/is_prerelease/release_url/download_url,
+    checked_at/last_success_at/from_cache/stale/message/error. Times are UTC ISO 8601.
+    Uses a process-local 24-hour cache; force=true bypasses completed caches, including
+    failure/unknown results. Ordinary retries retain their 15-minute cooldown.
+    Concurrent checks share one request. A fresh check has one total network budget
+    across all pages: default 5 seconds, configurable through the startup environment
+    MECHDOG_UPDATE_TIMEOUT_SECONDS (finite 1..30). network_timeout_seconds,
+    cache_age_seconds and retry_after_at describe the actual budget and cache; other tools never wait
+    for it. A failed check reports that latest version information was not obtained;
+    it never means the installation is up to date, never blocks modeling, and may
+    retain previous successful links only as cache marked with stale=true.
+    Only accesses the public GitHub API; never downloads, installs or changes files.
+    """
+    return await updates.check(force)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_create_plate(
+    length: float,
+    width: float,
+    thickness: float,
+    corner_radius: float = 0,
+    holes: list[Hole] | None = None,
+    model_name: str | None = None,
+) -> dict[str, Any]:
+    """Create a NEW native Creo part in mm. Origin is plate XY center at bottom Z=0.
+
+    A dimensioned rectangular sketch drives extrusion to thickness. corner_radius rounds
+    the four vertical corners. holes specifies independent native through-hole features.
+    Return a job_id immediately; poll creo_get_job for the saved PRT and verification.
+    Does not overwrite existing parts. Omit model_name to generate a unique name.
+    Example: 80x60x20, R5; holes (±30,±20) diameter 8 and (0,0) diameter 10.
+    """
+    spec = await invoke(
+        bridge.validate_spec,
+        length,
+        width,
+        thickness,
+        corner_radius,
+        [h.model_dump() for h in holes or []],
+        model_name,
+    )
+    return await invoke(bridge.create_job, spec)
+
+
+@mcp.tool(annotations=READ)
+async def creo_get_job(
+    job_id: str,
+    detail: Annotated[
+        Literal["compact", "full"],
+        Field(
+            description=(
+                'Response detail level: "full" (default) supports section/limit/cursor pagination; '
+                '"compact" stays within 32 KiB and supports sections block filtering.'
+            )
+        ),
+    ] = "full",
+    section: Annotated[
+        str | None,
+        Field(
+            description=(
+                'Full-detail pagination section ("operations_input", "operations_result", or '
+                '"result_entries"). Requires detail="full" (rejected when detail="compact").'
+            )
+        ),
+    ] = None,
+    limit: int = Field(default=50, ge=1, le=200),
+    cursor: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Opaque pagination cursor from a previous full-detail page. "
+                'Requires detail="full" (rejected when detail="compact").'
+            )
+        ),
+    ] = None,
+    sections: Annotated[
+        list[str] | None,
+        Field(
+            description=(
+                'Compact-only list of result block names to retain (e.g. ["operations", "preview"]). '
+                'Requires detail="compact" (rejected when detail="full").'
+            )
+        ),
+    ] = None,
+    wait_seconds: Annotated[
+        int,
+        Field(
+            ge=0,
+            le=300,
+            strict=True,
+            description=(
+                "FEAT-007 long poll: 0 returns immediately; 1-300 waits at most that many seconds "
+                "for a terminal status. The wait reads only the job record, holds no Toolkit channel "
+                "lock, creates no job, changes no timeout and resubmits nothing. On expiry the current "
+                "status returns with wait_expired=true; an interruption ends only the wait."
+            ),
+        ),
+    ] = 0,
+) -> dict[str, Any]:
+    """Read modeling progress/result. Use detail=compact for polling: status/revision/files/hash/volume/counts/operation outcomes held to a 32 KiB response budget (bounded samples keep total/truncated markers; failure reasons, revision, rollback and save/reload evidence are never cut); full includes complete geometry, aliases and validation. Each operation result carries a zero-based index plus execution_status and effect_status, which separate whether the operation ran from whether the plan committed. Compact keeps the measured surface-chain criteria (surface_trim area_before/area_after with their status and kept_side_basis, surface_offset source_area/measured_offset_distance/direction/offset_method, project_curve length/endpoints/curve/helper/route and the solidify closure) but omits raw log text; full_detail_hint names the paginated full read (detail="full", section="operations_result", limit, cursor). Full remains the compatibility default: small jobs return the whole view inline, large jobs return one page of section records (operations_input/operations_result/result_entries) with complete and next_cursor - repeat with the same section, limit and cursor to fetch remaining pages; a terminal job's pages stay retrievable. section/cursor require detail=full. Recovery failures may include reason, failure_phase and recovery_pending_released; success normally omits failure_phase, so use status and the public server version to interpret absent fields. detail=compact accepts an optional sections array naming result blocks (operations, preview, inspection, recolor, geometry_deviation, feature_errors and per-operation blocks such as extrude_depth, profile, parameters); only named blocks remain, outcome/revision/rollback/save-reload evidence and operation identity always stay, and the response reports sections_applied plus omitted_sections. An empty array keeps only that evidence. sections require detail=compact; an unknown block name is rejected with isError listing every known name, without reading or changing the job. wait_seconds (0-300, default 0) long-polls the persisted job record only: terminal statuses return immediately, expiry returns the current status with wait_seconds/waited_seconds/wait_expired, and the wait never creates a job, holds the Toolkit channel lock, changes a timeout, resubmits or cancels the job when interrupted."""
+    return await invoke(
+        bridge.get_job, job_id, detail, section, limit, cursor, sections, wait_seconds
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_cancel_job(
+    job_id: str = Field(
+        description="The job_id returned by a modeling tool or creo_execute_plan.",
+    ),
+) -> dict[str, Any]:
+    """Cancel a queued or running job and free the channel reservation. Cancellation is not a rollback: a job cancelled after its native worker started returns status=unknown_outcome with geometry_may_have_changed=true and keeps the model reservation, so finish with creo_session_status and creo_reconcile_model. A job cancelled before any worker started returns status=cancelled and leaves the model reusable (ready, or failed for a new model that never saved). A read-only job is the exception: an inspection-only plan can change no geometry, revision or saved file, so it never leaves the model needing recovery - its reservation is retired on this call (readonly_release.released=true, geometry_may_have_changed=false), including when the job already reached a terminal status, which is the state a client that exited mid-query used to leave behind; a recorded runner or worker that is still alive keeps the reservation (readonly_release.reason=runner_or_worker_still_alive) and the call can be retried. An already terminal mutating job is reported unchanged with cancelled=false; a runner that could not be terminated leaves the job running with cancel_requested_at recorded. Poll creo_get_job after cancelling; this tool never retries, never restarts Creo and never deletes user files."""
+    return await invoke(general.cancel_job, job_id)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_reconcile_model(
+    model_id: str,
+    mode: Literal["inspect", "apply"] = "inspect",
+    live: bool = False,
+    action: Literal[
+        "restore_baseline",
+        "accept_saved",
+        "accept_live",
+        "abandon_new",
+        "ack_no_mutation",
+        "ack_failure",
+        "confirm_panel_closed",
+        "abandon_stalled_recovery",
+        "abandon_unknown_recovery",
+    ]
+    | None = None,
+    expected_revision: int | None = Field(
+        default=None, description="Apply only: the revision returned by this inspect."
+    ),
+    expected_pending_job_id: str | None = Field(
+        default=None,
+        description=(
+            "Apply only: the pending_job value returned by this inspect. Send JSON null "
+            "(or omit the parameter) when inspect returned pending_job=null. "
+            "An empty string produced by a client is treated as null."
+        ),
+    ),
+    evidence_token: str | None = Field(
+        default=None, description="Apply only: the evidence_token returned by this inspect."
+    ),
+    idempotency_key: str | None = Field(
+        default=None,
+        description="Apply only: unique 8-80 letters, digits, underscores or hyphens.",
+    ),
+    confirm_zero_mutation: bool = Field(
+        default=False,
+        description=(
+            "Apply only, action=ack_no_mutation: set true after confirming the failed job "
+            "changed nothing. Only a failed model with a verified checkpoint, no pending or "
+            "recovery job, and no failed rollback qualifies."
+        ),
+    ),
+    confirm_failure_ack: bool = Field(
+        default=False,
+        description=(
+            "Apply only, action=ack_failure: set true after accepting the failure. Returns the "
+            "model to ready as a metadata transaction; revision, model file and component "
+            "bindings are left untouched. Requires a terminal failed/unknown_outcome job, no "
+            "pending or recovery job, and no failed rollback. Available for assemblies too."
+        ),
+    ),
+    confirm_panel_closed: bool = Field(
+        default=False,
+        description=(
+            "Apply only, action=confirm_panel_closed: set true after checking in Creo that no "
+            "resident panel or dialog from this model's panel job is still open. It retires the "
+            "session-wide panel guard that refuses every native job for every model; it never "
+            "changes this model's status, revision or pending job, and a dead pid or a cancelled "
+            "job is not that confirmation."
+        ),
+    ),
+    confirm_stalled_recovery: bool = Field(
+        default=False,
+        description=(
+            "Apply only, action=abandon_stalled_recovery: set true to close one recovery intent "
+            "that provably never started a runner or worker (no runner identity, "
+            "worker_started=false, no native owner/checkpoint/result file, and the process that "
+            "persisted the intent is gone by PID and creation time). It records the intent as "
+            "failed and releases recovery_pending only; the model's pending job, revision, saved "
+            "file and session protection are left untouched. Pre-0.35.5 intents without a "
+            "recorded launcher stay protected."
+        ),
+    ),
+    confirm_unknown_recovery: Annotated[
+        bool,
+        Field(
+            description=(
+                "Apply only, action=abandon_unknown_recovery (BUG-166): set true to release a "
+                "recovery_pending reservation left by a terminal failed/unknown_outcome/aborted/"
+                "cancelled recovery job once all recorded owners are proven stopped and any saved "
+                "baseline hash matches. Metadata-only: clears recovery_pending, returns the model "
+                "to ready when pending_job is null, never advances revision or modifies disk files, "
+                "and records disk_state_verified=false and session_state_verified=false."
+            ),
+        ),
+    ] = False,
+    budget_seconds: Annotated[
+        int | None,
+        Field(
+            description=(
+                "Optional native recovery phase budget in seconds (30-1800, BUG-166/BUG-171). "
+                "Defaults to config.json recovery_phase_seconds (300 s) with an automatic floor "
+                "scaled by the model's recorded feature, surface and edge counts."
+            ),
+        ),
+    ] = None,
+    verify_mode: Annotated[
+        Literal["identity", "full"] | None,
+        Field(
+            description=(
+                "Apply only, action=restore_baseline: 'identity' (default, fast name/type/units/"
+                "feature_count/volume verification without enumerating thousands of edges) or 'full' "
+                "(deep geometry comparison)."
+            ),
+        ),
+    ] = None,
+) -> dict[str, Any]:
+    """Inspect uncertain owned models without requiring Creo. live=true performs a bounded read-only session preflight. Apply an explicitly selected available action with the returned token, revision, pending_job (null when absent) and a unique 8–80 character idempotency_key. Poll its independent recovery job; never replay the original plan. Execution failures expose reason and failure_phase: before_native refusals release only their own recovery reservation under the channel lock; native_worker_started means dispatch may have begun and unknown_outcome protection remains. restore_baseline keeps revision (default verify_mode='identity'; cross-session safe after Creo restart); accept_saved/live increments once; abandon_new preserves files and archives the model (cross-session safe when inspect used live=false). ack_no_mutation (confirm_zero_mutation=true) records that a failed job changed nothing and returns the model to ready as a metadata transaction: no worker, no Toolkit connection, no file writes, revision unchanged, an audit block under reconciliation and no need to edit model.json by hand. It qualifies for parts, sheetmetal, assemblies and drawings when status=failed, nothing is pending, the checkpoint identity still matches and the failed job's rollback did not fail; it never re-scopes component ownership. ack_failure (confirm_failure_ack=true) is the exit for a terminal failure whose disk or component state cannot be proven: it accepts the failure and returns the model to ready without a worker, without Toolkit, without touching revision, model files or component bindings, and records prior_job_status plus outcome_uncertain (true when the last job ended as unknown_outcome) and disk_state_verified=false under reconciliation. abandon_unknown_recovery (confirm_unknown_recovery=true) releases recovery_pending left by a terminal failed/unknown_outcome recovery job once all owners are proven stopped and any saved baseline hash matches, returning to ready when pending_job is null without advancing revision or rewriting files (disk_state_verified=false). accept_live requires live preflight. Unsupported/unproven ownership is rejected; no Creo restart or user file deletion. confirm_panel_closed (confirm_panel_closed=true) is the exit for a resident panel that refuses every native job for every model: it retires that session-wide guard only after a human confirms the panel is closed, takes no Toolkit call, and leaves this model's status, revision and pending job exactly as they were. A pending job that is read-only is reported separately under readonly_pending: an inspection-only plan cannot change the model, so the exit is creo_cancel_job with that job_id (metadata only, no native work), not one of the actions here."""
+    return await invoke(
+        reconcile,
+        model_id,
+        mode,
+        live,
+        action,
+        expected_revision,
+        None if expected_pending_job_id == "" else expected_pending_job_id,
+        evidence_token,
+        idempotency_key,
+        confirm_zero_mutation,
+        confirm_failure_ack,
+        confirm_panel_closed,
+        confirm_stalled_recovery,
+        confirm_unknown_recovery,
+        budget_seconds,
+        verify_mode,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_adopt_current_model(
+    mode: Literal["inspect", "prepare", "apply"] = "inspect",
+    model_id: str | None = Field(
+        default=None,
+        description="Apply: pending model_id. Inspect with model_id renews prepared-snapshot evidence without copying.",
+    ),
+    evidence_token: str | None = Field(
+        default=None, description="Apply only: the evidence_token returned by inspect."
+    ),
+    model_name: str | None = Field(
+        default=None,
+        description=(
+            "Prepare or file-source apply: managed copy name (1-31 chars of lowercase letters/digits/underscores, "
+            "letter or digit first; uppercase input is normalized to lowercase); defaults to the "
+            "inspect default_model_name and must not exist in the Creo session."
+        ),
+    ),
+    idempotency_key: str | None = Field(
+        default=None,
+        description="Prepare/apply: unique 8-80 letters, digits, underscores or hyphens; use different keys for the two steps.",
+    ),
+) -> dict[str, Any]:
+    """Explicitly adopt the current window model as a managed copy; the original is never saved, erased or renamed. File sources use read-only inspect then evidence-bound apply. A never-saved model requires prepare with an idempotency_key: poll its job and review result.adoption, then apply that model_id/evidence_token with a new key. prepare freezes a copy at native execution time without switching the current window; status stays adopt_pending/revision=0. Confirmation adopts that frozen snapshot at revision=1, displays the managed copy and excludes later edits to the original. inspect(model_id=...) renews ten-minute snapshot evidence without copying. Same-key replay never repeats native execution. Supported: healthy independent part/sheetmetal, millimeters, no external dependencies. Poll accepted jobs only; uncertain outcomes keep protection and resolve through reconcile abandon_new. Upgrade source code then restart the MCP connector and verify runtime identity/tool list before using new modes."""
+    return await invoke(adopt, mode, model_id, evidence_token, model_name, idempotency_key)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_adopt_file(
+    file_path: str | list[str],
+    mode: Literal["inspect", "apply"] = "inspect",
+    evidence_token: str | None = None,
+    idempotency_key: str | None = None,
+) -> dict[str, Any]:
+    """Adopt 1?20 ordered disk paths without displaying or switching windows. Inspect selects an exact numeric version or highest version, reports source provenance and per-item findings, and returns a 600-second evidence token. Apply takes the same paths, token and an 8?80 character idempotency key, returning one parent job_id; poll only that job. Healthy millimeter independent parts/sheetmetal only. Existing unmodified exact-origin resident sources are explicitly labeled existing_resident: disk/resident content equality before inspection is unknown. Absent names are retrieved without display, with any added resident reported. Source files/models are never saved, erased or renamed. Each successful item saves/reloads a separate managed copy at revision 1. Duplicate origins are refused with duplicate_of; already managed origins give reuse guidance. Known refusals continue; unknown execution or commit stops remaining items and retains protection. Replay never executes native work; changed ordered paths, selected bytes or evidence under the key refuse."""
+    return await invoke(adopt_file, file_path, mode, evidence_token, idempotency_key)
+
+
+@mcp.tool(annotations=READ)
+async def creo_list_session_models(
+    limit: int = Field(default=20, ge=1, le=50), cursor: str | None = None
+) -> dict[str, Any]:
+    """List models already in the connected Creo session without loading, saving, activating or adopting them. Returns names/types/current model, origin, has_saved_origin, modified and proven managed IDs; unknown fields are null with query codes. First page uses the single Toolkit channel (busy rejects immediately); cursor pages read the same frozen ten-minute snapshot. Integer session IDs are transient discovery hints, never adoption identities; they may legitimately be 0 or duplicated across model types, so locate models by name plus model_type. session_fingerprint identifies the connection/process session and does not change when session contents change. Partial type queries report complete=false. Switch to the desired model in Creo before adopting it."""
+    return await invoke(list_session_models, limit, cursor)
+
+
+@mcp.tool(annotations=READ)
+async def creo_inspect_session_assembly(
+    name: str,
+    limit: int = Field(default=20, ge=1, le=50),
+    cursor: str | None = None,
+) -> dict[str, Any]:
+    """Read-only inspection of a resident session assembly (FEAT-045). Select an already-loaded assembly by name from creo_list_session_models; the walk returns components in tree order with occurrence paths (component feature ids from the root), parent paths, name/type/origin/modified, resolved, suppressed and packaged flags, per-constraint snapshots (type, offset, orientation, assembly/component references with raw query codes) and full 4x4 transforms: transform_to_parent maps member coordinates into the owning assembly, transform_to_root into the inspected root; row-vector convention (p' = p * M), translation in the last row; transform_to_parent/transform_to_root are normalized full coordinate maps with millimeters on both sides, while transform_to_parent_raw/transform_to_root_raw keep the raw Creo matrices in the source/target model length units; per-node units (component/parent) and assembly length_unit carry real unit names, query codes and millimeter scales, null when unknown (normalized transforms are then null too, never guessed millimeters); when a parent transform or unit query fails, the unknown root transform propagates to descendants while confirmed local transforms stay available; missing components set subtree_not_visited and incomplete, a failed sub-assembly walk records subassembly_visit_code on the returned node, the depth limit (32) sets depth_limited, and a failed root visit reports root_visit_code instead of discarding the report; constraint offsets stay in the owning assembly's length unit. Missing, suppressed and failed nodes are marked per item instead of failing the report; unresolved components keep their occurrence path. Repeated instances are listed separately. First collection uses the single Toolkit channel (busy rejects immediately); cursor pages read the same frozen ten-minute snapshot within 32 KiB. Inspection never loads components, activates, regenerates, saves, adopts or creates managed revisions. Assembly editing/adoption is not part of this tool."""
+    return await invoke(inspect_session_assembly, name, limit, cursor)
+
+
+@mcp.tool(annotations=READ)
+async def creo_plan_assembly_rebuild(
+    snapshot_id: str,
+    component_mapping: list[dict[str, Any]],
+    reference_mapping: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Plan an ordered insert-then-constrain rebuild from a frozen assembly snapshot (FEAT-049). Read-only: no component loading, adoption, save, revision, write job or Toolkit connection. snapshot_id is the snapshot_id returned by creo_inspect_session_assembly (schema_version 3, at most 600 s old, complete and single-level). component_mapping is one entry per snapshot occurrence: {occurrence: occurrence_label or occurrence_path, label: new target component label, source_model_id: managed part/sheetmetal model_id}; every occurrence must be mapped exactly once. reference_mapping maps each source constraint reference: {source: {component: sibling occurrence_label or null for the assembly root, item_type, item_id, side?}, target: execute_plan reference object, target_component?: sibling label for the assembly side, target_side?: yellow|red|none}; references are never inferred across models. The response operations insert every component first (fixed/default placement per the real snapshot semantics, or fixed before constraints) and then set mate/align/mate_offset/align_offset/insert/csys constraints; offsets are converted to millimeters; fixed/default placements stay single placement operations. Every assemble_component carries rebuild_binding (source model, revision, file sha256) that creo_execute_plan re-checks before queueing and the native executor re-checks before loading. Unknown types, missing mappings, unreplayable root references, expired/older snapshots, changed sources, nested occurrences and plans over the 200-operation limit are refused; no operation_results are produced."""
+    return await invoke(plan_assembly_rebuild, snapshot_id, component_mapping, reference_mapping)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_open_file(
+    file_path: str,
+    idempotency_key: str,
+) -> dict[str, Any]:
+    """Retrieve an existing on-disk .prt/.asm into the connected Creo session and display it, read-only. file_path is a Windows absolute path; append an explicit numeric version (e.g. .prt.3) to open exactly that file, otherwise the highest numeric version in the directory is selected and only the extension-only file is used when no numeric version exists. idempotency_key (8-80 letters/digits/underscores/hyphens) replays the same job for the same path and rejects a different path. Submission returns a job_id; poll creo_get_job. The file is never saved, erased, renamed or adopted: a successful open returns model_id=null/adopted=false and creates no managed revision. Same-name/same-type session models cause rejection, and assemblies additionally require a session without parts/assemblies; both checks and the retrieval share one Toolkit channel. An incomplete assembly fails with any residual session objects reported and missing components marked unknown; a display failure is reported separately from retrieval. Source-file identity is recorded at submit and after the job. Opened models are not MCP-managed: adopt with creo_adopt_current_model first if managed editing is needed."""
+    return await invoke(submit_open_file, file_path, idempotency_key)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_erase_session_models(
+    mode: Literal["inspect", "apply"] = "inspect",
+    targets: list[dict[str, Any]] | None = None,
+    evidence_token: str | None = None,
+    idempotency_key: str | None = None,
+) -> dict[str, Any]:
+    """Explicitly erase selected models from the connected Creo session (FEAT-046). Never saves models and never deletes disk files. inspect(targets=[{name, model_type}]) verifies a manifest and returns per-target identity, blocking reasons, the assembly-before-components erase order, the expected remaining session objects and a 600-second evidence_token; targets qualify only when saved (has origin), unmodified, not MCP-managed, not referenced by session models outside the manifest and free of manifest dependency cycles; incomplete session enumeration refuses. apply(evidence_token, idempotency_key) executes exactly the token's manifest under one Toolkit channel lock and returns a job_id; poll creo_get_job. Each item re-verifies identity, modification state and origin before ProMdlErase, and absence is confirmed through two independent queries; a mid-manifest failure stops remaining items and reports erased, unconfirmed and remaining lists without resubmitting. The currently displayed model may be erased when it qualifies. Copy each chosen creo_list_session_models item’s erase_target into targets. Inspect determines eligibility. For a managed model, use creo_reconcile_model."""
+    return await invoke(erase_session_models, mode, targets, evidence_token, idempotency_key)
+
+
+@mcp.tool(annotations=READ)
+async def creo_registry_health(limit: int = 20, cursor: str | None = None) -> dict[str, Any]:
+    """Report registry health without Toolkit (FEAT-047): sizes, 16 MiB budget usage, revision/status, detail forms and ok/warning/over_budget/corrupt/legacy_inline states. Single-entry errors do not end the scan. Whole responses fit 32 KiB, including problem previews; complete counts are retained when previews are shortened. Use limit (1-50, default 20) and next_cursor to traverse all entries. A registry change invalidates its cursor: restart without cursor. Read-only; no files are changed or Creo connection made."""
+    return await invoke(registry_health, limit, cursor)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_migrate_registry(
+    mode: Literal["inspect", "apply"] = "inspect",
+    targets: list[str] | None = None,
+    idempotency_key: str | None = None,
+    limit: int = 20,
+    cursor: str | None = None,
+) -> dict[str, Any]:
+    """Split legacy registry details into controlled sidecars (BUG-077), without Toolkit. inspect is read-only; apply backs up original model/job bytes, writes details first, then atomically publishes controls and an idempotent result. targets contains existing 32-hex model_ids only (omit for all); linked paths and mismatched job/model identities are refused. apply holds the common channel lock and immediately returns busy on contention, queued/running jobs or unproven owners; pending/unknown protections are never cleared. apply requires an 8-80 character idempotency_key: same key and target set replay, changed targets refuse. Every response fits 32 KiB. Use limit (1-50, default 20) and next_cursor with the same mode/targets/key for subsequent pages; apply cursors only read an existing saved result, never start another migration. Registry changes invalidate inspect cursors. Interrupted migrations can resume; no files are deleted, raw native results stay unchanged, and identity/revision/history/read budgets remain intact."""
+    return await invoke(registry_migrate, mode, targets, idempotency_key, limit, cursor)
+
+
+@mcp.tool(annotations=READ)
+async def creo_list_jobs(
+    limit: int = 10,
+    detail: Literal["compact", "full"] = "compact",
+    sections: list[str] | None = None,
+) -> dict[str, Any]:
+    """List recent jobs, including jobs that continue after their MCP client disconnects. detail=compact returns one bounded item per job (job_id, model_id, status, stage, created/finished times, outcome classification and a message capped at 200 characters and by bytes); call creo_get_job with that job_id for result blocks, revision, rollback, save/reload evidence, failure context or pagination. limit is 1-50. sections is accepted for compatibility only and applies to creo_get_job detail=compact, not to these fixed list items; an unknown block name is still rejected with isError listing every known name."""
+    return {"jobs": await invoke(bridge.list_jobs, limit, detail, sections)}
+
+
+def _support_status() -> dict[str, Any]:
+    """Explicit capability boundaries so callers need not infer them (FEAT-008)."""
+    return support_status(families())
+
+
+def _capabilities_payload(tool_entries: list[dict[str, Any]]) -> dict[str, Any]:
+    local_evidence = bridge.ROOT / "build/capability_evidence.json"
+    evidence = (
+        local_evidence
+        if local_evidence.is_file()
+        else bridge.ROOT / "docs/validation_development.json"
+    )
+    verified = bridge.read_json(evidence) if evidence.is_file() else {}
+    if not verified:
+        verified = {"status": "No historical feature summary installed"}
+    loft_evidence = bridge.ROOT / "docs/validation_loft_seed.json"
+    smooth_evidence = bridge.ROOT / "docs/validation_loft_smooth.json"
+    multisection_evidence = bridge.ROOT / "docs/validation_multisection.json"
+    portable_evidence = bridge.ROOT / "docs/validation_portable_modeling.json"
+    increment_evidence = bridge.ROOT / "docs/validation_increment_025.json"
+    verified = {
+        "scope": "v0.2.5 selected-item acceptance is separate from historical feature suites; full Creo coverage is not claimed",
+        "portable_modeling": bridge.read_json(portable_evidence)
+        if portable_evidence.is_file()
+        else {"status": "No portable modeling summary yet"},
+        "development_025": bridge.read_json(increment_evidence)
+        if increment_evidence.is_file()
+        else {"status": "No v0.2.5 acceptance summary installed"},
+        "historical_features": verified,
+        "loft_seed": bridge.read_json(loft_evidence)
+        if loft_evidence.is_file()
+        else {"status": "No loft integration summary yet"},
+        "loft_smooth": bridge.read_json(smooth_evidence)
+        if smooth_evidence.is_file()
+        else {"status": "No smooth Blend integration summary yet"},
+        "loft_multisection": bridge.read_json(multisection_evidence)
+        if multisection_evidence.is_file()
+        else {"status": "No multisection Blend integration summary yet"},
+    }
+    return {
+        "name": "MCP_CREO_MechDog",
+        "version": VERSION,
+        "server_version": VERSION,
+        "update": updates.snapshot(),
+        "runtime": {
+            "python_executable": sys.executable,
+            "server_entry": str(_CODE_ROOT / "server.py"),
+            "code_root": str(_CODE_ROOT),
+            "python_package_root": str(SOURCE_PATHS.code_root),
+            "resource_root": str(SOURCE_PATHS.resource_root),
+            "data_root": str(SOURCE_PATHS.data_root),
+            "job_root": str(bridge.JOBS),
+            "model_root": str(general.MODELS),
+            "source_fingerprints_at_startup": dict(_LOADED_FINGERPRINTS),
+            "source_changed_since_startup": _source_fingerprints() != _LOADED_FINGERPRINTS,
+        },
+        "unit": "mm",
+        "angle_unit": "degrees",
+        "scheduling": {
+            "native_channels": 1,
+            "admission": "reject_busy_without_creating_a_job",
+            "busy_error": "isError=true with matching JSON text and structuredContent",
+            "owner_fields": ["blocking_job_id", "blocking_model_id", "blocking_operation"],
+            "retry_after_seconds": 5,
+            "retry_interval_is_completion_estimate": False,
+            "terminal_contract": "Model finalized under channel lock; job terminal published after release. Another caller may then occupy the channel.",
+            "runner_channel_wait_seconds": 120,
+            "unknown_outcome": "Reservation retained; inspect job.recovery. Explicit startup retry only rechecks the channel and never commits/replays an unknown job.",
+            "disconnect_watchdog_seconds": 20,
+            "queue_guarantees": "No public FIFO, capacity or admission-wait guarantee",
+            "non_native_queries": [
+                "creo_get_job",
+                "creo_list_jobs",
+                "creo_inspect_model",
+                "creo_list_models",
+                "creo_reconcile_model (inspect without live)",
+            ],
+        },
+        "tool_count": len(tool_entries),
+        "enabled_tool_count": len(tool_entries),
+        "disabled_tools_hidden": True,
+        "startup": {
+            "automatic_by_default": True,
+            "status_tool": "creo_startup_status",
+            "readiness": "Toolkit connection verified before modeling admission",
+            "config": ["auto_start_creo", "creo_startup_timeout_seconds", "creo_startup_psf"],
+            "existing_sessions": "Reuse selected/unique session; never close Creo automatically",
+            "unreadable_history": "Archive/rebuild only verified previous-boot startup history, with no existing session and under startup/Toolkit locks; preserve unknown job/model reservations",
+            "boot_verification_budget_seconds": 5,
+        },
+        "unavailable_tools": ["creo_" + name for name in UNAVAILABLE_OPERATIONS],
+        "modeling": "Composable native Creo features; geometry is not restricted to a plate recipe",
+        "entities": [
+            "line",
+            "centerline",
+            "circle",
+            "arc",
+            "polyline",
+            "rectangle",
+            "spline",
+            "b_spline",
+            "ellipse",
+        ],
+        "operations": [op for op in REGISTERED_OPERATIONS if op not in UNAVAILABLE_OPERATIONS],
+        "registered_operations": list(REGISTERED_OPERATIONS),
+        "extrude_modes": ["add", "cut", "surface"],
+        "extrude_depth_types": ["blind", "through_all"],
+        "extrude_directions": ["positive", "negative", "symmetric"],
+        "extrude_through_all_modes": ["cut"],
+        "revolve_modes": ["add", "cut", "surface"],
+        "thin_features": True,
+        "frames": {
+            "XY": "u=+X,v=+Y,normal=+Z",
+            "XZ": "u=+X,v=+Z,normal=-Y",
+            "YZ": "u=+Y,v=+Z,normal=+X",
+        },
+        "tools": tool_entries,
+        "references": reference_capabilities(),
+        "arbitrary_planar_support": "plane={reference:{kind:surface,id:...},origin:[x,y,z],u_axis:[x,y,z]}",
+        "workflow": "submit once -> poll get_job -> inspect model -> choose references -> append using expected_revision",
+        "scope": "MCP-owned native part, sheetmetal, assembly and drawing models; plus read-only retrieval/display of existing on-disk models via creo_open_file. Tool availability does not prove every option or Creo operation is supported; consult validation evidence and coverage documentation.",
+        "support_status": _support_status(),
+        "complete_creo_coverage": False,
+        "seed_library": seeds.list_seeds(),
+        "direct_blend_callback": callback_setup_status(bridge.ROOT / "build"),
+        "release_status": release_status(VERSION),
+        "families": project_worker_availability(
+            families(),
+            bridge.surface_loft_admission_identity(),
+            bridge.channel_health().get("surface_loft_runtime"),
+        ),
+        "known_limitations": list(KNOWN_LIMITATIONS),
+        "plan_examples": list(PLAN_EXAMPLES),
+        "unavailable_operations": UNAVAILABLE_OPERATIONS,
+        "evidence_directory": str(bridge.ROOT / "build"),
+        "verified_evidence": verified,
+    }
+
+
+@mcp.tool(annotations=READ)
+async def creo_capabilities(
+    detail: Literal["compact", "full"] = "compact",
+    section: str | None = None,
+    limit: int = 50,
+    cursor: str | None = None,
+) -> dict[str, Any]:
+    """Describe capability boundaries, tool families, reference syntax and test evidence. Default detail=compact returns one bounded summary page (name/version/tool_count/scope/support_status/operation list/family index/pagination guide). detail=full pages one section at a time with limit and next_cursor from a frozen in-process snapshot (600 s; cursors from an older snapshot or another process are rejected). Pages stay within 32 KiB; a single oversized entry is reported as an oversize marker instead of being truncated. Migration: before 0.4.2 this tool returned the whole document; page detail=full sections (e.g. references, families, evidence) to rebuild it."""
+    tool_entries = [
+        {"name": tool.name, "description": tool.description} for tool in await mcp.list_tools()
+    ]
+    return await invoke(
+        capabilities_response,
+        lambda: _capabilities_payload(tool_entries),
+        detail=detail,
+        section=section,
+        limit=limit,
+        cursor=cursor,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_new_part(model_name: str | None = None) -> dict[str, Any]:
+    """Create a new metric native part with datum planes and coordinate system. Returns model_id and job_id. model_name: 1-31 chars of lowercase letters/digits/underscores, letter or digit first; uppercase input is normalized to lowercase."""
+    return await invoke(general.submit, [], None, model_name)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_new_loft_part(
+    sections: Annotated[list[SketchOp | AirfoilSketchOp], Field(min_length=2, max_length=20)],
+    seed_file: str | None = None,
+    seed_feature_id: int | None = None,
+    label: str = "loft",
+    model_name: str | None = None,
+    assertions: dict[str, Any] | None = None,
+    interpolation: Literal["straight", "smooth"] = "straight",
+) -> dict[str, Any]:
+    """Create a NEW part with a native ordinary Blend by rebinding a saved seed.
+
+    Omit seed_file and seed_feature_id to automatically select a hash-verified
+    installed seed matching section count and interpolation. Alternatively supply
+    both explicit values for a local .prt/.prt.N containing one solid Blend with exactly the same
+    number of independent XY sketch sections, created and selected low Z first,
+    plus its native feature ID. interpolation must match the saved seed's
+    straight/smooth setting: it validates the mode, never converts the seed.
+    Use a dedicated solid seed in mm with one body. The file is
+    snapshotted and never edited. sections must contain 2 to 20 sketch ops
+    on XY with strictly increasing Z offsets; their geometry and dimensions drive the
+    result. Five-section smooth rectangles and spline airfoils have been verified.
+    Two-section rectangles, circles and triangles are also supported. This preserves
+    a native parametric Blend; it is seed reuse, not direct element-tree creation.
+    The native mode is checked after creation, edits and saved-file reload.
+    A failed native load keeps the original API, error code and stage plus the seed
+    identity, SHA256 and the session release; the error alone never names the cause.
+    External Creo 9 reported the tested seeds failing with -16 and a Creo 10
+    three-section success is on record; the current session and the other seeds are
+    unverified, so no minimum Creo version is promised.
+    It does not increase the seed's section count. No existing-target insertion, cut/surface modes or
+    editable tangency/curvature controls; endpoint settings are inherited.
+    Poll the returned job_id and use the resulting model_id for later features.
+    """
+    return await invoke(
+        general.new_loft_part,
+        seed_file,
+        seed_feature_id,
+        [s.model_dump(exclude_none=True) for s in sections],
+        label,
+        model_name,
+        assertions,
+        interpolation,
+    )
+
+
+@mcp.tool(annotations=READ)
+async def creo_list_seeds() -> dict[str, Any]:
+    """Discover bundled/registered native Blend seeds and verify their SHA256. available means matching file bytes only, not current Creo compatibility; listing never connects to Creo and never trial-loads a seed. seed_build_version is null when provenance is unknown; native_compatibility contains bounded historical loads tied to seed SHA256 and native release/session. External Creo 9 reported the tested seeds failing with -16 and a Creo 10 three-section success is on record; the current session and the other seeds are unverified. No manual paths/feature IDs are needed for auto-selected lofts."""
+    return await invoke(seeds.list_seeds)
+
+
+@mcp.tool(annotations=READ)
+async def creo_validate_seed(seed_name: str) -> dict[str, Any]:
+    """Verify a seed's file hash/provenance without connecting Creo and without trial-loading it. available means matching file bytes only, not current Creo compatibility. Unknown seed_build_version stays null; native_compatibility observations are historical, never proof of current-session compatibility. Native load/type/count/mode are additionally checked on actual loft creation and reported separately from overall modeling success."""
+    return await invoke(seeds.validate_seed, seed_name)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_install_seed_library(
+    directory: str | None = None, archive_file: str | None = None
+) -> dict[str, Any]:
+    """Register a local verified library, install its original ZIP, or verify the bundled library. Preserves existing files; never downloads or executes code."""
+    return await invoke(seeds.install_seed_library, directory, archive_file)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_execute_plan(
+    operations: list[Operation] | None = None,
+    model_id: str | None = None,
+    model_name: str | None = None,
+    expected_revision: int | None = None,
+    assertions: dict[str, Any] | None = None,
+    model_type: Literal["part", "sheetmetal", "assembly", "drawing"] = "part",
+    timeout_seconds: int | None = None,
+    plan_file: str | None = None,
+    response_detail: Literal["full", "compact"] = "full",
+) -> dict[str, Any]:
+    """Execute an ordered general feature plan. Omit model_id to create a new model of
+    model_type ("part" by default).
+
+    timeout_seconds optionally raises this job's executor budget above the
+    server default (generic_timeout_seconds, normally 600) for large models;
+    accepted range 60-7200, omitted = server default and unchanged behaviour. The
+    job report echoes the effective budget and whether it came from the job or
+    the server. A longer budget is an upper bound only: a job stops when it
+    finishes, and it is still only one serial Toolkit channel.
+
+    Sheetmetal work must first create the model with creo_new_sheetmetal and wait for its
+    terminal job state, then submit wall/flange operations with model_id and
+    expected_revision; execute_plan never converts an existing solid part into sheetmetal
+    implicitly.
+
+    Sketch/extrude/revolve and later features reference earlier feature labels.
+    Existing models require expected_revision. Stops at first error; existing models
+    roll back to their saved checkpoint. assertions supports require_solid and volume_mm3.
+
+    An extrude may name one closed region of an earlier sketch with
+    region={signature_yz_mm, frame?, tolerance_mm?} instead of consuming the whole
+    sketch (FEAT-069/P1). The signature is matched offline against the sketch's own
+    entity endpoints; exactly one loop must match. A derived sketch with the same
+    plane and copied entities is inserted immediately before the extrude, and the
+    response/job record carries region_adaptation (source label, derived label,
+    signature hash, entity names). Only coordinate-defined sketches with simple
+    closed loops are accepted; circles/rectangles/ellipses cannot be named by a
+    boundary signature, and this is not a native sketch-region selection.
+
+    Main-plane offset is a plane_coordinate: XY -> origin [0,0,offset], normal [0,0,1];
+    YZ -> origin [offset,0,0], normal [1,0,0]; XZ -> origin [0,offset,0], normal
+    [0,-1,0] (negative Y). Extrude/revolve direction ("positive"/"negative") is
+    relative to that normal, so on XZ "positive" moves toward smaller Y. The plane
+    offset is a global model coordinate on the plane's own axis, not a distance
+    along the normal.
+    Each accepted input yields one result with a zero-based index, execution_status
+    (succeeded/failed/not_executed/unknown) and effect_status
+    (committed/rolled_back/no_effect/unknown); succeeded only reports execution, not
+    the final transaction outcome.
+    feature_state delete/suppress/resume changes existing part/sheetmetal features by
+    explicit label or nonnegative feature ID. By default (include_dependencies=false),
+    every affected dependency must be listed; a missing one returns the dependency list
+    and a copyable suggested_targets array and refuses the plan. Set
+    include_dependencies=true to opt into automatically including non-system-required
+    dependent/companion features (reported in auto_included_dependencies). Deleted labels
+    are tombstones and cannot be reused; resume applies only to suppressed targets.
+    round/chamfer use `size` (mm); as a standalone-tool alias they also accept
+    radius (round) or distance (chamfer), but providing the alias together with
+    size is rejected instead of silently preferring one.
+
+    plan_file is an alternative to operations: an absolute local JSON file holding
+    just the operations array. The file is read once (UTF-8, optional BOM), its
+    bytes are hashed and reported back as plan_file.sha256, and duplicate keys,
+    non-finite numbers, UNC/device paths and files over 16 MiB are refused. The
+    parsed array then passes the same capability, revision, busy and transaction
+    admission as an inline plan. Providing both operations and plan_file is
+    rejected.
+
+    response_detail="compact" (FEAT-023) returns job_id/model_id/status/revision,
+    operation_count, the file inputs with their paths and already computed
+    sha256, and the job/output directories instead of echoing the normalized
+    operations. job_id, status and revision keep the same meaning and the job
+    record keeps the full operation array, so creo_get_job still returns it.
+    The default "full" is unchanged.
+
+    The accepted receipt is the queue state, not the result: its revision is the
+    value at submission (0 for a newly created model). Read the terminal
+    revision, status and operation results from creo_get_job with this job_id.
+    """
+    plan_file_record: dict[str, Any] | None = None
+    if plan_file is not None:
+        if operations:
+            raise ValueError("creo_execute_plan accepts either operations or plan_file, not both")
+        operations, plan_file_record = plan_files.load_plan_operations(plan_file)
+        payload = operations
+    else:
+        if not operations:
+            hint_tool = {
+                "assembly": "creo_new_assembly",
+                "sheetmetal": "creo_new_sheetmetal",
+                "drawing": "creo_new_drawing",
+            }.get(model_type, "creo_new_part")
+            raise ValueError(
+                "creo_execute_plan requires a non-empty operations list or plan_file; "
+                f"to create an empty {model_type} model use {hint_tool}"
+            )
+        payload = dump_plan_operations(operations)
+    result = await invoke(
+        general.submit,
+        payload,
+        model_id,
+        model_name,
+        expected_revision,
+        assertions,
+        model_type=model_type,
+        timeout_seconds=timeout_seconds,
+        response_detail=response_detail,
+    )
+    if plan_file_record is not None and isinstance(result, dict):
+        result["plan_file"] = plan_file_record
+    return result
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_create_airfoil_section(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    profile: AirfoilProfile,
+    plane: Literal["XY", "XZ", "YZ"] | dict[str, Any] = "XY",
+    offset: float = 0,
+) -> dict[str, Any]:
+    """Create a native symmetric NACA 00xx spline sketch. chord/origin are mm, twist is degrees about pivot_fraction of chord; finite trailing edge. Parameters can later be updated in place."""
+    return await invoke(
+        general.submit,
+        [
+            dict(
+                op="airfoil_sketch",
+                label=label,
+                plane=plane,
+                offset=offset,
+                profile=profile.model_dump(),
+            )
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_new_airfoil_blade(
+    stations: Annotated[list[AirfoilStation], Field(min_length=2, max_length=20)],
+    model_name: str | None = None,
+    label: str = "blade_blend",
+    interpolation: Literal["straight", "smooth"] = "smooth",
+) -> dict[str, Any]:
+    """Create a new native Blend from varying chord/thickness/twist NACA 00xx sections. Offset is span along +Z, sections lie on XY. Automatically selects a verified matching seed; 2 straight/smooth and 5 smooth are packaged. A failed native load keeps the original API, error code and stage plus the seed identity, SHA256 and the session release; the error alone never names the cause."""
+    sections = []
+    for index, station in enumerate(stations):
+        profile = station.model_dump()
+        offset = profile.pop("offset")
+        sections.append(
+            dict(
+                op="airfoil_sketch",
+                label=f"blade_section_{index + 1}",
+                plane="XY",
+                offset=offset,
+                profile=profile,
+            )
+        )
+    return await invoke(
+        general.new_loft_part,
+        None,
+        None,
+        sections,
+        label,
+        model_name,
+        {"require_solid": True},
+        interpolation,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_set_airfoil_parameters(
+    model_id: str, expected_revision: int, sketch: str, values: AirfoilValues
+) -> dict[str, Any]:
+    """Update an existing airfoil's chord, thickness_ratio, twist_deg, origin or pivot_fraction. Redefines the original native sketch and regenerates its dependents; does not recreate the Blend."""
+    return await invoke(
+        general.submit,
+        [dict(op="update_airfoil", sketch=sketch, values=values.model_dump(exclude_none=True))],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_update_sketch_geometry(
+    model_id: str,
+    expected_revision: int,
+    sketch: str,
+    entities: list[Entity],
+    dimensioning: Literal["auto", "autodim", "coordinates"] = "auto",
+    geometry_tolerance_mm: Annotated[
+        float | None,
+        Field(
+            description=(
+                "Optional post-solve acceptance threshold in mm. Auto with coordinates enforces "
+                "an absolute cap (enforced=true), including translation. The default is 1e-5 mm. "
+                "Mode autodim enforces a supplied tolerance. Explicit coordinates retains its "
+                "documented rigid-translation allowance."
+            )
+        ),
+    ] = None,
+) -> dict[str, Any]:
+    """Replace native sketch geometry in place, preserving the sketch feature ID. Expanded entity names/types must match. The replacement clears old named dimensions/constraints. Arc and ellipse editing need local validation.
+    On any valid sketch plane, auto selects coordinates for supported line, centerline, rectangle, polyline, circle and arc profiles. The default absolute deviation limit is 1e-5 mm, including rigid translation. A positive geometry_tolerance_mm sets that limit. Spline and ellipse use autodim. An explicit autodim edit may use the existing coordinate upgrade on compatible sections; the solver reports requested and used modes.
+    geometry_deviation reports both solver and completed-feature measurements. An identical geometry verified against its actual section can skip re-solving. Missing measurements carry a reason. The explicit coordinates mode retains its rigid-translation allowance. Failed replacement rolls back to the saved model."""
+    return await invoke(
+        general.submit,
+        [
+            dict(
+                op="update_sketch_geometry",
+                sketch=sketch,
+                entities=[e.model_dump() for e in entities],
+                dimensioning=dimensioning,
+                geometry_tolerance_mm=geometry_tolerance_mm,
+            )
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_group_features(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    features: list[str | int],
+    include_between: bool = False,
+    include_support_planes: bool = True,
+) -> dict[str, Any]:
+    """Create a native local feature group. Members must be contiguous; include_between explicitly includes intervening features. Can include the selected sketches' automatically created support planes."""
+    return await invoke(
+        general.submit,
+        [
+            dict(
+                op="feature_group",
+                label=label,
+                features=features,
+                include_between=include_between,
+                include_support_planes=include_support_planes,
+            )
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_reorder_features(
+    model_id: str,
+    expected_revision: int,
+    features: list[str | int],
+    before: str | int | None = None,
+    after: str | int | None = None,
+) -> dict[str, Any]:
+    """Reorder owned native features before or after an anchor; dependency conflicts fail and restore the saved checkpoint."""
+    return await invoke(
+        general.submit,
+        [
+            dict(
+                op="reorder_features",
+                features=features,
+                **{k: v for k, v in {"before": before, "after": after}.items() if v is not None},
+            )
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_axis_pattern(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    leader: str | int,
+    axis: PatternAxis,
+    count: int = 2,
+    increment_deg: float = 180,
+) -> dict[str, Any]:
+    """Create a native angular pattern of a feature or MCP feature group.
+
+    axis is a bare {kind:'axis',id:N} geometry selection or
+    {kind:'datum_axis_feature',label:'axis_label'}. For compatibility, a
+    {kind:'datum_feature',label:'axis_label'} in this parameter means an axis
+    and is normalized to datum_axis_feature. A datum_plane or surface cannot
+    substitute for an axis. Axis must precede the leader; use an independent
+    datum axis and creo_reorder_features if necessary.
+    """
+    return await invoke(
+        general.submit,
+        [
+            dict(
+                op="axis_pattern",
+                label=label,
+                leader=leader,
+                axis=axis,
+                count=count,
+                increment_deg=increment_deg,
+            )
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_transform_geometry(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    references: list[dict[str, Any]],
+    translation: list[float] | None = None,
+    rotation: list[float] | None = None,
+    coordinate_system: dict[str, Any] | None = None,
+    keep_original: bool = False,
+) -> dict[str, Any]:
+    """Create a native rigid transform of whole solid bodies or quilts/datums/curves. Rotation X,Y,Z precedes translation, about fixed supplied csys axes. Each rotation component must stay inside -180..180 degrees: a larger request is refused before submission and the error names the equivalent angle (225 becomes -135), because the kernel only uses that interval. keep_original copies are native features that accumulate inside the same body: every copy takes the whole current body, so an appended copy can fail when it overlaps the copies already there. The failure follows the model state and the angle, not the copy count, and splitting the copies into smaller batches does not avoid it (measured on Creo 12.4), so keep one copy set in one plan and use a separate model when a fixed-original copy is needed. A failure carries failed_transform with the backend, requested and normalized angles, reference count, keep_original and a bounded selection block (requested body ids, selected surface count, model counts at op start); the whole plan rolls back. Body moves use FlexMove and may require Flexible Modeling license. Does not rotate the camera."""
+    return await invoke(
+        general.submit,
+        [
+            dict(
+                op="geometry_transform",
+                label=label,
+                references=references,
+                translation=[0, 0, 0] if translation is None else translation,
+                rotation=[0, 0, 0] if rotation is None else rotation,
+                coordinate_system={"kind": "default_csys"}
+                if coordinate_system is None
+                else coordinate_system,
+                keep_original=keep_original,
+            )
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_set_geometry_transform(
+    model_id: str,
+    expected_revision: int,
+    feature: str,
+    translation: list[float],
+    rotation: list[float],
+) -> dict[str, Any]:
+    """Change a native transform's translation and rotation in place; preserves its feature ID and regenerates downstream geometry. Rotation components share the -180..180 degree range and report the equivalent angle when out of range."""
+    return await invoke(
+        general.submit,
+        [
+            dict(
+                op="set_geometry_transform",
+                feature=feature,
+                translation=translation,
+                rotation=rotation,
+            )
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_create_sketch(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    entities: list[Entity],
+    plane: Annotated[
+        Literal["XY", "XZ", "YZ"] | dict[str, Any],
+        Field(description=PLANE_REFERENCE_DESCRIPTION),
+    ] = "XY",
+    offset: float = 0,
+    dimensions: list[SketchDimension] | None = None,
+    constraints: list[SketchConstraint] | None = None,
+    dimensioning: Literal["auto", "autodim", "coordinates"] = "auto",
+    geometry_tolerance_mm: Annotated[
+        float | None,
+        Field(
+            description=(
+                "Optional post-solve acceptance threshold in mm. Auto with coordinates enforces "
+                "an absolute cap (enforced=true), including translation. The default is 1e-5 mm. "
+                "Mode autodim enforces a supplied tolerance. Explicit coordinates retains its "
+                "documented rigid-translation allowance."
+            )
+        ),
+    ] = None,
+) -> dict[str, Any]:
+    """Create an independent native dimensioned sketch of arbitrary supported entities.
+
+    Principal plane frame table (offset is a global coordinate on the plane's axis):
+      - XY: origin=[0, 0, offset], normal=[0, 0, +1] (+Z), u_axis=+X, v_axis=+Y
+      - XZ: origin=[0, offset, 0], normal=[0, -1, 0] (-Y), u_axis=+X, v_axis=+Z
+            (NOTE: normal is -Y, so extrude direction="positive" moves toward -Y,
+             and direction="negative" moves toward +Y!)
+      - YZ: origin=[offset, 0, 0], normal=[+1, 0, 0] (+X), u_axis=+Y, v_axis=+Z
+    Coordinates are in the chosen plane's (u,v) frame (u = +first axis, v = +second axis).
+    A dictionary plane may pin v_axis or set flip=true; without them the frame follows the
+    selected support normal, so read back normal/u_axis/v_axis instead of assuming the
+    principal-plane table above.
+    Arc angles are degrees CCW; arcs also accept signed sweep_deg instead of end_angle
+    to express >180 deg major arcs directly.
+    Rectangle/polyline expand to named lines e.g. box_0, box_1. spline fits an
+    interpolating curve through points; b_spline writes an exact NURBS with degree,
+    clamped knots, control_points and optional weights (creation-only, no in-place
+    editing). Explicit dimensions have names and entity references; automatic
+    dimensioning fills remaining freedoms.
+    For a dictionary plane, a filter such as {"reference":{"kind":"plane","normal":[0,0,1],
+    "offset":10}} matches an existing planar face of the current model with that normal
+    and offset; it does not create a new plane from the normal.
+    For revolve include exactly one construction centerline, or supply an explicit external
+    axis to creo_revolve: {kind:'datum_axis_feature',label:'axis_label'} or {kind:'axis',id:N}.
+    On any valid sketch plane, auto selects coordinates for supported profiles without explicit
+    dimensions or constraints, including single circles and native B-splines. Spline, ellipse and explicitly dimensioned or
+    constrained profiles in auto use autodim. Explicit coordinates forces coordinate dimensioning.
+    Centerlines are verified as infinite lines (direction and offset); skewed centerlines
+    carry no endpoint dimensions.
+    Multiple disjoint or nested closed loops are supported in one sketch. The result
+    reports analytic input contour/entity counts and the solved native section counts;
+    geometry_deviation reports the post-solve fidelity at both verification points
+    (SectionRegenerate and CompleteFeature): unavailable values are null with a reason,
+    never zero. Auto coordinates rejects missing measurements and absolute deviation above
+    1e-5 mm, including translation. A positive geometry_tolerance_mm sets that limit.
+    Explicit coordinates retains its rigid-translation allowance. Autodim warns above
+    1e-3 mm by default and enforces an explicitly supplied tolerance.
+    sketch_shifted states the post-solve movement at the top level (detected, rigid,
+    translation_mm, max_point_mm, bounded sample); geometry_tolerance_mm is an
+    acceptance threshold, not a solve precision, so accepted_by_request=true means an
+    explicit tolerance let a moved sketch through and the solve was not exact.
+    solid extrude/revolve rejects only profiles proven open, branched, self-intersecting,
+    intersecting, tangent or zero-area from the supplied coordinates.
+    """
+    op = {
+        "op": "sketch",
+        "label": label,
+        "plane": plane,
+        "offset": offset,
+        "entities": [e.model_dump() for e in entities],
+        "dimensions": [d.model_dump() for d in dimensions or []],
+        "constraints": [c.model_dump() for c in constraints or []],
+        "dimensioning": dimensioning,
+        "geometry_tolerance_mm": geometry_tolerance_mm,
+    }
+    return await invoke(general.submit, [op], model_id, None, expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_extrude(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    sketch: str | int,
+    depth: float | None = None,
+    mode: Literal["add", "cut", "surface"] = "add",
+    direction: Literal["positive", "negative", "symmetric"] = "positive",
+    depth_type: Literal["blind", "through_all"] | None = None,
+    new_body: bool = False,
+    thin: float | None = None,
+    scope: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create native extrusion from a sketch label/ID. Supports protrusion, pocket, through cut, symmetric, surface and thin modes.
+    Principal plane normals for direction ("positive" follows normal, "negative" opposes it):
+      - XY: normal=+Z (u=+X, v=+Y); XZ: normal=-Y (u=+X, v=+Z, so +Y is "negative"); YZ: normal=+X (u=+Y, v=+Z).
+    depth_type is "blind" (depth in mm, any mode) or "through_all" (cut mode only; depth is ignored);
+    direction is "positive", "negative" or "symmetric". These enums are the same as the plan
+    operation {"op":"extrude",...}: this tool submits exactly that operation, so the standalone
+    tool and the execute_plan entry accept the same values.
+    Omitting depth or depth_type keeps the existing defaults (1 mm, blind) but is reported honestly:
+    the result operation carries extrude_depth with requested_depth_type/requested_depth_mm (null
+    when omitted), effective_depth_type/effective_depth_mm read from the created feature tree,
+    defaulted_fields and source/query_code. through_all never reports a fabricated blind depth.
+    A cut that removes no material (disjoint sketch, wrong direction or already-removed region) fails and rolls back;
+    a successful cut reports material_removed_mm3 in its operation details. The profile block's
+    material_area_mm2 is the analytic input-sketch area (method=analytic-input), not a kernel-measured
+    removed section; compare it with material_removed_mm3 only as a sanity check, because a partly
+    circular multi-contour profile can differ by about 2% (2026-11-08 Creo 10 feedback).
+    scope limits a cut to one target body: {kind:'bodies', body_ids:[N]} with the body ID from
+    creo_inspect_model (positive or -5778 for Creo's initial body). It applies to mode='cut'
+    (blind or through_all, any direction) with no new_body; feature-label scope, several targets
+    per cut, revolve cuts and new_body are refused before a job is dispatched. The successful
+    operation reports scope_applied with the requested/applied body ids read back from the feature
+    tree plus non_target_bodies_unchanged, which covers the other bodies' surface counts and
+    bounding boxes (null when a query could not complete, never true on missing evidence). A
+    created feature that does not carry the requested scope fails the job with
+    F08_SCOPE_RESOLVE_FAILED and rolls back."""
+    op = {
+        "op": "extrude",
+        "label": label,
+        "sketch": sketch,
+        "mode": mode,
+        "direction": direction,
+        "new_body": new_body,
+    }
+    if scope is not None:
+        op["scope"] = scope
+    if depth is not None:
+        op["depth"] = depth
+    if depth_type is not None:
+        op["depth_type"] = depth_type
+    if thin is not None:
+        op["thin"] = thin
+    return await invoke(general.submit, [op], model_id, None, expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_revolve(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    sketch: str | int,
+    angle: float | None = None,
+    angle_rad: float | None = None,
+    mode: Literal["add", "cut", "surface"] = "add",
+    direction: Literal["positive", "negative", "symmetric"] = "positive",
+    axis: RevolveAxis | None = None,
+    new_body: bool = False,
+    thin: float | None = None,
+) -> dict[str, Any]:
+    """Create native revolve/revolved cut from an arbitrary sketch, about its centerline or an external axis.
+    Supply angle (degrees) OR angle_rad (radians), not both; omitting both defaults to 360 deg.
+    Angles in (360, 360.001] deg (e.g. rounded 2*pi such as 6.28319 rad) clamp to 360 deg and
+    report angle_clamped_from_deg; larger values are rejected.
+    Omit axis (or pass null) to revolve about the sketch's construction centerline; that sketch must
+    contain exactly one centerline. An explicit axis is a bare selection: {kind:'datum_axis_feature',
+    label:'axis_label'} for a datum axis feature created earlier in the same model (create it first,
+    e.g. with creo_datum_axis), {kind:'axis',id:N} from model inspection, or
+    {kind:'sketch_points',start_mm:[u1,v1],end_mm:[u2,v2]} (shorthand {start_mm,end_mm}) in the
+    sketch (u,v) frame so the executor adds or reuses a matching construction centerline in that
+    sketch. Structures without a valid kind or start_mm/end_mm pair (including {entity:'ax'}),
+    empty objects, non-axis kinds and missing id/label are rejected before a job is dispatched;
+    the axis_pattern datum_feature alias does not apply here.
+    A cut that removes no material fails and rolls back; a successful cut reports material_removed_mm3."""
+    op: dict[str, Any] = {
+        "op": "revolve",
+        "label": label,
+        "sketch": sketch,
+        "mode": mode,
+        "direction": direction,
+        "new_body": new_body,
+    }
+    if angle is not None:
+        op["angle"] = angle
+    if angle_rad is not None:
+        op["angle_rad"] = angle_rad
+    if angle is None and angle_rad is None:
+        op["angle"] = 360
+    if axis is not None:
+        op["axis"] = axis
+    if thin is not None:
+        op["thin"] = thin
+    return await invoke(general.submit, [op], model_id, None, expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_hole(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    placement: dict[str, Any],
+    reference1: dict[str, Any],
+    reference2: dict[str, Any],
+    diameter: float | None = None,
+    offset1: float = 0,
+    offset2: float = 0,
+    depth: float | None = None,
+    flip: bool = False,
+    counterbore: dict[str, Any] | None = None,
+    countersink: dict[str, Any] | None = None,
+    standard: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create a native straight hole on a planar face using two independent planar
+    references or coplanar straight edges and signed offsets. For edge references,
+    the placement-face center selects the reference side. Omit depth for through-all;
+    depth makes a blind hole. flip reverses the native cutting side. A hole that removes
+    no material fails and rolls back. Successful operation details include native axes
+    and material_removed_mm3.
+
+    standard={series,size,thread_depth} creates a table-driven threaded hole from the
+    installed hole chart instead of a plain hole: diameter is optional then (it must
+    match the table when given), depth is required, thread_depth must stay inside the
+    drilled tip depth and the table limit. The detail carries thread_metadata (applied
+    row and table identity) and thread_metadata_verified, which is true only when the
+    created feature's own tree reads back the same series, fastener id and thread depth.
+    """
+    op = {
+        "op": "hole",
+        "label": label,
+        "placement": placement,
+        "reference1": reference1,
+        "reference2": reference2,
+        "offset1": offset1,
+        "offset2": offset2,
+        "flip": flip,
+    }
+    if diameter is not None:
+        op["diameter"] = diameter
+    if depth is not None:
+        op["depth"] = depth
+    if counterbore is not None:
+        op["counterbore"] = counterbore
+    if countersink is not None:
+        op["countersink"] = countersink
+    if standard is not None:
+        op["standard"] = standard
+    return await invoke(general.submit, [op], model_id, None, expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_round(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    radius: float,
+    references: Annotated[
+        list[dict[str, Any]],
+        Field(
+            description=(
+                "Set list: [{'edge':{'kind':'edge','id':N}}], a geometric edge selector "
+                "[{'edge':{'kind':'geometry_selector','target':'edge','point_mm':[x,y,z],"
+                "'tolerance_mm':0.5}}] (also accepts endpoints_mm, center_mm+radius_mm, and "
+                "optional feature label), or a face pair "
+                "[{'surfaces':[{'kind':'surface','id':A},{'kind':'surface','id':B}]}] "
+                "where A/B are two existing faces of the current model that share the "
+                "edge to round (example: [{'surfaces':[{'kind':'surface','id':11},"
+                "{'kind':'surface','id':13}]}]). Bare edge objects are not sets."
+            )
+        ),
+    ],
+) -> dict[str, Any]:
+    """Create a native constant-radius fillet on edges or face pairs. Each set is {edge:reference} or {surfaces:[reference,reference]}.
+
+    radius is in mm and maps to the plan-operation field `size` (op="round"):
+    the submitted job echoes it as operations[].size, and the finished job's
+    result.operations[].size repeats the value the native feature applied.
+    Each executed operation also reports measured material evidence
+    (volume_before_mm3, volume_after_mm3, material_delta_mm3 = after - before
+    with material_measurement.status measured/unknown/not_applicable and raw
+    query codes; unestablished values are null, a zero delta is reported as 0)
+    and reference_application with requested_set_count beside the tree-proven
+    applied_set_count (null when the tree cannot prove it).
+    """
+    return await invoke(
+        general.submit,
+        [{"op": "round", "label": label, "size": radius, "references": references}],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_chamfer(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    references: Annotated[
+        list[dict[str, Any]],
+        Field(
+            description=(
+                "Set list: [{'edge':{'kind':'edge','id':N}}], a geometric edge selector "
+                "[{'edge':{'kind':'geometry_selector','target':'edge','point_mm':[x,y,z],"
+                "'tolerance_mm':0.5}}] (also accepts endpoints_mm, center_mm+radius_mm, and "
+                "optional feature label), or a face pair "
+                "[{'surfaces':[{'kind':'surface','id':A},{'kind':'surface','id':B}]}] "
+                "where A/B are two existing faces of the current model that share the "
+                "edge to chamfer (example: [{'surfaces':[{'kind':'surface','id':11},"
+                "{'kind':'surface','id':13}]}]). Bare edge objects are not sets."
+            )
+        ),
+    ],
+    distance: float | None = None,
+    size: float | None = None,
+    chamfer_type: Literal["equal_distance", "distance_angle", "d1_d2"] = "equal_distance",
+    angle_deg: float | None = None,
+    angle_reference: dict[str, Any] | None = None,
+    distance_1: float | None = None,
+    distance_2: float | None = None,
+    reference_surface: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create equal-distance, distance-angle or two-distance native chamfer sets.
+
+    The parameters have the same contract as plan op="chamfer". equal_distance
+    requires size or its distance alias in mm; the submitted job normalizes either
+    to operations[].size. distance_angle also requires angle_deg and the explicit
+    angle_reference face. d1_d2 instead requires positive distance_1/distance_2
+    and reference_surface, and rejects size/distance and angle fields. The D1/D2
+    reference surface is never inferred from edge or face-pair ordering; the
+    per-face direction of the two legs requires target-Creo verification.
+    Each executed operation reports measured material evidence
+    (volume_before_mm3, volume_after_mm3, material_delta_mm3 = after - before
+    with material_measurement.status measured/unknown/not_applicable and raw
+    query codes; unestablished values are null, a zero delta is reported as 0)
+    and reference_application with requested_set_count beside the tree-proven
+    applied_set_count (null when the tree cannot prove it).
+    """
+    operation: dict[str, Any] = {
+        "op": "chamfer",
+        "label": label,
+        "references": references,
+        "chamfer_type": chamfer_type,
+    }
+    optional = {
+        "distance": distance,
+        "size": size,
+        "angle_deg": angle_deg,
+        "angle_reference": angle_reference,
+        "distance_1": distance_1,
+        "distance_2": distance_2,
+        "reference_surface": reference_surface,
+    }
+    operation.update({name: value for name, value in optional.items() if value is not None})
+    return await invoke(general.submit, [operation], model_id, None, expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_datum_plane(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    reference: dict[str, Any],
+    offset: float = 0,
+    angle: float | None = None,
+    axis: dict[str, Any] | None = None,
+    flip: bool = False,
+) -> dict[str, Any]:
+    """Create an offset/angled/three-point datum plane. reference accepts datum_plane
+    geometry ID from inspect_model(datum_planes), planar surface ID, datum_feature
+    label, a plane axis/normal filter, or the three-point form
+    {kind:'through_points',points:[label_a,label_b,label_c]}; ID cannot share
+    axis/normal/offset in that reference.
+    A filter such as {"kind":"plane","axis":"z"} or {"kind":"plane","normal":[0,0,1],
+    "offset":10} matches an existing planar face of the current model with that normal
+    and offset; it does not create a new plane from the normal. angle (including 0)
+    selects the explicit angle mode and requires axis; combining angle with a nonzero
+    offset is rejected before a job is dispatched instead of silently dropping the
+    offset - create the angled plane first, then a second datum_plane offset from it.
+    flip reverses the created plane's normal without moving it; use it when a sketch
+    attached to the plane must keep a predictable v_axis and extrusion direction.
+    axis accepts {kind:'axis',id:N} from model inspection or
+    {kind:'datum_axis_feature',label:'axis_label'} created earlier in the same model;
+    a plane reference or datum_feature plane label is not a rotation axis. Missing
+    kind and unknown labels are rejected before a job is dispatched.
+    angle is signed in degrees and follows the right-hand rule about the measured
+    axis direction. With a +Z axis, +54 rotates the RIGHT plane's +X normal toward
+    +Y. Reversing the axis reverses the rotation for the same signed angle. Read
+    datum_axes.direction and the saved datum_planes.normal/origin with
+    creo_inspect_model(detail='full'), selecting the corresponding section.
+    The three-point form {kind:'through_points',points:[label_a,label_b,label_c]}
+    takes exactly three distinct labels of single-point datum_points features created
+    earlier in the same plan (submit the three datum_points operations and this plane
+    in one creo_execute_plan request); it is mutually exclusive with angle, axis and a
+    nonzero offset, rejects repeated/nearly collinear/unresolvable points, and the
+    external {thru_points:[...]} or {kind:'datum_point_feature',label:...} spellings
+    are refused instead of being passed through - convert them to the through_points
+    form. The three-point job result reports the created plane's read-back frame
+    (plane_frame.normal/origin) and verification evidence.
+    """
+    op = {
+        "op": "datum_plane",
+        "label": label,
+        "reference": reference,
+        "offset": offset,
+    }
+    if flip:
+        op["flip"] = True
+    if angle is not None:
+        op["angle"] = angle
+    if axis is not None:
+        op["axis"] = axis
+    return await invoke(general.submit, [op], model_id, None, expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_datum_axis(
+    model_id: str, expected_revision: int, label: str, references: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Create an axis through two planes, a cylindrical face, straight edge or axis.
+
+    Plane references accept datum_plane geometry IDs from inspect_model(datum_planes),
+    planar surface IDs or datum_feature labels. Feature IDs are not geometry IDs.
+    """
+    return await invoke(
+        general.submit,
+        [{"op": "datum_axis", "label": label, "references": references}],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_dimension_pattern(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    feature: str | int,
+    dimension_id: int,
+    count: int,
+    increment: float,
+) -> dict[str, Any]:
+    """Create a native dimension pattern of a feature. Select a leader dimension ID from inspection, total count and per-member increment."""
+    return await invoke(
+        general.submit,
+        [
+            {
+                "op": "dimension_pattern",
+                "label": label,
+                "feature": feature,
+                "dimension_id": dimension_id,
+                "count": count,
+                "increment": increment,
+            }
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_shell(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    thickness: float,
+    remove_surfaces: list[dict[str, Any]] | None = None,
+    outward: bool = False,
+    body_id: int | None = None,
+) -> dict[str, Any]:
+    """Create native constant-thickness shell, optionally removing selected faces or targeting one body_id."""
+    op: dict[str, Any] = {
+        "op": "shell",
+        "label": label,
+        "thickness": thickness,
+        "remove_surfaces": remove_surfaces or [],
+        "outward": outward,
+    }
+    if body_id is not None:
+        op["body_id"] = body_id
+    return await invoke(
+        general.submit,
+        [op],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_set_dimensions(
+    model_id: str, expected_revision: int, values: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Modify native model dimensions by IDs returned in inspection. values=[{id:int,value:float,expected_value?:float,expected_symbol?:str,expected_owner?:str|int}]. Optional expected_* pins are checked against the live dimension before the first write: a mismatch, an unknown pin target (symbol/owner/value not readable) or a relation-driven dimension refuses the whole plan, so a stale plan cannot move a shifted dimension. Regenerate, save and verify."""
+    return await invoke(
+        general.submit,
+        [{"op": "set_dimensions", "values": values}],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_mirror(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    plane: dict[str, Any],
+    references: list[dict[str, Any]] | None = None,
+    keep_original: bool = True,
+) -> dict[str, Any]:
+    """Create native geometry/whole-part mirror about a planar reference. Omit references for whole part.
+
+    Toolkit geometry references are curves, axes, quilts, points, csys or a part.
+    Feature-subtree mirroring is not supported by this API; do not supply feature selections.
+    """
+    return await invoke(
+        general.submit,
+        [
+            {
+                "op": "mirror",
+                "label": label,
+                "plane": plane,
+                "references": references or [],
+                "keep_original": keep_original,
+            }
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_sweep(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    trajectory: str | int | list[dict[str, Any]],
+    profile: list[Entity],
+    dimensions: list[SketchDimension] | None = None,
+    constraints: list[SketchConstraint] | None = None,
+    mode: Literal["add", "cut", "surface"] = "add",
+    thin: float | None = None,
+    new_body: bool = False,
+    capped: bool = False,
+) -> dict[str, Any]:
+    """Create a native constant-section sweep along sketch curves or selected curve/edge references.
+
+    Profile coordinates are local (u,v) in Creo's generated section frame at the path start.
+    Named profile dimensions can be edited using creo_set_sketch_dimensions with this label.
+    """
+    op = {
+        "op": "sweep",
+        "label": label,
+        "trajectory": trajectory,
+        "profile": [e.model_dump() for e in profile],
+        "dimensions": [d.model_dump() for d in dimensions or []],
+        "constraints": [c.model_dump() for c in constraints or []],
+        "mode": mode,
+        "new_body": new_body,
+        "capped": capped,
+    }
+    if thin is not None:
+        op["thin"] = thin
+    return await invoke(general.submit, [op], model_id, None, expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_loft(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    sections: list[str | int],
+    mode: Literal["add", "cut", "surface"] = "add",
+    interpolation: Literal["straight", "smooth"] = "straight",
+    new_body: bool = False,
+) -> dict[str, Any]:
+    """Append a native solid Blend using independent MCP-owned XY sketches, ordered by increasing Z.
+
+    Straight/smooth, default-body add only. Cut, surface and new_body are rejected.
+    Query creo_callback_status before modeling. Register its registry_file once per
+    loader/SDK generation and start it manually under every loader policy. Payload
+    upgrades normally require restarting Creo and starting the same registration.
+    Missing, mismatched or unverified callbacks reject before model mutation with
+    BLEND_CALLBACK_SETUP_REQUIRED, whose callback_free_route field names the
+    callback-free alternative: creo_new_loft_part creates a NEW part from a
+    published seed instead. Query creo_list_seeds for that route and for the
+    section_count/interpolation/seed_feature_id each seed requires; explicit
+    seed_file plus seed_feature_id are checked for compatibility before a job
+    is submitted. MCP never loads DLLs or changes security policy.
+    sections accepts sketch labels or integer feature IDs; digit-only strings are
+    normalized to feature IDs for public-client compatibility. References must be distinct.
+    """
+    return await invoke(
+        general.submit,
+        [
+            {
+                "op": "loft",
+                "label": label,
+                "sections": sections,
+                "mode": mode,
+                "interpolation": interpolation,
+                "new_body": new_body,
+            }
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_draft(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    surfaces: list[dict[str, Any]],
+    neutral_plane: dict[str, Any],
+    angle: float,
+    pull_direction: dict[str, Any] | None = None,
+    flip: bool = False,
+    include_tangent: bool = False,
+) -> dict[str, Any]:
+    """Create a native constant-angle, unsplit draft using selected surfaces and a neutral plane.
+
+    Pull direction defaults to the neutral plane normal and can use a datum plane or axis.
+    flip=false follows that reference direction and flip=true reverses it. The signed
+    angle is independent of flip. For an outside cylindrical boss with the neutral
+    plane at its base and pull toward its free end, a positive angle narrows that end.
+    The result reports measured material evidence (volume_before_mm3,
+    volume_after_mm3, material_delta_mm3 = after - before with
+    material_measurement status/query codes; unestablished values are null), so
+    material changes are visible from the signed delta. draft_geometry reads the
+    created feature tree. requested_flip echoes the argument, and effective_flip
+    (also flip) is true when the tree reverses the pull reference. The response
+    includes the signed angle and the reference pull_vector. For plane references,
+    applied_pull_vector gives the model-space direction after reversal. Unavailable
+    values are null. A failed create publishes draft_failure with the request,
+    the bounded element_errors sample and classification
+    (kernel_element_error / no_element_evidence) plus a next action.
+    reference_application separates requested_set_count from the tree-proven
+    applied_set_count.
+    """
+    op = {
+        "op": "draft",
+        "label": label,
+        "surfaces": surfaces,
+        "neutral_plane": neutral_plane,
+        "angle": angle,
+        "flip": flip,
+        "include_tangent": include_tangent,
+    }
+    if pull_direction is not None:
+        op["pull_direction"] = pull_direction
+    return await invoke(general.submit, [op], model_id, None, expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_new_sheetmetal(
+    model_name: str | None = None,
+    template: Literal["conversion", "native_planar"] = "conversion",
+) -> dict[str, Any]:
+    """Prepare a metric sheetmetal model. `template` decides which first wall it can host.
+
+    template="conversion" (default) starts from the solid template; the first wall is created
+    by creo_sheetmetal_wall, whose thin extrusion converts the body to sheetmetal.
+    template="native_planar" starts from Creo's own sheetmetal template, which is the only kind
+    of part that can host creo_sheetmetal_planar_wall (the native unattached planar wall); a
+    solid-template part cannot be switched to the sheetmetal subtype later. Wait for this job's
+    terminal state before submitting wall operations. creo_execute_plan without model_id creates
+    a plain part by default and never converts an existing solid part into sheetmetal implicitly.
+    """
+    return await invoke(
+        general.submit,
+        [],
+        None,
+        model_name,
+        model_type="sheetmetal",
+        template_name=("mmns_part_sheetmetal_abs.prt" if template == "native_planar" else None),
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_sheetmetal_wall(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    sketch: str | int,
+    depth: float,
+    thickness: float,
+    direction: Literal["positive", "negative"] = "positive",
+) -> dict[str, Any]:
+    """Create the first flat sheetmetal wall from an open straight-line sketch, depth and thickness.
+
+    Frame contract: depth grows one-sided along the signed sketch normal (direction=positive
+    grows toward +normal, direction=negative toward -normal); thickness is the sheet gauge
+    spread centered on the sketch line, in-plane perpendicular to it. Standard horizontal
+    base plate (185x232x1, bbox X+-92.5/Y+-116/Z[0,1], COG (0,0,0.5)): sketch on YZ with
+    offset 92.5, one open line (-116,0.5)->(116,0.5), then depth=185, thickness=1,
+    direction=negative (see examples/sheetmetal_base_yz.json). The wall_contract echo
+    reports the measured frame (frame.sketch_normal/depth_direction/thickness_direction/
+    material_side), wall_face_ids (the green/white faces a flange attaches to) and the
+    measured part thickness - volume alone cannot reveal a swapped depth/thickness pair or
+    the wrong wall-face orientation, so compare the echo against your target axes. When
+    thickness >= depth a non-blocking parameter_hint restates the measured axes; legal
+    thick gauges are never rejected. The native tree contains the driving sketch, thin
+    extrusion and sheetmetal conversion. Use flange tools for subsequent bent walls.
+    Curved or closed first-wall sketches are not validated.
+    """
+    return await invoke(
+        general.submit,
+        [
+            {
+                "op": "sheetmetal_wall",
+                "label": label,
+                "sketch": sketch,
+                "depth": depth,
+                "thickness": thickness,
+                "direction": direction,
+            }
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_sheetmetal_planar_wall(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    length: float,
+    width: float,
+    thickness: float,
+    plane: Literal["XY", "XZ", "YZ"] = "XY",
+    direction: Literal["positive", "negative"] = "positive",
+    origin: list[float] | None = None,
+) -> dict[str, Any]:
+    """Create the first sheetmetal wall as a native unattached planar wall.
+
+    The wall is Creo's Fill tree with the sheetmetal branch, so it needs a model created by
+    creo_new_sheetmetal(template="native_planar") that still has no geometry; this direct route
+    needs the sheetmetal subtype, so a solid-template sheetmetal model is refused natively (it
+    keeps its revision and stays editable). The rectangle runs 0..length along the sketch u axis
+    and 0..width along v on `plane`; direction=positive grows toward the reported sketch normal,
+    direction=negative toward the opposite side, verified on XY, XZ and YZ. `origin=[u0,v0]` (mm,
+    optional) starts the rectangle at u0,v0 instead, e.g. origin=[-92.5,-116] with
+    185x232x1 spans [-92.5,-116]..[92.5,116] around the model origin; the plane frame and the
+    growth direction are unchanged and a resize keeps the recorded origin. The op also creates
+    the feature <label>_sk, so both names must be free (the plan is refused when either name
+    exists, was deleted, or repeats inside the same plan). Verification is measured, not echoed:
+    read the planar_wall block on the job result (creo_get_job detail=compact keeps it) with
+    feature_id, origin, dimension_count (4+ point dimensions, so a square is not silently
+    under-constrained), volume_mm3, thickness_validation (status, source, value_mm, reason,
+    context), and the signed envelope (envelope.u/v/n min/max). thickness_validation is the
+    source-aware gauge verdict. thickness_measured_mm/thickness_verified describe only the body
+    API readback; they can remain null/false when geometry_normal_span verifies the gauge.
+    thickness_api_scope/thickness_api_reason and thickness_fallback_source explain that case. Use
+    creo_resize_sheetmetal_planar_wall to change the rectangle; do not rebuild the wall. A flange
+    can attach to this wall, which then makes the wall a parent of that feature.
+    """
+    payload = await invoke(
+        general.submit,
+        [
+            {
+                "op": "sheetmetal_planar_wall",
+                "label": label,
+                "plane": plane,
+                "length": length,
+                "width": width,
+                "thickness": thickness,
+                "direction": direction,
+                "origin": list(origin) if origin is not None else [0.0, 0.0],
+            }
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+    return payload
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_resize_sheetmetal_planar_wall(
+    model_id: str,
+    expected_revision: int,
+    feature: str,
+    length: float,
+    width: float,
+) -> dict[str, Any]:
+    """Resize a native planar wall in place, keeping its feature identity and gauge.
+
+    The resize drives the wall's own sketch coordinate dimensions, so the wall feature id and
+    the sheet thickness do not change and unrelated constraints are not rebuilt. Only walls
+    created by creo_sheetmetal_planar_wall can be resized; a wall with downstream dependencies
+    (child features, e.g. a flange attached to it), an unknown label or a wall made by another
+    operation is refused before a job exists instead of being silently rebuilt. Before editing,
+    the gauge is re-read from the saved file, so a wall whose thickness did not survive a
+    save/reload is refused too. Verify with the planar_wall block on the job result (creo_get_job
+    detail=compact keeps it): feature_id must equal feature_id_before, feature_id_unchanged must
+    be true, volume_mm3 must equal length*width*thickness, both thickness_validation and
+    thickness_loaded_validation must verify the recorded gauge in their stated contexts, and
+    the signed envelope must match the recorded direction. thickness_measured_mm and
+    thickness_loaded_mm are body API readbacks only; either can be null when a validated
+    geometry_normal_span fallback is used. The corresponding *_api_scope, *_api_reason and
+    *_fallback_source fields explain the API result and fallback.
+    """
+    payload = await invoke(
+        general.submit,
+        [
+            {
+                "op": "resize_sheetmetal_planar_wall",
+                "feature": feature,
+                "length": length,
+                "width": width,
+            }
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+    return payload
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_sheetmetal_base_flange(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    section: list[dict[str, Any]],
+    width: float,
+    thickness: float,
+    radius: float = 1.0,
+    k_factor: float = 0.5,
+    plane: Literal["XY", "XZ", "YZ"] | dict[str, Any] = "XY",
+    origin: list[float] | None = None,
+    expected_width_direction_world: list[float] | None = None,
+    width_direction_tolerance_deg: float = 0.5,
+    direction: Literal["positive", "negative"] = "positive",
+    flip_thickness: StrictBool = False,
+) -> dict[str, Any]:
+    """Create a first sheetmetal wall from an open two-line (90 degree) chain, as two features.
+
+    This is a COMPOSED operation, not one base-flange feature. `section` must be exactly two
+    straight lines sharing one endpoint and perpendicular to each other (90 degree bend only);
+    each line is {type:"line", start:[u,v,0], end:[u,v,0]} in sketch coordinates. The first leg
+    becomes a native unattached planar wall (label, plus its sketch label_sk) and the second leg
+    becomes a 90 degree flange (label_leg2) attached to that wall's free end edge - the edge is
+    found by geometry from the wall's own measured frame, never by a guessed element id.
+
+    Default contract (Creo 12.4.0.0, DEV-089 T3):
+    - the sheet is thickened one-sided along +normal; the flange grows on the opposite side of
+      the plate and its gauge stays inside the plate's end face;
+    - `second_leg_mm` is the free second leg measured from the plate's outer face, so the native
+      flange height is second_leg + thickness;
+    - the composed envelope is first_leg x width x (second_leg + thickness);
+    - Y = k_factor * pi / 2 is passed to the flange; k_factor must be in (0, 1];
+    - the composed volume is (first_leg + second_leg) * width * thickness minus the quarter
+      annulus between radius and radius + thickness, and the job fails if the measured volume or
+      the signed envelope leaves that bound (1 mm3 or 0.5%, whichever is larger).
+    Only the chain's leg lengths and its 90 degree corner reach the features; `origin=[u0,v0]`
+    shifts the whole rectangle in the sketch frame like creo_sheetmetal_planar_wall. Because the
+    wall is a first wall, the model must be an empty sheetmetal model from
+    creo_new_sheetmetal(template="native_planar"). The label is limited to 22 characters (the
+    operation also creates <label>_sk and <label>_leg2), and all three names must be free.
+    Verification is measured: read the operation result's composed_features (the two real
+    features with their ids), first_leg_mm/second_leg_mm/width_mm/thickness_mm/radius_mm/
+    k_factor/y_factor, volume_mm3 against expected_volume_mm3, and envelope.u/v/n.
+
+    A dictionary plane sets a verified support reference and optional origin/u_axis;
+    width runs along the resulting v axis, including model X on a suitable frame.
+    direction selects the initial wall's signed gauge side. flip_thickness=true
+    extends the flange gauge past the first wall's free end by the sheet thickness.
+
+    expected_width_direction_world / width_direction_tolerance_deg are the same assertion
+    creo_execute_plan accepts (BUG-129): when the measured width direction differs from the
+    expected world vector by more than the tolerance, the job fails and rolls back. They only
+    assert; they never rotate the wall, so a mismatch means choosing another plane or the
+    planar_wall + flange path.
+    """
+    operation: dict[str, Any] = {
+        "op": "sheetmetal_base_flange",
+        "label": label,
+        "plane": plane,
+        "section": section,
+        "width": width,
+        "thickness": thickness,
+        "radius": radius,
+        "k_factor": k_factor,
+        "origin": list(origin) if origin is not None else [0.0, 0.0],
+    }
+    if direction != "positive":
+        operation["direction"] = direction
+    if flip_thickness is not False:
+        operation["flip_thickness"] = flip_thickness
+    if expected_width_direction_world is not None:
+        operation["expected_width_direction_world"] = list(expected_width_direction_world)
+        operation["width_direction_tolerance_deg"] = width_direction_tolerance_deg
+    payload = await invoke(
+        general.submit,
+        [operation],
+        model_id,
+        None,
+        expected_revision,
+    )
+    return payload
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_sheetmetal_flange(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    edge: Annotated[
+        dict[str, Any],
+        Field(
+            description=(
+                "Bare edge selection without a reference/edge wrapper. Use {kind:'edge',id:N} "
+                "with the current id from creo_inspect_model, or {kind:'edge_geometry',"
+                "endpoints_mm:[[x,y,z],[x,y,z]],tolerance_mm:1e-6} naming the two straight-edge "
+                "endpoints in millimetres: the native side re-queries the model on every "
+                "operation and requires exactly one undirected match, so the plan survives a "
+                "rebuild that renumbers edges."
+            )
+        ),
+    ],
+    height: float,
+    angle: float = 90,
+    radius: float = 1,
+    flip: bool = False,
+    y_factor: float = 0.5,
+    relief: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description=(
+                "Optional bend-end relief {type:'none'|'rectangular', "
+                "ends:'both'|'side1'|'side2', width:model units, depth:model units}. "
+                "Omit it for the previous behaviour (no relief on either end). rectangular "
+                "requires width>0 and depth>=0; both are absolute model units and are not "
+                "scaled by the sheet thickness. Rip/stretch/obround/param, corner relief "
+                "and edge rips are not supported; miter cuts are only the flange-time "
+                "miter_cuts section, never bend-end relief. "
+                "Relief is fixed when the flange is created: change it by "
+                "deleting/re-creating the flange, not in place."
+            )
+        ),
+    ] = None,
+    end_trim_mm: Annotated[
+        float | None,
+        Field(
+            description=(
+                "Optional positive length in model units: shorten the wall at both chain "
+                "ends (both depth sides become blind with this offset). Omit it for the "
+                "full-edge wall. Diagnostic use first: run one free-wall probe before "
+                "trusting the trimmed geometry."
+            )
+        ),
+    ] = None,
+    miter_cuts: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description=(
+                "Optional native miter cuts {width:model units>0, offset:model units>=0; "
+                "offset defaults to width}, written as the literal BLIND width/offset of "
+                "the flange's own PRO_E_SMT_MTR_CUTS section. This is the only way a flange "
+                "whose attachment-edge ends abut existing bends passes the "
+                "adjacent_bend_ends guard (without it the wall is still refused before "
+                "create). The element-tree echo is read back from the created feature; the "
+                "geometry a given width/offset removes is not quantified yet."
+            )
+        ),
+    ] = None,
+    flip_thickness: StrictBool = False,
+) -> dict[str, Any]:
+    """Attach a native bent flange to a sheetmetal edge. The section exposes named height for dimension edits.
+
+    flip reverses the flange's extension relative to the attachment face.
+    flip_thickness=true places the flange gauge past the free end of the parent wall
+    on the validated straight 90-degree route. By default the gauge stays within the
+    end face. Both directions are relative to the attachment. A wall whose attachment-edge
+    end is adjacent to an existing bend is
+    rejected before creation (failure_reason=adjacent_bend_ends) unless the request
+    carries miter_cuts; that explicit native miter request releases the guard and lets
+    Creo cut the end overlap (four-wall boxes use this route).
+
+    Attachable edges are the boundaries of the green/white wall faces (the wall faces are
+    wall_contract.wall_face_ids of the base wall); an edge shared by two side/rim surfaces
+    is refused with PRO_TK_BAD_CONTEXT (-8) and a correction hint naming the sketch
+    plane/direction recipe. Inspection of a sheetmetal part carries a bounded
+    wall_contour_check block (one ProSmtedgeContourGet query per edge, real query codes
+    preserved; eligible|ineligible|unknown is projected from those codes): eligible means
+    the edge lies on a wall contour, NOT that a flange will succeed - adjacent_bend_ends
+    and the native geometry checks still reject at creation. Select edges by geometry from
+    the current inspection (endpoint coordinates, adjacent surfaces), never by a
+    historical edge id.
+
+    Optional relief adds a single rectangular notch to the selected bend end(s); without it
+    both ends keep PRO_BEND_RLF_NONE exactly as before. Relief geometry is not verified
+    against the corner overlap and the flange keeps no in-place relief edit.
+    """
+    operation: dict[str, Any] = {
+        "op": "sheetmetal_flange",
+        "label": label,
+        "edge": edge,
+        "height": height,
+        "angle": angle,
+        "radius": radius,
+        "flip": flip,
+        "y_factor": y_factor,
+    }
+    if flip_thickness is not False:
+        operation["flip_thickness"] = flip_thickness
+    if relief is not None:
+        operation["relief"] = relief
+    if end_trim_mm is not None:
+        operation["end_trim_mm"] = end_trim_mm
+    if miter_cuts is not None:
+        operation["miter_cuts"] = miter_cuts
+    return await invoke(general.submit, [operation], model_id, None, expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_sheetmetal_unbend(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    fixed_surface: dict[str, Any],
+    references: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Unbend a native sheetmetal part about a fixed surface. Omit references to unbend all bends.
+
+    fixed_surface is a bare reference object such as {"kind":"surface","id":N} taken from
+    model inspection: the geometry kept fixed while the selected bends unfold. references
+    selects individual bends to unbend; omitting them targets all bends. A datum_plane or
+    edge reference is rejected before any feature exists. wall_contract.wall_face_ids of
+    the base wall lists the wall faces; whether the chosen geometry can actually stay
+    fixed is decided by the native executor and must be proven per case - there is no
+    blanket "any surface works" guarantee."""
+    return await invoke(
+        general.submit,
+        [
+            {
+                "op": "sheetmetal_unbend",
+                "label": label,
+                "fixed_surface": fixed_surface,
+                "references": references or [],
+            }
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_sheetmetal_flat_pattern(
+    model_id: str, expected_revision: int, label: str, fixed_surface: dict[str, Any]
+) -> dict[str, Any]:
+    """Create a native flat-pattern feature about a fixed sheetmetal surface.
+
+    fixed_surface is a bare reference object such as {"kind":"surface","id":N} taken from
+    model inspection; a datum_plane or edge reference is rejected before any feature
+    exists, and the native executor decides whether that geometry can stay fixed (proven
+    per case, no blanket guarantee)."""
+    return await invoke(
+        general.submit,
+        [
+            {
+                "op": "sheetmetal_flat_pattern",
+                "label": label,
+                "fixed_surface": fixed_surface,
+                "references": [],
+            }
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_sheetmetal_bend_back(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    fixed_surface: dict[str, Any],
+    references: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Refold previously unbent sheetmetal about a fixed surface. Omit references to bend back all bends.
+
+    fixed_surface is a bare reference object such as {"kind":"surface","id":N} taken from
+    model inspection; a datum_plane or edge reference is rejected before any feature
+    exists, and the native executor decides whether that geometry can stay fixed (proven
+    per case, no blanket guarantee)."""
+    return await invoke(
+        general.submit,
+        [
+            {
+                "op": "sheetmetal_bend_back",
+                "label": label,
+                "fixed_surface": fixed_surface,
+                "references": references or [],
+            }
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_new_assembly(model_name: str | None = None) -> dict[str, Any]:
+    """Create a native metric assembly with default datum planes from the locally installed template."""
+    return await invoke(general.submit, [], None, model_name, model_type="assembly")
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_assemble_component(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    source_model_id: str,
+    translation: list[float] | None = None,
+    rotation: list[float] | None = None,
+    placement: Literal["fixed", "default", "constraints", "packaged"] = "fixed",
+    constraints: list[dict[str, Any]] | None = None,
+    rotation_matrix: RotationMatrix | None = None,
+) -> dict[str, Any]:
+    """Insert a revision snapshot of a verified MCP part/sheetmetal model as a native assembly component.
+
+    Translation is XYZ mm; rotation is XYZ Euler degrees, applied X then Y then Z.
+    Alternatively use a nested 3x3 rotation_matrix: row vectors, local to parent,
+    p_parent = p_local * rotation_matrix + translation. Matrix and explicit Euler
+    are mutually exclusive; matrix must be finite, orthogonal and det +1 within 1e-7.
+    Sources must be ready and saved; later source edits do not update the component snapshot.
+    Native placement can be fixed, packaged (positioned at the given transform with zero constraints), default or mate/align/insert/csys constraints. A managed assembly may also be a source: it is copied like a part, so its own file and components are never moved, and the receipt names source_model_type, source_snapshot and component_count (drawings are refused).
+    """
+    return await invoke(
+        general.submit,
+        [
+            {
+                "op": "assemble_component",
+                "label": label,
+                "source_model_id": source_model_id,
+                "translation": translation or [0, 0, 0],
+                **({"rotation": rotation} if rotation is not None else {}),
+                **({"rotation_matrix": rotation_matrix} if rotation_matrix is not None else {}),
+                "placement": placement,
+                "constraints": constraints or [],
+            }
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_component_placement(
+    model_id: str,
+    expected_revision: int,
+    component: str | int,
+    translation: list[float],
+    rotation: list[float] | None = None,
+    rotation_matrix: RotationMatrix | None = None,
+) -> dict[str, Any]:
+    """Replace component constraints with fixed placement. Translation is XYZ mm.
+
+    Use XYZ Euler rotation degrees (X then Y then Z), or a nested 3x3 rotation_matrix,
+    never both. Row-vector mapping: p_parent = p_local * rotation_matrix + translation.
+    Matrix requires finite real numbers, orthogonality and det +1 within 1e-7.
+    """
+    return await invoke(
+        general.submit,
+        [
+            {
+                "op": "component_placement",
+                "component": component,
+                "translation": translation,
+                **({"rotation": rotation} if rotation is not None else {}),
+                **({"rotation_matrix": rotation_matrix} if rotation_matrix is not None else {}),
+            }
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_component_constraints(
+    model_id: str, expected_revision: int, component: str | int, constraints: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Replace native component placement with mate/align/offset/insert/csys constraints to assembly references."""
+    return await invoke(
+        general.submit,
+        [{"op": "component_constraints", "component": component, "constraints": constraints}],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        read_only_hint=False, destructive_hint=True, idempotent_hint=False, open_world_hint=False
+    )
+)
+async def creo_remove_component(
+    model_id: str, expected_revision: int, component: str | int
+) -> dict[str, Any]:
+    """Remove a component feature from this MCP assembly, preserving its source model and native file."""
+    return await invoke(
+        general.submit,
+        [{"op": "remove_component", "component": component}],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=READ)
+async def creo_list_components(
+    model_id: str,
+    fields: list[str] | None = None,
+    limit: int = Field(default=50, ge=1, le=200),
+    cursor: str | None = None,
+) -> dict[str, Any]:
+    """Read the last verified assembly component list, native transforms and placement status.
+
+    A list that fits the 32 KiB response budget is returned whole, in the
+    historical shape. A larger list is returned page by page: every page states
+    total/offset/returned_count/complete and carries next_cursor until the end.
+    The cursor is bound to the model revision, the field projection and a
+    snapshot of the records, so a revision change refuses the old cursor instead
+    of re-slicing a different list. fields selects the record keys to return
+    (omit for every key); a single record above the entry budget is reported as
+    an oversize marker rather than truncated.
+    """
+    from creo_mechdog import component_identity, component_pages, model_registry
+
+    model = await invoke(general.model_info, model_id)
+    if model.get("model_type") != "assembly":
+        raise ToolError("Assembly model required")
+    # FEAT-023/T09A: business labels and source identity are projected onto the
+    # component records by model identity + feature_id; the physical c_<job>
+    # copy names stay as reported by the native inspection.
+    projection = component_identity.project_component_identities(
+        model, (model_registry.inspection_of(model) or {}).get("components", [])
+    )
+    return component_pages.component_page(
+        model_id,
+        model["revision"],
+        projection["components"],
+        aliases=model_registry.aliases_of(model),
+        deleted_identities=projection["deleted_identities"],
+        identity_key=projection["identity_key"],
+        fields=fields,
+        limit=limit,
+        cursor=cursor,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_recolor_assembly(
+    model_id: str,
+    expected_revision: int,
+    palette: dict[str, Any] | None = None,
+    families: dict[str, Any] | None = None,
+    refresh_baseline: bool = False,
+    random: bool = False,
+    dry_run: bool = False,
+    limit: int = Field(default=50, ge=1, le=50),
+    cursor: str | None = None,
+) -> dict[str, Any]:
+    """Paint the components of an MCP-managed single-level assembly by part family (FEAT-052); colors are written at the assembly component level and source part files keep their exact bytes. Omit families for automatic grouping by the component binding's unique source_model_id (palette keys may be those source model ids or a unique component label, which resolves to its single source family; a label covering several families is refused with the conflicting ids); pass families={family: [component labels or feature IDs]} for explicit families whose names follow the project label rule (lowercase start, [a-z0-9_], at most 28 characters). The family table must assign every checkpoint component exactly once: duplicated or omitted components are refused with their identities listed, an entry matching no component is reported as unmatched (never invented or guessed), an ambiguous label that matches several components is refused (select those by feature ID), and in execute_plan an entry naming a component created by the same plan's assemble_component is refused - only components that already exist before the plan runs may be painted. Automatic grouping refuses components with missing or conflicting sources (multi-bound or unlabeled) and asks for an explicit family table instead. RGB colors are three finite numbers in 0..1; booleans are refused even nested in lists. random=true replaces the palette with deterministic per-family colors (golden-ratio hue stepping over the sorted family set) and is mutually exclusive with palette; both dry_run and execute echo palette_source (explicit, family_label or random) and the resolved palette, and the job always records explicit colors so a replay never re-runs the generator. The execute_plan recolor_assembly operation keeps accepting an explicit palette only. dry_run=true previews the grouping, per-family counts, unmatched entries and appearance-baseline readiness from persisted registry data only (component bindings plus the verified checkpoint): no Toolkit connection, no job, no revision change and no channel lock; the palette may be omitted or partial there, limit (1-50, default 50) pages the groups within 32 KiB, and next_cursor is bound to the revision and request content so registry, revision or request changes invalidate old cursors (restart without cursor). dry_run=false submits one job on the single Toolkit channel (busy rejects immediately with blocking_job_id and retry guidance; nothing queues) and requires a palette covering every family exactly (extra, missing and unknown keys refuse); pagination parameters are preview-only and refused here. Poll creo_get_job: full detail reports painted count, unmatched items, per-family counts and both per-component readbacks (after the write and again after save/erase/reload) plus the component appearance baseline; compact keeps counts and verification status only. Success always saves and advances the revision by exactly one. Only MCP-managed assemblies with a verified checkpoint of at least one component are accepted; a stale expected_revision, a non-assembly model, an assembly without components, or a checkpoint whose component snapshot predates the appearance baseline are refused before any job exists: establish a new checkpoint with creo_save_model, or pass refresh_baseline=true to adopt the current live pre-job appearance as this job's rollback baseline (reported as baseline_source=adopted_live; only that missing-appearance gap is relaxed, component identity gaps still refuse). dry_run reports the same baseline readiness and returns next_action with the refresh call when the baseline is missing. Component readback values and the on-screen display are verified separately; face-level painting, standalone parts, nested/external assemblies and non-RGB appearance properties are out of scope."""
+    if dry_run:
+        return await invoke(
+            preview_recolor,
+            model_id,
+            expected_revision,
+            palette,
+            families,
+            limit,
+            cursor,
+            refresh_baseline,
+            random,
+        )
+    return await invoke(
+        submit_recolor,
+        model_id,
+        expected_revision,
+        palette,
+        families,
+        limit,
+        cursor,
+        refresh_baseline,
+        random,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_set_sketch_dimensions(
+    model_id: str, expected_revision: int, sketch: str | int, values: dict[str, float]
+) -> dict[str, Any]:
+    """Modify named explicit sketch dimensions, or numeric sketch dimension IDs, and regenerate dependent features."""
+    return await invoke(
+        general.submit,
+        [{"op": "set_sketch_dimensions", "sketch": sketch, "values": values}],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_set_parameters(
+    model_id: str, expected_revision: int, values: dict[str, float | str | bool | int]
+) -> dict[str, Any]:
+    """Create/update native part parameters. Supports numbers, booleans and strings."""
+    return await invoke(
+        general.submit,
+        [{"op": "set_parameters", "values": values}],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_set_relations(
+    model_id: str, expected_revision: int, lines: list[str]
+) -> dict[str, Any]:
+    """Set native part relations using simple arithmetic assignments, e.g. d12 = SIZE / 2. Replaces the relation set."""
+    return await invoke(
+        general.submit, [{"op": "set_relations", "lines": lines}], model_id, None, expected_revision
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_create_feature_tree(
+    model_id: str, expected_revision: int, label: str, tree: dict[str, Any]
+) -> dict[str, Any]:
+    """Advanced native feature creation from Toolkit element tree JSON. Nodes: id, integer/double/string/reference/references, children.
+
+    Element IDs and integer enum values can be symbolic SDK constants. Use creo_lookup_constants.
+    Reference existing native sketches/model items. Feature-specific trees must follow installed
+    SDK documentation. This low-level route does not automatically supply missing sections/collections.
+    """
+    return await invoke(
+        general.submit,
+        [{"op": "feature_tree", "label": label, "tree": tree}],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=READ)
+async def creo_lookup_constants(prefix: str, limit: int = 100) -> dict[str, Any]:
+    """Look up installed SDK element IDs and feature enum constants for advanced element-tree operations."""
+    if not 1 <= limit <= 500:
+        raise ToolError("limit must be 1–500")
+    path = bridge.ROOT / "build/constants.json"
+    if not path.exists():
+        raise ToolError("Call creo_session_status to build the native worker first")
+    constants = bridge.read_json(path)
+    items = {k: v for k, v in constants.items() if k.startswith(prefix)}
+    return {"constants": dict(list(items.items())[:limit]), "total_matches": len(items)}
+
+
+@mcp.tool(annotations=READ)
+async def creo_get_mass_properties(
+    model_id: str, density_g_cm3: float | None = None
+) -> dict[str, Any]:
+    """Read the model's own mass properties (volume, area, mass, density, centres).
+
+    Volume, surface area and the geometric centre come from the model geometry;
+    the centre of volume is measured with unit density, so an assembly whose
+    components carry different densities reports it separately from the mass
+    centre. Mass uses the density of the model's material when that material
+    carries one; otherwise pass density_g_cm3 for an explicit what-if and the
+    receipt reports density_source=request. With neither, mass is null with a
+    hint - it is never filled in from an assumed density. mass_g is grams and
+    density_g_cm3 is g/cm3; mass_value_unit is always g. native_mass_unit and
+    the compatibility mass_unit field name the model unit; only g/kg/tonne are
+    converted. mass_source is native, computed_from_density or none. The
+    returned job_id identifies the finished execution record; this synchronous
+    call needs no polling.
+    When mass is null, mass_unavailable_reason names the broken link
+    (no_density, unsupported_mass_unit, material_density_unavailable,
+    material_query_failed, volume_unavailable).
+    Parts and assemblies are supported. For an assembly, mass is only reported
+    when a read-only occurrence scan proves every active component has a
+    material and resolved; otherwise the reason is component_material_missing,
+    component_unavailable, component_scan_incomplete or no_components, and the
+    component_scan block lists the occurrence paths. Suppressed components are
+    skipped as Creo skips them. An assembly built from mixed materials reports
+    density_g_cm3 as total mass over total volume with
+    density_is_effective_average=true; it is not a component material density.
+    For several models use creo_get_mass_properties_batch, which keeps one
+    receipt per model and bounds the whole call.
+    """
+    return await invoke(general.get_mass_properties, model_id, density_g_cm3)
+
+
+@mcp.tool(annotations=READ)
+async def creo_get_mass_properties_batch(
+    model_ids: Annotated[list[str], Field(min_length=1, max_length=16)],
+    density_g_cm3: float | None = None,
+    time_budget_seconds: Annotated[int, Field(ge=10, le=600)] = 180,
+) -> dict[str, Any]:
+    """Read mass properties for up to 16 models in one bounded, serial call.
+
+    Each model is read with its own read-only job on the single Toolkit channel,
+    one after another; this tool adds no native concurrency. Every item keeps
+    the same receipt fields as creo_get_mass_properties plus status=succeeded,
+    so a caller parses one shape. A single item that fails does not cancel the
+    others: invalid model ids give error_kind=invalid_request, a failed native
+    query gives query_failed, and each failed item carries its error text and
+    blocking_job_id (null unless the channel was busy). An occupied channel or a
+    query that overruns its wait stops new items, and the remaining ones are
+    returned as status=skipped with reason=toolkit_busy, timeout or
+    time_budget_exhausted. requested/succeeded/failed/skipped count every item
+    and all_succeeded is true only when every requested model was read. The
+    density_g_cm3 fallback applies to every item that has no usable material
+    density; each receipt still reports its own density_source. Read-only: no
+    revision or source file changes. Prefer creo_get_mass_properties for a
+    single model.
+    """
+    return await invoke(
+        general.get_mass_properties_batch, model_ids, density_g_cm3, time_budget_seconds
+    )
+
+
+@mcp.tool(annotations=READ)
+async def creo_measure_surface_group(
+    model_id: str,
+    references: Annotated[list[dict[str, Any]], Field(min_length=1, max_length=8)],
+    tolerance_mm: float = 0.01,
+    gap_search_mm: float = 1.0,
+) -> dict[str, Any]:
+    """Measure a surface group's real boundary: open edges, seam gap and overlap.
+
+    references is one or more quilts ({kind:'quilt',id:N} or
+    {kind:'quilt_feature',label:...}); every member face of every quilt is part
+    of the group. The measurement is read-only: it writes nothing and does not
+    change the revision. group.state is 'closed', 'open', 'micro_gap' or
+    'overlap' and describes the member seams; group.boundary_closed says whether
+    the group boundary itself is a closed shell (open_edges == 0). tolerance_mm
+    (0.01 by default) is the join/flush tolerance; gap_search_mm (1 mm by
+    default) bounds which boundary-to-boundary distance still counts as a seam
+    gap. Each value has its own status: an unmeasurable value is null with a
+    reason, never 0. overlap_area_mm2 is an estimate from the kernel's face
+    tessellation, not a boolean intersection. If the boundary cannot be visited
+    the call returns a structured isError payload carrying job_id, model_id,
+    status, group.state_reason (for example contour_edge_visit_failed) and a
+    re-read hint instead of a bare message.
+
+    group.open_edge_records lists the open boundary edges themselves (FEAT-065
+    T1b, live-verified on Creo 12.4.0.0): edge_id, surface_id, quilt_id,
+    length_mm and endpoints_mm [[x,y,z],[x,y,z]] per edge. This is where a quilt
+    edge id for creo_surface_loft {kind:'edge',id:N} comes from, since
+    creo_inspect_model lists solid edges only; pick the edge by its endpoints. At most 32 records
+    are listed; open_edge_records_total always equals open_edges and
+    open_edge_records_truncated=true means some were left out, so measure fewer
+    quilts to see the rest. An unknown unit scale keeps length_mm/endpoints_mm
+    null while the ids stay listed.
+    """
+    return await invoke(
+        general.measure_surface_group, model_id, references, tolerance_mm, gap_search_mm
+    )
+
+
+@mcp.tool(annotations=READ)
+async def creo_measure_surface_curvature(
+    model_id: str,
+    target: dict[str, Any],
+    faces: Annotated[list[Any], Field(min_length=1, max_length=2)],
+    samples_per_direction: int = 12,
+    include_samples: bool = False,
+) -> dict[str, Any]:
+    """Analyse principal curvature and G1 numerically (read-only).
+
+    Creo Toolkit has no zebra-stripe or curvature-comb visualization API, so
+    this tool returns the equivalent numbers instead of an image. target is one
+    quilt ({kind:'quilt',id:N} or {kind:'quilt_feature',label:...}). faces names
+    one or two member faces, each as {kind:'surface',id:N} or a zero-based member
+    index; two faces add the shared-edge G1 analysis. samples_per_direction is
+    the UV raster density per direction (5..50, default 12). A merged quilt can
+    be retrimmed to fewer faces, so read face_count from creo_inspect_model
+    before asking for a second member index.
+
+    For every sample inside the trimmed face the receipt reports u/v, the
+    maximum and minimum principal curvature (1/mm), their radii (mm) and
+    principal directions. summary carries max_abs_curvature_per_mm and
+    min_curvature_radius_mm with sample/failure counts. The per-sample rows are
+    omitted by default because a 12x12 grid exceeds the MCP result budget; the
+    response carries samples_included=false, omitted_sample_count and a note,
+    and include_samples=true returns every point. The full rows always remain in
+    the read-only job record. With two faces, g1_max_angle_deg is the maximum
+    normal angle across the shared edge and g1_points carries the per-sample
+    angles; g1_threshold_deg is 0.5 and within_g1 is only a marker, never a
+    replacement for the measured angle. Each value has its own status: a failed
+    query is a null value with a reason, never 0, and an unknown unit scale
+    keeps 1/mm and mm values null. The query changes nothing and does not
+    advance the revision.
+    """
+    return await invoke(
+        general.measure_surface_curvature,
+        model_id,
+        target,
+        faces,
+        samples_per_direction,
+        include_samples,
+    )
+
+
+@mcp.tool(annotations=READ)
+async def creo_inspect_model(
+    model_id: str,
+    detail: Literal["compact", "full"] = "compact",
+    section: str | None = None,
+    limit: int = 50,
+    cursor: str | None = None,
+    near: Annotated[
+        list[float] | None,
+        Field(
+            default=None,
+            description=(
+                "Optional [x, y, z] mm anchor coordinate (FEAT-076). Requires detail='full' "
+                "and section='edges' or 'surfaces'; returns records sorted ascending by 3D "
+                "distance_mm (use limit=k for top-k nearest items without paging thousands of edges)."
+            ),
+        ),
+    ] = None,
+    max_distance_mm: Annotated[
+        float | None,
+        Field(
+            default=None,
+            description=(
+                "Optional non-negative distance ceiling in mm paired with near=[x, y, z]; "
+                "omits edges or surfaces farther than this distance."
+            ),
+        ),
+    ] = None,
+) -> dict[str, Any]:
+    """Read a saved verified snapshot, compact by default (identity/revision/status/volume/total_surface_area_mm2/bounding_box_mm/counts/merged_counts).
+
+    bounding_box_mm approximates the trimmed solid faces in the model or assembly frame.
+    bounding_box_source and bounding_box_status disclose the source and sampling target.
+    For older snapshots, legacy_regeneration_outline_mm carries the historical outline.
+    Query refresh_model for a new live bounding box or save_model to update the saved snapshot.
+
+    Use detail=full for geometry; large snapshots return data grouped by section,
+    complete=false and next_cursor. Repeat with the same detail/section and cursor.
+    Sections: features, dimensions, surfaces, edges, quilts, bodies, datum_planes, datum_axes,
+    parameters, aliases, components, feature_geometry, sketch_dimensions.
+    When section is 'edges' or 'surfaces', pass near=[x,y,z] (and optional max_distance_mm)
+    to retrieve the nearest items sorted by distance_mm in one call.
+    Drawings also support sheets/views/notes/tables/models/shown_dimensions;
+    metadata preserves additional inspection fields.
+    Feature sections omit nested collections, available separately. Pages are
+    bound to the snapshot and limited to 32 KiB, default 50/max 200 records.
+    Model changes invalidate cursors. Use refresh_model for live Creo inspection.
+    """
+    response = await invoke(
+        general.inspect_model, model_id, detail, section, limit, cursor, near, max_distance_mm
+    )
+    if detail != "full" or not isinstance(response, dict):
+        return response
+
+    # Keep the saved native inspection immutable. Project only the public
+    # wall-contour record, keyed by edge id, with this snapshot's revision.
+    def checked(block: Any) -> dict[str, Any]:
+        projected = project_wall_contour({"wall_contour_check": block}, response.get("revision"))
+        return {
+            **projected["wall_contour_check"],
+            "edges": projected["wall_contour_records"],
+        }
+
+    inspection = response.get("inspection")
+    if isinstance(inspection, dict) and isinstance(inspection.get("wall_contour_check"), dict):
+        response["inspection"] = {
+            **inspection,
+            "wall_contour_check": checked(inspection["wall_contour_check"]),
+        }
+    metadata = (
+        response.get("data", {}).get("metadata") if isinstance(response.get("data"), dict) else None
+    )
+    if isinstance(metadata, list):
+        for entry in metadata:
+            if (
+                isinstance(entry, dict)
+                and entry.get("name") == "wall_contour_check"
+                and isinstance(entry.get("value"), dict)
+            ):
+                entry["value"] = checked(entry["value"])
+    return response
+
+
+@mcp.tool(annotations=READ)
+async def creo_refresh_model(model_id: str) -> dict[str, Any]:
+    """Query live native model through Toolkit. Returns a job_id; poll get_job for the actual snapshot."""
+    return await invoke(general.submit, [], model_id, None, None, None, True)
+
+
+@mcp.tool(annotations=READ)
+async def creo_list_models(
+    limit: int = 10,
+    detail: Literal["compact", "full"] = "compact",
+    cursor: str | None = None,
+) -> dict[str, Any]:
+    """List owned models, compact by default. Repeat next_cursor with the same detail.
+
+    limit remains 1–50; 32 KiB budget can return fewer models. complete describes
+    the list page, while each full model may have its own inspection next_cursor.
+    Use inspect_model(detail=full, section=...) for model detail. Model changes
+    invalidate the list cursor; snapshots are saved states, not live queries.
+    """
+    return await invoke(general.list_models, limit, detail, cursor)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_regenerate(model_id: str, expected_revision: int) -> dict[str, Any]:
+    """Regenerate, verify, save and reload a native model."""
+    return await invoke(general.submit, [{"op": "regenerate"}], model_id, None, expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_save_model(model_id: str, expected_revision: int) -> dict[str, Any]:
+    """Save a new native PRT version to the owned model directory, then reload and verify it."""
+    return await invoke(general.submit, [{"op": "save"}], model_id, None, expected_revision)
+
+
+@mcp.tool(annotations=READ)
+async def creo_export_model(
+    model_id: str,
+    format: Literal["step", "stl", "iges", "jpeg", "pdf", "native_bundle"] = "step",
+    stl_options: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description=(
+                "STL only: optional quality request such as "
+                '{"chord_height_mm": 0.05, "angle_control": 0.1}. '
+                "Values are validated before the job is queued; the receipt repeats "
+                "the requested values and the native values passed to Creo."
+            )
+        ),
+    ] = None,
+    jpeg_options: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description=(
+                "Part and assembly JPEG only: view is isometric, front, back, top, bottom, "
+                "left, or right (right views the YZ plane along -X). Optional view_matrix accepts "
+                "a 3x3 right-handed orthonormal rotation matrix (row-major, v_screen = v_model * M) "
+                "for arbitrary datum-plane or custom views. width_px and height_px each accept "
+                "200–2400 pixels."
+            )
+        ),
+    ] = None,
+    timeout_seconds: Annotated[
+        int,
+        Field(strict=True, ge=60, le=7200, description="Optional hard executor budget in seconds"),
+    ]
+    | None = None,
+) -> dict[str, Any]:
+    """Export STEP/STL/IGES/JPEG, drawing PDF/JPEG, or an explicit native assembly bundle.
+
+    ``format="jpeg"`` is the read-only preview entry: it submits a READ job that
+    renders the current model without saving, so the model revision does not
+    advance. The job result carries a ``preview`` block (``status`` and the
+    rendered ``path``) for the view to display; a model without geometry reports
+    ``status="skipped_no_geometry"`` and a render failure reports ``status="failed"``
+    with ``failed_step``/``failed_code`` instead of a picture.
+    Part and assembly JPEG exports accept ``jpeg_options`` with a view and dimensions in pixels.
+
+    ``stl_options`` is accepted only with ``format="stl"``. Unknown keys,
+    booleans, NaN/Inf, a non-positive chord height, or an angle control outside
+    ``0.0..1.0`` are rejected before submission. Omitting it keeps the previous
+    behavior (0.05 mm chord height, 0.1 angle control). timeout_seconds selects the
+    same per-job executor budget as creo_execute_plan (60–7200 seconds). Omit it for
+    the server budget. Poll creo_get_job for budgets and native_progress.sub_stage.
+    A timed-out or cancelled job can have an unverified staging file; use only a
+    completed export artifact.
+    """
+    operation: dict[str, Any] = {"op": "export", "format": format}
+    if stl_options is not None:
+        operation["stl_options"] = stl_options
+    if jpeg_options is not None:
+        operation["jpeg_options"] = jpeg_options
+    if timeout_seconds is None:
+        return await invoke(general.submit, [operation], model_id, None, None, None, True)
+    return await invoke(
+        general.submit,
+        [operation],
+        model_id,
+        None,
+        None,
+        None,
+        True,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool(annotations=READ)
+async def creo_dump_feature_tree(model_id: str, feature: str | int) -> dict[str, Any]:
+    """Export a native feature's Toolkit element tree to XML for inspection; returns a job_id."""
+    return await invoke(
+        general.submit, [{"op": "dump_tree", "feature": feature}], model_id, None, None, None, True
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_new_drawing(
+    source_model_id: str, model_name: str | None = None, width: float = 297, height: float = 210
+) -> dict[str, Any]:
+    """Create a native DRW with an isolated snapshot of an owned part/sheetmetal model.
+
+    Sheet dimensions and all drawing positions use mm from the lower left corner.
+    The source snapshot has label 'model'. Add views, notes, tables and shown model
+    dimensions, then export PDF. Source model edits do not update this snapshot.
+    """
+    return await invoke(
+        general.submit,
+        [
+            {"op": "drawing_sheet", "action": "resize", "width": width, "height": height},
+            {"op": "drawing_model", "label": "model", "source_model_id": source_model_id},
+        ],
+        None,
+        model_name,
+        model_type="drawing",
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_drawing_view(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    position: list[float],
+    orientation: Literal["front", "back", "top", "bottom", "left", "right", "isometric"] = "front",
+    scale: float = 1,
+    sheet: int = 1,
+    model: str = "model",
+    display: Literal["wireframe", "hidden", "no_hidden", "shaded", "shaded_edges"] = "no_hidden",
+) -> dict[str, Any]:
+    """Create a native model-associated general drawing view. position is sheet [x,y] in mm."""
+    return await invoke(
+        general.submit,
+        [
+            dict(
+                op="drawing_view",
+                label=label,
+                position=position,
+                orientation=orientation,
+                scale=scale,
+                sheet=sheet,
+                model=model,
+                display=display,
+            )
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_drawing_projection(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    parent: str | int,
+    position: list[float],
+    display: Literal["wireframe", "hidden", "no_hidden", "shaded", "shaded_edges"] = "no_hidden",
+) -> dict[str, Any]:
+    """Create a native projected view from a drawing view label/ID, on the parent's sheet."""
+    return await invoke(
+        general.submit,
+        [
+            dict(
+                op="drawing_projection",
+                label=label,
+                parent=parent,
+                position=position,
+                display=display,
+            )
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_drawing_note(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    lines: list[str],
+    position: list[float],
+    sheet: int = 1,
+    text_height: float = 3.5,
+) -> dict[str, Any]:
+    """Create a native multiline drawing note. Text is preserved in the saved DRW and PDF."""
+    return await invoke(
+        general.submit,
+        [
+            dict(
+                op="drawing_note",
+                label=label,
+                lines=lines,
+                position=position,
+                sheet=sheet,
+                text_height=text_height,
+            )
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_drawing_table(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    cells: list[list[str]],
+    columns: list[float],
+    position: list[float],
+    row_height: float = 8,
+    sheet: int = 1,
+) -> dict[str, Any]:
+    """Create an editable native drawing table. Column widths, row height and position use mm."""
+    return await invoke(
+        general.submit,
+        [
+            dict(
+                op="drawing_table",
+                label=label,
+                cells=cells,
+                columns=columns,
+                position=position,
+                row_height=row_height,
+                sheet=sheet,
+            )
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_drawing_dimension(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    view: str | int,
+    dimension_id: int,
+    position: list[float] | None = None,
+) -> dict[str, Any]:
+    """Show an existing driving model dimension in a drawing view. Inspect the source snapshot for dimension IDs."""
+    op = dict(op="drawing_dimension", label=label, view=view, dimension_id=dimension_id)
+    if position is not None:
+        op["position"] = position
+    return await invoke(general.submit, [op], model_id, None, expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_datum_csys(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    translation: list[float] | None = None,
+    rotation: list[float] | None = None,
+    reference: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create an offset native coordinate system. Offsets use mm; rotations use degrees about successive X,Y,Z axes."""
+    return await invoke(
+        general.submit,
+        [
+            dict(
+                op="datum_csys",
+                label=label,
+                translation=translation or [0, 0, 0],
+                rotation=rotation or [0, 0, 0],
+                reference=reference or {"kind": "default_csys"},
+            )
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_datum_points(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    points: list[dict[str, Any]],
+    reference: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create dimensioned datum points: [{name: 'p1', position: [x,y,z]}], relative to a coordinate system."""
+    return await invoke(
+        general.submit,
+        [
+            dict(
+                op="datum_points",
+                label=label,
+                points=points,
+                reference=reference or {"kind": "default_csys"},
+            )
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_surface_fill(
+    model_id: str, expected_revision: int, label: str, sketch: str | int
+) -> dict[str, Any]:
+    """Create a native planar fill surface from a closed sketch. Reference its quilt by {kind:'quilt_feature',label:...}."""
+    return await invoke(
+        general.submit,
+        [dict(op="surface_fill", label=label, sketch=sketch)],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_surface_offset(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    reference: dict[str, Any],
+    distance: float,
+    side: Literal["positive", "negative"] = "positive",
+) -> dict[str, Any]:
+    """Offset a quilt along its surface normal; the result reports the measured offset distance."""
+    return await invoke(
+        general.submit,
+        [
+            dict(
+                op="surface_offset",
+                label=label,
+                reference=reference,
+                distance=distance,
+                side=side,
+            )
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_thicken(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    reference: dict[str, Any],
+    thickness: float,
+    side: Literal["positive", "negative", "symmetric"] = "symmetric",
+    mode: Literal["add", "cut"] = "add",
+    new_body: bool = False,
+) -> dict[str, Any]:
+    """Create a native thicken feature from a quilt. Supports solid addition/cut and symmetric thickness."""
+    return await invoke(
+        general.submit,
+        [
+            dict(
+                op="thicken",
+                label=label,
+                reference=reference,
+                thickness=thickness,
+                side=side,
+                mode=mode,
+                new_body=new_body,
+            )
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_solidify(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    reference: dict[str, Any],
+    side: Literal["positive", "negative"] = "positive",
+    mode: Literal["add", "cut"] = "add",
+    new_body: bool = False,
+) -> dict[str, Any]:
+    """Create native solidify from a quilt, or trim a solid with a datum plane using mode='cut'."""
+    return await invoke(
+        general.submit,
+        [
+            dict(
+                op="solidify",
+                label=label,
+                reference=reference,
+                side=side,
+                mode=mode,
+                new_body=new_body,
+            )
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_redefine_solidify_body(
+    model_id: str,
+    expected_revision: int,
+    feature: str | int,
+    body_strategy: Literal["existing", "body_id", "new"] = "existing",
+    body_id: int | None = None,
+) -> dict[str, Any]:
+    """FEAT-070: rebuild an invalid body reference on an existing solidify/patch (实体化) feature.
+
+    Use this when a solidify feature self-locks because its PRO_E_BODY_SELECT reference is stale
+    (PRO_REF_INVALID): Creo GUI refuses to redefine it and the model will not regenerate. This
+    tool extracts the feature element tree through Toolkit, validates the current body reference,
+    rewrites PRO_E_BODY_USE / PRO_E_BODY_SELECT to a resolvable target body, redefines the feature
+    and regenerates. On any failure the job rolls back to the saved checkpoint, so the model is
+    never left dirty.
+
+    feature is the target solidify feature id (int) or its Creo feature name (str); obtain it from
+    creo_inspect_model. body_strategy selects the replacement body reference:
+      - 'existing' (default): point at the part's current active solid body.
+      - 'body_id': point at body <body_id>; requires an active/scopable body.
+      - 'new': switch PRO_E_BODY_USE to NEW so the feature materializes into a fresh body.
+
+    The finished job echoes the repair receipt in result.operations[0]: old_body (use, ref_type,
+    ref_id, ref_status, valid), new_body (strategy, use, ref_type, ref_id, ref_resolved),
+    redefine_code, regenerate_code, feature_incomplete, body_count/volume before and after. Run
+    creo_get_job to terminal state; success requires status=succeeded and
+    saved_file_reloaded_and_verified=true.
+    """
+    operation = dict(op="redefine_solidify_body", feature=feature, body_strategy=body_strategy)
+    if body_id is not None:
+        operation["body_id"] = body_id
+    return await invoke(general.submit, [operation], model_id, None, expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_surface_trim(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    target: dict[str, Any],
+    tool: dict[str, Any],
+    keep_side: Literal["one", "two"],
+) -> dict[str, Any]:
+    """Trim one quilt with another quilt, a datum plane or a curve.
+
+    target is one quilt ({kind:'quilt',id:...} or {kind:'quilt_feature',label:...});
+    tool is one quilt, one datum plane or one curve ({kind:'curve',id:...}, which is
+    how a projected curve trims the quilt it was projected onto). keep_side is 'one'
+    or 'two'; the physical side is read back through kept_side_basis instead of being
+    named after a GUI view. For a curve tool the two sides follow the curve direction,
+    so kept_side_basis reports side_reference='curve_direction' and no tool_normal.
+    """
+    return await invoke(
+        general.submit,
+        [dict(op="surface_trim", label=label, target=target, tool=tool, keep_side=keep_side)],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_surface_loft(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    sections: Annotated[list[str | int | dict[str, Any]], Field(min_length=2, max_length=32)],
+    interpolation: Literal["straight", "smooth"] = "straight",
+    guides: Annotated[list[str | int | dict[str, Any]], Field(max_length=8)] | None = None,
+    boundary_conditions: Annotated[list[dict[str, str]], Field(max_length=4)] | None = None,
+    creation_route: Literal["element_tree", "resident_panel"] | None = None,
+    accept_unverified_completion: bool = False,
+) -> dict[str, Any]:
+    """Create a native boundary-blend surface quilt through section sketches.
+
+    Requires a Toolkit SDK whose ProElemId.h declares the PRO_E_BNBLN_* boundary-blend
+    element ids. Missing support returns
+    SURFACE_LOFT_SDK_UNAVAILABLE and creates no loft feature.
+
+    sections accepts 2-32 entries in loft order (index 0 is the start section).
+    A sketch label or integer feature ID must own one non-composite curve (two
+    curves only as one closed profile); no entry may repeat. Two sections are
+    ruled, so interpolation='straight' is exact there; three or more are one
+    smooth blend through every section and require 'smooth'.
+
+    FEAT-065 M3 (Creo 12.4.0.0 live-verified): a section may also be one
+    existing curve {kind:'curve',id:N} (e.g. a project_curve curve_id) or edge
+    {kind:'edge',id:N}, and the first or last section may be one convergence
+    point {kind:'point',id:N} or {kind:'datum_point_feature',label:...}. A wrong
+    id fails the job with SURFACE_LOFT_INPUT_REJECTED and a failed_loft_input
+    block.
+
+    guides is the optional second direction: 2-8 distinct sketches (one curve
+    each) or curve/edge references, never points, that the surface is built
+    through as well (a single guide never regenerates). Whether a guide crosses
+    every section is the kernel's decision, so a non-crossing guide fails
+    regeneration instead of being ignored. The result is one open datum-surface
+    quilt (quilt_id, surface_area_mm2, quilt_closed_native, guide_count,
+    section_source_kinds, boundary_conditions); no solid material is created.
+    unverified_input_forms stays in the receipt for compatibility and is always
+    empty. Closed surfaces are refused before a job is queued.
+
+    boundary_conditions (FEAT-065 M4): up to 4 {boundary, condition}, each
+    boundary once. Only condition='tangent' is published, at
+    boundary='first_section' or 'last_section', and that section must be an
+    edge {kind:'edge',id:N} with a single adjacent face (a quilt boundary edge,
+    e.g. from creo_measure_surface_group open_edge_records). The direction is
+    fixed: the surface leaves the boundary continuing the neighbouring face;
+    there is no flip or weight. Example: sections=[{kind:'edge',id:53},
+    {kind:'edge',id:85}], boundary_conditions=[{boundary:'first_section',
+    condition:'tangent'}, {boundary:'last_section', condition:'tangent'}].
+    Measured on Creo 12.4.0.0: two vertical 40x10 mm strips 20 mm apart bridged
+    this way became a 982.5888 mm2 arch with G1 0.0 deg at both seams (the free
+    bridge is the 800 mm2 plane at 90 deg). condition='free' is accepted on any
+    boundary and keeps the kernel default. 'curvature' (the candidate value kept
+    a 90 deg seam), 'normal' (indistinguishable from free on that geometry) and
+    any non-free condition on first_guide/last_guide (not measured) are refused
+    before a job is queued.
+
+    creation_route (BUG-120/D1) chooses the creation path. Omitted or
+    'element_tree' keeps everything above. 'resident_panel' replays recorded Creo UI
+    commands through the resident callback instead of building an element tree. In
+    this version each first-direction position is 2-8 MCP-owned sketches written as
+    {label:'...', open_confirmed:true}: a bare label is refused before a job exists,
+    because this build cannot read whether a standalone curve is closed and must not
+    assume it. Up to 8 guides ({label, open_confirmed} too) may follow as the second
+    direction, and one end may be a convergence point
+    {kind:'datum_point_feature',label:'...'} (a point needs no openness proof). At
+    most 11 positions are selected per run. boundary_conditions and template stay on
+    the element_tree route. A request is refused before a job unless the loaded
+    worker declares a panel backend and a certified UI profile for this release
+    exists; read creo_capabilities(detail="full", section="runtime") for the
+    surface_loft_panel block and both facts. The worker displays the requested model
+    before the dialog opens, so the caller does not have to switch the Creo window
+    first. It never falls back to the element tree.
+
+    accept_unverified_completion (element_tree route only) keeps the created quilt
+    when this Creo release creates the blend but refuses ProFeatureElemtreeExtract
+    with -18. Nothing is silently upgraded: the receipt reports
+    kernel_completion="unsupported", completion_verified_by="geometry" and the
+    measured feature_incomplete value, and the remaining verdict still comes from
+    the feature status, quilt count, area and openness. Because that readback is
+    refused, the worker also tries the deprecated ProFeatureElemtreeCreate, a
+    redefine with the creation tree and ProSolidRegenerate; on a release where the
+    kernel leaves the feature incomplete after all three, the job fails with
+    SURFACE_LOFT_ACCEPT_INCOMPLETE instead of calling an empty feature a success
+    (measured on Creo 10.0.0.0; use the resident_panel route there). Refused
+    together with boundary_conditions or a template, because those are written
+    through the tree.
+    """
+    operation: dict[str, Any] = dict(
+        op="surface_loft", label=label, sections=sections, interpolation=interpolation
+    )
+    if guides:
+        operation["guides"] = guides
+    if boundary_conditions:
+        operation["boundary_conditions"] = boundary_conditions
+    if creation_route is not None:
+        operation["creation_route"] = creation_route
+    if accept_unverified_completion:
+        operation["accept_unverified_completion"] = True
+    return await invoke(
+        general.submit,
+        [operation],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_surface_boundary_fill(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    boundary: Annotated[list[dict[str, Any]], Field(min_length=3, max_length=200)],
+) -> dict[str, Any]:
+    """Fill one closed non-planar boundary given as an ordered chain of curves.
+
+    boundary is at least three distinct curve geometry ids in loop order, each
+    {kind:'curve',id:N} from creo_inspect_model. The native executor samples
+    each curve's endpoints and refuses an open boundary, a chain whose curves do
+    not meet in the submitted order, a repeated curve and an unknown length
+    unit, with a message naming the alternative (surface_loft for two curves,
+    project_curve to build a missing edge). The boundary blend is closed across
+    its single direction by the kernel. The result is one open datum-surface
+    quilt; the receipt reports quilt_id, face_count, surface_area_mm2,
+    quilt_closed_native, boundary_edges and has_solid with their statuses.
+    Holes, second loops and solid output are refused before a job exists, and
+    the planar sketch-based creo_surface_fill is unchanged. On 2026-11-08 the
+    closed single-direction chain created and extracted but regenerated to no
+    quilt on Creo 12.4.0.0, so the operation stays in UNAVAILABLE_OPERATIONS and
+    this tool is removed from the MCP surface.
+    """
+    return await invoke(
+        general.submit,
+        [dict(op="surface_boundary_fill", label=label, boundary=boundary)],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_surface_round(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    target: dict[str, Any],
+    references: Annotated[list[dict[str, Any]], Field(min_length=1, max_length=1)],
+    radius: float,
+) -> dict[str, Any]:
+    """Round the edge shared by two member faces of one quilt with a constant radius.
+
+    target is one quilt ({kind:'quilt',id:N} or {kind:'quilt_feature',label:...}).
+    references is exactly one set: [{'surfaces': [{kind:'surface',id:N},
+    {kind:'surface',id:M}]}], matching the face-pair form creo_round already takes.
+    Both faces must be distinct member faces of that quilt; a solid face or another
+    quilt's face is refused natively before the feature is created. radius is one
+    constant value in mm and must be finite and greater than zero. Variable radius,
+    full/chordal/through-curve radius, edge chains, transitions and multiple sets are
+    refused before a job exists. Adjacency (one shared edge) is decided by the kernel:
+    the 2026-11-08 H08 probe measured a non-adjacent pair failing regeneration and
+    rolling back to the saved checkpoint. The receipt reports quilt_id, the measured
+    face counts and areas before/after with their statuses, closure, radius, the
+    solid-face evidence and reference_application; the result stays on the same quilt
+    and is not a solid. This route was proved on Creo 12.4.0.0; other versions are
+    unverified.
+    """
+    return await invoke(
+        general.submit,
+        [
+            dict(
+                op="surface_round",
+                label=label,
+                target=target,
+                references=references,
+                radius=radius,
+            )
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_quilt_merge(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    target: dict[str, Any],
+    tool: dict[str, Any],
+) -> dict[str, Any]:
+    """Join two quilts into one surface merge (a real JOIN feature).
+
+    Both sides must be explicit quilt references ({kind:'quilt',id:...} or
+    {kind:'quilt_feature',label:...}) and must be distinct. The native route
+    creates a two-quilt JOIN; a call with more than two quilts is refused. The
+    tool quilt is always consumed and the target is consumed unless the kernel
+    grew it in place, so the receipt reports consumed_quilt_ids and
+    merged_surface_ids next to result_quilt_id and result_quilt_source
+    ('retrimmed_target_quilt' when the target quilt was retrimmed in place).
+
+    input_area_mm2 is the sum of both input quilt areas before the join; it is
+    not the merged area, so compare it with area_mm2 rather than using it as the
+    result. area_mm2, input_area_mm2 and closed each carry their own status. A
+    feature that does not regenerate, a result with no owning quilt and an
+    unmeasurable result area fail and roll back instead of returning a partial
+    merge.
+    """
+    return await invoke(
+        general.submit,
+        [dict(op="quilt_merge", label=label, target=target, tool=tool)],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_project_curve(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    target: dict[str, Any],
+    source: dict[str, Any],
+    direction_ref: dict[str, Any],
+    side: Literal["positive", "negative"] = "positive",
+) -> dict[str, Any]:
+    """Project one curve onto one quilt along an explicit direction.
+
+    target is one quilt, source is one curve id ({kind:'curve',id:...}) and
+    direction_ref must read a real vector: {kind:'datum_feature',label:...},
+    {kind:'datum_axis_feature',label:...} or a straight {kind:'curve',id:...}.
+    side flips that direction and is named after the measured basis, not a GUI
+    view. The result reports curve_id, the measured curve_length_mm and the two
+    endpoints_mm; a multi-branch or empty projection fails instead of returning
+    a partial curve.
+
+    Construction is reported, not hidden: the projection is built as a real
+    sweep of the source sketch along the direction plus the documented Creo
+    intersect curve, so the model also gains a helper surface feature whose id
+    is returned as helper_feature_id. The direction must therefore be parallel
+    to the source sketch plane normal, the target must lie on the requested
+    side, and the source curve must belong to a curve feature; each of those is
+    refused with a measured reason instead of being approximated.
+    """
+    return await invoke(
+        general.submit,
+        [
+            dict(
+                op="project_curve",
+                label=label,
+                target=target,
+                source=source,
+                direction_ref=direction_ref,
+                side=side,
+            )
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_boolean_bodies(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    method: Literal["union", "subtract", "intersect"],
+    targets: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    keep_tools: bool = False,
+) -> dict[str, Any]:
+    """Create a parametric multi-body Boolean feature using {kind:'body',id:...}.
+
+    Negative IDs reported by inspection are not supported by this feature path.
+    Sheetmetal-to-solid fusion is unverified even with positive IDs; separate
+    new_body solids are not a promise of a later union into the sheetmetal body.
+    """
+    return await invoke(
+        general.submit,
+        [
+            dict(
+                op="boolean_bodies",
+                label=label,
+                method=method,
+                targets=targets,
+                tools=tools,
+                keep_tools=keep_tools,
+            )
+        ],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_rib(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    sketch: str | int,
+    thickness: float,
+    side: Literal["positive", "negative", "symmetric"] = "symmetric",
+    flip: bool = False,
+) -> dict[str, Any]:
+    """Create a native profile rib from an open sketch intersecting the target solid. flip changes material side."""
+    return await invoke(
+        general.submit,
+        [dict(op="rib", label=label, sketch=sketch, thickness=thickness, side=side, flip=flip)],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_drawing_sheet(
+    model_id: str,
+    expected_revision: int,
+    action: Literal["add", "resize"],
+    width: float,
+    height: float,
+    sheet: int = 1,
+    name: str | None = None,
+) -> dict[str, Any]:
+    """Add or resize a native drawing sheet; dimensions use mm. add returns the sheet number in operations."""
+    op = dict(op="drawing_sheet", action=action, width=width, height=height, sheet=sheet)
+    if name is not None:
+        op["name"] = name
+    return await invoke(general.submit, [op], model_id, None, expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_drawing_view_update(
+    model_id: str,
+    expected_revision: int,
+    view: str | int,
+    scale: float | None = None,
+    move: list[float] | None = None,
+    display: Literal["wireframe", "hidden", "no_hidden", "shaded", "shaded_edges"] | None = None,
+) -> dict[str, Any]:
+    """Change view scale/style or move it by a sheet-space [dx,dy] vector in mm."""
+    op = dict(op="drawing_view_update", view=view)
+    for key, value in dict(scale=scale, move=move, display=display).items():
+        if value is not None:
+            op[key] = value
+    return await invoke(general.submit, [op], model_id, None, expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_drawing_note_update(
+    model_id: str,
+    expected_revision: int,
+    note: str | int,
+    lines: list[str] | None = None,
+    position: list[float] | None = None,
+    text_height: float | None = None,
+) -> dict[str, Any]:
+    """Edit the text, absolute position or text height of an existing native drawing note."""
+    op = dict(op="drawing_note_update", note=note)
+    for key, value in dict(lines=lines, position=position, text_height=text_height).items():
+        if value is not None:
+            op[key] = value
+    return await invoke(general.submit, [op], model_id, None, expected_revision)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_drawing_table_cell(
+    model_id: str, expected_revision: int, table: str | int, row: int, column: int, text: str
+) -> dict[str, Any]:
+    """Edit one native table cell. Row and column numbers start at one."""
+    return await invoke(
+        general.submit,
+        [dict(op="drawing_table_cell", table=table, row=row, column=column, text=text)],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_drawing_delete(
+    model_id: str,
+    expected_revision: int,
+    kind: Literal["view", "note", "table", "dimension"],
+    target: str | int,
+) -> dict[str, Any]:
+    """Delete a drawing item. dimension erases its display only; use its label. Remove dependent views/dimensions before parent views."""
+    return await invoke(
+        general.submit,
+        [dict(op="drawing_delete", kind=kind, target=target)],
+        model_id,
+        None,
+        expected_revision,
+    )
+
+
+@mcp.tool(annotations=READ)
+async def creo_inspect_udf(
+    model_id: str, file_path: str, instance: str | None = None
+) -> dict[str, Any]:
+    """Read a local Creo UDF (.gph) reference prompts and variable dimensions. Returns a job; inspect operations[].metadata.
+
+    The library is copied into the job directory. It is not bundled with this server.
+    """
+    op = dict(op="udf_inspect", file_path=file_path)
+    if instance is not None:
+        op["instance"] = instance
+    return await invoke(general.submit, [op], model_id, None, None, None, True)
+
+
+@mcp.tool(annotations=CREATE)
+async def creo_create_udf(
+    model_id: str,
+    expected_revision: int,
+    label: str,
+    file_path: str,
+    references: dict[str, dict[str, Any]],
+    dimensions: dict[str, float] | None = None,
+    instance: str | None = None,
+) -> dict[str, Any]:
+    """Place a native independent UDF group, preserving editable features. First inspect the library.
+
+    references maps each exact prompt to a native reference; dimensions maps variable names (e.g. d11)
+    to values in target model units. Interactive placement and missing-reference dialogs are disabled.
+    """
+    op = dict(
+        op="udf_create",
+        label=label,
+        file_path=file_path,
+        references=references,
+        dimensions=dimensions or {},
+    )
+    if instance is not None:
+        op["instance"] = instance
+    return await invoke(general.submit, [op], model_id, None, expected_revision)
+
+
+for _unavailable in UNAVAILABLE_OPERATIONS:
+    # Some offline candidates have only a plan operation, never a standalone
+    # tool. Remove an existing wrapper without inventing a public placeholder.
+    if "creo_" + _unavailable in globals():
+        mcp.remove_tool("creo_" + _unavailable)
+
+
+def main() -> None:
+    from creo_mechdog.stdio_lifecycle import StdioExitGuard
+
+    # BUG-092: watch the wire stdin and bound self-exit after client EOF, so a
+    # stuck stdio write can never leave this process holding the pipes. Install
+    # before mcp.run() claims fd 0.
+    StdioExitGuard().install()
+    mcp.run(transport="stdio")

@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import NonCallableMock, patch
 
 import bridge
-import generic_bridge as general
+from creo_mechdog import generic_bridge as general
 from creo_mechdog import model_registry
 from creo_mechdog.reconciliation import admission_failure_message
 from tests.unit import test_toolkit_channel as channel_tests

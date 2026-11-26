@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import bridge
-import generic_bridge as general
+from creo_mechdog import generic_bridge as general
 from creo_mechdog import reconciliation as rec
 from tests.unit import test_reconciliation as fixtures
 

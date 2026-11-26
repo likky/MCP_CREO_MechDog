@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 NATIVE = ROOT / "native" / "surface_boundary_fill.cpp"
 GENERIC = ROOT / "native" / "generic.cpp"
 SURFACES = ROOT / "native" / "surfaces.cpp"
-SERVER = ROOT / "server.py"
+SERVER = ROOT / "src/creo_mechdog/server.py"
 
 
 def boundary_fill(**overrides):

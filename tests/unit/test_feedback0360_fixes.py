@@ -10,9 +10,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 import bridge
-import creo_startup
-import generic_bridge
 from creo_mechdog import (
+    creo_startup,
+    generic_bridge,
     geometry_selectors,
     model_queries,
     model_registry,

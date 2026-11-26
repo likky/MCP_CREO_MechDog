@@ -68,7 +68,7 @@ def main() -> int:
     if not args.confirm_session_usable:
         raise SystemExit("pass --confirm-session-usable after checking the live session")
 
-    import generic_bridge
+    from creo_mechdog import generic_bridge
 
     created = generic_bridge.submit(PLAN, model_name="mp_block_" + str(int(time.time())))
     job = wait(created["job_id"])

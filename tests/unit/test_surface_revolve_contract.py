@@ -20,7 +20,7 @@ from creo_mechdog.schema import FillOp, validate_operations
 ROOT = Path(__file__).resolve().parents[2]
 GENERIC = ROOT / "native" / "generic.cpp"
 SURFACES = ROOT / "native" / "surfaces.cpp"
-SERVER = ROOT / "server.py"
+SERVER = ROOT / "src/creo_mechdog/server.py"
 DRIVER = ROOT / "tools" / "test_surface_revolve.py"
 
 

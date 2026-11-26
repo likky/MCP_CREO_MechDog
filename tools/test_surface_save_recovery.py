@@ -61,7 +61,7 @@ except ImportError:  # pragma: no cover - the package import path
     )
 sys.path.insert(0, str(ROOT))
 
-import generic_bridge as general  # noqa: E402
+from creo_mechdog import generic_bridge as general  # noqa: E402
 from creo_mechdog import operation_results  # noqa: E402
 from version import VERSION  # noqa: E402
 

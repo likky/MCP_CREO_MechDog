@@ -157,7 +157,7 @@ class ProjectCurveSchemaTests(unittest.TestCase):
         # Live 2026-11-04: the swept-surface route measured a 30 mm line and a
         # pi*8 arc projection at z=0, saved and reloaded, so the gate is off.
         self.assertNotIn("project_curve", UNAVAILABLE_OPERATIONS)
-        server = (ROOT / "server.py").read_text(encoding="utf-8")
+        server = (ROOT / "src/creo_mechdog/server.py").read_text(encoding="utf-8")
         self.assertIn("async def creo_project_curve(", server)
         self.assertIn("helper_feature_id", server)
 

@@ -26,7 +26,7 @@ if __name__ == "__main__" and not __package__:
     )
 
 import bridge
-import generic_bridge as general
+from creo_mechdog import generic_bridge as general
 from creo_mechdog import inspection_refs
 from creo_mechdog import reconciliation as rec
 from creo_mechdog.mcp_contract import call_capabilities_section
@@ -213,7 +213,8 @@ class Acceptance:
             name: source_hash(ROOT / name)
             for name in (
                 "bridge.py",
-                "generic_bridge.py",
+                "src/creo_mechdog/bridge.py",
+                "src/creo_mechdog/generic_bridge.py",
                 "native/generic.cpp",
                 "src/creo_mechdog/reconciliation.py",
             )

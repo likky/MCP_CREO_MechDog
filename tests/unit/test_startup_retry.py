@@ -9,8 +9,8 @@ import unittest
 from unittest.mock import Mock, patch
 
 import bridge
-import creo_startup
 import server
+from creo_mechdog import creo_startup
 from tests import test_creo_startup as startup_tests
 
 REAL_MONOTONIC = time.monotonic
@@ -235,7 +235,8 @@ class StartupRetry(unittest.TestCase):
 
         (self.fixture.coordinator / "state.json").write_bytes(b"")
         bootstrap = """
-import bridge,creo_startup,server,sys
+import sys
+from creo_mechdog import bridge, creo_startup, server
 from pathlib import Path
 root=Path(sys.argv[1])
 bridge.ROOT=root

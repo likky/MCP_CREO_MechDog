@@ -12,9 +12,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 import bridge
-import generic_bridge as general
 from creo_mechdog import adoption, inspection_refs, model_registry
 from creo_mechdog import file_adoption as batch
+from creo_mechdog import generic_bridge as general
 from tests.unit.test_adoption import INSPECTION
 
 

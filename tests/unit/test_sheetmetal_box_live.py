@@ -51,7 +51,7 @@ from tests.unit import test_sheetmetal_relief as relief
 REPO_ROOT = Path(__file__).resolve().parents[2]
 NATIVE = REPO_ROOT / "native" / "advanced.cpp"
 SCHEMA = REPO_ROOT / "src" / "creo_mechdog" / "schema.py"
-SERVER = REPO_ROOT / "server.py"
+SERVER = REPO_ROOT / "src/creo_mechdog/server.py"
 
 # The mandated trim for the third-wall contrast: 20 mm short of both chain ends.
 TRIM_MM = 20.0

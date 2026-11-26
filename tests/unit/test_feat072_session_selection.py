@@ -8,9 +8,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import bridge
-import creo_startup
 import server
-from creo_mechdog import session_candidates, session_choice
+from creo_mechdog import creo_startup, session_candidates, session_choice
 
 
 def _snapshot(processes):

@@ -292,7 +292,7 @@ class ExtrudeRegionSchemaTests(unittest.TestCase):
 
 class RegionAdapterWiringTest(unittest.TestCase):
     def test_the_executor_expands_regions_before_admission(self):
-        source = (ROOT / "generic_bridge.py").read_text(encoding="utf-8")
+        source = (ROOT / "src/creo_mechdog/generic_bridge.py").read_text(encoding="utf-8")
         self.assertIn("from creo_mechdog.sketch_regions import adapt_region_extrudes", source)
         call = source.index("adapt_region_extrudes(operations)")
         admission = source.index("operations = validate_operations(operations)", call)

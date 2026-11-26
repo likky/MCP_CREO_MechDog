@@ -19,8 +19,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import bridge
-import generic_bridge as general
 from creo_mechdog import appearance
+from creo_mechdog import generic_bridge as general
 from creo_mechdog.model_queries import RESPONSE_BUDGET, decode_cursor, serialized_size
 from creo_mechdog.schema import validate_operations
 from tests.unit import test_adoption as fixture

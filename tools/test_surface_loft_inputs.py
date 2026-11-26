@@ -519,7 +519,7 @@ def case_offline() -> dict:
         "live-verified" in live_status and "not live-verified" not in live_status,
     )
 
-    server = (ROOT / "server.py").read_text(encoding="utf-8")
+    server = (ROOT / "src/creo_mechdog/server.py").read_text(encoding="utf-8")
     check(
         "tool_signature_accepts_reference_objects",
         "sections: Annotated[list[str | int | dict[str, Any]]" in server

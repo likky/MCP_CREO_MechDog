@@ -19,8 +19,8 @@ import time
 import uuid
 from pathlib import Path
 
-import bridge
-import generic_bridge as general
+from creo_mechdog import bridge
+from creo_mechdog import generic_bridge as general
 
 TOKEN_SECONDS = 600
 WORKER_SECONDS = 115

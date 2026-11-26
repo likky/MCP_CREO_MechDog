@@ -12,9 +12,10 @@ script and tests/unit/test_mcp_contract.py cannot drift apart.
 import argparse
 import asyncio
 import json
+import runpy
 import sys
 import traceback
-from contextlib import ExitStack
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
@@ -30,14 +31,28 @@ from version import VERSION
 TERMINAL_JOB_STATUSES = ("succeeded", "failed", "unknown_outcome", "cancelled")
 
 
+@contextmanager
+def without_creo(server):
+    """Run an offline stdio fixture without starting Creo or reading local setup."""
+    fixture = ROOT / "build" / "offline-sdk-fixture"
+    with (
+        patch.object(server.startup, "start"),
+        patch.object(
+            server.bridge,
+            "config",
+            return_value={"creo_root": str(fixture), "vcvars64": str(fixture / "vcvars64.bat")},
+        ),
+        patch.object(server.bridge, "resolve_license_environment", return_value=(None, {})),
+    ):
+        yield
+
+
 def _serve_offline() -> None:
-    """Serve the real MCP stdio protocol with startup and update side effects disabled."""
+    """Launch the real stdio entry with inert startup and a fixture environment."""
     import server
 
-    with ExitStack() as stack:
-        stack.enter_context(patch.object(server.startup, "start"))
-        stack.enter_context(patch.object(server.updates, "start"))
-        server.mcp.run()
+    with without_creo(server), patch.object(server.updates, "start"):
+        runpy.run_path(str(ROOT / "server.py"), run_name="__main__")
 
 
 def _report_path(create: bool, simple: bool, offline: bool) -> Path:
@@ -191,6 +206,8 @@ async def main(
             environment = await client.call_tool("creo_check_environment", {})
             assert not environment.is_error, environment
             report["environment"] = environment.structured_content
+            if offline:
+                report["environment_uses_fixture"] = True
             assert "ready_to_build" in report["environment"], report["environment"]
             if skip_session:
                 report["session"] = {

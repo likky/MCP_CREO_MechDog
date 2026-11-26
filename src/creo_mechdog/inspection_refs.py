@@ -25,7 +25,7 @@ import os
 import uuid
 from pathlib import Path
 
-import bridge
+from creo_mechdog import bridge
 from creo_mechdog.model_queries import inspection_summary
 
 REF_KEYS = ("file", "sha256", "bytes")

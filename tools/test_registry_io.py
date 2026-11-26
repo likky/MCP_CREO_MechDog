@@ -217,7 +217,7 @@ def main() -> int:
         "environment": {"os": platform.platform(), "python": platform.python_version()},
         "source": {
             **git_state(ROOT),
-            "bridge_sha256": source_hash(ROOT / "bridge.py"),
+            "bridge_sha256": source_hash(ROOT / "src/creo_mechdog/bridge.py"),
             "probe_sha256": source_hash(Path(__file__)),
         },
         "parameters": {"readers": args.readers, "writes": args.writes, "rounds": args.rounds},

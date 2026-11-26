@@ -290,7 +290,7 @@ class Live:
     """Thin wrapper over generic_bridge for one model at a time."""
 
     def __init__(self) -> None:
-        import generic_bridge
+        from creo_mechdog import generic_bridge
 
         self.bridge = generic_bridge
 

@@ -177,7 +177,7 @@ def main() -> int:
     if not args.confirm_session_usable:
         raise SystemExit("pass --confirm-session-usable after checking the live session")
 
-    import generic_bridge
+    from creo_mechdog import generic_bridge
 
     try:
         live, ok = run_live(generic_bridge)

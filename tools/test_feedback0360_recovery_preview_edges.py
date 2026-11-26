@@ -539,7 +539,7 @@ def main() -> int:
         raise SystemExit("pass --confirm-session-usable after verifying the live Creo session")
 
     import bridge
-    import generic_bridge
+    from creo_mechdog import generic_bridge
 
     report = run_live(bridge, generic_bridge)
     target = ROOT / "build" / "feedback0360_recovery_preview_edges.json"

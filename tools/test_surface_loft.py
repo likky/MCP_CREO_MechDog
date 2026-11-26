@@ -173,7 +173,7 @@ def case_offline() -> dict:
 
     check("operation_registered", "surface_loft" in REGISTERED_OPERATIONS)
     check("operation_published", "surface_loft" not in UNAVAILABLE_OPERATIONS)
-    server = (ROOT / "server.py").read_text(encoding="utf-8")
+    server = (ROOT / "src/creo_mechdog/server.py").read_text(encoding="utf-8")
     check("server_tool_registered", "async def creo_surface_loft(" in server)
     native = (ROOT / "native" / "surface_loft.cpp").read_text(encoding="utf-8")
     check("native_entry_point", "static void generic_surface_loft(const J &op)" in native)

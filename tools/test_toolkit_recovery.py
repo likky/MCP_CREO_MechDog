@@ -25,8 +25,8 @@ from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 
 import bridge
-import creo_startup
-import generic_bridge as general
+from creo_mechdog import creo_startup
+from creo_mechdog import generic_bridge as general
 from creo_mechdog.mcp_contract import call_capabilities_section
 from creo_mechdog.query_client import read_full_model
 from creo_mechdog.recovery import process_identity
@@ -394,9 +394,11 @@ async def run(args) -> dict:
             name: hashlib.sha256((ROOT / name).read_bytes().replace(b"\r\n", b"\n")).hexdigest()
             for name in (
                 "bridge.py",
-                "generic_bridge.py",
-                "creo_startup.py",
+                "src/creo_mechdog/bridge.py",
+                "src/creo_mechdog/generic_bridge.py",
+                "src/creo_mechdog/creo_startup.py",
                 "server.py",
+                "src/creo_mechdog/server.py",
                 "src/creo_mechdog/recovery.py",
                 "native/worker.cpp",
                 "native/generic.cpp",

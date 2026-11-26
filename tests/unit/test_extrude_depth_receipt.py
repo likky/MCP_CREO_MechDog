@@ -22,8 +22,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import bridge
-import generic_bridge as general
 import server
+from creo_mechdog import generic_bridge as general
 from creo_mechdog.model_queries import RESPONSE_BUDGET
 from creo_mechdog.operation_results import annotate_extrude_depth, normalize_extrude_depth
 from creo_mechdog.schema import ExtrudeOp, dump_plan_operations, validate_operations

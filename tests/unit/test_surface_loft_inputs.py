@@ -31,7 +31,7 @@ from creo_mechdog.surface_ops import LOFT_INPUT_LIVE_STATUS, SurfaceLoftOp
 
 ROOT = Path(__file__).resolve().parents[2]
 NATIVE = ROOT / "native" / "surface_loft.cpp"
-SERVER = ROOT / "server.py"
+SERVER = ROOT / "src/creo_mechdog/server.py"
 DRIVER = ROOT / "tools" / "test_surface_loft_inputs.py"
 
 
