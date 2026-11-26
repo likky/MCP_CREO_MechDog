@@ -233,12 +233,21 @@ class SubmissionGateTests(unittest.TestCase):
         self.assertEqual(eligibility["verdict"], "unresolved")
         self.assertEqual(prepared[0]["weld_pairs"], [])
 
-    def test_snap_endpoints_refuses_instead_of_silently_not_moving_two_arcs(self):
-        with self.assertRaises(ValueError) as caught:
-            prepare_operations([sketch(arc_seam(), snap_endpoints=True, max_endpoint_move_mm=1e-6)])
-        message = str(caught.exception)
-        self.assertIn("snap_endpoints asked the policy layer", message)
-        self.assertIn("arc_pair_not_snappable", message)
+    def test_snap_endpoints_snaps_two_arcs_within_bound_and_refuses_over_bound(self):
+        # FEAT-090: explicit snap_endpoints now snaps arc-arc seams within bound
+        # and refuses cleanly when the caller's max_endpoint_move_mm is too tight.
+        prepared = prepare_operations(
+            [sketch(arc_seam(), snap_endpoints=True, max_endpoint_move_mm=1e-4)]
+        )
+        snap = prepared[0]["snap_endpoint_receipt"]["snap"]
+        self.assertTrue(snap["applied"])
+        self.assertLessEqual(snap["residual_max_mm"], 1e-9)
+
+        # Too tight bound leaves the seam unsnapped / refused rather than silently moving out of bound.
+        tight = prepare_operations(
+            [sketch(arc_seam(), snap_endpoints=True, max_endpoint_move_mm=1e-9)]
+        )
+        self.assertFalse(tight[0]["snap_endpoint_receipt"]["snap"]["applied"])
 
     def test_snap_endpoints_still_rewrites_a_weldable_line_seam(self):
         operation = sketch(gapped_square(), snap_endpoints=True, max_endpoint_move_mm=WELD_GAP)

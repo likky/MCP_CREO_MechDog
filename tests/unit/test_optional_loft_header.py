@@ -17,6 +17,16 @@ class OptionalLoftHeaderTests(unittest.TestCase):
         if os.name != "nt" or not config.is_file():
             self.skipTest("local Windows compiler configuration not available")
         settings = json.loads(config.read_text(encoding="utf-8-sig"))
+        if isinstance(settings.get("vcvars64_env"), dict) and isinstance(
+            settings["vcvars64_env"].get("INCLUDE"), str
+        ):
+            # Strip any Creo Toolkit SDK header paths so this test always exercises the
+            # missing-header fallback even when vcvars64_env cached protoolkit\includes.
+            settings["vcvars64_env"]["INCLUDE"] = ";".join(
+                part
+                for part in settings["vcvars64_env"]["INCLUDE"].split(";")
+                if "protoolkit" not in part.lower()
+            )
         directory = ROOT / "build/optional_loft_header_test"
         directory.mkdir(parents=True, exist_ok=True)
         exe = directory / "header_gate.exe"

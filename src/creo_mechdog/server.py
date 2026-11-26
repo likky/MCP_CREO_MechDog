@@ -867,6 +867,11 @@ def _capabilities_payload(tool_entries: list[dict[str, Any]]) -> dict[str, Any]:
         ],
         "operations": [op for op in REGISTERED_OPERATIONS if op not in UNAVAILABLE_OPERATIONS],
         "registered_operations": list(REGISTERED_OPERATIONS),
+        "registered_but_unavailable_operations": list(UNAVAILABLE_OPERATIONS),
+        "operations_note": (
+            "operations lists currently callable operations; registered_operations also "
+            "includes registered_but_unavailable_operations which cannot be invoked."
+        ),
         "extrude_modes": ["add", "cut", "surface"],
         "extrude_depth_types": ["blind", "through_all"],
         "extrude_directions": ["positive", "negative", "symmetric"],
@@ -892,6 +897,7 @@ def _capabilities_payload(tool_entries: list[dict[str, Any]]) -> dict[str, Any]:
             families(),
             bridge.surface_loft_admission_identity(),
             bridge.channel_health().get("surface_loft_runtime"),
+            bridge.channel_health().get("callback_runtime", {}),
         ),
         "known_limitations": list(KNOWN_LIMITATIONS),
         "plan_examples": list(PLAN_EXAMPLES),
@@ -1201,21 +1207,33 @@ async def creo_update_sketch_geometry(
             )
         ),
     ] = None,
+    snap_endpoints: bool = False,
+    endpoint_policy: Literal["report", "reject", "weld"] = "report",
+    max_endpoint_move_mm: float | None = None,
+    closure_tolerance_mm: float | None = None,
 ) -> dict[str, Any]:
     """Replace native sketch geometry in place, preserving the sketch feature ID. Expanded entity names/types must match. The replacement clears old named dimensions/constraints. Arc and ellipse editing need local validation.
     On any valid sketch plane, auto selects coordinates for supported line, centerline, rectangle, polyline, circle and arc profiles. The default absolute deviation limit is 1e-5 mm, including rigid translation. A positive geometry_tolerance_mm sets that limit. Spline and ellipse use autodim. An explicit autodim edit may use the existing coordinate upgrade on compatible sections; the solver reports requested and used modes.
+    Set snap_endpoints=true (optionally with max_endpoint_move_mm and closure_tolerance_mm) to snap near-coincident line/arc endpoints (including different-center arc-arc seams) into shared coordinates before submission; the receipt reports every shift and radius delta.
     geometry_deviation reports both solver and completed-feature measurements. An identical geometry verified against its actual section can skip re-solving. Missing measurements carry a reason. The explicit coordinates mode retains its rigid-translation allowance. Failed replacement rolls back to the saved model."""
+    op: dict[str, Any] = dict(
+        op="update_sketch_geometry",
+        sketch=sketch,
+        entities=[e.model_dump() for e in entities],
+        dimensioning=dimensioning,
+        geometry_tolerance_mm=geometry_tolerance_mm,
+    )
+    if snap_endpoints:
+        op["snap_endpoints"] = True
+    if endpoint_policy != "report":
+        op["endpoint_policy"] = endpoint_policy
+    if max_endpoint_move_mm is not None:
+        op["max_endpoint_move_mm"] = max_endpoint_move_mm
+    if closure_tolerance_mm is not None:
+        op["closure_tolerance_mm"] = closure_tolerance_mm
     return await invoke(
         general.submit,
-        [
-            dict(
-                op="update_sketch_geometry",
-                sketch=sketch,
-                entities=[e.model_dump() for e in entities],
-                dimensioning=dimensioning,
-                geometry_tolerance_mm=geometry_tolerance_mm,
-            )
-        ],
+        [op],
         model_id,
         None,
         expected_revision,
@@ -1393,6 +1411,19 @@ async def creo_create_sketch(
             )
         ),
     ] = None,
+    snap_endpoints: Annotated[
+        bool,
+        Field(
+            description=(
+                "When true, snap near-coincident line and arc endpoints (including different-center "
+                "arc-arc seams down to 1e-9 mm) into shared coordinates before submission, bounded "
+                "by max_endpoint_move_mm / closure_tolerance_mm, and report shifts in endpoint_weld.snap."
+            )
+        ),
+    ] = False,
+    endpoint_policy: Literal["report", "reject", "weld"] = "report",
+    max_endpoint_move_mm: float | None = None,
+    closure_tolerance_mm: float | None = None,
 ) -> dict[str, Any]:
     """Create an independent native dimensioned sketch of arbitrary supported entities.
 
@@ -1449,6 +1480,14 @@ async def creo_create_sketch(
         "dimensioning": dimensioning,
         "geometry_tolerance_mm": geometry_tolerance_mm,
     }
+    if snap_endpoints:
+        op["snap_endpoints"] = True
+    if endpoint_policy != "report":
+        op["endpoint_policy"] = endpoint_policy
+    if max_endpoint_move_mm is not None:
+        op["max_endpoint_move_mm"] = max_endpoint_move_mm
+    if closure_tolerance_mm is not None:
+        op["closure_tolerance_mm"] = closure_tolerance_mm
     return await invoke(general.submit, [op], model_id, None, expected_revision)
 
 
@@ -1992,21 +2031,27 @@ async def creo_draft(
 ) -> dict[str, Any]:
     """Create a native constant-angle, unsplit draft using selected surfaces and a neutral plane.
 
-    Pull direction defaults to the neutral plane normal and can use a datum plane or axis.
-    flip=false follows that reference direction and flip=true reverses it. The signed
-    angle is independent of flip. For an outside cylindrical boss with the neutral
-    plane at its base and pull toward its free end, a positive angle narrows that end.
-    The result reports measured material evidence (volume_before_mm3,
-    volume_after_mm3, material_delta_mm3 = after - before with
-    material_measurement status/query codes; unestablished values are null), so
-    material changes are visible from the signed delta. draft_geometry reads the
-    created feature tree. requested_flip echoes the argument, and effective_flip
-    (also flip) is true when the tree reverses the pull reference. The response
-    includes the signed angle and the reference pull_vector. For plane references,
-    applied_pull_vector gives the model-space direction after reversal. Unavailable
-    values are null. A failed create publishes draft_failure with the request,
-    the bounded element_errors sample and classification
-    (kernel_element_error / no_element_evidence) plus a next action.
+    Pull direction defaults to the neutral plane and can use a datum plane, planar
+    surface, or datum axis. flip=false writes PRO_DIRECTION_FLIP_ALONG
+    (direction_flip_code=1, effective_flip=false) and flip=true writes
+    PRO_DIRECTION_FLIP_AGAINST (direction_flip_code=-1, effective_flip=true). The
+    signed angle is independent of flip. Creo's native pull side depends on the
+    reference kind: on a +Z extruded cylindrical boss with a positive angle, using
+    the solid bottom planar face ({kind:'surface'}) as neutral_plane narrows the free
+    end when flip=false (removed) and widens it when flip=true (added), whereas using
+    the XY datum plane ({kind:'datum_plane'}, normal +Z) has the opposite effect on
+    Creo 10 (flip=false adds material, flip=true removes material). Always check
+    material_effect ('added' / 'removed' / 'unchanged' / null, derived from
+    material_delta_mm3) and material_delta_mm3 = after - before (with
+    volume_before_mm3, volume_after_mm3 and material_measurement status/query codes;
+    unestablished values are null). draft_geometry reads the created feature tree:
+    requested_flip echoes the argument, effective_flip (also flip) is true when
+    direction_flip_code=-1 (PRO_DIRECTION_FLIP_AGAINST) and false when +1
+    (PRO_DIRECTION_FLIP_ALONG). The response includes the signed angle and reference
+    pull_vector; for plane references, applied_pull_vector gives the model-space
+    direction after reversal. Unavailable values are null. A failed create publishes
+    draft_failure with the request, the bounded element_errors sample and
+    classification (kernel_element_error / no_element_evidence) plus a next action.
     reference_application separates requested_set_count from the tree-proven
     applied_set_count.
     """
@@ -3465,7 +3510,17 @@ async def creo_surface_loft(
     guides: Annotated[list[str | int | dict[str, Any]], Field(max_length=8)] | None = None,
     boundary_conditions: Annotated[list[dict[str, str]], Field(max_length=4)] | None = None,
     creation_route: Literal["element_tree", "resident_panel"] | None = None,
-    accept_unverified_completion: bool = False,
+    accept_unverified_completion: Annotated[
+        bool,
+        Field(
+            description=(
+                "element_tree route only. On Creo 10 (release 42), this flag does NOT produce a "
+                "usable surface: the kernel leaves the feature incomplete and the job still fails "
+                "with SURFACE_LOFT_ACCEPT_INCOMPLETE and rolls back; use creation_route='resident_panel' "
+                "with a ready callback on Creo 10."
+            )
+        ),
+    ] = False,
 ) -> dict[str, Any]:
     """Create a native boundary-blend surface quilt through section sketches.
 

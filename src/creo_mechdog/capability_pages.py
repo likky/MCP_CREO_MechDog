@@ -114,6 +114,8 @@ def _section_summary(payload: dict) -> dict:
             summary[name]["limits_note"] = family["limits"][:COMPACT_LIMITS_CHARS]
         if name in summary and isinstance(family, dict) and family.get("runtime_admission"):
             summary[name]["runtime_admission"] = family["runtime_admission"]
+        if name in summary and isinstance(family, dict) and "runtime_ready" in family:
+            summary[name]["runtime_ready"] = family["runtime_ready"]
     return summary
 
 

@@ -20,7 +20,9 @@ from typing import Any
 #: A compact family entry is an index. Two hints ride along because a client must
 #: see them before choosing a route: ``limits_note`` (DEV-081/F05) and
 #: ``runtime_admission`` (FEAT-074, the callback requirement of a direct blend).
-FAMILY_INDEX_KEYS = frozenset({"enabled", "tool", "limits_note", "runtime_admission"})
+FAMILY_INDEX_KEYS = frozenset(
+    {"enabled", "tool", "limits_note", "runtime_admission", "runtime_ready"}
+)
 
 SECTION = "families"
 PAGE_LIMIT = 50

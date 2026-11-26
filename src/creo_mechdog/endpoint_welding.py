@@ -142,6 +142,8 @@ def _plan(
     entities: list[dict[str, Any]],
     max_move_mm: float | None,
     cluster_tolerance_mm: float | None = None,
+    *,
+    min_gap_mm: float = ARC_COINCIDENT_TOLERANCE_MM,
 ) -> tuple[list, list[dict], list[dict], list[dict]]:
     """The shared candidate/accepted/refused decision used by every entry."""
     tolerance, _source = _effective_cluster_tolerance(cluster_tolerance_mm)
@@ -150,7 +152,7 @@ def _plan(
     # BUG-159: chain through the same near-coincident tolerance used below. With
     # the old 1e-9 exact union each 3.5e-8 mm joint split the contour into a
     # separate chain, so adjacent arcs looked like separate loops.
-    chain_of = _chains(curves, ends, ARC_COINCIDENT_TOLERANCE_MM)
+    chain_of = _chains(curves, ends, min_gap_mm)
 
     candidates: list[dict] = []
     for i, first in enumerate(ends):
@@ -161,7 +163,7 @@ def _plan(
             # A candidate is a pair inside the closure diagnostic scale. The
             # 2026-11-05 live measurement showed the sketch epsilon is not the
             # coincidence tolerance, so a bound alone cannot widen this.
-            if gap <= ARC_COINCIDENT_TOLERANCE_MM or gap > tolerance:
+            if gap <= min_gap_mm or gap > tolerance:
                 # An exact or near-coincident join is already one point, not a
                 # candidate weld.
                 continue
@@ -366,21 +368,265 @@ def eligibility_summary(eligibility: dict[str, Any]) -> str:
     )
 
 
+def _arc_current_geom(entity: dict[str, Any]) -> dict[str, Any]:
+    """Read an arc entity's current (possibly already mutated) geometry."""
+    cx, cy = float(entity["center"][0]), float(entity["center"][1])
+    radius = float(entity["radius"])
+    start_deg = float(entity["start_angle"])
+    direction = int(entity.get("dir", 1))
+    if entity.get("end_angle") is not None:
+        end_deg = float(entity["end_angle"])
+        if direction >= 0:
+            sweep = (end_deg - start_deg) % 360.0
+            if sweep <= 1e-12:
+                sweep = 360.0
+        else:
+            sweep = -((start_deg - end_deg) % 360.0)
+            if sweep >= -1e-12:
+                sweep = -360.0
+    else:
+        sweep = float(entity["sweep_deg"])
+        end_deg = start_deg + sweep
+        direction = 1 if sweep >= 0 else -1
+    start_rad = math.radians(start_deg)
+    end_rad = math.radians(end_deg)
+    mid_rad = math.radians(start_deg + sweep / 2.0)
+    return {
+        "center": (cx, cy),
+        "radius": radius,
+        "start_deg": start_deg,
+        "end_deg": end_deg,
+        "sweep_deg": sweep,
+        "dir": direction,
+        "start": (cx + radius * math.cos(start_rad), cy + radius * math.sin(start_rad)),
+        "mid": (cx + radius * math.cos(mid_rad), cy + radius * math.sin(mid_rad)),
+        "end": (cx + radius * math.cos(end_rad), cy + radius * math.sin(end_rad)),
+    }
+
+
+def _circle_intersections(
+    c1: tuple[float, float], r1: float, c2: tuple[float, float], r2: float
+) -> list[tuple[float, float]]:
+    """Return 0, 1, or 2 real intersection points of two circles."""
+    dx = c2[0] - c1[0]
+    dy = c2[1] - c1[1]
+    d = math.hypot(dx, dy)
+    if d <= 1e-15:
+        return []
+    if d > r1 + r2 + 1e-12 or d < abs(r1 - r2) - 1e-12:
+        return []
+    a = (r1 * r1 - r2 * r2 + d * d) / (2.0 * d)
+    h_sq = r1 * r1 - a * a
+    if h_sq < -1e-12:
+        return []
+    h = math.sqrt(max(0.0, h_sq))
+    px = c1[0] + a * dx / d
+    py = c1[1] + a * dy / d
+    if h <= 1e-15:
+        return [(px, py)]
+    rx = -dy * (h / d)
+    ry = dx * (h / d)
+    return [(px + rx, py + ry), (px - rx, py - ry)]
+
+
+def _circumcircle(
+    p1: tuple[float, float], p2: tuple[float, float], p3: tuple[float, float]
+) -> tuple[tuple[float, float], float] | None:
+    """Unique circle through three non-collinear 2D points, or None if degenerate."""
+    ax, ay = p1
+    bx, by = p2
+    cx, cy = p3
+    d = 2.0 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
+    if abs(d) <= 1e-18:
+        return None
+    a2 = ax * ax + ay * ay
+    b2 = bx * bx + by * by
+    c2 = cx * cx + cy * cy
+    ux = (a2 * (by - cy) + b2 * (cy - ay) + c2 * (ay - by)) / d
+    uy = (a2 * (cx - bx) + b2 * (ax - cx) + c2 * (bx - ax)) / d
+    if not (math.isfinite(ux) and math.isfinite(uy)):
+        return None
+    radius = math.hypot(ax - ux, ay - uy)
+    if not math.isfinite(radius) or radius <= 0.0:
+        return None
+    return (ux, uy), radius
+
+
+def _write_arc_angles(
+    entity: dict[str, Any],
+    center: tuple[float, float],
+    radius: float,
+    start_pt: tuple[float, float],
+    mid_pt: tuple[float, float],
+    end_pt: tuple[float, float],
+) -> None:
+    """Update an arc entity's center, radius, and angles to pass through start->mid->end."""
+    cx, cy = center
+    a_start = math.degrees(math.atan2(start_pt[1] - cy, start_pt[0] - cx)) % 360.0
+    a_mid = math.degrees(math.atan2(mid_pt[1] - cy, mid_pt[0] - cx)) % 360.0
+    a_end = math.degrees(math.atan2(end_pt[1] - cy, end_pt[0] - cx)) % 360.0
+    ccw_end = (a_end - a_start) % 360.0
+    ccw_mid = (a_mid - a_start) % 360.0
+    direction = 1 if (0.0 < ccw_mid < ccw_end) else -1
+    entity["center"] = [cx, cy]
+    entity["radius"] = radius
+    entity["start_angle"] = a_start
+    entity["dir"] = direction
+    if "sweep_deg" in entity and entity.get("end_angle") is None:
+        sweep = ccw_end if direction == 1 else -((a_start - a_end) % 360.0)
+        entity["sweep_deg"] = sweep
+    else:
+        entity["end_angle"] = a_end
+
+
+def _snap_arc_endpoint_only_angle(
+    entity: dict[str, Any], end_key: str, target: tuple[float, float]
+) -> None:
+    """Move one arc endpoint to target (already on the arc's circle) by updating only its angle."""
+    geom = _arc_current_geom(entity)
+    cx, cy = geom["center"]
+    new_deg = math.degrees(math.atan2(target[1] - cy, target[0] - cx)) % 360.0
+    if end_key == "start":
+        entity["start_angle"] = new_deg
+    else:
+        if "sweep_deg" in entity and entity.get("end_angle") is None:
+            start_deg = float(entity["start_angle"])
+            if geom["dir"] >= 0:
+                sweep = (new_deg - start_deg) % 360.0
+            else:
+                sweep = -((start_deg - new_deg) % 360.0)
+            entity["sweep_deg"] = sweep
+        else:
+            entity["end_angle"] = new_deg
+
+
+def _snap_arc_pair(
+    entity_a: dict[str, Any],
+    end_a: str,
+    entity_b: dict[str, Any],
+    end_b: str,
+    bound: float,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """FEAT-090: snap two arcs to a shared point within bound.
+
+    1. Same circle -> angle-only midpoint on circle (zero radius delta).
+    2. Intersecting circles within bound -> angle-only snap to intersection (zero radius delta).
+    3. Non-intersecting near-tangent arcs -> 3-point circumcircle snap to midpoint within bound.
+    """
+    ga = _arc_current_geom(entity_a)
+    gb = _arc_current_geom(entity_b)
+    pa = ga["start"] if end_a == "start" else ga["end"]
+    pb = gb["start"] if end_b == "start" else gb["end"]
+    gap = _distance(pa, pb)
+    mid = ((pa[0] + pb[0]) / 2.0, (pa[1] + pb[1]) / 2.0)
+
+    # 1. Same circle: project midpoint onto shared circle, angle-only update.
+    if _distance(ga["center"], gb["center"]) <= 1e-9 and abs(ga["radius"] - gb["radius"]) <= 1e-9:
+        cx, cy = ga["center"]
+        dm = math.hypot(mid[0] - cx, mid[1] - cy)
+        if dm <= 1e-15:
+            return None, "arc_snap_degenerate"
+        target = (cx + ga["radius"] * (mid[0] - cx) / dm, cy + ga["radius"] * (mid[1] - cy) / dm)
+        shift_a, shift_b = _distance(pa, target), _distance(pb, target)
+        if max(shift_a, shift_b) > bound:
+            return None, "arc_snap_out_of_bound"
+        _snap_arc_endpoint_only_angle(entity_a, end_a, target)
+        _snap_arc_endpoint_only_angle(entity_b, end_b, target)
+        return {
+            "anchor": "arc_same_circle",
+            "point": [target[0], target[1]],
+            "shift_a_mm": shift_a,
+            "shift_b_mm": shift_b,
+            "radius_delta_a_mm": 0.0,
+            "radius_delta_b_mm": 0.0,
+            "gap_mm": gap,
+        }, None
+
+    # 2. Intersecting different circles: angle-only update if intersection is within bound.
+    intersections = _circle_intersections(ga["center"], ga["radius"], gb["center"], gb["radius"])
+    if intersections:
+        best = min(intersections, key=lambda pt: _distance(pt, mid))
+        shift_a, shift_b = _distance(pa, best), _distance(pb, best)
+        if max(shift_a, shift_b) <= bound:
+            _snap_arc_endpoint_only_angle(entity_a, end_a, best)
+            _snap_arc_endpoint_only_angle(entity_b, end_b, best)
+            return {
+                "anchor": "arc_intersection",
+                "point": [best[0], best[1]],
+                "shift_a_mm": shift_a,
+                "shift_b_mm": shift_b,
+                "radius_delta_a_mm": 0.0,
+                "radius_delta_b_mm": 0.0,
+                "gap_mm": gap,
+            }, None
+
+    # 3. Near-tangent / micro-gap non-intersecting circles: 3-point circumcircle through midpoint.
+    target = mid
+    shift_a, shift_b = _distance(pa, target), _distance(pb, target)
+    if max(shift_a, shift_b) > bound:
+        return None, "arc_snap_out_of_bound"
+    qa = ga["end"] if end_a == "start" else ga["start"]
+    qb = gb["end"] if end_b == "start" else gb["start"]
+    ca = _circumcircle(
+        target if end_a == "start" else qa, ga["mid"], qa if end_a == "start" else target
+    )
+    cb = _circumcircle(
+        target if end_b == "start" else qb, gb["mid"], qb if end_b == "start" else target
+    )
+    if ca is None or cb is None:
+        return None, "arc_snap_degenerate"
+    (cax, cay), ra_new = ca
+    (cbx, cby), rb_new = cb
+    da_r = abs(ra_new - ga["radius"])
+    db_r = abs(rb_new - gb["radius"])
+    radius_limit = max(1e-3, 1000.0 * max(gap, bound))
+    if max(da_r, db_r) > radius_limit:
+        return None, "arc_snap_radius_drift_exceeded"
+    _write_arc_angles(
+        entity_a,
+        (cax, cay),
+        ra_new,
+        target if end_a == "start" else qa,
+        ga["mid"],
+        qa if end_a == "start" else target,
+    )
+    _write_arc_angles(
+        entity_b,
+        (cbx, cby),
+        rb_new,
+        target if end_b == "start" else qb,
+        gb["mid"],
+        qb if end_b == "start" else target,
+    )
+    return {
+        "anchor": "arc_three_point",
+        "point": [target[0], target[1]],
+        "shift_a_mm": shift_a,
+        "shift_b_mm": shift_b,
+        "radius_delta_a_mm": da_r,
+        "radius_delta_b_mm": db_r,
+        "gap_mm": gap,
+    }, None
+
+
 def _snap_entities(
     entities: list[dict[str, Any]],
     curves: list,
     accepted: list[dict],
+    *,
+    max_move_mm: float | None = None,
+    tolerance_mm: float = CLUSTER_TOLERANCE_MM,
 ) -> tuple[list[dict[str, Any]], list[dict], str | None]:
-    """Rewrite accepted line endpoints to one shared point.
+    """Rewrite accepted line and arc endpoints to one shared point (FEAT-090).
 
-    Arcs never move: an arc endpoint is tied to its centre and radius, so the
-    line side of an arc/line pair is anchored to the arc endpoint. Two lines
-    meet at the midpoint. A pair involving an expanded rectangle/polyline
-    segment, or two arcs, is refused because the rewrite would change geometry
-    the request did not describe.
+    Two lines meet at the midpoint. A line-arc pair anchors the line to the arc's
+    current endpoint. Two arcs snap by angle-only intersection when available, or
+    by bounded 3-point circumcircle refit through the midpoint. Expanded rectangle
+    or polyline segments remain refused because the rewrite cannot address them.
     """
     result = copy.deepcopy(entities)
     applied: list[dict] = []
+    effective_bound = max_move_mm if max_move_mm is not None else tolerance_mm
     for pair in accepted:
         first = curves[pair["curve_a"]]
         second = curves[pair["curve_b"]]
@@ -389,9 +635,33 @@ def _snap_entities(
         if entity_a is None or entity_b is None:
             return result, applied, "entity_not_snappable"
         if first.kind == "arc" and second.kind == "arc":
-            return result, applied, "arc_pair_not_snappable"
-        point_a = first.start if pair["end_a"] == "start" else first.end
-        point_b = second.start if pair["end_b"] == "start" else second.end
+            arc_res, err = _snap_arc_pair(
+                entity_a, pair["end_a"], entity_b, pair["end_b"], effective_bound
+            )
+            if err is not None or arc_res is None:
+                return result, applied, err or "arc_pair_not_snappable"
+            applied.append(
+                {
+                    "entity_a": pair["entity_a"],
+                    "entity_b": pair["entity_b"],
+                    "end_a": pair["end_a"],
+                    "end_b": pair["end_b"],
+                    **arc_res,
+                }
+            )
+            continue
+        if first.kind == "arc":
+            ga = _arc_current_geom(entity_a)
+            point_a = ga["start"] if pair["end_a"] == "start" else ga["end"]
+        else:
+            raw_a = entity_a[pair["end_a"]]
+            point_a = (float(raw_a[0]), float(raw_a[1]))
+        if second.kind == "arc":
+            gb = _arc_current_geom(entity_b)
+            point_b = gb["start"] if pair["end_b"] == "start" else gb["end"]
+        else:
+            raw_b = entity_b[pair["end_b"]]
+            point_b = (float(raw_b[0]), float(raw_b[1]))
         if first.kind == "arc":
             target, anchor = point_a, "a"
         elif second.kind == "arc":
@@ -426,18 +696,20 @@ def _open_chain_snap_pairs(
     accepted: list[dict],
     refused: list[dict],
     max_move_mm: float | None,
+    *,
+    allow_arc_snap: bool = False,
+    min_gap_mm: float = ARC_COINCIDENT_TOLERANCE_MM,
 ) -> list[dict]:
     """Select unambiguous open-chain pairs for explicit snap_endpoints requests.
 
-    A profile with more than one micro-gap (for example several arc-line seams
-    each 4e-4 mm wide) splits into separate open chains under the 1e-6 mm union.
-    When the caller explicitly requests ``snap_endpoints=True``, bridge open
-    chains greedily by smallest gap while refusing any pair that touches an
-    already closed contour, violates ``arc_consistent``, or exceeds
-    ``max_move_mm``.
+    A profile with more than one micro-gap (for example several arc-line or
+    arc-arc seams) splits into separate open chains under the exact union. When
+    the caller explicitly requests ``snap_endpoints=True``, bridge open chains
+    greedily by smallest gap while refusing any pair that touches an already
+    closed contour or exceeds ``max_move_mm``.
     """
     ends = _endpoints(curves)
-    chain_of = _chains(curves, ends, ARC_COINCIDENT_TOLERANCE_MM)
+    chain_of = _chains(curves, ends, min_gap_mm)
     closed = _closed_chains(ends, chain_of)
     used: set[tuple[int, str]] = set()
     for pair in accepted:
@@ -445,9 +717,14 @@ def _open_chain_snap_pairs(
         used.add((pair["curve_b"], pair["end_b"]))
     extra: list[dict] = []
     for pair in refused:
-        if pair.get("reason") != "separate_loops":
-            continue
-        if not pair.get("arc_consistent", True):
+        reason = pair.get("reason")
+        if reason == "arc_inconsistent":
+            if not allow_arc_snap:
+                continue
+        elif reason == "separate_loops":
+            if not allow_arc_snap and not pair.get("arc_consistent", True):
+                continue
+        else:
             continue
         if max_move_mm is not None and pair["required_move_mm"] > max_move_mm:
             continue
@@ -496,7 +773,10 @@ def prepare_endpoint_weld(
             raise ValueError("max_move_mm must be a finite number greater than 0")
     tolerance, tolerance_source = _effective_cluster_tolerance(cluster_tolerance_mm)
 
-    curves, candidates, accepted, refused = _plan(entities, max_move_mm, cluster_tolerance_mm)
+    min_gap = EXACT_TOLERANCE_MM if snap else ARC_COINCIDENT_TOLERANCE_MM
+    curves, candidates, accepted, refused = _plan(
+        entities, max_move_mm, cluster_tolerance_mm, min_gap_mm=min_gap
+    )
 
     receipt: dict[str, Any] = {
         "policy": policy,
@@ -575,25 +855,54 @@ def prepare_endpoint_weld(
     if snap:
         if policy == "reject":
             raise ValueError("snap_endpoints cannot be combined with endpoint_policy=reject")
-        snap_pairs = accepted + _open_chain_snap_pairs(curves, accepted, refused, max_move_mm)
+        snap_pairs = accepted + _open_chain_snap_pairs(
+            curves,
+            accepted,
+            refused,
+            max_move_mm,
+            allow_arc_snap=True,
+            min_gap_mm=min_gap,
+        )
         if snap_pairs:
-            snapped, applied_pairs, failure = _snap_entities(entities, curves, snap_pairs)
+            snapped, applied_pairs, failure = _snap_entities(
+                entities,
+                curves,
+                snap_pairs,
+                max_move_mm=max_move_mm,
+                tolerance_mm=tolerance,
+            )
             if failure is not None:
                 receipt["snap"]["failure_reason"] = failure
             else:
-                residual_plan = _plan(snapped, max_move_mm, cluster_tolerance_mm)
+                residual_plan = _plan(
+                    snapped, max_move_mm, cluster_tolerance_mm, min_gap_mm=min_gap
+                )
                 residual = residual_plan[2] + _open_chain_snap_pairs(
-                    residual_plan[0], residual_plan[2], residual_plan[3], max_move_mm
+                    residual_plan[0],
+                    residual_plan[2],
+                    residual_plan[3],
+                    max_move_mm,
+                    allow_arc_snap=True,
+                    min_gap_mm=min_gap,
                 )
                 rules = sorted({entry["anchor"] for entry in applied_pairs})
+                radius_deltas = [
+                    max(
+                        entry.get("radius_delta_a_mm", 0.0),
+                        entry.get("radius_delta_b_mm", 0.0),
+                    )
+                    for entry in applied_pairs
+                ]
                 receipt["snap"].update(
                     {
                         "applied": True,
                         "rule": "+".join(rules),
                         "pairs": applied_pairs[:SAMPLE_LIMIT],
+                        "applied_pair_count": len(applied_pairs),
                         "max_shift_mm": max(
                             max(entry["shift_a_mm"], entry["shift_b_mm"]) for entry in applied_pairs
                         ),
+                        "max_radius_delta_mm": max(radius_deltas) if radius_deltas else 0.0,
                         "residual_max_mm": (
                             max(entry["gap_mm"] for entry in residual) if residual else 0.0
                         ),
@@ -604,9 +913,10 @@ def prepare_endpoint_weld(
                 receipt["actual_geometry"] = {
                     "entity_count": len(snapped),
                     "max_endpoint_shift_mm": receipt["snap"]["max_shift_mm"],
+                    "max_radius_delta_mm": receipt["snap"]["max_radius_delta_mm"],
                 }
                 receipt["note"] = (
-                    "Python rewrote the accepted line endpoints into one shared point before "
+                    "Python rewrote the accepted line/arc endpoints into shared points before "
                     "submission; the native solver still owns its own coincidence check"
                 )
                 receipt["_snapped_entities"] = snapped

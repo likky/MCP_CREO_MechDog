@@ -1287,7 +1287,7 @@ def record_channel_health(connected: bool, **fields) -> dict:
         # A probe rewrites the channel status. The observations these writers keep
         # are keyed by worker SHA and own their own records, so a status refresh
         # must not erase them.
-        for key in ("surface_loft_runtime", "host_release"):
+        for key in ("surface_loft_runtime", "host_release", "callback_runtime"):
             if key not in value and isinstance(previous.get(key), dict):
                 value[key] = previous[key]
     (ROOT / "build").mkdir(exist_ok=True)
@@ -1780,7 +1780,7 @@ def callback_status() -> dict:
         return unknown_readiness(artifacts, "invalid_probe_result", session=session)
     if callback_setup_status(build) != artifacts:
         return unknown_readiness(artifacts, "deployment_changed_during_probe", session=session)
-    return {
+    payload = {
         **artifacts,
         **native,
         "session": session,
@@ -1788,6 +1788,15 @@ def callback_status() -> dict:
         "snapshot": True,
         "probe_budget_seconds": 9,
     }
+    record_channel_health(
+        True,
+        callback_runtime={
+            "readiness": native.get("readiness"),
+            "reason": native.get("reason"),
+            "checked_at": payload["checked_at"],
+        },
+    )
+    return payload
 
 
 def create_job(spec: dict) -> dict:

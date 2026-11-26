@@ -108,13 +108,21 @@ static double endpoint_weld_residual(const ProSection section,
         Pro2dEntdef *def = nullptr;
         if (ProSectionEntityGet(section, id, &def) || !def)
             return false;
-        if (def->type != PRO_2D_LINE && def->type != PRO_2D_CENTER_LINE)
-            return false;
-        auto line = (Pro2dLinedef *)def;
-        const double *p = point == "start" ? line->end1 : line->end2;
-        out[0] = p[0];
-        out[1] = p[1];
-        return true;
+        if (def->type == PRO_2D_LINE || def->type == PRO_2D_CENTER_LINE) {
+            auto line = (Pro2dLinedef *)def;
+            const double *p = point == "start" ? line->end1 : line->end2;
+            out[0] = p[0];
+            out[1] = p[1];
+            return true;
+        }
+        if (def->type == PRO_2D_ARC) {
+            auto arc = (Pro2dArcdef *)def;
+            const double angle = point == "start" ? arc->start_angle : arc->end_angle;
+            out[0] = arc->center[0] + arc->radius * std::cos(angle);
+            out[1] = arc->center[1] + arc->radius * std::sin(angle);
+            return true;
+        }
+        return false;
     };
     double residual = 0.0;
     for (auto pair : report.value("applied_pair_detail", J::array())) {

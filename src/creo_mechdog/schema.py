@@ -943,6 +943,9 @@ class SketchRegionSelector(StrictModel):
     ``interior_point_yz_mm`` (a 2D ``[y, z]`` point inside the desired loop,
     evaluated against exact sampled lines, arcs and B-splines), or by both
     together (using the interior point to disambiguate loops sharing endpoints).
+    Both ``signature_yz_mm`` and ``interior_point_yz_mm`` require explicit
+    ``line``, ``arc``, or ``b_spline`` entities in the source sketch (not
+    ``rectangle``, ``circle``, or ``ellipse`` primitives).
     ``frame`` is the sketch's local-to-world basis (``origin + u*xdir + v*ydir``);
     it may be omitted for a named YZ plane.
     """

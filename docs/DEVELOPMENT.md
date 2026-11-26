@@ -1,5 +1,7 @@
 # 开发入口
 
+2026-11-26（0.46.0 MINOR）交付 [BUG-192](work-items/BUG-192.md)、[FEAT-090](work-items/FEAT-090.md)、[BUG-193](work-items/BUG-193.md) 与 [DEV-102](work-items/DEV-102.md)。覆盖拔模基准面方向说明与 `material_effect`、近容差 `arc-arc` 端点焊接与草图参数公开、`loft`/`surface_loft` 统一 `runtime_ready` 与提交前 callback 预检，以及 `creo_capabilities` 操作列表口径。 [版本说明](RELEASE_NOTES_0.46.0.md) · [发布记录](validation/RELEASE-0.46.0.md)
+
 2026-11-26（0.45.2 PATCH）交付 [DEV-002](work-items/DEV-002.md) 第四、五批。服务、桥接和启动实现集中到 Python 包，新安装使用包入口，旧 MCP 配置仍可使用。 [版本说明](RELEASE_NOTES_0.45.2.md) · [发布记录](validation/RELEASE-0.45.2.md)
 
 2026-11-25（0.45.1 PATCH）交付 [BUG-130](work-items/BUG-130.md) 的 STL 接缝与细化修复、ASCII 写出优化及采样诊断。 [版本说明](RELEASE_NOTES_0.45.1.md) · [发布记录](validation/RELEASE-0.45.1.md)

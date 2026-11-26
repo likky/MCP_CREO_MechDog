@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-26（0.46.0 MINOR，台账 272→276，公开工具 111）：逐字节归档 0.45.1 外部反馈原件至 [feedback-0.45.1-2026-11-26](validation/feedback-0.45.1-2026-11-26/SOURCE_MANIFEST.json)，交付 [BUG-192](work-items/BUG-192.md)（`draft` 基准面/实体面方向说明与 `material_effect`）、[FEAT-090](work-items/FEAT-090.md)（近容差 `arc-arc` 端点焊接与草图公开工具参数）、[BUG-193](work-items/BUG-193.md)（`loft`/`surface_loft` 统一 `runtime_ready` 披露与 before-job callback 预检）、[DEV-102](work-items/DEV-102.md)（`creo_capabilities` 操作列表口径与 `region.interior_point_yz_mm` 文档）。 [版本说明](RELEASE_NOTES_0.46.0.md) · [发布记录](validation/RELEASE-0.46.0.md)
+
 2026-11-26（0.45.2 PATCH，公开工具 111）。[DEV-002](work-items/DEV-002.md) 第四、五批交付 Python 服务包化、新安装入口与 AI Agent 兼容说明。 [版本说明](RELEASE_NOTES_0.45.2.md) · [发布记录](validation/RELEASE-0.45.2.md)
 
 2026-11-25（BUG-130 / 0.45.1）：复核 14 m 球鼻艏 STL 的细化、闭合和偏差。保留只读导出及六轮默认上限，补齐导出网格诊断、源件 SHA/revision 对照和偏差采样，另以十二轮诊断验证深细分边界。使用本机可用的 Creo 10.0.0.0 和匹配 SDK，按实际结果记录 0.1 mm 目标及未测平台。见 [BUG-130](work-items/BUG-130.md)。
@@ -258,13 +260,13 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 
 诊断交付不等于根因修复；部分交付不关整卡；缺其他版本证据不自动判未修。观察项等自然新现场，不制造故障。已完成且无保留范围的行移入 [完成档案](BACKLOG_COMPLETED.md#2026-11-07dev-073-归档与历史进展)。原进展/证据保留日期，不再回填第二份待办。小修复沿用卡与证据，复杂跨模块任务才另建完整计划。
 
-当前唯一 ID **272**（BUG **140**、FEAT **86**、DEV **46**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
+当前唯一 ID **276**（BUG **142**、FEAT **87**、DEV **47**）；2026-11-07整理时移入完成档案23项（含DEV-073、DEV-075），该句为历史时点，归档项不计入当前行数。DEV-077起运行 `python tools/check_backlog_counts.py` 自检声明行、表行与分类表三方计数，不一致exit 1；该脚本只校验计数，不替代逐ID人工核对。
 
 | 当前分类 | 唯一 ID 数 |
 | --- | --- |
 | 仍需修复 | 6 |
 | 待复现/待核实 | 37 |
-| 已有修复但待验收 | 84 |
+| 已有修复但待验收 | 88 |
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
 | 开发中 | 9 |
@@ -333,6 +335,10 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 
 | ID / 工作卡 | 优先级 | 当前状态 | 目标版本 | 简短剩余工作 / 依赖 |
 | --- | --- | --- | --- | --- |
+| [BUG-192](work-items/BUG-192.md) | P1 | 已有修复但待验收 | 0.46.0 | 修正 `draft` 基准面/实体面方向说明并新增 `material_effect`，Creo 10 实机 8/8 通过。剩：Creo 9/12.4 与 WorkBuddy 黑盒。 |
+| [FEAT-090](work-items/FEAT-090.md) | P1 | 已有修复但待验收 | 0.46.0 | 暴露草图端点焊接参数并支持 `arc-arc` 近容差共点吸附，Creo 10 实机 40 弧微间隙拉伸通过。剩：外部原件 gear10.json、Creo 9/12.4 与 WorkBuddy 黑盒。 |
+| [BUG-193](work-items/BUG-193.md) | P1 | 已有修复但待验收 | 0.46.0 | 统一 `loft`/`surface_loft` `runtime_ready` 披露并新增 before-job callback 预检拦截。剩：未加载态实机、Creo 9/12.4 与 WorkBuddy 黑盒。 |
+| [DEV-102](work-items/DEV-102.md) | P2 | 已有修复但待验收 | 0.46.0 | `creo_capabilities` 新增 `registered_but_unavailable_operations` 并补全 `region.interior_point_yz_mm` 文档。剩：WorkBuddy 黑盒。 |
 | [BUG-036](work-items/BUG-036.md) | P1 | 已有修复但待验收 | 0.44.1 | 本版交付平面配合位姿校验。本机 Creo 10 复现约束写入成功而位姿未更新，冲突请求明确拒绝并验证回滚。外部 Creo 9 原案、Creo 12.4 与 WorkBuddy 待验证。 |
 | [BUG-187](work-items/BUG-187.md) | P0 | 已有修复但待验收 | 0.44.0 | 偏移基准面 `flip` 与草图显式 `v_axis`（`u_axis × v_axis` 确定法线），本机 Creo 10 正反例（`1000.0 mm³`、Z `[0,20]`、保存重载与回滚）通过。剩：Creo 9/12、WorkBuddy 黑盒。 |
 | [BUG-188](work-items/BUG-188.md) | P0 | 已有修复但待验收 | 0.44.0 | `coordinates` 放行 `PRO_2D_CONSTR_CIRCLE` 并标记 `construction=true`，本机 Creo 10（2 构造圆+3 构造线、`1000.0 mm³`、保存重载）通过。剩：Creo 9/12、WorkBuddy 黑盒。 |

@@ -412,6 +412,7 @@ OUTCOME_OPERATION_KEYS = (
     "leader_surface_count",
     "member_count",
     "rib_diagnostics",
+    "material_effect",
 )
 
 #: Failure diagnostics kept in full on the failed record itself. A per-record
@@ -855,6 +856,36 @@ def annotate_quilt_result_ids(result: dict[str, Any]) -> None:
             alias["quilt_id"] = quilt_id
 
 
+MATERIAL_EFFECT_TOLERANCE_MM3 = 1e-9
+
+
+def material_effect_from_delta(delta: Any) -> str | None:
+    """BUG-192: derive 'added' / 'removed' / 'unchanged' from measured material_delta_mm3."""
+    if isinstance(delta, bool) or not isinstance(delta, (int, float)):
+        return None
+    value = float(delta)
+    if not math.isfinite(value):
+        return None
+    if value > MATERIAL_EFFECT_TOLERANCE_MM3:
+        return "added"
+    if value < -MATERIAL_EFFECT_TOLERANCE_MM3:
+        return "removed"
+    return "unchanged"
+
+
+def annotate_material_effect(result: dict[str, Any]) -> None:
+    """Attach material_effect alongside material_delta_mm3 on measured operations."""
+    operations = result.get("operations")
+    if not isinstance(operations, list):
+        return
+    for record in operations:
+        if not isinstance(record, dict):
+            continue
+        if "material_delta_mm3" not in record and record.get("op") != "draft":
+            continue
+        record["material_effect"] = material_effect_from_delta(record.get("material_delta_mm3"))
+
+
 def annotate_native_result(
     result: dict[str, Any],
     *,
@@ -907,6 +938,7 @@ def annotate_native_result(
     annotate_sketch_origin_diagnostics(result)
     annotate_sketch_shifted(result)
     annotate_cut_geometry_context(result)
+    annotate_material_effect(result)
     if inputs is not None:
         annotate_profiles(result, inputs)
         annotate_cut_volume_check(result, inputs)

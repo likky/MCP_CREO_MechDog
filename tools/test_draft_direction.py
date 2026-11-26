@@ -119,14 +119,23 @@ def run(output: Path, baseline: bool) -> None:
         return row
 
     cases = [
-        ("pos_base", ANGLE, False, False),
-        ("pos_rev", ANGLE, True, False),
-        ("neg_base", -ANGLE, False, False),
-        ("neg_rev", -ANGLE, True, False),
+        ("pos_base", ANGLE, False, "surface"),
+        ("pos_rev", ANGLE, True, "surface"),
+        ("neg_base", -ANGLE, False, "surface"),
+        ("neg_rev", -ANGLE, True, "surface"),
     ]
     if not baseline:
-        cases.extend([("axis_base", ANGLE, False, True), ("axis_rev", ANGLE, True, True)])
-    for case, angle, flip, use_axis in cases:
+        cases.extend(
+            [
+                ("datum_base", ANGLE, False, "datum_plane"),
+                ("datum_rev", ANGLE, True, "datum_plane"),
+                ("axis_base", ANGLE, False, "datum_axis"),
+                ("axis_rev", ANGLE, True, "datum_axis"),
+            ]
+        )
+    for case, angle, flip, mode in cases:
+        use_axis = mode == "datum_axis"
+        use_datum_plane = mode == "datum_plane"
         row = report["cases"][case] = {}
         created = job(case, "fixture", [*CYLINDER, PULL_AXIS] if use_axis else CYLINDER)
         before = created["native"]["inspection"]
@@ -135,11 +144,21 @@ def run(output: Path, baseline: bool) -> None:
             s["id"] for s in before["surfaces"] if s.get("origin") == [0, 0, 0] and "normal" in s
         ]
         assert len(sides) == 2 and len(bases) == 1, before["surfaces"]
+        if use_datum_plane:
+            xy_planes = [
+                p["id"]
+                for p in before.get("datum_planes", [])
+                if p.get("normal") == [0.0, 0.0, 1.0]
+            ]
+            assert xy_planes, before.get("datum_planes")
+            neutral_ref = {"kind": "datum_plane", "id": xy_planes[0]}
+        else:
+            neutral_ref = {"kind": "surface", "id": bases[0]}
         draft = {
             "op": "draft",
             "label": "taper",
             "surfaces": [{"kind": "surface", "id": face} for face in sides],
-            "neutral_plane": {"kind": "surface", "id": bases[0]},
+            "neutral_plane": neutral_ref,
             "angle": angle,
         }
         if flip or baseline:
@@ -189,8 +208,11 @@ def run(output: Path, baseline: bool) -> None:
                 assert draft_geometry["applied_pull_vector"] == [side * v for v in reference_axis]
         assert tree_side == side and tree_angle == angle, row["reloaded_tree"]
         assert draft_geometry["requested_flip"] is flip and draft_geometry["angle_deg"] == angle
-        # The explicit datum axis fixture's native pull side is opposite to the base face's.
-        expected_angle = angle * side * (-1 if use_axis else 1)
+        # Both the XY datum plane and explicit datum axis have opposite native pull side to the bottom solid face on Creo 10.
+        expected_angle = angle * side * (-1 if (use_axis or use_datum_plane) else 1)
+        expected_effect = "removed" if expected_angle > 0 else "added"
+        assert compact["result"]["operations"][0]["material_effect"] == expected_effect, compact
+        assert full["data"]["operations_result"][0]["material_effect"] == expected_effect, full
         verify_geometry(row["after_save"], expected_angle)
         verify_geometry(row["after_reload"], expected_angle)
         assert readback["revision"] == drafted["revision"] == created["revision"] + 1

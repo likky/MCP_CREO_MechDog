@@ -1318,6 +1318,24 @@ def submit(
             # travels with the request so the job names the profile and mode it ran.
             panel_admission = require_panel_route(identity)
             require_panel_directions(panel_requests, panel_admission)
+    loft_requests = [op for op in operations if op.get("op") == "loft"]
+    if panel_requests or loft_requests:
+        # BUG-193: pre-check resident callback readiness before taking the Toolkit
+        # channel or creating a job, so not_loaded/version_mismatch rejects cleanly
+        # without queueing a doomed native job.
+        cb = bridge.callback_status()
+        if isinstance(cb, dict) and cb.get("readiness") in ("not_loaded", "version_mismatch"):
+            route_hint = (
+                " callback_free_route=creo_new_loft_part (use creo_list_seeds)."
+                if loft_requests
+                else ""
+            )
+            raise ValueError(
+                "BLEND_CALLBACK_SETUP_REQUIRED (before-job preflight): "
+                f"readiness={cb.get('readiness')!r}, reason={cb.get('reason')!r}, "
+                f"next_action={cb.get('next_action') or cb.get('instruction')!r}, "
+                f"registry_file={cb.get('registry_file')!r}.{route_hint}"
+            )
     assertions = Assertions.model_validate(assertions or {}).model_dump(exclude_none=True)
     if loft_seed and (model_id is not None or readonly or model_type != "part"):
         raise ValueError("Native loft seed initialization is only available for a new part")

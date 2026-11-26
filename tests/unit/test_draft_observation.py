@@ -134,3 +134,26 @@ class DraftProjectionTests(unittest.TestCase):
         failure = result["operations"][0]["draft_failure"]
         self.assertEqual(failure["classification"], "no_element_evidence")
         self.assertEqual(failure["angle_deg"], 10.0)
+
+    def test_material_effect_derived_from_delta_and_preserved_in_compact(self):
+        from creo_mechdog import compact_sections
+
+        cases = [
+            (3.3623691424, "added"),
+            (-3.2341206801, "removed"),
+            (0.0, "unchanged"),
+            (1e-12, "unchanged"),
+            (None, None),
+            (float("nan"), None),
+        ]
+        for delta, expected in cases:
+            with self.subTest(delta=delta):
+                result = self.annotate({"operations": [draft_record(material_delta_mm3=delta)]})
+                op = result["operations"][0]
+                self.assertEqual(op["material_effect"], expected)
+                core = operation_results._status_core(op, failed=False)
+                self.assertEqual(core["material_effect"], expected)
+                filtered = compact_sections.apply_sections(
+                    {"result": {"operations": [op]}}, ["operations"]
+                )
+                self.assertEqual(filtered["result"]["operations"][0]["material_effect"], expected)

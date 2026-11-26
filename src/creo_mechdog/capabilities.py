@@ -377,12 +377,13 @@ def _kernel_observation(identity: object, runtime: object) -> dict:
     return runtime
 
 
-def _panel_route_document(identity: object) -> dict:
-    """BUG-120/D1: what the resident_panel route needs, and what is missing.
+def _panel_route_document(identity: object, callback_runtime: object = None) -> dict:
+    """BUG-120/D1 + BUG-193: what the resident_panel route needs, and what is missing.
 
     ``compiled`` describes the loaded worker; ``runtime_ready`` additionally needs a
-    certified UI profile for this release. Neither one promises geometry, and the
-    two are reported separately so a compiled backend never reads as usable.
+    certified UI profile for this release and (when ``callback_runtime`` is supplied)
+    a verified ready resident callback. Neither one promises geometry, and the
+    fields are reported separately so a compiled backend never reads as usable.
     """
     from creo_mechdog import panel_profiles
 
@@ -435,7 +436,18 @@ def _panel_route_document(identity: object) -> dict:
     # it either, so disclosure must not call the route ready.
     release = panel_profiles.host_release(identity)
     profile_ready = bool(profile is not None and release == profile.release_numeric)
-    document["runtime_ready"] = bool(feature and feature["available"] and profile_ready)
+    callback_ready = True
+    if callback_runtime is not None:
+        cb_readiness = (
+            callback_runtime.get("readiness")
+            if isinstance(callback_runtime, dict) and callback_runtime.get("readiness")
+            else "unknown"
+        )
+        document["callback_readiness"] = cb_readiness
+        callback_ready = cb_readiness == "ready"
+    document["runtime_ready"] = bool(
+        feature and feature["available"] and profile_ready and callback_ready
+    )
     if not document["runtime_ready"] and document["reason"] is None:
         if profile is None:
             document["reason"] = "no certified panel UI profile for this release"
@@ -444,28 +456,58 @@ def _panel_route_document(identity: object) -> dict:
                 "the host Creo release is not recorded yet: run one native job on this worker "
                 "(a new part or a sketch) so the certified profile can be matched to it"
             )
-        else:
+        elif not profile_ready:
             document["reason"] = (
                 f"the certified profile {profile.profile_id!r} was measured on "
                 f"release_numeric={profile.release_numeric}, but this host reports {release}"
+            )
+        else:
+            document["reason"] = (
+                f"resident callback readiness is {document.get('callback_readiness', 'unknown')!r}; "
+                "query creo_callback_status and start the registered auxiliary application in Creo "
+                "before calling resident_panel"
             )
     return document
 
 
 def project_worker_availability(
-    families_doc: dict, identity: object, runtime: object = None
+    families_doc: dict,
+    identity: object,
+    runtime: object = None,
+    callback_runtime: object = None,
 ) -> dict:
     """Show the verified worker's compiled feature state in capability families.
 
     ``runtime`` is the last kernel-completion observation for this worker. It never
     changes ``available`` or ``enabled`` (those describe the build), is ignored when
-    it came from another worker, and only adds ``runtime_admission`` when the measured
-    signature makes admission refuse the operation before a job (BUG-122).
+    it came from another worker, and adds ``runtime_admission`` / ``runtime_ready``
+    so callers distinguish compiled availability from live session readiness
+    (BUG-122, BUG-193).
     """
+    from creo_mechdog import panel_profiles
+
+    cb_readiness = None
+    if callback_runtime is not None:
+        cb_readiness = (
+            callback_runtime.get("readiness")
+            if isinstance(callback_runtime, dict) and callback_runtime.get("readiness")
+            else "unknown"
+        )
+        loft_entry = families_doc.get("loft")
+        if isinstance(loft_entry, dict):
+            loft_ready = cb_readiness == "ready"
+            loft_entry["runtime_ready"] = loft_ready
+            admission = dict(loft_entry.get("runtime_admission") or {})
+            admission["status"] = "ready" if loft_ready else "requires_ready_callback"
+            admission["callback_readiness"] = cb_readiness
+            if isinstance(callback_runtime, dict) and callback_runtime.get("reason"):
+                admission["reason"] = callback_runtime["reason"]
+            loft_entry["runtime_admission"] = admission
     feature = _verified_worker_feature(identity, "surface_loft")
     entry = families_doc.get("surface_loft")
     if not isinstance(entry, dict):
         return families_doc
+    panel_doc = _panel_route_document(identity, callback_runtime=callback_runtime)
     if feature is None:
         # No verified tree declaration: the top-level fields keep their published
         # meaning, and the routes block still reports both routes by name so a
@@ -475,12 +517,14 @@ def project_worker_availability(
                 "default": True,
                 "available": None,
                 "state": "not_declared",
+                "runtime_ready": False,
                 "request_field": "creation_route omitted or 'element_tree'",
                 "scope": "keeps 2-32 sections, guides, boundary conditions and template trees",
                 "reason": "the loaded worker did not declare a verified surface_loft feature",
             },
-            "resident_panel": _panel_route_document(identity),
+            "resident_panel": panel_doc,
         }
+        entry["runtime_ready"] = bool(panel_doc.get("runtime_ready"))
         return families_doc
     available = feature["available"]
     entry["available"] = available
@@ -498,6 +542,9 @@ def project_worker_availability(
     for key in ("release_numeric", "observed_at", "job_id", "evidence"):
         if key in observation:
             entry["worker_build_identity"][key] = observation[key]
+    host_rel = panel_profiles.host_release(identity)
+    tree_admission: dict = {"status": "unknown"}
+    tree_ready = bool(available)
     if available:
         entry["enabled_semantics"] = (
             "compiled into the current worker; a live run is still required for geometry, "
@@ -513,7 +560,7 @@ def project_worker_availability(
         ):
             # BUG-122: the same signature requires admission to refuse before a job,
             # so the projection must not read as "ready to call".
-            entry["runtime_admission"] = {
+            tree_admission = {
                 "status": "refused_before_job",
                 "reason": "host_kernel_extract_unsupported",
                 "create_code": evidence.get("create_code"),
@@ -526,6 +573,21 @@ def project_worker_availability(
                     "incomplete feature is created; a new worker build clears the record"
                 ),
             }
+            entry["runtime_admission"] = tree_admission
+            tree_ready = False
+        elif host_rel == 42 and observation["kernel_completion"] != "supported":
+            # BUG-193 / BUG-135: Creo 10 (release 42) refuses ProFeatureElemtreeExtract (-18)
+            # and leaves element_tree blends incomplete even with accept_unverified_completion.
+            tree_admission = {
+                "status": "known_release_extract_unsupported",
+                "reason": "creo10_element_tree_extract_unsupported",
+                "release_numeric": 42,
+                "effect": (
+                    "Creo 10 (release 42) refuses element_tree extraction (-18); use "
+                    "creation_route='resident_panel' after starting the resident callback"
+                ),
+            }
+            tree_ready = False
     else:
         missing = ", ".join(_missing_requirements(feature))
         entry["enabled"] = False
@@ -533,17 +595,28 @@ def project_worker_availability(
         entry["enabled_semantics"] = (
             "compiled out of the current worker; the SDK requirement is not satisfied"
         )
+        tree_ready = False
     entry["routes"] = {
         "element_tree": {
             "default": True,
             "available": available,
             "state": feature.get("state"),
+            "runtime_ready": tree_ready,
             "request_field": "creation_route omitted or 'element_tree'",
             "scope": "keeps 2-32 sections, guides, boundary conditions and template trees",
-            "runtime_admission": entry.get("runtime_admission", {"status": "unknown"}),
+            "runtime_admission": tree_admission,
         },
-        "resident_panel": _panel_route_document(identity),
+        "resident_panel": panel_doc,
     }
+    entry["runtime_ready"] = bool(tree_ready or panel_doc.get("runtime_ready"))
+    if not entry["runtime_ready"] and "runtime_admission" not in entry:
+        entry["runtime_admission"] = {
+            "status": "not_ready",
+            "element_tree_status": tree_admission.get("status"),
+            "resident_panel_callback_readiness": panel_doc.get("callback_readiness", "unknown"),
+            "check_tool": "creo_callback_status",
+            "reason": panel_doc.get("reason") or tree_admission.get("reason"),
+        }
     return families_doc
 
 
@@ -1610,8 +1683,13 @@ def families() -> dict:
         },
         "draft": {
             "enabled": True,
-            "native_test": "constant unsplit planar-wall draft and Creo 10 cylindrical boss with signed angles, both pull orientations and save/reload",
-            "direction": "flip=false follows the pull reference, flip=true reverses it, and angle remains signed",
+            "native_test": "constant unsplit planar-wall draft and Creo 10 cylindrical boss with solid-face, datum-plane and datum-axis neutral/pull references, signed angles, both flip orientations and save/reload",
+            "direction": (
+                "flip=false writes PRO_DIRECTION_FLIP_ALONG (direction_flip_code=1, effective_flip=false) "
+                "and flip=true writes PRO_DIRECTION_FLIP_AGAINST (direction_flip_code=-1, effective_flip=true); "
+                "on a +Z boss with positive angle, solid bottom surface flip=false removes material while XY datum_plane flip=false adds material on Creo 10; "
+                "check material_effect ('added'/'removed'/'unchanged'/null) and material_delta_mm3"
+            ),
             "limits": "variable, split and rib draft are not high-level tools",
         },
         "loft": {
