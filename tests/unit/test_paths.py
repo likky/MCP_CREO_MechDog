@@ -21,6 +21,7 @@ MIGRATED_IMPLEMENTATIONS = {
     f"src/creo_mechdog/{name}.py"
     for name in ("server", "bridge", "creo_startup", "generic_bridge", "desktop_worker")
 }
+PACKAGE_ENTRY = "src/creo_mechdog/__main__.py"
 
 
 class SourceLayoutTests(unittest.TestCase):
@@ -108,7 +109,7 @@ else:
         self.assertEqual(Path(runtime["resource_root"]), SOURCE_PATHS.resource_root)
         self.assertEqual(Path(runtime["data_root"]), SOURCE_PATHS.data_root)
         self.assertTrue(
-            {"server.py", "bridge.py", *MIGRATED_IMPLEMENTATIONS}
+            {"server.py", "bridge.py", PACKAGE_ENTRY, *MIGRATED_IMPLEMENTATIONS}
             <= set(runtime["source_fingerprints_at_startup"])
         )
         self.assertIn("src/creo_mechdog/update_check.py", runtime["source_fingerprints_at_startup"])
@@ -120,6 +121,7 @@ else:
         self.assertTrue(
             {
                 "src/creo_mechdog/__init__.py",
+                PACKAGE_ENTRY,
                 "src/creo_mechdog/paths.py",
                 "src/creo_mechdog/update_check.py",
                 "tests/unit/__init__.py",

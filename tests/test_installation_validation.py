@@ -267,7 +267,10 @@ class InstallationValidation(unittest.TestCase):
             "Python dependencies, Python source package, native Blend seed library", output
         )
         connection = bridge.read_json(self.root / "client-config.json")
-        self.assertTrue(Path(connection["mcpServers"]["MCP_CREO_MechDog"]["command"]).is_file())
+        service = connection["mcpServers"]["MCP_CREO_MechDog"]
+        self.assertEqual(Path(service["command"]), self.root / ".venv/Scripts/python.exe")
+        self.assertTrue(Path(service["command"]).is_file())
+        self.assertEqual(service["args"], ["-m", "creo_mechdog"])
         retained = bridge.read_json(self.root / "config.json")
         self.assertEqual(retained["local_extra"], {"retained": True})
         self.assertEqual(retained["creo_session_id"], "fixture-private-session")

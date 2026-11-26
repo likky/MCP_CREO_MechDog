@@ -1,6 +1,6 @@
 """BUG-092: stdio MCP server bounded-exit lifecycle (offline).
 
-A minimal stdio client (raw pipes, no SDK client) launches server.py through
+A minimal stdio client (raw pipes, no SDK client) launches the package through
 the offline driver, performs initialize + tools/list and exercises a lifecycle
 edge. It asserts the
 server process exits within the idle budget (10 s), preserving evidence on

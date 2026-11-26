@@ -1,6 +1,6 @@
 # 渐进布局与模块边界
 
-DEV-002 第四批将服务、任务与通用桥接、Creo 启动协调和桌面 worker 移入 `src/creo_mechdog/`。根 `server.py` 用于现有 MCP 客户端启动，根 `bridge.py` 用于既有构建与后台任务命令。原生目录和测试目录继续按下述目标推进。
+DEV-002 将服务、任务与通用桥接、Creo 启动协调和桌面 worker 移入 `src/creo_mechdog/`。新安装的客户端通过 `python -m creo_mechdog` 启动服务，已有客户端可继续使用根 `server.py`。根 `bridge.py` 承接构建与后台任务命令。
 
 ```text
 src/creo_mechdog/     Python 包：服务、输入校验、任务调度、模型登记与建模辅助
@@ -51,3 +51,5 @@ DEV-004 在上下文明确后逐个模块转为独立编译，维护头文件依
 第二批开发验收与 [WorkBuddy 已测场景](../validation/DEV-002-batch2-WorkBuddy-acceptance-20261015.md)的历史结果见[第二批记录](../validation/DEV-002-batch2.md)。第三批将 seeds、capabilities 的实现迁入包内，保留根薄导出与 seeds CLI，并让 editable 安装支持仓库外旧导入。详见[第三批计划](../superpowers/plans/2026-11-02-dev002-batch3-package-migration.md)和[本批证据](../validation/DEV-002-batch3.md)。
 
 第四批迁移服务、桥接与启动实现。安装器、MCP 客户端和已接受作业继续使用各自的根入口，包内运行时模块直接使用包内桥接。迁移及验收见 [DEV-002 任务卡](../work-items/DEV-002.md)。
+
+第五批将新客户端配置改为包入口，由 `src/creo_mechdog/__main__.py` 启动同一个服务。运行诊断中的 `server_entry` 对应实际入口文件，源码指纹包含包入口和根兼容入口。

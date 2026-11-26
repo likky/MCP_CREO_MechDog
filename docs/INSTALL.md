@@ -100,13 +100,13 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -CreoRoot 'C
   "mcpServers": {
     "MCP_CREO_MechDog": {
       "command": "C:\\MCP_CREO_MechDog\\.venv\\Scripts\\python.exe",
-      "args": ["C:\\MCP_CREO_MechDog\\server.py"]
+      "args": ["-m", "creo_mechdog"]
     }
   }
 }
 ```
 
-以脚本生成的实际路径为准。客户端如果使用其他配置格式，保留相同的执行命令和参数。stdio 客户端会启动本地子进程，因此不需要手动长期运行 `server.py`；不要将 GitHub 仓库 URL 填成 MCP 服务地址。[官方 MCP Python SDK 本地主机说明](https://py.sdk.modelcontextprotocol.io/get-started/real-host/)
+编译和安装完成后，使用脚本生成的 Python 路径及 `-m creo_mechdog` 参数。stdio 客户端会启动并管理本地服务进程。已将安装目录下 `server.py` 作为启动参数的客户端可继续使用该入口。GitHub 仓库 URL 用于获取源码。[官方 MCP Python SDK 本地主机说明](https://py.sdk.modelcontextprotocol.io/get-started/real-host/)
 
 启动客户端中的 MCP 服务，后台自动复用已有会话或启动配置的 Creo。处理启动时出现的登录、许可及其他模态对话框，然后让 AI：
 

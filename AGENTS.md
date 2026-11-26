@@ -23,7 +23,7 @@
 
 ## 请求流与运行时架构
 
-建模请求由根 `server.py` 进入包内 MCP 服务，经包内 `bridge` 和 `generic_bridge` 校验、保护和调度，再由原生 Toolkit 执行器串行提交给 Creo Parametric。工具数以 capabilities 为准。客户端以 `job_id` 与 `model_id` 跟踪任务，几何计算由原生执行器完成。
+新安装的 MCP 客户端通过 `python -m creo_mechdog` 启动包内服务，兼容入口为根 `server.py`。请求经包内 `bridge` 和 `generic_bridge` 校验、保护和调度，再由原生 Toolkit 执行器串行提交给 Creo Parametric。工具数以 capabilities 为准。客户端以 `job_id` 与 `model_id` 跟踪任务，几何计算由原生执行器完成。
 
 `src/creo_mechdog/` 是标准可编辑包，安装声明见 `pyproject.toml`。根目录同名的 `schema.py`、`airfoil.py`、`profile_checks.py`、`seeds.py`、`capabilities.py` 保留兼容导出，`seeds.py` 另保留 CLI 转发。根 `server.py`、`bridge.py` 导入时共享包内模块实例，直接执行时转发各自入口。包内实现与根入口同时进入源码身份清单，`version.py` 保留唯一版本定义。
 
@@ -44,12 +44,12 @@
 
 - `.\setup.ps1 -CreoRoot 'C:\Program Files\PTC\Creo 10.0.0.0'`：创建虚拟环境、安装锁定版本的依赖、生成配置和常量表，并编译执行器。请替换为实际安装路径。
 - `.\.venv\Scripts\python.exe bridge.py build`：编译变更后的原生源码，或复用已有执行器。
-- `.\.venv\Scripts\python.exe server.py`：启动本地 stdio MCP 服务。
+- `.\.venv\Scripts\python.exe -m creo_mechdog`：启动本地 stdio MCP 服务。
 - `.\.venv\Scripts\python.exe -m unittest discover -s tests -v`：运行单元测试。
 - `.\.venv\Scripts\python.exe tools\test_unit.py`：运行单元测试并生成 `build/unit_test_report.json`。
 - `.\.venv\Scripts\python.exe tools\test_general.py`：连接已打开的 Creo 会话，执行原生建模集成测试。
 - `.\.venv\Scripts\python.exe tools\test_mcp.py`：走真实 stdio 传输核对工具清单、输入 schema 与 `creo_capabilities` 契约；实机模式先等待 `creo_startup_status` 就绪再探针会话，可用 `--create` / `--create --simple` 追加建模。契约期望在 `src/creo_mechdog/mcp_contract.py`，由 `tests/unit/test_mcp_contract.py` 守门。
-- `.\.venv\Scripts\python.exe tools\test_mcp.py --offline`：隔离服务端 lifespan 副作用（不拉起 Creo、不触网）的真实 stdio 契约检查，已纳入 `dev_check` 的离线验收门禁；`--protocol-only` 走真实 `server.py` 并跳过会话与建模检查。
+- `.\.venv\Scripts\python.exe tools\test_mcp.py --offline`：通过包入口做真实 stdio 契约检查，隔离 Creo 启动与网络，纳入 `dev_check` 的离线门禁。追加 `--legacy-entry` 可验证根 `server.py`。`--protocol-only` 启动服务并跳过会话和建模检查。
 - `.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt`：安装锁定的运行与开发依赖；纯单元/语言检查无需 Creo SDK。
 - `.\.venv\Scripts\python.exe tools\dev_check.py`：检查新增语言问题并运行全部 Windows 单元测试，生成 `build/development_check.json`。
 - `.\.venv\Scripts\python.exe tools\dev_check.py --strict --skip-unit`：暴露全部存量语言问题；不是原生建模验收。

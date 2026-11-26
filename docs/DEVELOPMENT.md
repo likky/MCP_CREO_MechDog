@@ -100,7 +100,7 @@ Creo TOOLKIT 的官方资料导航、API/元素树查证及接入方法见 [中�
 
 ## 架构与环境
 
-MCP stdio 从根 `server.py` 启动包内服务，经 `creo_mechdog.bridge` 和 `creo_mechdog.generic_bridge` 校验、登记和单通道调度，再由原生 Toolkit 执行器调用 Creo 计算几何。新业务实现进入 `src/creo_mechdog/`，根级兼容入口与包内共享模块或类型。入口及资源和生成物边界见 AGENTS 与 ARCHITECTURE。
+MCP stdio 通过 `python -m creo_mechdog` 或根 `server.py` 启动，经 `creo_mechdog.bridge` 和 `creo_mechdog.generic_bridge` 校验、登记和单通道调度，再由原生 Toolkit 执行器调用 Creo 计算几何。新业务实现进入 `src/creo_mechdog/`，根级兼容入口与包内共享模块或类型。入口及资源和生成物边界见 AGENTS 与 ARCHITECTURE。
 
 服务 stdout 只承载 MCP。通道忙碌立即拒绝（`isError=true`、`status=busy`、`blocking_*`），不排队、不自动重试；已接受任务只轮询 `creo_get_job`，不能重复提交。现有并发边界见 [BUG-009](work-items/BUG-009.md)。长度为 mm、角度为度；特征 label 小写字母起始，仅小写字母、数字、下划线，最多 28 字符。
 
@@ -126,7 +126,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe tools\test_mcp.py
 ```
 
-`tools\test_mcp.py --offline` 走真实 stdio 传输，在测试服务端隔离 `startup.start` 与 `updates.start` 副作用（不拉起 Creo、不触网），已纳入 `tools\dev_check.py` 的离线门禁；`--protocol-only` 启动真实 `server.py` 并跳过会话与建模检查；不带参数需已连接会话，先等待 `creo_startup_status` 就绪再核验 `ready_to_build`、`connected` 与无效几何拒绝，可用 `--create` / `--create --simple` 追加实机建模。契约期望只写在 `src/creo_mechdog/mcp_contract.py`，由 `tests/unit/test_mcp_contract.py` 守门（BUG-151）。
+`tools\test_mcp.py --offline` 经包入口做真实 stdio 检查，隔离 Creo 启动与网络，已纳入 `tools\dev_check.py` 的离线门禁。追加 `--legacy-entry` 可验证根 `server.py`。`--protocol-only` 启动服务并跳过会话与建模检查。默认模式等待 `creo_startup_status` 就绪，再核验 `ready_to_build`、`connected` 与无效几何拒绝，可用 `--create` 或 `--create --simple` 追加实机建模。契约期望位于 `src/creo_mechdog/mcp_contract.py`，由 `tests/unit/test_mcp_contract.py` 守门（BUG-151）。
 
 统一检查覆盖 Ruff、Python/C++ 格式、存量基线比较及全部单元，报告为 `build/development_check.json`、`build/unit_test_report.json`。`--skip-unit` 只提供语言证据，`--strict` 暴露全部欠账。[风格基线](development/style-baseline.json) 按诊断及内容身份容许存量，不能掩盖工具/配置错误、单测失败或新增问题；正常开发与 CI 不重建基线，不新增豁免。
 
@@ -137,7 +137,7 @@ python -m venv .venv
 ```powershell
 .\setup.ps1 -CreoRoot 'C:\Program Files\PTC\Creo 10.0.0.0'
 .\.venv\Scripts\python.exe bridge.py build
-.\.venv\Scripts\python.exe server.py
+.\.venv\Scripts\python.exe -m creo_mechdog
 .\.venv\Scripts\python.exe tools\test_general.py
 ```
 

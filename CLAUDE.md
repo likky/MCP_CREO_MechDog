@@ -30,7 +30,7 @@ AGENTS.md 中的命令是 PowerShell 写法；在 Bash 中改用正斜杠：
 
 ## 一次建模任务的进程链
 
-1. 根 `server.py` 进入 `src/creo_mechdog/server.py` 的 FastMCP stdio 服务。lifespan 启动同包的 `creo_startup.py` 后台协调器，客户端通过 `creo_startup_status` 等待 `ready`。
+1. `python -m creo_mechdog` 启动 `src/creo_mechdog/server.py` 的 FastMCP stdio 服务，根 `server.py` 提供兼容入口。lifespan 启动同包的 `creo_startup.py` 后台协调器，客户端通过 `creo_startup_status` 等待 `ready`。
 2. 提交类工具（如 `creo_execute_plan`）进入 `src/creo_mechdog/generic_bridge.py`，完成 Pydantic 校验、能力准入和 `expected_revision` 检查，在 `jobs/<job_id>/` 写 `request.json` 和 `job.json`、登记通道占用，派生一个**脱离的** `python bridge.py run-job <job_id>` 进程，立即返回 `job_id`。
 3. runner（`bridge._run_job_dispatch`）按 `job.json` 的 `kind` 分派：`generic` → `generic_bridge.run_generic_job`；`adoption`、`adoption_file`、`open_file`、`session_erase`、`reconciliation` → `src/creo_mechdog/` 中对应模块的 `run()`。
 4. runner 持 Toolkit 锁调用 `bridge.build_native()`：每次先重新生成 `native/constants.inc`，再用 LF 归一化后的原生源码、SDK 头和配置计算指纹；指纹变化时重编 `build/creo_worker.exe` 及回调 DLL（`creo_blend_sync.dll`、`creo_blend_loader.dll`），否则复用。

@@ -8,6 +8,7 @@ import json
 import logging
 import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from mcp.server.mcpserver.exceptions import ToolError
@@ -69,6 +70,7 @@ logging.basicConfig(level=logging.WARNING)
 startup = creo_startup.CreoStartup()
 updates = update_check.UpdateChecker()
 _CODE_ROOT = SOURCE_PATHS.resource_root
+_SERVER_ENTRY = _CODE_ROOT / "server.py"
 _SOURCE_NAMES = (
     "server.py",
     "capabilities.py",
@@ -78,6 +80,7 @@ _SOURCE_NAMES = (
     "src/creo_mechdog/creo_startup.py",
     "src/creo_mechdog/desktop_worker.py",
     "src/creo_mechdog/__init__.py",
+    "src/creo_mechdog/__main__.py",
     "src/creo_mechdog/paths.py",
     "src/creo_mechdog/validation_errors.py",
     "src/creo_mechdog/product_rules.py",
@@ -805,7 +808,7 @@ def _capabilities_payload(tool_entries: list[dict[str, Any]]) -> dict[str, Any]:
         "update": updates.snapshot(),
         "runtime": {
             "python_executable": sys.executable,
-            "server_entry": str(_CODE_ROOT / "server.py"),
+            "server_entry": str(_SERVER_ENTRY),
             "code_root": str(_CODE_ROOT),
             "python_package_root": str(SOURCE_PATHS.code_root),
             "resource_root": str(SOURCE_PATHS.resource_root),
@@ -3901,9 +3904,11 @@ for _unavailable in UNAVAILABLE_OPERATIONS:
         mcp.remove_tool("creo_" + _unavailable)
 
 
-def main() -> None:
+def main(*, entry_file: str | Path = _CODE_ROOT / "server.py") -> None:
     from creo_mechdog.stdio_lifecycle import StdioExitGuard
 
+    global _SERVER_ENTRY
+    _SERVER_ENTRY = Path(entry_file).resolve()
     # BUG-092: watch the wire stdin and bound self-exit after client EOF, so a
     # stuck stdio write can never leave this process holding the pipes. Install
     # before mcp.run() claims fd 0.

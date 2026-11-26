@@ -47,19 +47,23 @@ def without_creo(server):
         yield
 
 
-def _serve_offline() -> None:
+def _serve_offline(legacy_entry: bool) -> None:
     """Launch the real stdio entry with inert startup and a fixture environment."""
-    import server
+    from creo_mechdog import server
 
     with without_creo(server), patch.object(server.updates, "start"):
-        runpy.run_path(str(ROOT / "server.py"), run_name="__main__")
+        if legacy_entry:
+            runpy.run_path(str(ROOT / "server.py"), run_name="__main__")
+        else:
+            runpy.run_module("creo_mechdog", run_name="__main__", alter_sys=True)
 
 
-def _report_path(create: bool, simple: bool, offline: bool) -> Path:
+def _report_path(create: bool, simple: bool, offline: bool, legacy_entry: bool) -> Path:
     if create:
         return ROOT / "build" / ("mcp_simple_test.json" if simple else "mcp_integration_test.json")
     if offline:
-        return ROOT / "build" / "mcp_offline_test.json"
+        name = "mcp_offline_legacy_entry_test.json" if legacy_entry else "mcp_offline_test.json"
+        return ROOT / "build" / name
     return ROOT / "build" / "mcp_protocol_test.json"
 
 
@@ -108,15 +112,17 @@ async def main(
     classic: bool,
     protocol_only: bool,
     offline: bool = False,
+    legacy_entry: bool = False,
 ):
     skip_session = protocol_only or offline
-    report_path = _report_path(create, simple, offline)
-    server_args = (
-        [str(ROOT / "tools/test_mcp.py"), "--serve-offline"]
-        if offline
-        else [str(ROOT / "server.py")]
-    )
-    params = StdioServerParameters(command=sys.executable, args=server_args, cwd=ROOT)
+    report_path = _report_path(create, simple, offline, legacy_entry)
+    entry = ROOT / ("server.py" if legacy_entry else "src/creo_mechdog/__main__.py")
+    server_args = [str(entry)] if legacy_entry else ["-m", "creo_mechdog"]
+    if offline:
+        server_args = [str(ROOT / "tools/test_mcp.py"), "--serve-offline"]
+        if legacy_entry:
+            server_args.append("--legacy-entry")
+    params = StdioServerParameters(command=sys.executable, args=server_args)
     report = {
         "transport": "stdio",
         "client_mode": "legacy" if classic else "auto",
@@ -203,6 +209,17 @@ async def main(
             assert report["server"] == {"name": "MCP_CREO_MechDog", "version": VERSION}, report[
                 "server"
             ]
+            runtime_page = await client.call_tool(
+                "creo_capabilities", {"detail": "full", "section": "runtime", "limit": PAGE_LIMIT}
+            )
+            assert not runtime_page.is_error, runtime_page
+            runtime = {
+                item["key"]: item["value"] for item in runtime_page.structured_content["entries"]
+            }
+            assert Path(runtime["server_entry"]) == entry, runtime["server_entry"]
+            assert Path(runtime["data_root"]) == ROOT, runtime["data_root"]
+            report["server_entry"] = runtime["server_entry"]
+            report["data_root"] = runtime["data_root"]
             environment = await client.call_tool("creo_check_environment", {})
             assert not environment.is_error, environment
             report["environment"] = environment.structured_content
@@ -315,12 +332,22 @@ if __name__ == "__main__":
         "isolated in-repo server (patches out Creo startup and update network checks)",
     )
     parser.add_argument("--serve-offline", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--legacy-entry", action="store_true", help="Launch via root server.py")
     args = parser.parse_args()
     if args.serve_offline:
-        _serve_offline()
+        _serve_offline(args.legacy_entry)
         raise SystemExit(0)
     if args.protocol_only and args.create:
         parser.error("--protocol-only cannot be combined with --create")
     if args.offline and (args.create or args.protocol_only):
         parser.error("--offline cannot be combined with --create or --protocol-only")
-    asyncio.run(main(args.create, args.simple, args.classic, args.protocol_only, args.offline))
+    asyncio.run(
+        main(
+            args.create,
+            args.simple,
+            args.classic,
+            args.protocol_only,
+            args.offline,
+            args.legacy_entry,
+        )
+    )

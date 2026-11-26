@@ -167,7 +167,7 @@ try {
     Invoke-ExternalStep -Executable $Python -Arguments (@($pythonPrefix) + @('-m', 'venv', (Join-Path $PSScriptRoot '.venv'))) -FailureMessage 'Python venv creation failed.'
     $completed += $stage
     $stage = 'client configuration'
-    $connection = @{ mcpServers = @{ 'MCP_CREO_MechDog' = @{ command = $projectPython; args = @((Join-Path $PSScriptRoot 'server.py')) } } }
+    $connection = @{ mcpServers = @{ 'MCP_CREO_MechDog' = @{ command = $projectPython; args = @('-m', 'creo_mechdog') } } }
     $connection | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'client-config.json') -Encoding UTF8
     $completed += $stage
     $stage = 'Python dependencies'

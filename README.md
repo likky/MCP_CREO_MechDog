@@ -54,7 +54,7 @@ Creo 软件、SDK、模板与许可需自行取得；MIT 只覆盖本项目原�
   "mcpServers": {
     "MCP_CREO_MechDog": {
       "command": "C:\\MCP_CREO_MechDog\\.venv\\Scripts\\python.exe",
-      "args": ["C:\\MCP_CREO_MechDog\\server.py"]
+      "args": ["-m", "creo_mechdog"]
     }
   }
 }

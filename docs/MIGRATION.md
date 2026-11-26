@@ -10,14 +10,14 @@ MCP_CREO_MechDog 0.3.0 在安装 Creo 的 Windows 电脑上运行，通过本地
 
 ## 同一电脑换 Agent
 
-在另一个支持启动本地 stdio MCP 的客户端中，配置同一个安装目录下的 Python 和 `server.py`。采用客户端需要的格式，以安装生成的 `client-config.json` 为准，例如：
+在另一个支持启动本地 stdio MCP 的客户端中，使用同一安装目录下的 Python，按 `client-config.json` 配置启动参数。以下为当前安装器生成的格式。已有客户端可以继续使用原来的 `server.py` 路径。
 
 ```json
 {
   "mcpServers": {
     "MCP_CREO_MechDog": {
       "command": "C:\\MCP_CREO_MechDog\\.venv\\Scripts\\python.exe",
-      "args": ["C:\\MCP_CREO_MechDog\\server.py"]
+      "args": ["-m", "creo_mechdog"]
     }
   }
 }
