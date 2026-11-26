@@ -15,7 +15,9 @@
 
 ## 版本约定
 
-当前版本为 0.45.1（2026-11-25 PATCH，交付 BUG-130 的 STL 细化、接缝与诊断，公开工具 111）。 [版本说明](../RELEASE_NOTES_0.45.1.md) · [发布记录](../validation/RELEASE-0.45.1.md)
+当前版本为 0.45.2（2026-11-26 PATCH，交付 DEV-002 的服务包化、新安装入口与 AI Agent 兼容说明，公开工具 111）。 [版本说明](../RELEASE_NOTES_0.45.2.md) · [发布记录](../validation/RELEASE-0.45.2.md)
+
+此前的 0.45.1（2026-11-25 PATCH，交付 BUG-130 的 STL 细化、接缝与诊断，公开工具 111）。 [版本说明](../RELEASE_NOTES_0.45.1.md) · [发布记录](../validation/RELEASE-0.45.1.md)
 
 此前的 0.45.0（2026-11-25 MINOR，交付加料保护、实体包围盒、草图默认保真、拔模方向、基准面角度与启动探针，公开工具 111）。 [版本说明](../RELEASE_NOTES_0.45.0.md) · [发布记录](../validation/RELEASE-0.45.0.md)
 

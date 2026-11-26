@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-26（0.45.2 PATCH，公开工具 111）。[DEV-002](work-items/DEV-002.md) 第四、五批交付 Python 服务包化、新安装入口与 AI Agent 兼容说明。 [版本说明](RELEASE_NOTES_0.45.2.md) · [发布记录](validation/RELEASE-0.45.2.md)
+
 2026-11-25（BUG-130 / 0.45.1）：复核 14 m 球鼻艏 STL 的细化、闭合和偏差。保留只读导出及六轮默认上限，补齐导出网格诊断、源件 SHA/revision 对照和偏差采样，另以十二轮诊断验证深细分边界。使用本机可用的 Creo 10.0.0.0 和匹配 SDK，按实际结果记录 0.1 mm 目标及未测平台。见 [BUG-130](work-items/BUG-130.md)。
 
 2026-11-25（0.45.0 MINOR，公开工具仍 111）。同一候选在 Creo 10 复跑六项反馈修复，共 57 个几何作业和四种启动场景。三项按预期拒绝的几何作业完成回滚，其余几何作业成功。台账 272 项，历史未测范围见各卡。 [版本说明](RELEASE_NOTES_0.45.0.md) · [验收记录](validation/RELEASE-0.45.0.md)
@@ -455,7 +457,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | --- | --- | --- | --- | --- |
 | [DEV-101](work-items/DEV-101.md) | P1 | 开发中 | 未排期 | 复核 0.43.1/0.43.2 四份反馈，P0 先修基准面法线与构造实体。 |
 | [DEV-100](work-items/DEV-100.md) | P1 | 开发中 | 未排期 | 归档 0.43.0 机械臂反馈，逐项核对并分批验收。 |
-| [DEV-002](work-items/DEV-002.md) | P2 | 开发中 | 未排期 | 第五批新安装已切换到 MCP 包入口，旧入口兼容、离线协议和独立安装均通过。第三批 T5 实机待验。 |
+| [DEV-002](work-items/DEV-002.md) | P2 | 部分交付，剩余待验收 | 0.45.2（第四、五批） | Python 服务包化、新旧 MCP 入口、离线协议和独立安装验收完成。第三批 T5 实机及其余测试布局仍开放。 |
 | [DEV-030](work-items/DEV-030.md) | P1 | 开发中 | 未排期 | 推进 G2 底板/编辑、G3 履带/性能、G4 阵列；已放宽三键不重复调查。 |
 | [FEAT-010](work-items/FEAT-010.md) | P2 | 开发中 | 未排期 | Right ±Z 已验；倾斜 frame、保真/原53mm输入、编辑重载和投影驱动仍开放。 |
 | [DEV-077](work-items/DEV-077.md) | P1 | R01—R04 已随 0.19.2 交付；实机/黑盒/远端余项待接手 | 0.19.2 | 0.18.2四份反馈对比归档、RELEASING/POSTCHECK回填、台账计数门禁、质量属性诊断与阶段计时回退；R01可配rotation_tolerance、R02质量属性提示/get_job 300s/known_limitations/plan_examples已在0.19.1交付；0.19.2新增草图closure_tolerance/snap_endpoints/偏差断言、mirror feature引用与回执、session_health降级策略、quilt_merge消耗回执；余项见DEV-077-HANDOFF R01—R08。 |

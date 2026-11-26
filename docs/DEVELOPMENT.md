@@ -1,5 +1,7 @@
 # 开发入口
 
+2026-11-26（0.45.2 PATCH）交付 [DEV-002](work-items/DEV-002.md) 第四、五批。服务、桥接和启动实现集中到 Python 包，新安装使用包入口，旧 MCP 配置仍可使用。 [版本说明](RELEASE_NOTES_0.45.2.md) · [发布记录](validation/RELEASE-0.45.2.md)
+
 2026-11-25（0.45.1 PATCH）交付 [BUG-130](work-items/BUG-130.md) 的 STL 接缝与细化修复、ASCII 写出优化及采样诊断。 [版本说明](RELEASE_NOTES_0.45.1.md) · [发布记录](validation/RELEASE-0.45.1.md)
 
 2026-11-25（0.45.0 MINOR）交付 [BUG-191](work-items/BUG-191.md)、[FEAT-078](work-items/FEAT-078.md)、[BUG-108](work-items/BUG-108.md)、[BUG-102](work-items/BUG-102.md)、[BUG-094](work-items/BUG-094.md) 和 [BUG-170](work-items/BUG-170.md)。本版范围为加料保护、实体包围盒、草图默认保真、拔模方向、基准面角度和启动探针。 [版本说明](RELEASE_NOTES_0.45.0.md) · [发布记录](validation/RELEASE-0.45.0.md)
