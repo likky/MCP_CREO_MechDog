@@ -339,7 +339,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | --- | --- | --- | --- | --- |
 | [BUG-192](work-items/BUG-192.md) | P1 | 已有修复但待验收 | 0.46.0 | 修正 `draft` 基准面/实体面方向说明并新增 `material_effect`，Creo 10 实机 8/8 通过。剩：Creo 9/12.4 与 WorkBuddy 黑盒。 |
 | [FEAT-090](work-items/FEAT-090.md) | P1 | 已有修复但待验收 | 0.46.0 | 暴露草图端点焊接参数并支持 `arc-arc` 近容差共点吸附，Creo 10 实机 40 弧微间隙拉伸通过。剩：外部原件 gear10.json、Creo 9/12.4 与 WorkBuddy 黑盒。 |
-| [BUG-193](work-items/BUG-193.md) | P1 | 已有修复但待验收 | 0.46.0 | [Creo 10 / 0.46.0 黑盒补验](validation/BUG-193-CREO10-WORKBUDDY-0.46.0-2026-11-26.md)通过未加载拦截与回调恢复重提 `resident_panel`；开发分支已补零锁本地预检 `callback_admission_status()`，通过 `dev_check` 4543 单测与离线 MCP 契约门禁，并实机通过加载态 `loft` 保存重载（`26dae706`）。剩：确认关闭 `1a1b3767` 残留面板、实机停用/恢复回调零锁复测、Creo 9 / 12.4。 |
+| [BUG-193](work-items/BUG-193.md) | P1 | 已有修复但待验收 | 0.46.0 | [Creo 10 / 0.46.0 黑盒补验](validation/BUG-193-CREO10-WORKBUDDY-0.46.0-2026-11-26.md)与开发分支零锁预检实机全链路（Creo 10 PID `11504` 未加载零锁/零作业拦截、启动回调自动准入、`loft` `26dae706` 与 `resident_panel` `c68cef0f` 仅取 `submit` 锁且保存重载通过，`dev_check` 4543 单测全过）均已通过。剩：合入发版与 Creo 9 / 12.4。 |
 | [DEV-102](work-items/DEV-102.md) | P2 | 已有修复但待验收 | 0.46.0 | `creo_capabilities` 新增 `registered_but_unavailable_operations` 并补全 `region.interior_point_yz_mm` 文档。剩：WorkBuddy 黑盒。 |
 | [BUG-036](work-items/BUG-036.md) | P1 | 已有修复但待验收 | 0.44.1 | 本版交付平面配合位姿校验。本机 Creo 10 复现约束写入成功而位姿未更新，冲突请求明确拒绝并验证回滚。外部 Creo 9 原案、Creo 12.4 与 WorkBuddy 待验证。 |
 | [BUG-187](work-items/BUG-187.md) | P0 | 已有修复但待验收 | 0.44.0 | 偏移基准面 `flip` 与草图显式 `v_axis`（`u_axis × v_axis` 确定法线），本机 Creo 10 正反例（`1000.0 mm³`、Z `[0,20]`、保存重载与回滚）通过。剩：Creo 9/12、WorkBuddy 黑盒。 |
