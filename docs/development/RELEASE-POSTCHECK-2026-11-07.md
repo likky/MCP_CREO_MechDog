@@ -8,6 +8,22 @@
 - 四件附件为 `MCP_CREO_MechDog-0.45.2-source.zip`、`MCP_CREO_MechDog-0.45.2-source.zip.sha256`、`MCP_CREO_MechDog-0.45.2-seed-library.zip` 和 `MCP_CREO_MechDog-0.45.2-seed-library.zip.sha256`。种子包 SHA256 为 `ae0c8928d9febbd001524bc821d709a499d4235452bac64bea365e1304c336fc`。两份同名 sidecar 分别记录对应 ZIP 的摘要。
 - 远端校验发布后执行，当前未验证。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.45.2)
 
+### v0.45.2 发布后核对
+
+- 正式 Release 458852053 发布于 2026-11-26 01:53:12 UTC。2026-11-26 01:54:14 UTC（09:54:14 +08:00）独立查询的远端 `main` 和解引用后的 `v0.45.2` 标签均指向 `77aaa85ed318208fef0e6628773a1cefd31ab4f7`。Release 为正式公开版本。 [GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.45.2)
+- Windows x64 / Python 3.12.10 下，候选 Git 工作树和分发 ZIP 独立解包分别运行 `tools/dev_check.py --work-item DEV-002`，各 4,525 项，均为 0 失败、0 错误，分别跳过 13 与 14 项。工作树提交为 `77aaa85ed318208fef0e6628773a1cefd31ab4f7`，dirty=false，受测源码指纹为 `a5b786c2d114a3457c52c9ab3d6f40551769b27b911eda70402cdcdb50804c8a`。两个环境均离线安装锁定依赖，在仓库外验证新旧 stdio 入口及 111 个工具。compact 为 17,330 B，full 15 页中最大页为 32,129 B。
+- 分发 ZIP 的 2,459 个成员在测试后逐字节核对，正式打包件和受测 ZIP 的整体 SHA256 相同。解包路径位于 `build/`，单测报告的目录回退指纹只统计了根目录模块。另按正式包清单复核了 678 个 Python 及原生源码文件，指纹为 `6e4450c4a131ac5d2c68efc45246ba1d572d201101f1f7a7cff189a1d69b8cbe`。
+- `gh release download` 独立下载了四件附件。下表为下载实算 SHA256，与 GitHub API 的 digest 和正式打包件相同。两份 sidecar 匹配各自 ZIP，Release 正文列出的摘要亦吻合。默认 Windows 编码读取中文正文时首次报解码异常，设置 `PYTHONUTF8=1` 后重跑 `tools/check_release_assets.py --tag v0.45.2` 返回 0。对独立下载目录和实际 Release 正文的本地复核同样返回 0。
+
+| 远端附件 | 字节 | 下载实算 SHA256 |
+| --- | ---: | --- |
+| `MCP_CREO_MechDog-0.45.2-seed-library.zip` | 493,442 | `ae0c8928d9febbd001524bc821d709a499d4235452bac64bea365e1304c336fc` |
+| `MCP_CREO_MechDog-0.45.2-seed-library.zip.sha256` | 107 | `2c92d46a8a9711926f6518c3561a20c3a682e047ccac8d38f987f21df7c088ab` |
+| `MCP_CREO_MechDog-0.45.2-source.zip` | 12,328,834 | `6585de7c12acbe36e226373f8c861bd2f9bdcf322835cfa92ad4da7d50dc6d74` |
+| `MCP_CREO_MechDog-0.45.2-source.zip.sha256` | 101 | `31a9abe53c14f36a8cd6e656f452f000b0b2204c5ad7c4c3246e2b73b30442d5` |
+
+相对 v0.45.1 正式源码包，第三方 JSON 源与许可证、九个种子 PRT 均逐字节相同。全部原生分发文件中 71 个字节相同，`native/generic.cpp` 和 `native/stl_export.h` 仅换行符字节有差异，经 LF 归一化后相同。回调源码沿用同一归一化口径。DLL、注册和 Creo 实机几何在本轮发布中未复验。发布后核对确认 [DEV-002](../work-items/DEV-002.md) 的交付范围与[台账](../BACKLOG.md)、[版本说明](../RELEASE_NOTES_0.45.2.md)及[开发入口](../DEVELOPMENT.md)一致。
+
 ## v0.45.1（2026-11-25，打包时点）
 
 - Windows x64 / Creo 10.0.0.0（release 42）完成 14 m 球鼻艏 STL 专项。 [版本说明](../RELEASE_NOTES_0.45.1.md) · [验证与发布记录](../validation/RELEASE-0.45.1.md)
