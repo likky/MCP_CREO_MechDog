@@ -1,6 +1,6 @@
 # 0.10.1 发布验证记录
 
-日期：2026-11-01。版本入口 [version.py](../../version.py)（`VERSION = "0.10.1"`）、[版本说明](../RELEASE_NOTES_0.10.1.md)、[开发入口](../DEVELOPMENT.md) 与[主台账](../BACKLOG.md)（DEV-053 行）随版一致。本版为 **PATCH**：DEV-053 的 P00–P06、P09 第一阶段、P10/P12 缺件登记与 P14 离线+实机集成；P07/P08/P11 的 MINOR 公开结构（草图原点诊断字段、钣金候选边结构与 `wall_contract` 回显、空件预览 `skipped_no_geometry`）保留在开发分支 `codex/dev053-post0100`，随 0.11.0 候选另行交付，未塞入 PATCH。公开工具仍 94 个。
+日期：2026-11-01。版本入口 [version.py](../../version.py)（`VERSION = "0.10.1"`）、[版本说明](../release-notes/RELEASE_NOTES_0.10.1.md)、[开发入口](../DEVELOPMENT.md) 与[主台账](../BACKLOG.md)（DEV-053 行）随版一致。本版为 **PATCH**：DEV-053 的 P00–P06、P09 第一阶段、P10/P12 缺件登记与 P14 离线+实机集成；P07/P08/P11 的 MINOR 公开结构（草图原点诊断字段、钣金候选边结构与 `wall_contract` 回显、空件预览 `skipped_no_geometry`）保留在开发分支 `codex/dev053-post0100`，随 0.11.0 候选另行交付，未塞入 PATCH。公开工具仍 94 个。
 
 ## 交付提交与标签
 

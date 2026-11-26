@@ -1,6 +1,6 @@
 # 普通放样：原生混合种子复用
 
-**v0.2.5 当前流程**：源码附带九个 MIT 种子（2/3/4/6 直线和平滑，5 平滑）；安装器自动注册，调用 `creo_new_loft_part` 可省略 `seed_file` 和 `seed_feature_id`，按数量/模式匹配。以下显式路径流程仍兼容，手工新建种子用于其他数量；当前能力见 [RELEASE_NOTES_0.2.5.md](RELEASE_NOTES_0.2.5.md)。
+**v0.2.5 当前流程**：源码附带九个 MIT 种子（2/3/4/6 直线和平滑，5 平滑）；安装器自动注册，调用 `creo_new_loft_part` 可省略 `seed_file` 和 `seed_feature_id`，按数量/模式匹配。以下显式路径流程仍兼容，手工新建种子用于其他数量；当前能力见 [release-notes/RELEASE_NOTES_0.2.5.md](release-notes/RELEASE_NOTES_0.2.5.md)。
 
 `creo_new_loft_part` 复制保存的专用 PRT 种子，创建独立的新零件，保留可编辑的原生 **Blend / 混合**。从 **0.2.4** 起接收 **2～20 张** Z 偏移严格递增的 XY 草图，数量和 `straight` / `smooth` 模式必须与种子匹配。多截面步骤及验证见 [MULTISECTION_BLEND.md](MULTISECTION_BLEND.md)。
 

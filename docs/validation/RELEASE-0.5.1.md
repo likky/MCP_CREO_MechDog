@@ -3,7 +3,7 @@
 ## 版本与条目
 
 - 版本 `0.5.1`（PATCH，编辑链路缺陷修复批次，无新增工具，工具数 91 不变）。
-- 条目：[BUG-062](../work-items/BUG-062.md)（centerline 就地编辑）、[BUG-030](../work-items/BUG-030.md)（同几何守卫修正）、[BUG-029](../work-items/BUG-029.md)（reorder 槽位修正）、[BUG-079](../work-items/BUG-079.md)（就地改弧半径修复）。版本说明见 [RELEASE_NOTES_0.5.1.md](../RELEASE_NOTES_0.5.1.md)。
+- 条目：[BUG-062](../work-items/BUG-062.md)（centerline 就地编辑）、[BUG-030](../work-items/BUG-030.md)（同几何守卫修正）、[BUG-029](../work-items/BUG-029.md)（reorder 槽位修正）、[BUG-079](../work-items/BUG-079.md)（就地改弧半径修复）。版本说明见 [release-notes/RELEASE_NOTES_0.5.1.md](../release-notes/RELEASE_NOTES_0.5.1.md)。
 
 ## 版本链
 
@@ -24,7 +24,7 @@
 - 源码包：`MCP_CREO_MechDog-0.5.1-source.zip`（761 文件）SHA256 `8732d98ecbc8528093cc1f2b0edf446577c6909d6cc4a9331e42206df9dac684`。
 - 种子包：`MCP_CREO_MechDog-0.5.1-seed-library.zip`（24 文件、9 种子）SHA256 `77f099533a5e27914c619021fa00ed7f5a3339112982f7b46c2a22c998c599a8`（与 `seeds.py` expected_digest 一致；种子内容较 0.5.0 未变，清单版本随版）。
 - 各附同名 `.zip.sha256`（内容与哈希一致）。
-- 两包均由 tag 指向的主干提交 `0d9715d` 工作区生成；包内抽查 version.py/双清单=0.5.1、RELEASE_NOTES_0.5.1 在包内、无 build/jobs/models/constants.inc、第三方许可在。
+- 两包均由 tag 指向的主干提交 `0d9715d` 工作区生成；包内抽查 version.py/双清单=0.5.1、release-notes/RELEASE_NOTES_0.5.1 在包内、无 build/jobs/models/constants.inc、第三方许可在。
 
 ## 远端核对
 

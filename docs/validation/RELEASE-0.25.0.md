@@ -2,7 +2,7 @@
 
 - 版本：`0.25.0`（MINOR）
 - 日期：2026-11-15
-- 版本说明：[RELEASE_NOTES_0.25.0](../RELEASE_NOTES_0.25.0.md)
+- 版本说明：[release-notes/RELEASE_NOTES_0.25.0](../release-notes/RELEASE_NOTES_0.25.0.md)
 - 主台账：[BACKLOG](../BACKLOG.md)
 - 工作卡：[DEV-090](../work-items/DEV-090.md)
 - 受测提交：`v0.25.0` 标签指向的 `main` 提交（标签对象与提交号在[POSTCHECK](../development/RELEASE-POSTCHECK-2026-11-07.md) 的 `## v0.25.0` 段登记）
@@ -30,7 +30,7 @@
 
 ## 逐 ID 状态核对
 
-成员：本版只交付 [DEV-090](../work-items/DEV-090.md) 一项汇总卡，其 T1—T8 子项均在该卡内登记，不另拆台账行。该卡原以 DEV-089 登记，因与 0.24.1 已归档的 DEV-089（安装文档预检）编号冲突改为 DEV-090。0.24.1 自身的 [BUG-125](../work-items/BUG-125.md)—[BUG-128](../work-items/BUG-128.md) 已随 0.24.1 发布并归档，不重复列入本版交付。
+成员：本版只交付 [DEV-090](../work-items/DEV-090.md) 一项汇总卡，其 T1—T8 子项均在该卡内登记，不另拆台账行。该卡原以 DEV-089 登记，因与 0.24.1 已归档的 DEV-089（安装文档预检）编号冲突改为 DEV-090。0.24.1 自身的 [BUG-125](../archive/work-items/BUG-125.md)—[BUG-128](../archive/work-items/BUG-128.md) 已随 0.24.1 发布并归档，不重复列入本版交付。
 
 | ID / 工作卡 | 技术状态 | 交付版本 | 剩余范围 | 卡首页 | 主台账 | 差异说明 | 版本说明 | 开发入口 | 实际 Release |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |

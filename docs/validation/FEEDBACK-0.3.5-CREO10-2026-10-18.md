@@ -140,7 +140,7 @@ def validate_compiler_env(value: object) -> dict[str, str] | None:
 
 **建议**：
 1. 若已有可疑的时序窗口（例如锁释放与终态发布之间的间隙、`ProEngineerConnect` 探针的超时余量），
-   请在 `docs/work-items/BUG-056.md` 里记录**可判定的观测点**（日志关键字、时间戳关系），便于外部环境对齐；
+   请在 `docs/archive/work-items/BUG-056.md` 里记录**可判定的观测点**（日志关键字、时间戳关系），便于外部环境对齐；
 2. 提供一条"**不建立 Toolkit 连接**的自检路径"（例如仅校验部署产物与配置一致性），
    这样受限环境至少能确认安装正确性，而不必冒着卡死风险去连 Creo。
 

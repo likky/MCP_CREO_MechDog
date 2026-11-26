@@ -2,8 +2,8 @@
 
 - 版本：`0.31.1`（PATCH，工程规则）
 - 日期：2026-11-19
-- 版本说明：[RELEASE_NOTES_0.31.1](../RELEASE_NOTES_0.31.1.md)
-- 主台账：[BACKLOG](../BACKLOG.md) · 完成档案：[BACKLOG_COMPLETED](../BACKLOG_COMPLETED.md) · 工作卡：[DEV-093](../work-items/DEV-093.md) · 交付快照：[0.31.1](../releases/0.31.1.json)
+- 版本说明：[release-notes/RELEASE_NOTES_0.31.1](../release-notes/RELEASE_NOTES_0.31.1.md)
+- 主台账：[BACKLOG](../BACKLOG.md) · 完成档案：[BACKLOG_COMPLETED](../BACKLOG_COMPLETED.md) · 工作卡：[DEV-093](../archive/work-items/DEV-093.md) · 交付快照：[0.31.1](../releases/0.31.1.json)
 - 与上一版本的关系：上一版本 0.31.0（`v0.31.0`，提交 `daadbe71869ae4b394a9298970a8d9ec6608bc91`）；本版在其之上只改实机联调规则与版本元数据
 
 ## 包内容对照（相对 0.31.0）
@@ -24,11 +24,11 @@
 
 ## 逐 ID 状态核对
 
-成员：本版交付 1 个工程条目，已归档 [DEV-093](../work-items/DEV-093.md)。
+成员：本版交付 1 个工程条目，已归档 [DEV-093](../archive/work-items/DEV-093.md)。
 
 | ID / 工作卡 | 技术状态 | 交付版本 | 剩余范围 | 卡首页 | 主台账 | 差异说明 | 版本说明 | 开发入口 | 实际 Release |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| [DEV-093](../work-items/DEV-093.md) | 已完成（0.31.1 交付） | 0.31.1 | 无 | 已完成（0.31.1 交付） | 已完成（0.31.1 交付） | — | 已列入 | 已列入 | v0.31.1 |
+| [DEV-093](../archive/work-items/DEV-093.md) | 已完成（0.31.1 交付） | 0.31.1 | 无 | 已完成（0.31.1 交付） | 已完成（0.31.1 交付） | — | 已列入 | 已列入 | v0.31.1 |
 
 ## 未纳入本版
 

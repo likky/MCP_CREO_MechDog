@@ -35,7 +35,7 @@ gh release create v<版本> `
 
 ## 新建 Release
 
-仓库源码更新完成后，新建标签 **v0.2.5**，选择包含本次源码的提交。标题填写 **MCP_CREO_MechDog v0.2.5 — MIT 源码与九种子库**，说明使用 [RELEASE_NOTES_0.2.5.md](RELEASE_NOTES_0.2.5.md) 的内容。完整 Creo 覆盖尚未完成，建议保持 **Pre-release**。
+仓库源码更新完成后，新建标签 **v0.2.5**，选择包含本次源码的提交。标题填写 **MCP_CREO_MechDog v0.2.5 — MIT 源码与九种子库**，说明使用 [release-notes/RELEASE_NOTES_0.2.5.md](release-notes/RELEASE_NOTES_0.2.5.md) 的内容。完整 Creo 覆盖尚未完成，建议保持 **Pre-release**。
 
 0.2.5 历史示例的上传清单（文件名按当时版本；新版本按上节规则）：
 

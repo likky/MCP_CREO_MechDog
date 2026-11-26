@@ -120,4 +120,4 @@ busy 只有在确实发出两个重叠的 MCP 调用时才评价，并保留时�
 
 ---
 
-本文件不改写[上一轮 WorkBuddy 黑盒报告](DEV-040-workbuddy-blackbox-2026-10-18.md)。开发者准备/验证结果、本轮 WorkBuddy 实际执行结果与真实 Creo 结果应分别留证；任务状态见 [DEV-040](../work-items/DEV-040.md)。
+本文件不改写[上一轮 WorkBuddy 黑盒报告](DEV-040-workbuddy-blackbox-2026-10-18.md)。开发者准备/验证结果、本轮 WorkBuddy 实际执行结果与真实 Creo 结果应分别留证；任务状态见 [DEV-040](../archive/work-items/DEV-040.md)。

@@ -2,7 +2,7 @@
 
 - 版本：`0.24.0`（MINOR）
 - 日期：2026-11-13
-- 版本说明：[RELEASE_NOTES_0.24.0](../RELEASE_NOTES_0.24.0.md)
+- 版本说明：[release-notes/RELEASE_NOTES_0.24.0](../release-notes/RELEASE_NOTES_0.24.0.md)
 - 主台账：[BACKLOG](../BACKLOG.md)
 - 跨版本复测：[Creo 10 交接包](../development/CREO10-RETEST-0232-2026-11-13.md)
 - 受测提交：`v0.24.0` 标签指向的 `main` 提交（标签对象与提交号在[POSTCHECK](../development/RELEASE-POSTCHECK-2026-11-07.md) 的 `## v0.24.0` 段登记）
@@ -31,7 +31,7 @@
 
 ## 未纳入本版
 
-- 同日登记的 [DEV-088](../work-items/DEV-088.md) 是本地离线资料条目（已完成并归档，未编译、未实机），不含产品代码，不作为本版交付项。
+- 同日登记的 [DEV-088](../archive/work-items/DEV-088.md) 是本地离线资料条目（已完成并归档，未编译、未实机），不含产品代码，不作为本版交付项。
 - Creo 10 跨版本结论：本版不声称，复测步骤见交接包。
 
 ## 发布核对

@@ -4,7 +4,7 @@
 - 发布提交：`bbd81cdbaa92f7acdc1988d574dfdab832e01bed`（`main`），由该提交源码构建并冻结附件。
 - 上一版本：0.33.0（`v0.33.0`，提交 `613cc4bc3424ce066fb255d5781aa157b23f35a3`）。
 - 交付快照：[releases/0.34.0.json](../releases/0.34.0.json)。
-- 版本说明：[RELEASE_NOTES_0.34.0.md](../RELEASE_NOTES_0.34.0.md)。
+- 版本说明：[release-notes/RELEASE_NOTES_0.34.0.md](../release-notes/RELEASE_NOTES_0.34.0.md)。
 - Release：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.34.0`。
 - 发布流程：[RELEASING.md](../development/RELEASING.md)；附件核对留存在 [RELEASE-POSTCHECK-2026-11-07.md](../development/RELEASE-POSTCHECK-2026-11-07.md) 的 `## v0.34.0` 段。
 
@@ -14,10 +14,10 @@
 
 | ID | 交付版本 | 实际 Release | 卡首页 | 主台账 | 差异说明 |
 | --- | --- | --- | --- | --- | --- |
-| [BUG-137](../work-items/BUG-137.md) | 0.34.0 | v0.34.0 | 已完成（0.34.0 交付） | 已完成（0.34.0 交付） | 已移入完成档案 |
-| [BUG-138](../work-items/BUG-138.md) | 0.34.0 | v0.34.0 | 已完成（0.34.0 交付） | 已完成（0.34.0 交付） | 已移入完成档案 |
+| [BUG-137](../archive/work-items/BUG-137.md) | 0.34.0 | v0.34.0 | 已完成（0.34.0 交付） | 已完成（0.34.0 交付） | 已移入完成档案 |
+| [BUG-138](../archive/work-items/BUG-138.md) | 0.34.0 | v0.34.0 | 已完成（0.34.0 交付） | 已完成（0.34.0 交付） | 已移入完成档案 |
 | [BUG-139](../work-items/BUG-139.md) | 0.34.0 | v0.34.0 | 部分交付 0.34.0，剩余待验收 | 部分交付 0.34.0，剩余待验收 | — |
-| [DEV-097](../work-items/DEV-097.md) | 0.34.0 | v0.34.0 | 已完成（0.34.0 交付） | 已完成（0.34.0 交付） | 已移入完成档案 |
+| [DEV-097](../archive/work-items/DEV-097.md) | 0.34.0 | v0.34.0 | 已完成（0.34.0 交付） | 已完成（0.34.0 交付） | 已移入完成档案 |
 | [FEAT-070](../work-items/FEAT-070.md) | 0.34.0 | v0.34.0 | 部分交付 0.34.0，剩余待验收 | 部分交付 0.34.0，剩余待验收 | — |
 
 ## 发布前核对

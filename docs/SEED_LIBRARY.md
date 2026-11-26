@@ -38,7 +38,7 @@ v0.3.1 源码内含 `seed_library/`，安装器自动验证并注册九个项目
 
 ## 下载后使用
 
-**最新源码优先流程**：完成 `setup.ps1`，调用 `creo_list_seeds` 确认可用数量为 9，随后调用 `creo_new_loft_part` 时省略 `seed_file` 和 `seed_feature_id`。数量和 `interpolation` 自动匹配。翼型还可直接调用 `creo_new_airfoil_blade`。详细说明见 [本次版本](RELEASE_NOTES_0.2.5.md)。以下保留旧调用兼容流程，适用于需要显式指定种子的用户。
+**最新源码优先流程**：完成 `setup.ps1`，调用 `creo_list_seeds` 确认可用数量为 9，随后调用 `creo_new_loft_part` 时省略 `seed_file` 和 `seed_feature_id`。数量和 `interpolation` 自动匹配。翼型还可直接调用 `creo_new_airfoil_blade`。详细说明见 [本次版本](release-notes/RELEASE_NOTES_0.2.5.md)。以下保留旧调用兼容流程，适用于需要显式指定种子的用户。
 
 1. 安装 0.2.5 源码，按 [INSTALL.md](INSTALL.md) 配好本机 Creo、Toolkit SDK、编译器、Python 和可用许可。
 2. 解压种子库，进入能看到 `seed_manifest.json` 和 `resolve_seed.py` 的目录。原始文件名及 `.prt.N` 后缀保留，目录可自行选择。

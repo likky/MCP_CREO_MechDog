@@ -31,7 +31,7 @@
 
 ## 候选状态与逐 ID 核对
 
-发布前候选状态：待核对主干提交、附注标签、正式 Release 与四附件；DEV-051 整体仍验收中，BUG-046 的钣金 add 边界已定案，BUG-047 的方向子项已验，FEAT-014 四壁和 relief 仍开放，FEAT-031/T13 失败仍开放。状态入口为 [工作卡](../work-items/DEV-051.md)、[主台账](../BACKLOG.md)、[版本说明](../RELEASE_NOTES_0.8.5.md)和[开发入口](../DEVELOPMENT.md)。实际发布结果见下节。
+发布前候选状态：待核对主干提交、附注标签、正式 Release 与四附件；DEV-051 整体仍验收中，BUG-046 的钣金 add 边界已定案，BUG-047 的方向子项已验，FEAT-014 四壁和 relief 仍开放，FEAT-031/T13 失败仍开放。状态入口为 [工作卡](../work-items/DEV-051.md)、[主台账](../BACKLOG.md)、[版本说明](../release-notes/RELEASE_NOTES_0.8.5.md)和[开发入口](../DEVELOPMENT.md)。实际发布结果见下节。
 
 ## 发布后远端核验（本机交付副本；不追加 main 提交）
 

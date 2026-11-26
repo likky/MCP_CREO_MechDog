@@ -3,7 +3,7 @@
 ## 版本与条目
 
 - 版本 `0.5.3`（PATCH，0.5.0/0.5.1 外部 Creo 9 反馈整合：阶段一登记 + 阶段三兼容修复与说明，无新增公开工具，工具数 91 不变）。
-- 条目：[BUG-081](../work-items/BUG-081.md)（迁移 owner 拒绝诊断与 inspect 预检）、[BUG-082](../work-items/BUG-082.md)（在轴剖面编辑失败特征级诊断，autodim 改角失败本体随版披露）、[BUG-083](../work-items/BUG-083.md)（revolve.axis 入口预检）、[FEAT-030](../work-items/FEAT-030.md)/[BUG-034](../work-items/BUG-034.md)（种子来源与兼容信息透明化）、FEAT-045/BUG-058/FEAT-020/BUG-019 四项小修，及阶段一登记（两份原件逐字节归档、十组既有卡证据补录）。版本说明见 [RELEASE_NOTES_0.5.3.md](../RELEASE_NOTES_0.5.3.md)。
+- 条目：[BUG-081](../work-items/BUG-081.md)（迁移 owner 拒绝诊断与 inspect 预检）、[BUG-082](../work-items/BUG-082.md)（在轴剖面编辑失败特征级诊断，autodim 改角失败本体随版披露）、[BUG-083](../work-items/BUG-083.md)（revolve.axis 入口预检）、[FEAT-030](../work-items/FEAT-030.md)/[BUG-034](../work-items/BUG-034.md)（种子来源与兼容信息透明化）、FEAT-045/BUG-058/FEAT-020/BUG-019 四项小修，及阶段一登记（两份原件逐字节归档、十组既有卡证据补录）。版本说明见 [release-notes/RELEASE_NOTES_0.5.3.md](../release-notes/RELEASE_NOTES_0.5.3.md)。
 
 ## 版本链
 
@@ -17,8 +17,8 @@
 - 本机 Windows x64 / Python 3.12.14 / Creo 12.4.0.0 / 匹配 Toolkit SDK 与 MSVC；开发联调仅 `MCP_CREO_MechDog_dev` 指向 E 盘。
 - 定版候选（`e2e9ff5` 工作区，源码内容与 `e2bba08` 集成尖一致+版本文档随版）：`tools/dev_check.py` success=true、unit_tests=passed（lint 31/未格式化 19 为既有基线）。
 - 离线全量与实机矩阵（集成尖 `e2bba08`，task/9 收口）：612 项单元测试、`tools/test_unit.py`（success=true）、`bridge.py build` 复编、实机编辑收口 13/13、BUG-082 在轴扇形 7/7、BUG-083 双路径、FEAT-030 两种子加载——命令、job_id/model_id/revision/体积/哈希与偏差处置见 [PHASE3-CLOSEOUT-2026-10-25.md](PHASE3-CLOSEOUT-2026-10-25.md)。
-- 合并后复核：`git diff 60c1895 codex/feedback05051-phase1` 为空；两附件在 `60c1895` 工作区复建，种子包哈希与首次构建一致（确定性），源码包差异经定位仅为 `docs/RELEASE_NOTES_0.5.3.md` 行尾 LF→CRLF（git autocrlf 规范化），采用复建版为正式附件。
-- 新目录解压抽查（`build/release-0.5.3/xcheck2`）：804 文件、`version.py=0.5.3`、双 `seed_manifest.json compatible_server_version=0.5.3`、`seeds.py` expected_digest=种子包哈希、RELEASE_NOTES_0.5.3 与第三方许可在包内、PHASE3-CLOSEOUT 证据在包内、无 constants.inc/真实 config/client-config/seed_registry/toolkit.lock 及 build/jobs/models/.venv（`client-config.example.json` 为随包分发模板，属预期）。
+- 合并后复核：`git diff 60c1895 codex/feedback05051-phase1` 为空；两附件在 `60c1895` 工作区复建，种子包哈希与首次构建一致（确定性），源码包差异经定位仅为 `release-notes/RELEASE_NOTES_0.5.3.md` 行尾 LF→CRLF（git autocrlf 规范化），采用复建版为正式附件。
+- 新目录解压抽查（`build/release-0.5.3/xcheck2`）：804 文件、`version.py=0.5.3`、双 `seed_manifest.json compatible_server_version=0.5.3`、`seeds.py` expected_digest=种子包哈希、release-notes/RELEASE_NOTES_0.5.3 与第三方许可在包内、PHASE3-CLOSEOUT 证据在包内、无 constants.inc/真实 config/client-config/seed_registry/toolkit.lock 及 build/jobs/models/.venv（`client-config.example.json` 为随包分发模板，属预期）。
 
 ## 附件与 SHA256（Release body 直接列出，DEV-045 第 7 项）
 
@@ -39,7 +39,7 @@
 - BUG-082 autodim 改角再生失败本体未修复（随版披露）；外部「coordinates/改半径也失败」未在本机复现，保留外部待核对；球体/半圆贴轴基线失败另立条目。
 - 编辑矩阵失败作业 revision 字段未取得（报告格式不含）；种子重生成（环境受阻）与 9 种子安装库回归未执行。
 - BUG-081 实机 MCP 拒绝时序未复现（无同型残留 worker 现场，单测直接断言 `owner_block` payload）；BUG-083 原生 `validate_revolve_axis` 分支在真实执行器未触发（Python 预检先拒）。
-- 并发能力维持 [BUG-009](../work-items/BUG-009.md) 单通道忙拒边界（无队列）；BUG-078 accept 路径、BUG-058 外部 -11、BUG-063/BUG-064 待复现项随版披露；WorkBuddy 黑盒本轮未执行，不作并发或黑盒结论。
+- 并发能力维持 [BUG-009](../archive/work-items/BUG-009.md) 单通道忙拒边界（无队列）；BUG-078 accept 路径、BUG-058 外部 -11、BUG-063/BUG-064 待复现项随版披露；WorkBuddy 黑盒本轮未执行，不作并发或黑盒结论。
 
 ## 结论
 

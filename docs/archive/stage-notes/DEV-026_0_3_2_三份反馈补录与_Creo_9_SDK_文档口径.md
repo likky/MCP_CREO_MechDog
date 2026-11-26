@@ -138,12 +138,12 @@ MCP_CREO_MechDog/
 ├── docs/COMPATIBILITY.md            # [MODIFY] 如实现落地则同步 Creo 9 行"编译已支持、运行时未验收"，保留未验证项
 ├── docs/BACKLOG.md                  # [MODIFY] DEV-019/020/021/022 补卡链+改状态；新增 DEV-028 行；当前进展引用 DEV-028
 ├── docs/BACKLOG_COMPLETED.md        # [MODIFY] 视完成情况登记（本批如整体完成则记录）
-├── docs/work-items/DEV-028.md       # [NEW] 批次条目：目标、5 条目、统一验收、依赖顺序
-├── docs/work-items/DEV-020.md       # [NEW] 按现有工作卡格式补全
-├── docs/work-items/DEV-021.md       # [NEW] 同上
-├── docs/work-items/DEV-022.md       # [NEW] 同上
-├── docs/work-items/DEV-019.md       # [MODIFY] 状态与「实现与证据」
-└── docs/work-items/BUG-033.md       # [MODIFY] 状态与「实现与证据」，标注 Creo 9 实机未验收
+├── docs/archive/work-items/DEV-028.md       # [NEW] 批次条目：目标、5 条目、统一验收、依赖顺序
+├── docs/archive/work-items/DEV-020.md       # [NEW] 按现有工作卡格式补全
+├── docs/archive/work-items/DEV-021.md       # [NEW] 同上
+├── docs/archive/work-items/DEV-022.md       # [NEW] 同上
+├── docs/archive/work-items/DEV-019.md       # [MODIFY] 状态与「实现与证据」
+└── docs/archive/work-items/BUG-033.md       # [MODIFY] 状态与「实现与证据」，标注 Creo 9 实机未验收
 ```
 
 ## 执行说明

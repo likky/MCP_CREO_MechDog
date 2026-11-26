@@ -6,7 +6,7 @@
 
 - 用户在第三批离线验收后明确要求直接合入 main 并发布，取代此前开发阶段不合 main/不推送/不发布的边界。
 - 开发分支：`codex/DEV-002-batch3-package`；起点 `0f6c085`；离线交付提交 `46f3399`；0.11.5 仅补版本、双种子清单、受信摘要及发布文档，不改变建模代码。
-- [版本说明](../RELEASE_NOTES_0.11.5.md)、[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.11.5)、[标签对应源码](https://github.com/wudahua/MCP_CREO_MechDog/tree/v0.11.5)。标签 `v0.11.5` 必须指向本次合入后的 main 提交，最终附件必须从该提交源码生成。
+- [版本说明](../release-notes/RELEASE_NOTES_0.11.5.md)、[GitHub Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.11.5)、[标签对应源码](https://github.com/wudahua/MCP_CREO_MechDog/tree/v0.11.5)。标签 `v0.11.5` 必须指向本次合入后的 main 提交，最终附件必须从该提交源码生成。
 - 本文件随发布源码提交冻结；最终主干完整 SHA、Release 对象、两 ZIP 和两 sidecar 的完整 SHA256 在 Release 正文与本轮 `remote_verification.json` 记录，避免为回填自身归档哈希再制造一个未另行发版的 main 提交。
 - 本轮原始过程目录：`build/release_0.11.5_20261102T143942Z/`。Git dirty 包含保留的用户 session_activity.json/客户端目录及发布准备文件，不以提交号替代实际源码指纹。
 
@@ -41,7 +41,7 @@
 
 | ID | 技术状态与实际交付 | 开放范围 | 对应入口 |
 | --- | --- | --- | --- |
-| DEV-002 | 第三批实现及离线验收随 0.11.5 交付；整体开发中 | T5 实机、服务/启动/桥接及其余布局继续分批 | [工作卡](../work-items/DEV-002.md)、[主台账](../BACKLOG.md)、[版本说明](../RELEASE_NOTES_0.11.5.md)、[开发入口](../DEVELOPMENT.md)、[Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.11.5) |
+| DEV-002 | 第三批实现及离线验收随 0.11.5 交付；整体开发中 | T5 实机、服务/启动/桥接及其余布局继续分批 | [工作卡](../work-items/DEV-002.md)、[主台账](../BACKLOG.md)、[版本说明](../release-notes/RELEASE_NOTES_0.11.5.md)、[开发入口](../DEVELOPMENT.md)、[Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.11.5) |
 
 无新增 FEAT/BUG ID，无新增能力声明。台账唯一行与分类数量保持，未关闭整个 DEV-002。
 

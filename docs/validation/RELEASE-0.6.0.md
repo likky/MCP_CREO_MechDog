@@ -84,7 +84,7 @@ WorkBuddy 未执行；其他 Creo（9 无 SDK、10 未复验且非门槛）、�
 Infinity 只离线覆盖，32 次标准 JSON 非法输入真实入口证据见
 [综合证据](../development/BATCH2-LIVE-ACCEPTANCE-2026-10-26.md)第 6 节。AABB 是
 源盒与查询矩阵的派生预期，不是独立 Creo 装配 bbox 实测。
-BUG-078、BUG-082 及其他既有问题按[版本说明](../RELEASE_NOTES_0.6.0.md)保留。
+BUG-078、BUG-082 及其他既有问题按[版本说明](../release-notes/RELEASE_NOTES_0.6.0.md)保留。
 
 ## 主干与附件核对
 

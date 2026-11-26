@@ -2,7 +2,7 @@
 
 - 版本：`0.28.0`（MINOR，部分交付）
 - 日期：2026-11-19
-- 版本说明：[RELEASE_NOTES_0.28.0](../RELEASE_NOTES_0.28.0.md)
+- 版本说明：[release-notes/RELEASE_NOTES_0.28.0](../release-notes/RELEASE_NOTES_0.28.0.md)
 - 主台账：[BACKLOG](../BACKLOG.md) · 工作卡：[BUG-120](../work-items/BUG-120.md) · 交付快照：[0.28.0](../releases/0.28.0.json)
 - 受测提交：本记录所在 `main` 提交（标签 `v0.28.0` 的对象与提交号只登记在 `main` 的[POSTCHECK](../development/RELEASE-POSTCHECK-2026-11-07.md) `## v0.28.0` 段）
 - 与上一版本的关系：上一版本：0.27.0（`v0.27.0`，提交 `fc1efaefa68cda1c0b4d46849f18933c35050b64`），本版在其之上完成 BUG-120 的 Creo 10 resident_panel 路线、candidate-3 导线/点与两段式实体化，并同步发布资料

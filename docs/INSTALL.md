@@ -4,7 +4,7 @@
 
 ## 需要的环境
 
-可使用 Creo 9、10 或 Creo 12。当前开发与发布按本机 Creo 12.4.0.0 的改动范围验收，Creo 10 独立复测不作为项目门槛；Creo 9 与匹配 Toolkit 9 已纳入支持/要求范围，[BUG-033](work-items/BUG-033.md) 编译探测修复已实现。本机无 Creo 9 SDK，Creo 9 实机编译与建模运行时均未验收，支持声明不代表本机测试通过。其他环境收到具体测试反馈后再跟进；具体已测范围与未测项见 [兼容矩阵](COMPATIBILITY.md)。仅做 Python 单元和语言检查的开发环境见 [开发入口](DEVELOPMENT.md)，不必先运行完整 Creo 安装流程。
+可使用 Creo 9、10 或 Creo 12。当前开发与发布按本机 Creo 12.4.0.0 的改动范围验收，Creo 10 独立复测不作为项目门槛；Creo 9 与匹配 Toolkit 9 已纳入支持/要求范围，[BUG-033](archive/work-items/BUG-033.md) 编译探测修复已实现。本机无 Creo 9 SDK，Creo 9 实机编译与建模运行时均未验收，支持声明不代表本机测试通过。其他环境收到具体测试反馈后再跟进；具体已测范围与未测项见 [兼容矩阵](COMPATIBILITY.md)。仅做 Python 单元和语言检查的开发环境见 [开发入口](DEVELOPMENT.md)，不必先运行完整 Creo 安装流程。
 
 - Windows x64；Creo Parametric 9、10 或 12，使用与目标安装匹配的 SDK。Creo 12.4 已有自动启动、建模、参数编辑和保存重载的成功实机记录；0.2.6 发布时另一次冷启动复测失败，保留原结果见 [发布验收](validation/RELEASE-0.2.6.md)。Creo 9 编译探测已支持，实机编译及运行时未在本机验收。
 - Python 3.12+ x64；本版安装实测使用 Python 3.12。
@@ -112,7 +112,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -CreoRoot 'C
 
 启动客户端中的 MCP 服务，后台自动复用已有会话或启动配置的 Creo。处理启动时出现的登录、许可及其他模态对话框，然后让 AI：
 
-1. 调用 `creo_capabilities`，确认运行版本与所装 Release 标签一致、工具数与清单符合该版本（0.8.0 为 94 个工具）；核对 `runtime.python_executable`、`runtime.server_entry`、`runtime.code_root` 的实际路径与 `runtime.source_changed_since_startup`，再查看 `families`、`seed_library` 和 `unavailable_operations`。新增接口边界见 [版本说明](RELEASE_NOTES_0.8.0.md)。
+1. 调用 `creo_capabilities`，确认运行版本与所装 Release 标签一致、工具数与清单符合该版本（0.8.0 为 94 个工具）；核对 `runtime.python_executable`、`runtime.server_entry`、`runtime.code_root` 的实际路径与 `runtime.source_changed_since_startup`，再查看 `families`、`seed_library` 和 `unavailable_operations`。新增接口边界见 [版本说明](release-notes/RELEASE_NOTES_0.8.0.md)。
 2. 调用 `creo_check_environment`，确认 SDK、模板和编译器路径正确。
 3. 调用 `creo_startup_status` 等待 `state == "ready"`，再调用 `creo_session_status` 确认 `connected == true`。等待时建模请求明确拒绝，未创建任务。
 4. 提交一个新零件建模计划；只提交一次，使用 `creo_get_job` 查询任务进度。
@@ -178,9 +178,9 @@ Test-Path "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\um\x64\kernel
 "creo_startup_args": ["-g:no_graphics", "-i:rpc_input"]
 ```
 
-这两项来自 PTC 自带的 `proe_start.bat` 写法；Creo 13.4 的配置库已没有 `win32_gdi` 软件渲染选项，因此在旧显卡驱动会触发 TDR 蓝屏的环境里，无图形启动是当前唯一的项目侧入口。修改 `config.json` 后必须重启 MCP 服务，运行中的进程不重新读取配置。Creo 12.4 实测：`xtop.exe` 命令行出现同名参数、无界面，Toolkit 连接 `toolkit_code=0`；板件建模（拉伸、圆角、通孔、保存重载、预览）成功，`window_activate_code=-8` 只作诊断记录、不再判失败（见 [BUG-126](work-items/BUG-126.md)）。Creo 13.4 未测，失败时不要用连接成功代替建模验收。
+这两项来自 PTC 自带的 `proe_start.bat` 写法；Creo 13.4 的配置库已没有 `win32_gdi` 软件渲染选项，因此在旧显卡驱动会触发 TDR 蓝屏的环境里，无图形启动是当前唯一的项目侧入口。修改 `config.json` 后必须重启 MCP 服务，运行中的进程不重新读取配置。Creo 12.4 实测：`xtop.exe` 命令行出现同名参数、无界面，Toolkit 连接 `toolkit_code=0`；板件建模（拉伸、圆角、通孔、保存重载、预览）成功，`window_activate_code=-8` 只作诊断记录、不再判失败（见 [BUG-126](archive/work-items/BUG-126.md)）。Creo 13.4 未测，失败时不要用连接成功代替建模验收。
 
-原生状态探针默认以子进程直接启动 `build/creo_worker.exe`。`auto` 模式下探针返回 `-4`（`PRO_TK_E_NOT_FOUND`，Toolkit 找不到会话或读不到注册信息）时，服务可经同一个 Explorer 隐藏启动一次 worker 复核（见 [BUG-127](work-items/BUG-127.md)）。启动协调器的直连与桌面复核共用剩余连接预算。桌面路径不可用、超时或仍返回 `-4` 时保留直连结果，并附 `desktop_retry` 说明。该路径只用于状态探针。
+原生状态探针默认以子进程直接启动 `build/creo_worker.exe`。`auto` 模式下探针返回 `-4`（`PRO_TK_E_NOT_FOUND`，Toolkit 找不到会话或读不到注册信息）时，服务可经同一个 Explorer 隐藏启动一次 worker 复核（见 [BUG-127](archive/work-items/BUG-127.md)）。启动协调器的直连与桌面复核共用剩余连接预算。桌面路径不可用、超时或仍返回 `-4` 时保留直连结果，并附 `desktop_retry` 说明。该路径只用于状态探针。
 
 同一用户会话、安装和 PSF 的多个服务共享 `%LOCALAPPDATA%/MCP_CREO_MechDog/startup/<目标摘要>/` 下的锁、`state.json` 和 `startup.log`。启动预留先于实际拉起写入；先前结果不确定且当前没有进程时，需要显式调用 `creo_startup_status(retry=true)`。重试会复查实际进程，正在启动或已有 Creo 时继续等待，不重复创建。日志不包含许可或敏感会话 ID。冷启动时先依据进程检查拉起 GUI，再进行真实 Toolkit 探测，避免首次探测创建的名称服务随 MCP 主机退出而被清理。Explorer 启动接口不提供子进程退出码；请求异常记录为失败，无就绪确认则有界超时，不将启动请求返回当作成功。
 
@@ -231,7 +231,7 @@ Test-Path "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\um\x64\kernel
 
 ## 升级到 0.3.0
 
-升级流程同上，保留本机配置、模型和任务目录，等待原生任务完成后更新代码并重跑 `setup.ps1`。不必手动删除 `native/constants.inc`；构建会自动更新。新接口及限制见 [版本说明](RELEASE_NOTES_0.3.0.md)。更新源码后重启客户端中的 MCP 服务，调用 `creo_capabilities` 核对版本与该 Release 一致；本节保留 0.3.0 当时的历史说明，当前核对项见上文「升级与部署核对」，不再要求 `version == "0.3.0"`。只打开一个 Creo 会话；高级配置 `creo_session_id` 可固定 Toolkit 连接目标，重启会话后需重新取得有效 ID，程序拒绝连接回退。重跑安装保留已有 ID，不会自动猜测新的连接目标。
+升级流程同上，保留本机配置、模型和任务目录，等待原生任务完成后更新代码并重跑 `setup.ps1`。不必手动删除 `native/constants.inc`；构建会自动更新。新接口及限制见 [版本说明](release-notes/RELEASE_NOTES_0.3.0.md)。更新源码后重启客户端中的 MCP 服务，调用 `creo_capabilities` 核对版本与该 Release 一致；本节保留 0.3.0 当时的历史说明，当前核对项见上文「升级与部署核对」，不再要求 `version == "0.3.0"`。只打开一个 Creo 会话；高级配置 `creo_session_id` 可固定 Toolkit 连接目标，重启会话后需重新取得有效 ID，程序拒绝连接回退。重跑安装保留已有 ID，不会自动猜测新的连接目标。
 
 包含本次建模增量的源码内附 MIT 种子库，安装器验证并注册，`creo_new_loft_part` 按数量/模式自动选择，不要求手填路径和特征 ID。库内有九个原生 PRT：2/3/4/6 截面的直线和平滑，以及 5 截面平滑；详细步骤见 [SEED_LIBRARY.md](SEED_LIBRARY.md)。新电脑需要重新安装并验证，不直接复制旧 `.venv`、二进制、配置或会话 ID；同机换客户端可以共用安装目录，见 [MIGRATION.md](MIGRATION.md)。
 

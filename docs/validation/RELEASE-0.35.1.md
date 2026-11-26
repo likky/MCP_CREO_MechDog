@@ -4,7 +4,7 @@
 - 发布提交：`9b933cf5507322f7c8693ea6fd6ae74648866e5b`（`v0.35.1` 标签指向该提交）。
 - 上一版本：0.35.0（`v0.35.0`，提交 `4e42e1d4b7e801894ab296271398e9bd1bb83012`）。
 - 交付快照：[releases/0.35.1.json](../releases/0.35.1.json)。
-- 版本说明：[RELEASE_NOTES_0.35.1.md](../RELEASE_NOTES_0.35.1.md)。
+- 版本说明：[release-notes/RELEASE_NOTES_0.35.1.md](../release-notes/RELEASE_NOTES_0.35.1.md)。
 - Release：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.1`。
 - 发布流程：[RELEASING.md](../development/RELEASING.md)；附件核对留存在 [RELEASE-POSTCHECK-2026-11-07.md](../development/RELEASE-POSTCHECK-2026-11-07.md) 的 `## v0.35.1` 段。
 
@@ -14,8 +14,8 @@
 
 | ID | 技术状态 | 交付版本 | 实际 Release | 卡首页 | 主台账 | 差异说明 |
 | --- | --- | --- | --- | --- | --- | --- |
-| [BUG-142](../work-items/BUG-142.md) | 部分交付 0.35.1，剩余待验收 | 0.35.1 | v0.35.1 | 部分交付 0.35.1，剩余待验收 | 部分交付 0.35.1，剩余待验收 | — |
-| [DEV-098](../work-items/DEV-098.md) | 部分交付 0.35.1，剩余待验收 | 0.35.1 | v0.35.1 | 部分交付 0.35.1，剩余待验收 | 部分交付 0.35.1，剩余待验收 | — |
+| [BUG-142](../archive/work-items/BUG-142.md) | 部分交付 0.35.1，剩余待验收 | 0.35.1 | v0.35.1 | 部分交付 0.35.1，剩余待验收 | 部分交付 0.35.1，剩余待验收 | — |
+| [DEV-098](../archive/work-items/DEV-098.md) | 部分交付 0.35.1，剩余待验收 | 0.35.1 | v0.35.1 | 部分交付 0.35.1，剩余待验收 | 部分交付 0.35.1，剩余待验收 | — |
 
 ## 发布前核对
 

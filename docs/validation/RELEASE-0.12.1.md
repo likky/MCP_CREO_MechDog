@@ -1,6 +1,6 @@
 # 0.12.1 发布记录（2026-11-04）
 
-- 条目：[DEV-068](../work-items/DEV-068.md)；PATCH，README 改版与版本元数据；公开工具仍 97，无业务代码或原生代码变更。
+- 条目：[DEV-068](../archive/work-items/DEV-068.md)；PATCH，README 改版与版本元数据；公开工具仍 97，无业务代码或原生代码变更。
 - 主干基线：`90dbd6c33e9f732d1a5bd969bcf19d30b4b3a62c`（0.12.0）；用户原 README 的 SHA256：`50cf4da5e07f2bfdf9a97fadbeff36c9a04b545b8fc65546358bf29424cfb08b`，来自未提交工作区。
 - 目标版本：`version.py` = `0.12.1`；标签 `v0.12.1`；[目标 Release](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.12.1)。
 - 交付核对：[PR #12](https://github.com/wudahua/MCP_CREO_MechDog/pull/12)，在同一流程内回填实际主干提交、验收报告、Release 与附件核对，不再为回填修改 main。

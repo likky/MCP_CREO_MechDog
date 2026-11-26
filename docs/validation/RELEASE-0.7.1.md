@@ -67,7 +67,7 @@ Right 面几何 ID 由巡检选出（过原点且法向平行 X 的唯一平面�
 
 | ID | 技术状态 | 交付版本 | 剩余范围 | 卡首页 | 主台账 | 版本说明 | 开发入口 | 实际 Release |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| DEV-048 | 已交付（本批代码与实机证据完成） | 0.7.1 | 外部 Creo 9/10、WorkBuddy、完整历史矩阵未做 | [DEV-048](../work-items/DEV-048.md) | [BACKLOG](../BACKLOG.md) | [0.7.1 说明](../RELEASE_NOTES_0.7.1.md) | [DEVELOPMENT](../DEVELOPMENT.md) | [v0.7.1](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.7.1)（已发布） |
+| DEV-048 | 已交付（本批代码与实机证据完成） | 0.7.1 | 外部 Creo 9/10、WorkBuddy、完整历史矩阵未做 | [DEV-048](../archive/work-items/DEV-048.md) | [BACKLOG](../BACKLOG.md) | [0.7.1 说明](../release-notes/RELEASE_NOTES_0.7.1.md) | [DEVELOPMENT](../DEVELOPMENT.md) | [v0.7.1](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.7.1)（已发布） |
 
 ## 未测与限制
 

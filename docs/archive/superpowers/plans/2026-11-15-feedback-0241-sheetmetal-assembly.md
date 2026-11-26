@@ -8,7 +8,7 @@
 
 **Tech Stack:** Windows x64、Python 3.12+ / Pydantic / unittest、C++17、Creo C TOOLKIT；当前本机资料依据为 Creo 12.4.0.0 SDK。
 
-**Spec:** [DEV-089 目标、方案比较与边界](../../work-items/DEV-089.md)；[指定反馈原件](../../validation/feedback-0.24.1-2026-11-15/report.md)；[AGENTS](../../../AGENTS.md)。方案为本次推荐，尚未进入实现。
+**Spec:** [DEV-089 目标、方案比较与边界](../../archive/work-items/DEV-089.md)；[指定反馈原件](../../validation/feedback-0.24.1-2026-11-15/report.md)；[AGENTS](../../../AGENTS.md)。方案为本次推荐，尚未进入实现。
 
 ## 全局约束
 

@@ -5,9 +5,9 @@
 ## 本轮变更清单
 
 - `README.md`：标题与版本段更新（0.3.6 交付事实 + 0.3.7 定位说明），移除已过时的 BUG-056 待核实/M2 未收尾表述。
-- `version.py` → 0.3.7；[RELEASE_NOTES_0.3.7.md](../RELEASE_NOTES_0.3.7.md)。
-- 0.3.6 交付回填记录入库：`validation/RELEASE-0.3.6.md` 回填段、`work-items/DEV-041.md` 完成态、`development/RELEASING.md` 版本行、`BACKLOG_COMPLETED.md` DEV-041 行、`BACKLOG.md` 当前安排与版本（0.3.6 交付后按惯例本应随下次开发提交，本次随勘误版一并入库）。
-- `docs/work-items/DEV-042.md`：BUG-019 执行卡建卡与台账同步。
+- `version.py` → 0.3.7；[release-notes/RELEASE_NOTES_0.3.7.md](../release-notes/RELEASE_NOTES_0.3.7.md)。
+- 0.3.6 交付回填记录入库：`validation/RELEASE-0.3.6.md` 回填段、`archive/work-items/DEV-041.md` 完成态、`development/RELEASING.md` 版本行、`BACKLOG_COMPLETED.md` DEV-041 行、`BACKLOG.md` 当前安排与版本（0.3.6 交付后按惯例本应随下次开发提交，本次随勘误版一并入库）。
+- `docs/archive/work-items/DEV-042.md`：BUG-019 执行卡建卡与台账同步。
 - 种子清单 `seed_library/seed_manifest.json` 与 `docs/seed_manifest.json` 的 `compatible_server_version` → 0.3.7；`seeds.py` expected_digest 同步新种子包 SHA256（9 枚种子身份不变，仅清单标记变化）。
 
 ## 检查

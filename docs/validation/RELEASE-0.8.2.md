@@ -1,6 +1,6 @@
 # Release 0.8.2 发布验收记录
 
-日期：2026-10-29（Asia/Shanghai）。条目：[BUG-089](../work-items/BUG-089.md)。环境：Windows x64、PowerShell、仓库 `.venv` Python。工作分支 `codex/dev051-feedback070`，候选基线提交 `1d7d33b`；测试时工作区含本版允许的变更和用户保留的本机未提交文件，`dirty=true`。公开工具 94 个，无接口或建模能力变化。
+日期：2026-10-29（Asia/Shanghai）。条目：[BUG-089](../archive/work-items/BUG-089.md)。环境：Windows x64、PowerShell、仓库 `.venv` Python。工作分支 `codex/dev051-feedback070`，候选基线提交 `1d7d33b`；测试时工作区含本版允许的变更和用户保留的本机未提交文件，`dirty=true`。公开工具 94 个，无接口或建模能力变化。
 
 ## 缺陷与修复
 

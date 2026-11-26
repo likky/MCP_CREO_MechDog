@@ -1,6 +1,6 @@
 # 0.17.3 发布记录（2026-11-07）
 
-- 条目：[DEV-071](../work-items/DEV-071.md) 反馈修复批（PATCH），同批附 [BUG-032](../work-items/BUG-032.md)、[FEAT-010](../work-items/FEAT-010.md)、[BUG-104](../work-items/BUG-104.md)、[BUG-105](../work-items/BUG-105.md)、[FEAT-056](../work-items/FEAT-056.md) 实机验证；公开工具仍 **100**。
+- 条目：[DEV-071](../work-items/DEV-071.md) 反馈修复批（PATCH），同批附 [BUG-032](../work-items/BUG-032.md)、[FEAT-010](../work-items/FEAT-010.md)、[BUG-104](../archive/work-items/BUG-104.md)、[BUG-105](../work-items/BUG-105.md)、[FEAT-056](../work-items/FEAT-056.md) 实机验证；公开工具仍 **100**。
 - 基线：上一已发布版本 **0.17.2**（`main` 提交 `e3ad431`，标签 `v0.17.2`，见 [RELEASE-0.17.2](RELEASE-0.17.2.md)）；DEV-071 离线代码基于 `191c05f`（0.17.1），本批在独立工作树先合入 `e3ad431` 再发布。
 - 开发分支：`codex/DEV-071-feedback016-offline`；合入 main 前的代码与文档提交 `322989f41e6763481bc618749c2867db893ea3b8`（本记录随其后的文档提交进入同一发布）。
 - 目标版本：`v0.17.3`、Release 与四份附件；合并提交、标签对象与附件远端核对结果在 Release body 与交付说明中回填。

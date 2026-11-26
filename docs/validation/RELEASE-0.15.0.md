@@ -21,7 +21,7 @@
 
 | 条目 | 完成度 | 依据 |
 | --- | --- | --- |
-| R01 [BUG-112](../work-items/BUG-112.md) 偏置初始化返回码 | ✅ 离线 | 初始化成功且句柄有效才测量，`source_area_status` 回执，失败数值 null；`/we4552` 编译门禁 |
+| R01 [BUG-112](../archive/work-items/BUG-112.md) 偏置初始化返回码 | ✅ 离线 | 初始化成功且句柄有效才测量，`source_area_status` 回执，失败数值 null；`/we4552` 编译门禁 |
 | R02 [BUG-113](../work-items/BUG-113.md) 保存/回滚差异 | ✅ 诊断离线，根因开放 | `save_failure`/`rollback_difference`、终态矩阵与恢复指引；本机 12.4 未复现 |
 | R03 [FEAT-058](../work-items/FEAT-058.md) 板厚双上下文 | ✅ 回执离线，实机未跑 | `thickness_validation`/`thickness_loaded_validation`；缺 API 几何兜底仅离线门控 |
 | R04 [FEAT-023](../work-items/FEAT-023.md) compact | ✅ 离线 | 判据白名单、null 原样、列表 ≤50/≤32768 B、`full_detail_hint` |

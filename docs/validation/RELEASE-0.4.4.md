@@ -3,7 +3,7 @@
 日期：2026-10-21。版本类型：PATCH（无新增公开工具，工具数 87 不变）。
 
 - 主干提交：`85bb793`（main，fast-forward 自 `codex/dev-027-030-improvement-plan` 的 `ea063a2` + 发版准备提交）；tag `v0.4.4` → `85bb793`，与本地/远端 main 核对一致。
-- GitHub Release：[419092342](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.4.4)（pre-release），说明取自 `docs/RELEASE_NOTES_0.4.4.md`。
+- GitHub Release：[419092342](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.4.4)（pre-release），说明取自 `release-notes/RELEASE_NOTES_0.4.4.md`。
 - 附件（由 85bb793 工作区生成，解压抽查通过后上传，远端下载 SHA256 逐字节核对一致）：
   - `MCP_CREO_MechDog-0.4.4-source.zip`：684 文件，SHA256 `eed874c0cbe70314f1a2fc92bfe1e0cd34a5caf8a218d3953cb4f569ac1ff259`
   - `MCP_CREO_MechDog-0.4.4-seed-library.zip`：24 文件 / 9 种子，SHA256 `00b1bae07f4b751bce8138450ee2776bf18f09f66d4bf75bcef3fca5e83a0724`（`seeds.py` expected_digest 已同步）

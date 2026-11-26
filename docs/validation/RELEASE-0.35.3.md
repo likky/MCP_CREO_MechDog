@@ -4,7 +4,7 @@
 - 发布提交：`0fa005dc44ac65c9d118e37e1bf9b58b87474486`（`v0.35.3` 标签指向同一提交）。
 - 上一版本：0.35.2（`v0.35.2`，提交 `b90f0eda2a70c1f6ae5e4ae7df56c74be6786b24`）。
 - 交付快照：[releases/0.35.3.json](../releases/0.35.3.json)。
-- 版本说明：[RELEASE_NOTES_0.35.3.md](../RELEASE_NOTES_0.35.3.md)。
+- 版本说明：[release-notes/RELEASE_NOTES_0.35.3.md](../release-notes/RELEASE_NOTES_0.35.3.md)。
 - Release：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.3`。
 - 发布流程：[RELEASING.md](../development/RELEASING.md)；附件核对留存在 [RELEASE-POSTCHECK-2026-11-07.md](../development/RELEASE-POSTCHECK-2026-11-07.md) 的 `## v0.35.3` 段。
 - 远端核对：2026-11-21 执行 `tools\check_release_assets.py --tag v0.35.3`，exit 0，输出“four assets downloaded and verified; both sidecars match; release body self-proof verified”。Release id `453561911`，正文 2975 字符。

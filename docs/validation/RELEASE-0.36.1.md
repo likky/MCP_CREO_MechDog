@@ -14,7 +14,7 @@
 
 被修的问题：`tools/test_mcp.py` 自 `0e92ab7` 后未随 `creo_capabilities` 0.4.2 的 compact 分页契约更新，按文档运行必然在 `families.loft_seed.interpolation` 上 `KeyError`，exit 1，且不在全量单测或 `dev_check` 的任何一项里。修复前原始输出见 `build/bug151_repro_before.txt`（3.2 s 复现，与是否连接 Creo 无关）。
 
-修复：脚本改为 compact 只断言家庭索引，再用 `detail="full", section="families", limit=50` 逐页取回完整条目后断言细节（当前 40 族 / 2 页，`loft_seed` 位于第 2 页）；契约期望集中到 `src/creo_mechdog/mcp_contract.py`，脚本与单测共用同一来源；新增 `--protocol-only` 供无 Creo 会话时验收协议面。设计与取舍见 [BUG-151](../work-items/BUG-151.md) 和[修复计划](../superpowers/plans/2026-11-23-bug151-test-mcp-capabilities-drift.md)。
+修复：脚本改为 compact 只断言家庭索引，再用 `detail="full", section="families", limit=50` 逐页取回完整条目后断言细节（当前 40 族 / 2 页，`loft_seed` 位于第 2 页）；契约期望集中到 `src/creo_mechdog/mcp_contract.py`，脚本与单测共用同一来源；新增 `--protocol-only` 供无 Creo 会话时验收协议面。设计与取舍见 [BUG-151](../archive/work-items/BUG-151.md) 和[修复计划](../superpowers/plans/2026-11-23-bug151-test-mcp-capabilities-drift.md)。
 
 护栏的首次实战：变基到 0.36.0 后，FEAT-074 给 `surface_loft` / `loft` / `loft_seed` 的 compact 条目新增了 `runtime_admission`，`tests/unit/test_mcp_contract.py` 立刻报出 `compact family loft must stay an index ... found ['runtime_admission']`；把该键并入索引白名单后重新通过。契约漂移由此从"跑脚本才失败"变为"单测里失败"。
 
@@ -43,7 +43,7 @@
 
 | ID | 交付版本 | 实际 Release | 技术状态 | 卡首页 | 主台账 | 差异说明 |
 | --- | --- | --- | --- | --- | --- | --- |
-| [BUG-151](../work-items/BUG-151.md) | 0.36.1 | v0.36.1 | 已有修复但待验收 | 已有修复但待验收 | 已有修复但待验收 | 脚本协议面已验收；`--create` 建模与 `creo_session_status` 路径需已连接会话，仍待补 |
+| [BUG-151](../archive/work-items/BUG-151.md) | 0.36.1 | v0.36.1 | 已有修复但待验收 | 已有修复但待验收 | 已有修复但待验收 | 脚本协议面已验收；`--create` 建模与 `creo_session_status` 路径需已连接会话，仍待补 |
 
 ## 远端核对
 

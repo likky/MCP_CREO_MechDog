@@ -2,7 +2,7 @@
 
 - 版本：**0.11.7**（PATCH），`version.py` 唯一来源；公开工具仍 **95 个**，无接口与参数语义变化。
 - 条目：[BUG-111](../work-items/BUG-111.md)（第 5 个 `keep_original` 副本失败的定因与有界选集诊断）、[BUG-110](../work-items/BUG-110.md)（重放判据修正；成功路径仍开放）、[BUG-108](../work-items/BUG-108.md)（实机补证轮，未触发，仍开放）。实施计划：[R13 后续定因与实机补证](../superpowers/plans/2026-11-03-r13-followup-bug111-108-110.md)；验收摘要：[R13-FOLLOWUP-ACCEPTANCE-2026-11-03](../development/R13-FOLLOWUP-ACCEPTANCE-2026-11-03.md)。
-- 版本说明：[RELEASE_NOTES_0.11.7.md](../RELEASE_NOTES_0.11.7.md)（已作为 Release 正文发布）。
+- 版本说明：[release-notes/RELEASE_NOTES_0.11.7.md](../release-notes/RELEASE_NOTES_0.11.7.md)（已作为 Release 正文发布）。
 - 标签：`v0.11.7` → 提交 `c327dbe8b6aa0713fba05932e5ac493f672299ce`（`main`，合并提交 `BUG-111/108/110: R13 follow-up root cause round for 0.11.7`）。
 - Release：<https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.11.7>（`draft=false`、`prerelease=false`，发布 2026-11-03T10:19:16Z，`targetCommitish=c327dbe8…`）。
 
@@ -26,7 +26,7 @@ gh release create v0.11.7 <两个附件> --title "MCP_CREO_MechDog 0.11.7" --not
 gh release download v0.11.7 --dir build\verify\0117 --clobber; Get-FileHash build\verify\0117\*.zip -Algorithm SHA256
 ```
 
-源码包内容核验：1274 个文件；不含 `native/constants.inc`、`jobs/`、`models/`、`build/`、`.venv/`、`toolkit.lock`、`session_activity.json`、`config.json`、`client-config.json`、`__pycache__`；含 `version.py`=`0.11.7`、`docs/RELEASE_NOTES_0.11.7.md`、两份 `seed_manifest.json` 与 `native/third_party/{json.hpp,LICENSE.nlohmann-json}`。
+源码包内容核验：1274 个文件；不含 `native/constants.inc`、`jobs/`、`models/`、`build/`、`.venv/`、`toolkit.lock`、`session_activity.json`、`config.json`、`client-config.json`、`__pycache__`；含 `version.py`=`0.11.7`、`release-notes/RELEASE_NOTES_0.11.7.md`、两份 `seed_manifest.json` 与 `native/third_party/{json.hpp,LICENSE.nlohmann-json}`。
 
 ## 验收摘要
 
@@ -53,7 +53,7 @@ gh release download v0.11.7 --dir build\verify\0117 --clobber; Get-FileHash buil
 
 | ID | 技术状态 | 交付版本 | 剩余范围 | 卡首页 | 主台账 | 版本说明 | 开发入口 | 实际 Release |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| BUG-111 | 已定因（选集语义 + 重合/交叠再生失败），诊断已交付，未做行为修复 | 0.11.7 | Creo 10/9、内核判据、`body_pattern` 未实现 | [卡](../work-items/BUG-111.md) | [台账](../BACKLOG.md)（0.11.7 发布条目） | [说明](../RELEASE_NOTES_0.11.7.md) | [入口](../DEVELOPMENT.md) | [v0.11.7](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.11.7) |
+| BUG-111 | 已定因（选集语义 + 重合/交叠再生失败），诊断已交付，未做行为修复 | 0.11.7 | Creo 10/9、内核判据、`body_pattern` 未实现 | [卡](../work-items/BUG-111.md) | [台账](../BACKLOG.md)（0.11.7 发布条目） | [说明](../release-notes/RELEASE_NOTES_0.11.7.md) | [入口](../DEVELOPMENT.md) | [v0.11.7](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.11.7) |
 | BUG-110 | 重放判据修正已交付；`ack_success` 实机未发生 | 0.11.7 | 零件与装配成功路径、幂等与不变性实机证据 | [卡](../work-items/BUG-110.md) | 同上 | 同上 | 同上 | 同上 |
 | BUG-108 | 实机补证 9/9 未触发，`accepted_rigid=true` 无见证 | 0.11.7（补证轮，结论为"未验证"） | 默认阈值下真实刚性平移见证、Creo 10 复现 | [卡](../work-items/BUG-108.md) | 同上 | 同上 | 同上 | 同上 |
 

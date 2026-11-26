@@ -7,7 +7,7 @@
 - 单元:全量 **458 项** 0 失败 0 错误(0.3.7 线新增 24 项);`tools/dev_check.py --work-item RELEASE-0.4.3` 无语言回归。
 - 原生:`bridge.py build` 通过(0.3.7 线 native 大改 advanced.cpp +737/generic.cpp/component_transform.h);`tools/test_general.py` **GENERAL_CORE_SUCCESS=1**。
 - 0.3.7 线自带验收:三驱动/真实并发/关闭原件确认/回调全生命周期实机(`tools/test_feedback037_modeling.py`)、隔离 C++(component_transform/legacy recovery),见 [FEEDBACK-0.3.7-IMPLEMENTATION](FEEDBACK-0.3.7-IMPLEMENTATION-2026-10-20.md);WorkBuddy 黑盒 **16/16**([WORKBUDDY_037_REMAINING_RESULT](../WORKBUDDY_037_REMAINING_RESULT.md));开发者补测(英寸拒绝/四类型枚举/families 全量/异常候选只读 inspect,[补测记录](WORKBUDDY-037-REMAINING-SUPPLEMENT-2026-10-20.md))。
-- 打包与解压核验:源码包 677 文件、种子包 24 文件;解压核对 README 标题/version.py/双 manifest 均 0.4.3、RELEASE_NOTES_0.4.3 与三个新模块/头文件/黑盒报告/IMPROVEMENT 计划随包、seeds.py expected_digest == 种子包实际 SHA256;main 提交工作区重打包 SHA256 可复现。
+- 打包与解压核验:源码包 677 文件、种子包 24 文件;解压核对 README 标题/version.py/双 manifest 均 0.4.3、release-notes/RELEASE_NOTES_0.4.3 与三个新模块/头文件/黑盒报告/IMPROVEMENT 计划随包、seeds.py expected_digest == 种子包实际 SHA256;main 提交工作区重打包 SHA256 可复现。
 
 ## 附件与发布
 

@@ -1,14 +1,14 @@
 # 0.11.4 发布记录
 
-- 版本：**0.11.4**（PATCH，公开工具仍 95）。日期：2026-11-02。批次：0.11.1 第十二轮反馈（R12），[DEV-064](../work-items/DEV-064.md)。
+- 版本：**0.11.4**（PATCH，公开工具仍 95）。日期：2026-11-02。批次：0.11.1 第十二轮反馈（R12），[DEV-064](../archive/work-items/DEV-064.md)。
 - 分支：`codex/DEV-064-r12-feedback0111`；基线 `main@2ba1e2d`（0.11.3 交付 `7b80a4a` → 回填 `2ba1e2d`）。
-- 版本说明：[0.11.4 版本说明](../RELEASE_NOTES_0.11.4.md)；反馈归档：[feedback-0.11.1-2026-11-02](feedback-0.11.1-2026-11-02/MAPPING.md)。
+- 版本说明：[0.11.4 版本说明](../release-notes/RELEASE_NOTES_0.11.4.md)；反馈归档：[feedback-0.11.1-2026-11-02](feedback-0.11.1-2026-11-02/MAPPING.md)。
 
 ## 交付内容
 
 | 固定 ID | 内容 | 状态 |
 | --- | --- | --- |
-| [DEV-064](../work-items/DEV-064.md) | 两份原件逐字节归档 2/2、逐章映射、工作区定性、登记与交付编排 | 已完成 |
+| [DEV-064](../archive/work-items/DEV-064.md) | 两份原件逐字节归档 2/2、逐章映射、工作区定性、登记与交付编排 | 已完成 |
 | [BUG-107](../work-items/BUG-107.md) | `HEADERS` 存在性门控，Creo 10 缺 `Probbl.h` 不再中断构建 | 已修复（离线；Creo 10 未验证） |
 | [BUG-108](../work-items/BUG-108.md) | 顶层 `sketch_shifted`、`geometry_deviation.shift_detected`/`accepted_by_request`、原点固定试点 | 部分：可观测已交付，平移未复现、定因未定 |
 | [BUG-106](../work-items/BUG-106.md) | save origin / erase `modified` 两处可执行链路文案 | 已修复（文案；链路未复测） |

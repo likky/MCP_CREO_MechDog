@@ -1,6 +1,6 @@
 # 0.3.4 发布候选与交付核对
 
-日期：2026-10-17（Asia/Shanghai）。条目：[DEV-032](../work-items/DEV-032.md)。阶段：候选与独立分发检查通过；最终主干/Release交付信息回填[PR #9](https://github.com/wudahua/MCP_CREO_MechDog/pull/9)。
+日期：2026-10-17（Asia/Shanghai）。条目：[DEV-032](../archive/work-items/DEV-032.md)。阶段：候选与独立分发检查通过；最终主干/Release交付信息回填[PR #9](https://github.com/wudahua/MCP_CREO_MechDog/pull/9)。
 
 用户要求关闭BUG-001并合并全部待合分支，随后明确指定版本0.3.4。本轮保留已知卡死及未完成验收，不连接Toolkit，不将旧实机/WorkBuddy结果改标为本版通过。BUG-001为用户决定关闭，FEAT-018/FEAT-029继续验收中。
 

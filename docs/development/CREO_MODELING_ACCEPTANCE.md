@@ -78,4 +78,4 @@
 
 方法评估参考 [yawu456063/creo12-background-modeling-skill 固定审阅版本](https://github.com/yawu456063/creo12-background-modeling-skill/tree/a3496aff516a801f125b47db6f66ebb44d2bc9b0)。上游为同步 Java 案例；其运行日志与版本结论属于上游的当时环境。本专题依据本仓库任务/效果契约、装配文档和代码独立编写，未引入上游文字、脚本、模型或教材，也不将其成功记录记作本项目验收。
 
-本次仅文档与 skill 增补，见 [DEV-086](../work-items/DEV-086.md)。当前源码与其它任务改动仍以各自工作卡/证据为准；本文未做 Creo 运行验证。
+本次仅文档与 skill 增补，见 [DEV-086](../archive/work-items/DEV-086.md)。当前源码与其它任务改动仍以各自工作卡/证据为准；本文未做 Creo 运行验证。

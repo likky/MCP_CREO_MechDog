@@ -23,7 +23,7 @@
 - 全量单元测试：`Ran 3263 tests in 372.635s ... OK`（工作树）。
 - `tools/dev_check.py --work-item DEV-081 --unit-timeout-seconds 1800`：EXIT=0、`success=true`、`unit_tests=passed`、`native_validation=not_run`、受测源码指纹 `417a0477e95127c5567c65934f361110ce31f86dc9959cc5f20ec538b21488a5`（`source.dirty=true`）；风格基线为存量 21 项 lint / 9 个未格式化文件，无新增诊断。
 - `tools/check_backlog_counts.py`：`consistent=true`（172 / BUG 75 / FEAT 61 / DEV 36）；`git diff --check` 通过。
-- 实机证据详见 [0.20.0 版本说明](../RELEASE_NOTES_0.20.0.md) 与 [DEV-081](../work-items/DEV-081.md)「B 批实机验收」；工单原始报告在 `build/cut_scope_live.json`、`build/job_progress_live.json`、`build/cut_material_test.json`（`build/` 为忽略目录，不入源码包）。
+- 实机证据详见 [0.20.0 版本说明](../release-notes/RELEASE_NOTES_0.20.0.md) 与 [DEV-081](../work-items/DEV-081.md)「B 批实机验收」；工单原始报告在 `build/cut_scope_live.json`、`build/job_progress_live.json`、`build/cut_material_test.json`（`build/` 为忽略目录，不入源码包）。
 
 ## 打包顺序
 

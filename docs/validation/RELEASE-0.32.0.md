@@ -2,7 +2,7 @@
 
 - 版本：`0.32.0`（MINOR，部分交付）
 - 日期：2026-11-20
-- 版本说明：[RELEASE_NOTES_0.32.0](../RELEASE_NOTES_0.32.0.md)
+- 版本说明：[release-notes/RELEASE_NOTES_0.32.0](../release-notes/RELEASE_NOTES_0.32.0.md)
 - 主台账：[BACKLOG](../BACKLOG.md) · 工作卡：[DEV-094](../work-items/DEV-094.md) · [FEAT-068](../work-items/FEAT-068.md) · [FEAT-023](../work-items/FEAT-023.md) · [BUG-076](../work-items/BUG-076.md) · [BUG-019](../work-items/BUG-019.md) · [FEAT-008](../work-items/FEAT-008.md) · [FEAT-051](../work-items/FEAT-051.md) · [FEAT-039](../work-items/FEAT-039.md) · 交付快照：[0.32.0](../releases/0.32.0.json)
 - 受测提交：本记录所在开发分支的提交（标签 `v0.32.0` 的对象与提交号只在合入 `main` 后登记到 `main` 的[POSTCHECK](../development/RELEASE-POSTCHECK-2026-11-07.md) `## v0.32.0` 段）
 - 与上一版本的关系：上一版本：0.31.1（`v0.31.1`，提交 `665e5860ea5314197b77410769460db4338935c9`），本版在其之上接入 0.27.0 反馈批的六项离线修复与两条诊断（同圆多弧段拒绝文案、回转轴与草图平面实测关系）

@@ -7,9 +7,9 @@
 
 ## 范围
 
-- [BUG-144](../work-items/BUG-144.md)：打包单测绑定本轮证据，门禁前移到任何产物之前。
-- [DEV-099](../work-items/DEV-099.md)：README 工具数改引 `creo_capabilities.tool_count`。
-- [BUG-142](../work-items/BUG-142.md)：断开延迟钩子，实机核验被中断的 disconnect 保留 `unknown_outcome` 与预发布事实。
+- [BUG-144](../archive/work-items/BUG-144.md)：打包单测绑定本轮证据，门禁前移到任何产物之前。
+- [DEV-099](../archive/work-items/DEV-099.md)：README 工具数改引 `creo_capabilities.tool_count`。
+- [BUG-142](../archive/work-items/BUG-142.md)：断开延迟钩子，实机核验被中断的 disconnect 保留 `unknown_outcome` 与预发布事实。
 - 公开工具仍 110，无接口删除或重命名。
 
 ## 验收
@@ -39,9 +39,9 @@
 
 | ID | 交付版本 | 实际 Release | 技术状态 | 卡首页 | 主台账 | 差异说明 |
 | --- | --- | --- | --- | --- | --- | --- |
-| [BUG-144](../work-items/BUG-144.md) | 0.35.5 | v0.35.5 | 已完成（0.35.5 交付） | 已完成（0.35.5 交付） | 已完成（0.35.5 交付） | 无 |
-| [DEV-099](../work-items/DEV-099.md) | 0.35.5 | v0.35.5 | 已完成（0.35.5 交付） | 已完成（0.35.5 交付） | 已完成（0.35.5 交付） | 无 |
-| [BUG-142](../work-items/BUG-142.md) | 0.35.5 | v0.35.5 | 已完成（0.35.5 交付） | 已完成（0.35.5 交付） | 已完成（0.35.5 交付） | 无 |
+| [BUG-144](../archive/work-items/BUG-144.md) | 0.35.5 | v0.35.5 | 已完成（0.35.5 交付） | 已完成（0.35.5 交付） | 已完成（0.35.5 交付） | 无 |
+| [DEV-099](../archive/work-items/DEV-099.md) | 0.35.5 | v0.35.5 | 已完成（0.35.5 交付） | 已完成（0.35.5 交付） | 已完成（0.35.5 交付） | 无 |
+| [BUG-142](../archive/work-items/BUG-142.md) | 0.35.5 | v0.35.5 | 已完成（0.35.5 交付） | 已完成（0.35.5 交付） | 已完成（0.35.5 交付） | 无 |
 
 ## 发布后远端核对
 

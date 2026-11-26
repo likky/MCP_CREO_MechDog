@@ -17,7 +17,7 @@
 
 ## 逐 ID 状态核对
 
-[主台账](../BACKLOG.md) · [开发入口](../DEVELOPMENT.md) · [版本说明](../RELEASE_NOTES_0.46.0.md)
+[主台账](../BACKLOG.md) · [开发入口](../DEVELOPMENT.md) · [版本说明](../release-notes/RELEASE_NOTES_0.46.0.md)
 
 | ID | 交付版本 | 实际 Release | 技术状态 | 卡首页 | 主台账 | 差异说明 |
 | --- | --- | --- | --- | --- | --- | --- |

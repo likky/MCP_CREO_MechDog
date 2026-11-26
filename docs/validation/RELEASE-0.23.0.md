@@ -13,7 +13,7 @@
 
 ## 版本号说明
 
-- 仓库存在历史标签 `v0.22` 与 `docs/RELEASE_NOTES_0.22.md`（旧编号体系），本版不动；新版本用 `v0.23.0`、版本说明为 `docs/RELEASE_NOTES_0.23.0.md`。
+- 仓库存在历史标签 `v0.22` 与 `release-notes/RELEASE_NOTES_0.22.md`（旧编号体系），本版不动；新版本用 `v0.23.0`、版本说明为 `release-notes/RELEASE_NOTES_0.23.0.md`。
 - `src/creo_mechdog/update_check.py` 只接受三段式 SemVer，历史 `v0.22` 不参与比较。
 
 ## 验证

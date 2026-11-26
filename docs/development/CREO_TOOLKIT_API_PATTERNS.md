@@ -92,4 +92,4 @@ rg -n -A 24 'ProSolidBodiesCollect|ProSolidBodySurfaceVisit' "$sdkRoot\includes\
 rg -n 'ProUtilVectorCopy|ProUtilVectorLength' "$sdkRoot\protk_appls\includes\UtilMath.h"
 ```
 
-主题缺口评估参考了 [CSCTACG/creo-dev 的固定审阅版本](https://github.com/CSCTACG/creo-dev/tree/5014ee50db80f69053e129ba0e4cd271325fafb7)。其 [CC BY-NC 4.0 LICENSE](https://github.com/CSCTACG/creo-dev/blob/5014ee50db80f69053e129ba0e4cd271325fafb7/LICENSE) 与本项目的 MIT 分发不同；本文未引入其原文或示例代码。技术说明以本机头文件、对应官方帮助及项目实际实现独立核对，见 [DEV-085](../work-items/DEV-085.md) 的来源、取舍、验证及未测范围。
+主题缺口评估参考了 [CSCTACG/creo-dev 的固定审阅版本](https://github.com/CSCTACG/creo-dev/tree/5014ee50db80f69053e129ba0e4cd271325fafb7)。其 [CC BY-NC 4.0 LICENSE](https://github.com/CSCTACG/creo-dev/blob/5014ee50db80f69053e129ba0e4cd271325fafb7/LICENSE) 与本项目的 MIT 分发不同；本文未引入其原文或示例代码。技术说明以本机头文件、对应官方帮助及项目实际实现独立核对，见 [DEV-085](../archive/work-items/DEV-085.md) 的来源、取舍、验证及未测范围。

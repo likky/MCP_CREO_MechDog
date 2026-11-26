@@ -1,6 +1,6 @@
 # 2026-10-17：0.3.4 恢复工具与 Creo 9 反馈补录
 
-按用户要求同步当前 E 盘 [BACKLOG](../BACKLOG.md)，新增缺陷候选 [BUG-055](../work-items/BUG-055.md)，重复主题与建议沿用已有 ID。本次只更新文档、任务范围及原件，不执行报告中的升级、备份、Python 直连、模型放弃、注册、重建或环境修改。
+按用户要求同步当前 E 盘 [BACKLOG](../BACKLOG.md)，新增缺陷候选 [BUG-055](../archive/work-items/BUG-055.md)，重复主题与建议沿用已有 ID。本次只更新文档、任务范围及原件，不执行报告中的升级、备份、Python 直连、模型放弃、注册、重建或环境修改。
 
 ## 原件与身份
 
@@ -20,7 +20,7 @@
 
 | 项目 | 事实线索 | 登记与下一步 |
 | --- | --- | --- |
-| [BUG-055](../work-items/BUG-055.md) | failed / revision=0 / baseline=null 的 `wb_reg_pat` inspect 可用，仅 abandon_new；报告的 MCP apply 传 expected_revision=0、expected_pending_job_id=null 被 stale 拒绝，本地 Python 对照可推进到 abandoned | P1 / 待核实 / 未排期。先取得实际 MCP schema、请求形状、服务收到的值及证据状态，分客户端与适配/业务校验定位；标准 null 与空串不是同一个已证实的协议输入 |
+| [BUG-055](../archive/work-items/BUG-055.md) | failed / revision=0 / baseline=null 的 `wb_reg_pat` inspect 可用，仅 abandon_new；报告的 MCP apply 传 expected_revision=0、expected_pending_job_id=null 被 stale 拒绝，本地 Python 对照可推进到 abandoned | P1 / 待核实 / 未排期。先取得实际 MCP schema、请求形状、服务收到的值及证据状态，分客户端与适配/业务校验定位；标准 null 与空串不是同一个已证实的协议输入 |
 
 报告将其定为 P0 并断言“null 必然变空串、一行可修”，本台账保留为报告判断。本地 None/空串对照只证明比较行为不同，尚不能定位转换层；没有新证据就不能以 `value or None` 放宽 pending/revision/token 校验。BUG-001 的原关闭决定保持，此处是新恢复工具调用路径线索，独立于历史 IPC 卡死根因。
 
@@ -36,13 +36,13 @@
 | round 独立 radius / 计划 size | BUG-019 | 重复参数契约反馈，保留兼容性核对，不新建缺陷 |
 | dump_feature_tree 特征引用提示 | [FEAT-006](../work-items/FEAT-006.md)、[FEAT-008](../work-items/FEAT-008.md) | 原生名 H34 未匹配，创建别名 h34 成功。补 label/id/原生名及大小写规则和有界候选指引；没有承诺接受原生名时，不据此认定导出功能不可用 |
 | list_models 分页 | BUG-013、FEAT-008 | 报告实际触发 complete=false / next_cursor 的正例，文档强调第一页不等于全量；不以此补齐全部预算边界验收 |
-| toolkit_busy 无确定 owner | [BUG-009](../work-items/BUG-009.md) | owner_determined=false 和重试指引符合既有未知占用者回退。没有调用时间线/所有者快照时，不因另一个 dump 后来运行就认定诊断回归；补可关联占用身份线索，不重开已完成条目 |
+| toolkit_busy 无确定 owner | [BUG-009](../archive/work-items/BUG-009.md) | owner_determined=false 和重试指引符合既有未知占用者回退。没有调用时间线/所有者快照时，不因另一个 dump 后来运行就认定诊断回归；补可关联占用身份线索，不重开已完成条目 |
 | 新工具真实 MCP 冒烟 | DEV-006 / DEV-007 | 新增可空字段、默认值、错误传递、inspect→apply 的真实协议覆盖建议；开发者可用受控夹具测协议，WorkBuddy 仅公开工具，不读取源码/配置或执行本地 Python |
 
 FEAT-018/029 仍验收中，BUG-017 维持原验收边界，BUG-034/036/019 维持待核实；BUG-009/033 和 BUG-001 的原完成状态保持。本轮不新建能力 ID、不把旧主题重复插入当前台账。
 
 ## 正向证据与排期边界
 
-报告还提供 Ø6×10 孔约 `282.74 mm³` 去料、参数/关系、布尔并集、翼型截面、PDF、特征树 XML、UDF inspect 和文件哈希正例。孔正例补 [BUG-033](../work-items/BUG-033.md) 的外部 0.3.4 观察，其余作为限定环境证据保留；没有完整作业/模型与保存重载链，不宣称全工具或完整 Creo 9 运行时验收通过。`9 个 available` 不能抵消原生种子加载失败。
+报告还提供 Ø6×10 孔约 `282.74 mm³` 去料、参数/关系、布尔并集、翼型截面、PDF、特征树 XML、UDF inspect 和文件哈希正例。孔正例补 [BUG-033](../archive/work-items/BUG-033.md) 的外部 0.3.4 观察，其余作为限定环境证据保留；没有完整作业/模型与保存重载链，不宣称全工具或完整 Creo 9 运行时验收通过。`9 个 available` 不能抵消原生种子加载失败。
 
 新增恢复调用问题建议优先核实真实协议形状与证据有效性，再决定修复范围，不执行报告中的 Python 绕行来代替 MCP 验收。DEV-033/BUG-054 的当前开发、实机通过与剩余 WorkBuddy 范围保持；本轮没有实施 BUG-055、修改 token/环境/加载策略、修改源码版本或启动发布，继续遵守当前 Toolkit 联调约束。

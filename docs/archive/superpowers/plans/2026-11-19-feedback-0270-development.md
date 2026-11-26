@@ -8,7 +8,7 @@
 
 **Tech Stack:** Windows x64、Python 3.12+、Pydantic、unittest、C++17、C TOOLKIT。当前原生开发验收环境按 AGENTS 为 Creo 12.4.0.0 / 匹配 SDK；报告涉及的外部 Creo 9/10 另按具体问题取得证据。
 
-**Spec:** [DEV-093](../../work-items/DEV-093.md)、[六份来源清单](../../validation/feedback-0.27.0-2026-11-19/SOURCE_MANIFEST.json)、[AGENTS](../../../AGENTS.md)。方案比较和本轮权限见 DEV-093。本计划是待实施建议，未获得实现或实机批准。
+**Spec:** [DEV-093](../../archive/work-items/DEV-093.md)、[六份来源清单](../../validation/feedback-0.27.0-2026-11-19/SOURCE_MANIFEST.json)、[AGENTS](../../../AGENTS.md)。方案比较和本轮权限见 DEV-093。本计划是待实施建议，未获得实现或实机批准。
 
 ## 全局约束
 

@@ -1,6 +1,6 @@
 # 0.3.2 发布候选验收
 
-日期：2026-10-16；条目：[DEV-025](../work-items/DEV-025.md)。发布候选验收通过。本文件记录合入前的实际检查；最终 main 提交、标签、公开 Release 及远端附件校验在 [PR #6](https://github.com/wudahua/MCP_CREO_MechDog/pull/6) 回填，不提前将发布准备当作公开交付。
+日期：2026-10-16；条目：[DEV-025](../archive/work-items/DEV-025.md)。发布候选验收通过。本文件记录合入前的实际检查；最终 main 提交、标签、公开 Release 及远端附件校验在 [PR #6](https://github.com/wudahua/MCP_CREO_MechDog/pull/6) 回填，不提前将发布准备当作公开交付。
 
 集成 DEV-002 第二批、BUG-009、BUG-008 及已完成文档。历史 WorkBuddy 原件及开发者证据保留受测 0.3.1 和原日期，详见各条目，不外推为全部 0.3.2 黑盒验收。
 

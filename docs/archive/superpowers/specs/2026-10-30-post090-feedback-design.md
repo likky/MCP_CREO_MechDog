@@ -16,7 +16,7 @@
 - T02、T09A、T09B、T12 的新增余项离线交付待实机；BUG-085 根因未定；T06/T07/T08C 原件仍缺。
 - `end_trim_mm` 已公开，其链端 setback 语义仍须实机量测；四壁、corner relief 与材料端释放几何尚未闭环。
 
-当前验收事实以用户最终账、`docs/RELEASE_NOTES_0.9.0.md`、`docs/validation/RELEASE-0.9.0.md` 和各卡最后的有效记录为准。早期离线计划及卡首页存在滞后，不据其重开已完成范围。
+当前验收事实以用户最终账、`release-notes/RELEASE_NOTES_0.9.0.md`、`docs/validation/RELEASE-0.9.0.md` 和各卡最后的有效记录为准。早期离线计划及卡首页存在滞后，不据其重开已完成范围。
 
 ## 本轮范围
 

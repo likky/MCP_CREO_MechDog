@@ -237,7 +237,7 @@
 
 ### Q12：装配按族上色已交付，不再派开发
 
-**状态与证据：** [FEAT-052 工作卡](../../work-items/FEAT-052.md)、[0.11.0 版本说明](../../RELEASE_NOTES_0.11.0.md)、[发布记录](../../validation/RELEASE-0.11.0.md)。发布提交 `262ef20`，远端核验回填 `2f6aab7`；当前 95 个公开工具。原 [上色计划](2026-10-31-assembly-recolor-plan.md) 保留接口与历史方案，已由实际实现/验收取代其旧“等待实施”状态。
+**状态与证据：** [FEAT-052 工作卡](../../work-items/FEAT-052.md)、[0.11.0 版本说明](../../release-notes/RELEASE_NOTES_0.11.0.md)、[发布记录](../../validation/RELEASE-0.11.0.md)。发布提交 `262ef20`，远端核验回填 `2f6aab7`；当前 95 个公开工具。原 [上色计划](2026-10-31-assembly-recolor-plan.md) 保留接口与历史方案，已由实际实现/验收取代其旧“等待实施”状态。
 
 - [x] 主干已含 `creo_recolor_assembly`、`recolor_assembly` op、组件三态 appearance 与完整注册；只支持 MCP 受管单层装配。
 - [x] 本机 Creo 12.4.0.0 / 匹配 SDK 实机 run `assembly_appearance_live_20261101T060336Z558b3546`：80组件/12族、28/28检查通过；自动/显式分族、复涂、身份/姿态/约束、源件哈希不变、保存重载与两种外观基线回滚均有证据，另有发布记录所载 pipeline/T07 指定回归；T07 总判定不代表 P11 的 skipped_no_geometry 状态已交付，原报告 empty_part 预览仍失败，差异见 DEV-054。

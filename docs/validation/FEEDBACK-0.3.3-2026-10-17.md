@@ -19,8 +19,8 @@
 
 | 新 ID | 去重后保留的增量 | 状态与边界 |
 | --- | --- | --- |
-| [BUG-054](../work-items/BUG-054.md) | B：extrude 切除板外圆，材料不变却静默 succeeded、保存并推进 revision | P1 / 待核实。BUG-022 仅为孔类，BUG-016 为 solidify，均不能覆盖该路径；revolve 尚只有源码推断，不记实测复现 |
-| [FEAT-034](../work-items/FEAT-034.md) | B：显式弧方向/扫角、实际扫角回显及可选大弧提示 | P2 / 待规划。不同扫角的体积约差 10 倍不是数值错误证明，保留合法 >180° 弧和旧请求兼容 |
+| [BUG-054](../archive/work-items/BUG-054.md) | B：extrude 切除板外圆，材料不变却静默 succeeded、保存并推进 revision | P1 / 待核实。BUG-022 仅为孔类，BUG-016 为 solidify，均不能覆盖该路径；revolve 尚只有源码推断，不记实测复现 |
+| [FEAT-034](../archive/work-items/FEAT-034.md) | B：显式弧方向/扫角、实际扫角回显及可选大弧提示 | P2 / 待规划。不同扫角的体积约差 10 倍不是数值错误证明，保留合法 >180° 弧和旧请求兼容 |
 | [FEAT-035](../work-items/FEAT-035.md) | B：原生平底沉孔、锥形沉头孔及尺寸参数 | P2 / 待规划。按能力建议登记，字段与 SDK 映射未选型，普通直孔成功不证明新类型可用 |
 | [FEAT-036](../work-items/FEAT-036.md) | B：零件级特征删除、抑制与恢复 | P2 / 待规划。明确依赖、身份/revision、回滚和持久化，区别于装配组件或图纸元素删除 |
 | [FEAT-037](../work-items/FEAT-037.md) | B：参数作用域、同名消歧及拼写候选 | P3 / 待规划。缺少具体失败输入，先补场景，不认定参数串写缺陷 |
@@ -34,7 +34,7 @@
 | [FEAT-012](../work-items/FEAT-012.md)、[BUG-045](../work-items/BUG-045.md) | B：评估与 Euler 互斥的 3×3/9 元素姿态输入，先定行/列向量、存储和映射契约；校验正交与 det=+1，不静默转置。18 实例用转置可解释到约 4.88e-8 残差，不能据“反手”表述直接翻角度符号 |
 | [FEAT-008](../work-items/FEAT-008.md)、FEAT-023 | B：组件摘要内联业务 label、source_model_id/source_revision；报告已有 aliases 可追溯，并非身份数据丢失。明确 source_snapshot 不随源件实时更新；补 revolve 实际选轴/省略规则回显 |
 | FEAT-008 | D：独立 drawing_view 工具与计划 op 的 model 默认/必填差异；与 BUG-019 的 round 参数命名分别核对。A：已有壁/折边 aliases 的参数明细作为可用性正例，文档示例以当前公开契约验证 |
-| [DEV-021](../work-items/DEV-021.md) | C：显式 PATH 示例应包含实际需要的 `C:\Windows\System32`；先核对调用 PATH 是整体替换的文档边界，不新增全局环境修改或回退逻辑。原实现已完成状态保持，示例请求未当作已实现 |
+| [DEV-021](../archive/work-items/DEV-021.md) | C：显式 PATH 示例应包含实际需要的 `C:\Windows\System32`；先核对调用 PATH 是整体替换的文档边界，不新增全局环境修改或回退逻辑。原实现已完成状态保持，示例请求未当作已实现 |
 | [FEAT-029](../work-items/FEAT-029.md) | D：评估签名 DLL 的准备、信任提示和部署成本；签名不代替注册/loaded/ABI/资源匹配，也不自动放宽 DLL 加载策略。公开 0.3.3 人工注册现象不能证明 0.3.4 集成方案失败 |
 | DEV-006 / DEV-007 | D：将最低支持 Creo 9 的种子加载、筋和回调就绪/放样列为建议冒烟切片，与已有回归清单合并；实际有环境再取证，不新增双版本或 Creo 10 独立发布门槛 |
 

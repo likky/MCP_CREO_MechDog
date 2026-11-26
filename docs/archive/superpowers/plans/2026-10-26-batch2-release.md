@@ -28,7 +28,7 @@
 **Files:**
 - Modify: `version.py`, `seeds.py`, `seed_library/seed_manifest.json`, `docs/seed_manifest.json`。
 - Modify: `README.md`, `docs/DEVELOPMENT.md`, `docs/development/RELEASING.md`, `docs/BACKLOG.md`, `docs/BACKLOG_COMPLETED.md`（只按实际子项移档），`docs/work-items/FEAT-012.md`, `docs/work-items/BUG-045.md`, `docs/work-items/FEAT-048.md`, `docs/work-items/FEAT-008.md`, `docs/work-items/DEV-046.md`, `docs/ASSEMBLY_REBUILD.md`, `docs/FILE_ADOPTION.md`。
-- Create: `docs/RELEASE_NOTES_0.6.0.md`；新增当前发布证据，不修改 `docs/validation/` 既有文件。
+- Create: `release-notes/RELEASE_NOTES_0.6.0.md`；新增当前发布证据，不修改 `docs/validation/` 既有文件。
 - Current evidence: `docs/development/BATCH2-LIVE-ACCEPTANCE-2026-10-26.md` 仅追加用户取消 WorkBuddy 的最新决定，保留旧验收发生时的事实。
 
 **Interfaces:** 输入为 d3941cf 的完整第二批实现与证据；输出为可复核候选提交、完整检查报告、确定性种子包 SHA256，以及实际变更清单。

@@ -2,7 +2,7 @@
 
 ![version](https://img.shields.io/badge/version-0.46.1-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.46.1**（PATCH）。交付放样 `loft` / `surface_loft` 提交前零锁 callback 预检（[BUG-193](docs/work-items/BUG-193.md) 追加）：未就绪时在建 job 与取 Toolkit 锁之前直接拒绝，不再为拒绝本身占用通道；另交付文档目录治理（[DEV-103](docs/work-items/DEV-103.md)）。公开工具以 `creo_capabilities` 的 `tool_count` 为准。 [版本说明](docs/RELEASE_NOTES_0.46.1.md) · [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.46.1)
+当前正式版 **0.46.1**（PATCH）。交付放样 `loft` / `surface_loft` 提交前零锁 callback 预检（[BUG-193](docs/work-items/BUG-193.md) 追加）：未就绪时在建 job 与取 Toolkit 锁之前直接拒绝，不再为拒绝本身占用通道；另交付文档目录治理（[DEV-103](docs/work-items/DEV-103.md)）。公开工具以 `creo_capabilities` 的 `tool_count` 为准。 [版本说明](docs/release-notes/RELEASE_NOTES_0.46.1.md) · [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.46.1)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 
@@ -108,7 +108,7 @@ Creo 软件、SDK、模板与许可需自行取得；MIT 只覆盖本项目原�
 | 确认哪些功能已实测 | [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) |
 | 种子库 / 换电脑换 Agent | [docs/SEED_LIBRARY.md](docs/SEED_LIBRARY.md)、[docs/MIGRATION.md](docs/MIGRATION.md) |
 | 直接混合的一次性回调 | [docs/CALLBACK_LIFECYCLE.md](docs/CALLBACK_LIFECYCLE.md) |
-| 查看版本变更 | [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)、[0.21.1 版本说明](docs/RELEASE_NOTES_0.21.1.md) |
+| 查看版本变更 | [Releases](https://github.com/wudahua/MCP_CREO_MechDog/releases)、[0.21.1 版本说明](docs/release-notes/RELEASE_NOTES_0.21.1.md) |
 | 参与开发 / 看台账 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)、[docs/BACKLOG.md](docs/BACKLOG.md) |
 
 ## 已知限制

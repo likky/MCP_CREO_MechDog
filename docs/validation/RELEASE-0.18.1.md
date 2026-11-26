@@ -18,7 +18,7 @@
 | 范围 | 文件 | 说明 |
 | --- | --- | --- |
 | 质量属性契约 | `native/generic.cpp`、`src/creo_mechdog/mass_properties.py`、`server.py`、`tests/unit/test_mass_properties.py` | 新增 `mass_unavailable_reason` 与对应提示；原因枚举校验、矛盾组合拒绝、旧回执缺字段保留 `null`；单位口径写入工具说明 |
-| 台账复核 | `docs/BACKLOG.md`、`docs/DEVELOPMENT.md`、`docs/development/PENDING-2026-11-07.md`、`docs/work-items/DEV-073.md` 及其余被复核工作卡 | 88 项 BUG 重新分类；入口文档收敛，历史归档保留 |
+| 台账复核 | `docs/BACKLOG.md`、`docs/DEVELOPMENT.md`、`docs/development/PENDING-2026-11-07.md`、`docs/archive/work-items/DEV-073.md` 及其余被复核工作卡 | 88 项 BUG 重新分类；入口文档收敛，历史归档保留 |
 | 版本与发布 | `version.py`、`README.md`、`docs/development/RELEASING.md`、`docs/seed_manifest.json`、`seed_library/seed_manifest.json`、`docs/seed_package.json`、`docs/work-items/FEAT-057.md` | 版本号、当前版本段、种子兼容版本与摘要同步；FEAT-057 状态回填 |
 | 回归 | `tests/unit/test_mass_properties.py` 等既有用例 | 本版无测试删除；全量 2830 项通过 |
 

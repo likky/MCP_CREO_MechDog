@@ -4,7 +4,7 @@
 - 本次发布提交：`29f9ed277d6436d9a0c6de4d4a1168fd51942444`（annotated 标签 `v0.35.4` 指向同一提交）。
 - 上一版本：0.35.3（`v0.35.3`，提交 `0fa005dc44ac65c9d118e37e1bf9b58b87474486`）。
 - 交付快照：[releases/0.35.4.json](../releases/0.35.4.json)。
-- 版本说明：[RELEASE_NOTES_0.35.4.md](../RELEASE_NOTES_0.35.4.md)。
+- 版本说明：[release-notes/RELEASE_NOTES_0.35.4.md](../release-notes/RELEASE_NOTES_0.35.4.md)。
 - Release：`https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.35.4`。
 - 发布流程：[RELEASING.md](../development/RELEASING.md)；附件核对留存在 [RELEASE-POSTCHECK-2026-11-07.md](../development/RELEASE-POSTCHECK-2026-11-07.md) 的 `## v0.35.4` 段。
 - 远端核对：2026-11-21 已核对，结果见下方“发布后远端核对”。

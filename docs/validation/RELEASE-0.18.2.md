@@ -24,7 +24,7 @@
 | 发布后记录 | `docs/development/RELEASE-POSTCHECK-2026-11-07.md`（新增） | v0.17.4/v0.18.0/v0.18.1 的 `--tag` 实际重下与重算结果 |
 | 台账与卡 | `docs/BACKLOG.md`、`docs/work-items/DEV-075.md`（新增）、`DEV-066.md`、`FEAT-059.md` | 登记、状态与未排期范围；FEAT-059 改为「已交付 0.18.0 子项」 |
 | 文档修正 | `docs/validation/RELEASE-0.18.0.md` | `test_hole_standards.py` → `test_standard_holes.py` |
-| 版本与发布 | `version.py`、`README.md`、`docs/DEVELOPMENT.md`、`docs/seed_manifest.json`、`seed_library/seed_manifest.json`、`docs/seed_package.json`、`docs/RELEASE_NOTES_0.18.2.md` | 版本号、当前版本段、种子兼容版本与摘要同步 |
+| 版本与发布 | `version.py`、`README.md`、`docs/DEVELOPMENT.md`、`docs/seed_manifest.json`、`seed_library/seed_manifest.json`、`docs/seed_package.json`、`release-notes/RELEASE_NOTES_0.18.2.md` | 版本号、当前版本段、种子兼容版本与摘要同步 |
 
 ## 3. 验收证据
 

@@ -1203,7 +1203,9 @@ def _work_item_problems(version: str, record: str, read, origin: str) -> list[st
                 f"{origin}: {work_id} is missing from docs/BACKLOG.md and {COMPLETION_ARCHIVE}"
             )
             continue
-        card = read(f"docs/work-items/{work_id}.md")
+        card = read(f"docs/work-items/{work_id}.md") or read(
+            f"docs/archive/work-items/{work_id}.md"
+        )
         if card is None:
             problems.append(f"{origin}: missing docs/work-items/{work_id}.md")
             continue
@@ -1286,7 +1288,9 @@ def _work_item_problems(version: str, record: str, read, origin: str) -> list[st
         backlog_class = _status_class(status)
         if backlog_class not in ("partial", "delivered", "developing", "unplanned"):
             continue
-        card = read(f"docs/work-items/{work_id}.md")
+        card = read(f"docs/work-items/{work_id}.md") or read(
+            f"docs/archive/work-items/{work_id}.md"
+        )
         if card is None:
             if backlog_class in ("partial", "delivered"):
                 problems.append(
@@ -1392,16 +1396,22 @@ def _records_problems(version: str, read, exists, origin: str) -> list[str]:
                     snapshot=snapshot,
                 )
             )
-    notes = read(f"docs/RELEASE_NOTES_{version}.md")
+    notes_base = "docs/release-notes"
+    notes = read(f"docs/release-notes/RELEASE_NOTES_{version}.md")
     if notes is None:
-        problems.append(f"{origin}: missing docs/RELEASE_NOTES_{version}.md")
+        legacy_notes = read(f"docs/RELEASE_NOTES_{version}.md")
+        if legacy_notes is not None:
+            notes = legacy_notes
+            notes_base = "docs"
+    if notes is None:
+        problems.append(f"{origin}: missing docs/release-notes/RELEASE_NOTES_{version}.md")
     elif snapshot is not None:
         problems.extend(
             _previous_version_problems(notes, snapshot, f"{origin}:RELEASE_NOTES_{version}.md")
         )
     if notes is not None:
         problems.extend(
-            _link_problems(notes, f"{origin}:RELEASE_NOTES_{version}.md", "docs", exists)
+            _link_problems(notes, f"{origin}:RELEASE_NOTES_{version}.md", notes_base, exists)
         )
     release = read(f"docs/validation/RELEASE-{version}.md")
     if release is None:
@@ -1584,7 +1594,9 @@ def _unit_test_claim_problems(
     fingerprint, so a stale report cannot back a new release (BUG-144).
     """
     record = _read_text_optional(Path(base) / f"docs/validation/RELEASE-{version}.md")
-    notes = _read_text_optional(Path(base) / f"docs/RELEASE_NOTES_{version}.md")
+    notes = _read_text_optional(
+        Path(base) / f"docs/release-notes/RELEASE_NOTES_{version}.md"
+    ) or _read_text_optional(Path(base) / f"docs/RELEASE_NOTES_{version}.md")
     if not (_has_full_unit_pass_claim(record or "") or _has_full_unit_pass_claim(notes or "")):
         return []
     report_file = Path(unit_report) if unit_report is not None else Path(base) / _UNIT_TEST_REPORT

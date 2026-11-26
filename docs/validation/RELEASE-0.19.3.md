@@ -8,7 +8,7 @@
 
 - [DEV-081](../work-items/DEV-081.md)：第四份 0.19.0「简易护卫舰」反馈 F01—F11 的 A 批离线六项（F02 精确圆弧闭合、F03 半径/尺寸 API 上限、F07 更新检查失败指引、F04 connect `-4` 显式 retry 回执、F11 三平面 offset/direction 文档契约、F05 compact 曲面放样限制说明），逐任务独立审查；另建 [B/C 批子计划](../superpowers/plans/2026-11-09-feedback0190-frigate-bc-batches.md)与 [WorkBuddy 黑盒提示词](feedback-0.19.0-frigate-2026-11-08/workbuddy-blackbox-prompt.md)。
 - [DEV-080](../work-items/DEV-080.md)：首批离线收口——手写 TU 头门控契约测试、COMPATIBILITY 缺头 SDK 降级说明、台账计数自检进 CI，以及 BACKLOG/工作卡同步。
-- [BUG-001/FEAT-018](../work-items/BUG-001-FEAT-018-RECOVERY.md)：2026-11-09 用户决定把本机实机放行改为「用户当次明确确认后即可用 Creo 实机测试」；纯规则/文档变更，不改父卡技术状态、不新增 ID、不改计数，历史原件逐字节保留。
+- [BUG-001/FEAT-018](../archive/work-items/BUG-001-FEAT-018-RECOVERY.md)：2026-11-09 用户决定把本机实机放行改为「用户当次明确确认后即可用 Creo 实机测试」；纯规则/文档变更，不改父卡技术状态、不新增 ID、不改计数，历史原件逐字节保留。
 - 不交付 B1—B6 原生实现、C0—C5 黑盒验收、A 批实机效果补证；按用户决定本次会话不执行 WorkBuddy 黑盒。
 - 逐 ID 状态/目标版本核对：DEV-080、DEV-081 工作卡首页与 BACKLOG 表行均改为「已随 0.19.3 交付 + 具体余项」，目标版本 0.19.3；BUG-001 卡首页注明规则修订随 0.19.3 交付、技术状态不变；`version.py`、README 标题与当前正式版段、DEVELOPMENT 入口、RELEASING「当前版本为 0.19.3」行一致。
 

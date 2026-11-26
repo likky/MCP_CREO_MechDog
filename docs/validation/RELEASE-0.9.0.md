@@ -56,7 +56,7 @@ GitHub Release 链接与发布状态：https://github.com/wudahua/MCP_CREO_MechD
 
 | ID | 技术状态 | 交付版本 | 剩余范围 | 卡首页 | 主台账 | 版本说明 | 开发入口 | 实际 Release |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| BUG-032/T03 | 实机通过 | 0.9.0 | 面距未单独量测 | DEV051-T03-ACCEPTANCE | BACKLOG | RELEASE_NOTES_0.9.0 | DEVELOPMENT | （发布后回填） |
+| BUG-032/T03 | 实机通过 | 0.9.0 | 面距未单独量测 | DEV051-T03-ACCEPTANCE | BACKLOG | release-notes/RELEASE_NOTES_0.9.0 | DEVELOPMENT | （发布后回填） |
 | FEAT-014/T05 | 定因，能力未实现 | 0.9.0 | 四壁/角部 | DEV051-T05-ACCEPTANCE | BACKLOG | 同上 | 同上 | 同上 |
 | FEAT-014/T11 | 材料场景受阻 | 0.9.0 | relief 材料场景 | DEV051-T11-ACCEPTANCE | BACKLOG | 同上 | 同上 | 同上 |
 | FEAT-031/T13 | 实机通过（两段式） | 0.9.0 | 嵌套/外部引用 | DEV051-T13-ACCEPTANCE | BACKLOG | 同上 | 同上 | 同上 |

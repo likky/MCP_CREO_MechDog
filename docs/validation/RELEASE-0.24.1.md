@@ -6,7 +6,7 @@
 
 - 版本：`0.24.1`（PATCH），源码版本以 [version.py](../../version.py) 为准。
 - 公开工具：107（与 0.24.0 相同；无新增工具，`config.json` 新增 `creo_startup_args` 与 `creo_worker_launch` 两个可选键）。
-- 交付内容：[BUG-125](../work-items/BUG-125.md) 启动参数经 `parametric.exe` 传给 `xtop.exe`；[BUG-126](../work-items/BUG-126.md) 无图形会话的 `ProWindowActivate` 失败只记 `window_activate_code`；[BUG-127](../work-items/BUG-127.md) `creo_worker_launch` 三段配置与 `-4` 时经 Explorer 隐藏复核一次 worker；[BUG-128](../work-items/BUG-128.md) `toolkit_hint` 区分 `-4`/`-38` 与探针退出码 20；[DEV-089](../work-items/DEV-089.md) 安装文档补编译工具链实物预检与 Creo 13.4 编译层实测分节。
+- 交付内容：[BUG-125](../archive/work-items/BUG-125.md) 启动参数经 `parametric.exe` 传给 `xtop.exe`；[BUG-126](../archive/work-items/BUG-126.md) 无图形会话的 `ProWindowActivate` 失败只记 `window_activate_code`；[BUG-127](../archive/work-items/BUG-127.md) `creo_worker_launch` 三段配置与 `-4` 时经 Explorer 隐藏复核一次 worker；[BUG-128](../archive/work-items/BUG-128.md) `toolkit_hint` 区分 `-4`/`-38` 与探针退出码 20；[DEV-089](../archive/work-items/DEV-089.md) 安装文档补编译工具链实物预检与 Creo 13.4 编译层实测分节。
 - 反馈来源：下载目录 `0.23.1` 的 `2026-11-12-Creo13.4.0.0-MCP0.23.1-Toolkit连接-4与驱动蓝屏.md`；报告基于 0.23.1（107 工具），本轮在 0.24.0 代码线上重新实施并验收。
 - 验收证据：[STARTUP-HEADLESS-2026-11-13](STARTUP-HEADLESS-2026-11-13.md)。
 
@@ -86,11 +86,11 @@
 
 | 工作卡 | 交付版本 | 技术状态 | 剩余范围 |
 | --- | --- | --- | --- |
-| [BUG-125](../work-items/BUG-125.md) | 0.24.1 | 已交付：`creo_startup_args` 经 `parametric.exe` 传到 `xtop.exe`，`test_creo_startup_args.py` 5 项通过 | 无 |
-| [BUG-126](../work-items/BUG-126.md) | 0.24.1 | 已交付：`window_activate_code` 只记录不判失败，无图形与 GUI 两态均 `succeeded` | 其它原生路径的同类窗口调用 |
-| [BUG-127](../work-items/BUG-127.md) | 0.24.1 | 已交付：`creo_worker_launch` 三段配置与 `-4` 复核，两路径均 `toolkit_code=0` | 报告宿主下的实际效果（未测） |
-| [BUG-128](../work-items/BUG-128.md) | 0.24.1 | 已交付：`toolkit_hint` 区分 `-4`/`-38`/退出码 20，文本不含本机路径与许可值 | `-38` 与真实模态框对照 |
-| [DEV-089](../work-items/DEV-089.md) | 0.24.1 | 已交付：`INSTALL.md` 编译工具链实物预检与 `COMPATIBILITY.md` Creo 13.4 编译层实测分节 | 无 |
+| [BUG-125](../archive/work-items/BUG-125.md) | 0.24.1 | 已交付：`creo_startup_args` 经 `parametric.exe` 传到 `xtop.exe`，`test_creo_startup_args.py` 5 项通过 | 无 |
+| [BUG-126](../archive/work-items/BUG-126.md) | 0.24.1 | 已交付：`window_activate_code` 只记录不判失败，无图形与 GUI 两态均 `succeeded` | 其它原生路径的同类窗口调用 |
+| [BUG-127](../archive/work-items/BUG-127.md) | 0.24.1 | 已交付：`creo_worker_launch` 三段配置与 `-4` 复核，两路径均 `toolkit_code=0` | 报告宿主下的实际效果（未测） |
+| [BUG-128](../archive/work-items/BUG-128.md) | 0.24.1 | 已交付：`toolkit_hint` 区分 `-4`/`-38`/退出码 20，文本不含本机路径与许可值 | `-38` 与真实模态框对照 |
+| [DEV-089](../archive/work-items/DEV-089.md) | 0.24.1 | 已交付：`INSTALL.md` 编译工具链实物预检与 `COMPATIBILITY.md` Creo 13.4 编译层实测分节 | 无 |
 
 ## 相对上一正式包核对（上一版本：0.24.0）
 

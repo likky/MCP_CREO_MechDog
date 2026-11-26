@@ -1,6 +1,6 @@
 # BUG-151：`tools/test_mcp.py` 与 capabilities 分页契约漂移修复计划
 
-> **For agentic workers:** 按阶段顺序执行；阶段 1 登记完成后才改代码。原生构建、Creo 连接沿用 2026-11-19 常设授权，但本计划不改原生代码，无需 `bridge.py build`。不要改写历史文档（`docs/RELEASE_NOTES_0.22.md`、`docs/work-items/DEV-002.md`）中的旧命令与旧结论。
+> **For agentic workers:** 按阶段顺序执行；阶段 1 登记完成后才改代码。原生构建、Creo 连接沿用 2026-11-19 常设授权，但本计划不改原生代码，无需 `bridge.py build`。不要改写历史文档（`release-notes/RELEASE_NOTES_0.22.md`、`docs/work-items/DEV-002.md`）中的旧命令与旧结论。
 
 **Goal:** 让项目文档推荐的真实 stdio 冒烟入口 `tools/test_mcp.py` 在当前 `creo_capabilities` 分页契约下通过，并让“验证脚本与产品契约漂移”这一类问题在常规门禁中自动暴露，而不是跨 30+ 版本静默失效。
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** Windows x64、Python 3.12、`unittest`、`mcp` stdio 客户端、Ruff；无需 Creo、不编译原生。
 
-**Spec:** 外部反馈 `C:\Users\Administrator\Desktop\2026-11-22_CREO_0.35.8_自带stdio冒烟脚本test_mcp未适配capabilities分页API致验证必失败.md` §2；回归参照 [BUG-138](../../work-items/BUG-138.md)（验收脚本硬编码工具数、失败被 TaskGroup 掩盖、门禁不覆盖）。
+**Spec:** 外部反馈 `C:\Users\Administrator\Desktop\2026-11-22_CREO_0.35.8_自带stdio冒烟脚本test_mcp未适配capabilities分页API致验证必失败.md` §2；回归参照 [BUG-138](../../archive/work-items/BUG-138.md)（验收脚本硬编码工具数、失败被 TaskGroup 掩盖、门禁不覆盖）。
 
 ---
 
@@ -56,7 +56,7 @@
 
 ### 阶段 1：登记（先做，不做则后续提交无条目可挂）
 
-1. `docs/work-items/BUG-151.md`，按 [WORK_ITEM 模板](../../templates/WORK_ITEM.md) 精简版：
+1. `docs/archive/work-items/BUG-151.md`，按 [WORK_ITEM 模板](../../templates/WORK_ITEM.md) 精简版：
    - 类型：缺陷（验证工具链）；优先级：P2；分类：`仍需修复`；目标版本：0.35.9
    - 现象（含上面的 `KeyError` 原文）、根因（契约引入点 `fab8e0d` + 脚本停更点 `0e92ab7`）、范围（只改验证层）、验收（§5 矩阵）、未验范围
    - 来源：外部反馈原件路径 + 与 BUG-138 的关系（同一类“验证脚本与产品契约漂移”，本条补的是脚本自身无人运行的问题）
@@ -134,8 +134,8 @@ async def capability_contract_problems(compact, fetch_page) -> list[str]:
 | --- | --- |
 | `docs/DEVELOPMENT.md` | 命令清单补两条：`tools\test_mcp.py --protocol-only`（无 Creo 契约检查）与 `tools\test_mcp.py`（需已连接会话）；说明契约由 `tests/unit/test_mcp_contract.py` 守门 |
 | `AGENTS.md` | “构建、测试与开发命令”补同一行 `--protocol-only`，给出“真实 MCP 传输下核对工具清单与 capabilities 契约”的一句话定位 |
-| `docs/RELEASE_NOTES_0.22.md`、`docs/work-items/DEV-002.md` | **不改**。历史文档按项目规则保留原日期与原结论；新入口写在工作卡与 DEVELOPMENT.md |
-| `docs/work-items/BUG-151.md` | 交付后补“修复内容 / 验收证据 / 未验范围” |
+| `release-notes/RELEASE_NOTES_0.22.md`、`docs/work-items/DEV-002.md` | **不改**。历史文档按项目规则保留原日期与原结论；新入口写在工作卡与 DEVELOPMENT.md |
+| `docs/archive/work-items/BUG-151.md` | 交付后补“修复内容 / 验收证据 / 未验范围” |
 
 ### 阶段 6：验证
 
@@ -156,7 +156,7 @@ async def capability_contract_problems(compact, fetch_page) -> list[str]:
 | `src/creo_mechdog/mcp_contract.py` | 新增 | ~90 行 |
 | `tests/unit/test_mcp_contract.py` | 新增 | ~100 行 |
 | `tools/test_mcp.py` | 修改 67–83、90–106、141–143、167–173 行 | ~40 行变更 |
-| `docs/work-items/BUG-151.md` | 新增 | 工作卡 |
+| `docs/archive/work-items/BUG-151.md` | 新增 | 工作卡 |
 | `docs/BACKLOG.md` | 新增 1 行 + 三处计数 | 5 行 |
 | `docs/DEVELOPMENT.md`、`AGENTS.md` | 各补 1–2 行命令 | 4 行 |
 | `version.py`、发布资料 | 0.35.9 | 按发布流程 |

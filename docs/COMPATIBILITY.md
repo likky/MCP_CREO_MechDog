@@ -16,8 +16,8 @@
 
 2026-11-08 DEV-080补充：`creo_surface_boundary_fill` 与 `creo_surface_loft` 同源于 `Probbl.h` 的边界混合元素树；不含该头的 Toolkit SDK（已观测：Creo 10.0.0.0）上两者均不可用。执行器在 `creo_worker.exe build-info` 自报头条件状态，Python 侧按已验证的 worker 身份在提交作业前拒绝，给出 `SURFACE_LOFT_SDK_UNAVAILABLE` 一类明确降级回执，不伪造几何，也不应被误判为安装失败；`surface_boundary_fill` 另保持能力面 GATED。缺头 SDK 的整包编译还受 `native/surface_boundary_fill.cpp` 复用 `surface_loft.cpp` 内部符号影响，根因、抽头方案与不依赖 `Probbl.h` 的等价元素树见 [DEV-080](work-items/DEV-080.md) H01；需 Creo 10 SDK 编译与实机几何验收，本机未验，不据门控夹具外推为通过。
 
-> **版本归属说明（2026-11-13）：** 当前**已发布**版本为 **0.24.0**；本分支候选 **0.24.1**（PATCH：`creo_startup_args` 启动参数、`creo_worker_launch` 桌面复核、`toolkit_hint` 诊断、无图形 `ProWindowActivate` 容错，公开工具仍 107；见 [0.24.1 版本说明](RELEASE_NOTES_0.24.1.md)）。下文各条"当前"字样属于该条写作时点。
-> **版本归属说明（2026-11-11）：** 当时**已发布**版本为 **0.22.0**（以 [version.py](../version.py) 为准；MINOR，[FEAT-065](work-items/FEAT-065.md) M3/M4：`creo_surface_loft` 接受已有曲线与 quilt 边、首末截面可用收敛点，新增 `boundary_conditions` 的边来源 `tangent`，`creo_measure_surface_group` 回执新增 `open_edge_records`，见下方 0.22.0 分节、[版本说明](RELEASE_NOTES_0.22.0.md)与[发布记录](validation/RELEASE-0.22.0.md)）。0.19.0 之后依次发布 0.19.1—0.19.3、0.20.0（DEV-081 B 批，含选择性切除作用域，见下方 2026-11-10 分节）、0.21.0（[FEAT-065](work-items/FEAT-065.md) M1/M2：`creo_surface_loft` 2—32 截面与 2—8 条第二方向导线，见下方 0.21.0/0.21.1 分节与[发布记录](validation/RELEASE-0.21.0.md)）、0.21.1（[BUG-118](work-items/BUG-118.md) compact 回执保留曲面放样测量值，见[版本说明](RELEASE_NOTES_0.21.1.md)与[发布记录](validation/RELEASE-0.21.1.md)）与 0.22.0，均未新增工具，公开工具仍 **107**。下文分节按写作时点保留各自结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
+> **版本归属说明（2026-11-13）：** 当前**已发布**版本为 **0.24.0**；本分支候选 **0.24.1**（PATCH：`creo_startup_args` 启动参数、`creo_worker_launch` 桌面复核、`toolkit_hint` 诊断、无图形 `ProWindowActivate` 容错，公开工具仍 107；见 [0.24.1 版本说明](release-notes/RELEASE_NOTES_0.24.1.md)）。下文各条"当前"字样属于该条写作时点。
+> **版本归属说明（2026-11-11）：** 当时**已发布**版本为 **0.22.0**（以 [version.py](../version.py) 为准；MINOR，[FEAT-065](work-items/FEAT-065.md) M3/M4：`creo_surface_loft` 接受已有曲线与 quilt 边、首末截面可用收敛点，新增 `boundary_conditions` 的边来源 `tangent`，`creo_measure_surface_group` 回执新增 `open_edge_records`，见下方 0.22.0 分节、[版本说明](release-notes/RELEASE_NOTES_0.22.0.md)与[发布记录](validation/RELEASE-0.22.0.md)）。0.19.0 之后依次发布 0.19.1—0.19.3、0.20.0（DEV-081 B 批，含选择性切除作用域，见下方 2026-11-10 分节）、0.21.0（[FEAT-065](work-items/FEAT-065.md) M1/M2：`creo_surface_loft` 2—32 截面与 2—8 条第二方向导线，见下方 0.21.0/0.21.1 分节与[发布记录](validation/RELEASE-0.21.0.md)）、0.21.1（[BUG-118](archive/work-items/BUG-118.md) compact 回执保留曲面放样测量值，见[版本说明](release-notes/RELEASE_NOTES_0.21.1.md)与[发布记录](validation/RELEASE-0.21.1.md)）与 0.22.0，均未新增工具，公开工具仍 **107**。下文分节按写作时点保留各自结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
 > **版本归属说明（2026-11-08）：** 当时**已发布**版本为 **0.19.0**（DEV-074 曲面与整链批：FEAT-055/H08 新增 `creo_surface_round` 与只读 `creo_measure_surface_curvature`，FEAT-039/H03 重新公开 `creo_quilt_merge`，H10 五爪整瓶整链实机；公开工具 104→107；钣金成形类、独立 quilt 偏置与任意非平面 fill 仍不可用，门禁保持，见[发布记录](validation/RELEASE-0.19.0.md)）；下文分节按写作时点保留各自结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
 > **版本归属说明（2026-11-07 补记）：** 当时**已发布**版本为 **0.18.4**（DEV-074 0.18.3 后续实机批：FEAT-039/H09 旋转球面替代、H10 多 quilt 整链、H07 独立 quilt 偏置反证，FEAT-055/H08 曲面边圆角可行性，FEAT-014/H05 钣金附着增料反证，BUG-115/H12 回执复验；公开工具仍 104，无新增能力，见[发布记录](validation/RELEASE-0.18.4.md)）；上文分节按写作时点保留各自结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
 > **版本归属说明（2026-11-07 补记）：** 当时**已发布**版本为 **0.18.3**（DEV-074 0.17.4 反馈批：FEAT-058/H01 非零 origin 大跨度 resize 修复、FEAT-009/H02 `creo_surface_loft`、FEAT-039/H04 `creo_measure_surface_group` 与 H06 保留侧几何，公开工具 102→104，见[发布记录](validation/RELEASE-0.18.3.md)）；上文分节按写作时点保留各自结论，**章节顺序不代表版本顺序**；"当前"字样属于该节的写作时点，不作为今天的交付状态。
@@ -75,8 +75,8 @@
 ## 2026-11-13：Creo 13.4.0.0 编译层实测与无图形启动（随 0.24.1 披露）
 
 - **编译证据**：报告环境 Creo 13.4.0.0（`release_numeric=45`）用 13.4 Toolkit SDK 一次编译通过，`creo_worker.exe constants` 自检 rc=0，`native/constants.inc` 正常生成。本机无 Creo 13.4 SDK，未复现。
-- **运行期未验收**：该环境 worker 直连返回 `toolkit_code=-4`（`PRO_TK_BAD_CONTEXT`），建模未完成；0.24.1 提供 `creo_worker_launch="desktop"` 复核路径（[BUG-127](work-items/BUG-127.md)），报告宿主是否因此恢复仍未验证。
-- **无图形启动**：本机 Creo 12.4.0.0 实测 `-g:no_graphics` + `-i:rpc_input` 下 `xtop.exe` 带同名参数且无界面，连接 `toolkit_code=0`，板件建模成功（`window_activate_code=-8` 仅记录），见 [BUG-125](work-items/BUG-125.md)/[BUG-126](work-items/BUG-126.md)。
+- **运行期未验收**：该环境 worker 直连返回 `toolkit_code=-4`（`PRO_TK_BAD_CONTEXT`），建模未完成；0.24.1 提供 `creo_worker_launch="desktop"` 复核路径（[BUG-127](archive/work-items/BUG-127.md)），报告宿主是否因此恢复仍未验证。
+- **无图形启动**：本机 Creo 12.4.0.0 实测 `-g:no_graphics` + `-i:rpc_input` 下 `xtop.exe` 带同名参数且无界面，连接 `toolkit_code=0`，板件建模成功（`window_activate_code=-8` 仅记录），见 [BUG-125](archive/work-items/BUG-125.md)/[BUG-126](archive/work-items/BUG-126.md)。
 - **不支持声明**：以上不构成 Creo 13 支持声明；Creo 9/10 运行期状态不变，Creo 10 仍按下方 0.23.2 分节处理。
 
 ## 2026-11-19：Creo 10 resident_panel 边界混合路线实机通过（BUG-120 D7/T-D/T-E）
@@ -155,7 +155,7 @@
 
 ## 0.21.0 / 0.21.1 已发布：`creo_surface_loft` 多截面与第二方向导线（FEAT-065 M1/M2，2026-11-11）
 
-- **支持**：`creo_surface_loft`（计划操作 `surface_loft`）按提交顺序用 **2—32** 个 MCP 自建截面草图建一张边界混合曲面；两截面 `interpolation="straight"` 为直纹，**3 截面以上必须 `smooth`**（内核通过全部截面拟合单张光滑面，`straight` 在提交前拒绝）。可选 `guides` 为 **2—8** 条第二方向（`PRO_E_BNBLN_2DIR`）导线草图；单导线、重复草图、导线与截面复用同一草图在提交前拒绝。导线是否穿过每个截面由内核判定，不穿过则再生失败并回滚。产出单张开放 quilt，不产实体；回执带 `section_count`/`piecewise_ruled`/`guide_count`/`guide_curve_ids`，0.21.1 起这些测量标量不再被 compact 预算裁掉（[BUG-118](work-items/BUG-118.md)）。
+- **支持**：`creo_surface_loft`（计划操作 `surface_loft`）按提交顺序用 **2—32** 个 MCP 自建截面草图建一张边界混合曲面；两截面 `interpolation="straight"` 为直纹，**3 截面以上必须 `smooth`**（内核通过全部截面拟合单张光滑面，`straight` 在提交前拒绝）。可选 `guides` 为 **2—8** 条第二方向（`PRO_E_BNBLN_2DIR`）导线草图；单导线、重复草图、导线与截面复用同一草图在提交前拒绝。导线是否穿过每个截面由内核判定，不穿过则再生失败并回滚。产出单张开放 quilt，不产实体；回执带 `section_count`/`piecewise_ruled`/`guide_count`/`guide_curve_ids`，0.21.1 起这些测量标量不再被 compact 预算裁掉（[BUG-118](archive/work-items/BUG-118.md)）。
 - **本机实机（Windows x64 / Creo 12.4.0.0，`release_numeric=44`，匹配 SDK，mm，用户当次确认）**：
   - M1：40/60/40 mm 三截面、间距 20 mm → **2101.2524427513217 mm²**、单张开放 quilt、`section_count=3`、无实体，保存重载后 quilt id 与面积一致；2 mm `thicken` → 4202.507981502071 mm³（与面积 × 2 差 0.003 mm³）；两截面回归 800.0 mm²、`piecewise_ruled=true`。`tools/test_surface_loft_multisection.py --live --confirm-session-usable` 30 项全 PASS。
   - M2：两截面 + 2 条直导线 800.0 mm²（包围盒 x 止 40.0 mm）；两截面 + 2 条圆弧导线 600.0 mm²（包围盒 x 达 44.24 mm）；3 截面 + 2 条直导线 **1599.9999999999995 mm²**、`section_count=3`、`guide_count=2`，均保存重载 verified；单导线提交前拒绝、无作业。`tools/test_surface_loft_guides.py --live --confirm-session-usable`：0.21.0 离线 10 + 实机 17 项、0.21.1 离线 12 + 实机 22 项全 PASS。证据见 [FEAT-065](work-items/FEAT-065.md) 的 2026-11-11 各节与 [0.21.0](validation/RELEASE-0.21.0.md)/[0.21.1](validation/RELEASE-0.21.1.md) 发布记录。
@@ -236,7 +236,7 @@
 
 本机 Creo 12.4.0.0 实测：钣金折边由 `PRO_E_SMT_FLANGE_SEC_FLIP` 决定侧向；`flip=false`（默认）现在是从选中面向外，`flip=true` 反向。两例 1 mm 板折边各 +18 025.29 mm³、Z 增长 79 mm，保存重载通过。依赖旧方向假设的调用方须复核选面和 `flip`，本变更属于 MINOR 性质，按本次指定编号在 0.8.5 交付。公开工具仍 94 个。
 
-钣金体并入式实体 add 在重叠与非重叠位置均原生 `-1`、元素错误为空；0.8.5 建模前以 `SHEETMETAL_SOLID_ADD_UNSUPPORTED` 拒绝。`new_body=true` 可生成独立实体（+500 mm³），不等于并入钣金体。四壁仅 2/4；第三道 `f_ny` 回滚，`relief` 只回显、无可观测切料。T13 native_bundle 导出不完整且回导 `SESSION_NAME_CONFLICT`，未通过。详见 [0.8.5 版本说明](RELEASE_NOTES_0.8.5.md)与[发布记录](validation/RELEASE-0.8.5.md)。
+钣金体并入式实体 add 在重叠与非重叠位置均原生 `-1`、元素错误为空；0.8.5 建模前以 `SHEETMETAL_SOLID_ADD_UNSUPPORTED` 拒绝。`new_body=true` 可生成独立实体（+500 mm³），不等于并入钣金体。四壁仅 2/4；第三道 `f_ny` 回滚，`relief` 只回显、无可观测切料。T13 native_bundle 导出不完整且回导 `SESSION_NAME_CONFLICT`，未通过。详见 [0.8.5 版本说明](release-notes/RELEASE_NOTES_0.8.5.md)与[发布记录](validation/RELEASE-0.8.5.md)。
 
 ## 0.8.5 之后十个离线提交的兼容性边界（2026-10-30 时点记录；已随 0.9.0 发布）
 
@@ -274,7 +274,7 @@
 
 ## 0.11.7（2026-11-03 已发布）：`keep_original` 副本定因与能力边界
 
-分支 `codex/BUG-111-r13-followup`，PATCH 交付；公开工具仍 95（未新增工具）。离线全量 2268 项单测 0 失败/0 错误、`dev_check` `success=true`，本机 Creo 12.4.0.0 实机 C0—C6 对照。版本说明见 [RELEASE_NOTES_0.11.7](RELEASE_NOTES_0.11.7.md)，发布记录见 [RELEASE-0.11.7](validation/RELEASE-0.11.7.md)，验收摘要见 [R13-FOLLOWUP-ACCEPTANCE-2026-11-03](development/R13-FOLLOWUP-ACCEPTANCE-2026-11-03.md)。
+分支 `codex/BUG-111-r13-followup`，PATCH 交付；公开工具仍 95（未新增工具）。离线全量 2268 项单测 0 失败/0 错误、`dev_check` `success=true`，本机 Creo 12.4.0.0 实机 C0—C6 对照。版本说明见 [release-notes/RELEASE_NOTES_0.11.7](release-notes/RELEASE_NOTES_0.11.7.md)，发布记录见 [RELEASE-0.11.7](validation/RELEASE-0.11.7.md)，验收摘要见 [R13-FOLLOWUP-ACCEPTANCE-2026-11-03](development/R13-FOLLOWUP-ACCEPTANCE-2026-11-03.md)。
 
 - **`keep_original` 副本失败已定因（BUG-111）**：本机 Creo 12.4.0.0 实机七个独立底板（C0—C6）显示，4 个独立模型（C2/C3/C5 与 C6 批 B）在"体已含 45/90/135/180 副本后追加 −135"这一步同型失败于 `operation_index=4`，整批干净回滚（after==before、revision 不变）、后续合法编辑正常；把 −135 放在首位的 C4 五个副本**全部成功**；拆成 4+3 两批的 C6 仍在批 B 首个 op 失败。结论：**失败不跟随副本数量或位置，而跟随"既有副本集合 × 该角度"**——`keep_original` 复制的是**整个当前体**（副本累积在同一 body 内，特征数 +1/副本），追加副本与既有凸块重合／交叠时触发再生失败；全程单 body 反证引用解析问题。**本版不做行为修复**，只交付诊断与能力边界。
 - **"单批 ≤4 个副本、下一批重新引用当前 body"变通建议作废**（C6 证明拆批无效）：对外口径改为"副本集放在同一计划里提交；需要固定原件的副本时另建模型"。0.11.6 段的历史提示已标注被本段取代。
@@ -309,7 +309,7 @@ FEAT-052 随 0.11.0 发布，公开工具 94→95；本机 Windows x64 / Creo 12
 
 ## 当前验收规则（2026-10-15）
 
-按用户要求取消全项目 Creo 10 独立复测、双版本验收及正式基线门槛。当前开发、合入和发布按本机 Windows x64 / Creo 12.4.0.0 / 匹配 Toolkit SDK 的实际改动范围验收；朋友反馈具体问题后再登记或沿用 ID 跟进。历史测试环境和未测事实保留，旧复测安排不再作为当前任务的前置条件，也不表示 Creo 10 新增了通过证据。条目见 [DEV-018](work-items/DEV-018.md)。
+按用户要求取消全项目 Creo 10 独立复测、双版本验收及正式基线门槛。当前开发、合入和发布按本机 Windows x64 / Creo 12.4.0.0 / 匹配 Toolkit SDK 的实际改动范围验收；朋友反馈具体问题后再登记或沿用 ID 跟进。历史测试环境和未测事实保留，旧复测安排不再作为当前任务的前置条件，也不表示 Creo 10 新增了通过证据。条目见 [DEV-018](archive/work-items/DEV-018.md)。
 
 ## 0.7.0 验收范围（2026-10-27）
 
@@ -323,9 +323,9 @@ BUG-082 修复批在 Windows 11 x64 / Python 3.12.14 / Creo 12.4.0.0 / 匹配 SD
 
 2026-10-15 BUG-022追加验证：Creo12.4及匹配SDK下复现边参考孔定位侧不稳定、板外孔无去料却成功；显式选择点及无去料保护的修复，按[独立记录](validation/BUG-022.md)完成开发验证，用户随后确认[WorkBuddy四场景](validation/BUG-022-WorkBuddy-retest-20261015.md)全部通过。本环境边参考修复验收完成；原Creo10来源及公开接口未提供的构建/失败文件哈希仍保留验证边界，不据此改变公开0.3.0附件或其他环境的支持范围。
 
-历史记录日期：2026-10-14，服务源码版本 0.3.0。可使用 Creo 9、10 或 Creo 12；Creo 12 已验证可用，已记录的实机版本为 12.4.0.0，具体功能按下表的已测范围声明。Creo 9 与匹配 Toolkit 9 按 2026-10-16 决定纳入支持/要求范围，[BUG-033](work-items/BUG-033.md) 编译探测修复现已实现；本机无 Creo 9 SDK，实机编译和建模运行时均未验收。
+历史记录日期：2026-10-14，服务源码版本 0.3.0。可使用 Creo 9、10 或 Creo 12；Creo 12 已验证可用，已记录的实机版本为 12.4.0.0，具体功能按下表的已测范围声明。Creo 9 与匹配 Toolkit 9 按 2026-10-16 决定纳入支持/要求范围，[BUG-033](archive/work-items/BUG-033.md) 编译探测修复现已实现；本机无 Creo 9 SDK，实机编译和建模运行时均未验收。
 
-本次按用户确认补充 Creo 12 可用性说明，文档条目见 [DEV-012](work-items/DEV-012.md)。这次文档修订未执行新的实机测试；以下历史测试与 0.2.6 发布复测各自保留原日期和结果。
+本次按用户确认补充 Creo 12 可用性说明，文档条目见 [DEV-012](archive/work-items/DEV-012.md)。这次文档修订未执行新的实机测试；以下历史测试与 0.2.6 发布复测各自保留原日期和结果。
 
 后续BUG-007开发验证单列：Creo12.4 / release=44下复现600秒DLL确认等待；65ccf3e移除建模中的DLL加载。常驻初始化后两/三截面straight/smooth、三轮串行、已有底座追加、标签/ID引用、计划入口、原特征/revision/失败回滚和保存重载通过；未初始化及非XY拒绝、后续小件、两/三截面straight种子编辑回归通过。WorkBuddy最终本环境标签放样核心已通过，整数公开引用失败独立为BUG-028；Creo10、外部模态及NEVER/ALWAYS实际场景未测。详细源码身份和实测范围见 [本项记录](validation/BUG-007.md)，不外推到历史发布或所有参数分支。
 
@@ -334,7 +334,7 @@ BUG-082 修复批在 Windows 11 x64 / Python 3.12.14 / Creo 12.4.0.0 / 匹配 SD
 | Windows x64 / Creo 10.0.0.0 / Python 3.12 / VS 2022 | 历史实测环境；功能按已有范围声明，后续按反馈跟进 | [0.2.5 逐项记录](PROGRESS_025.md)、[增量证据](validation_increment_025.json)、`capabilities.py` 中的限制；历史其他套件各自保留日期 | DEV-001 仅验证开发检查与单元，未重跑原生套件；不作为当前验收门槛 |
 | Windows x64 / Creo 12.4.0.0 / 匹配 SDK | 已验证可用，功能按已测范围声明 | [BUG-002 验证](validation/BUG-002.md)：登记并发轮询下新建、参数修改、保存重载、失败回滚和 stale revision；[FEAT-019 WorkBuddy 报告](validation/FEAT-019-WorkBuddy-report.md)：自动启动、Toolkit 就绪、草图/拉伸、尺寸驱动、倒角、保存重载与导出 | 上述专项实测通过；发布时另一次冷启动复测失败，保留 BUG-005；两截面种子等其他分支仍由 BUG-004、DEV-005、DEV-006 核实 |
 | Windows x64 / Creo 12 其他维护版本 / 匹配 SDK | 需目标机验证 | 当前成功记录限定 12.4.0.0，其他维护版本没有独立实机证据 | 未逐版验收 |
-| Windows x64 / Creo 9.0.0.0 / 匹配 Toolkit 9 | 已纳入支持/要求范围，编译探测已支持 | [BUG-033](work-items/BUG-033.md) 的常量存在/缺失夹具已通过，修复与安装闭环见 [DEV-028](work-items/DEV-028.md)；第三方 [Creo 9 SDK 编译反馈](validation/2026-10-15_CREO_0.3.0_旧版ToolkitSDK原生编译失败.md) 与 [0.3.2 报告](validation/FEEDBACK-0.3.2.md) 保留原环境结论 | 本机无 Creo 9 SDK；0.3.5 外部环境编译与安装已通过（见 2026-10-18 补录），其中 1 个单元测试失败登记 [BUG-057](work-items/BUG-057.md)；建模运行时仍未验收，不外推为已通过 |
+| Windows x64 / Creo 9.0.0.0 / 匹配 Toolkit 9 | 已纳入支持/要求范围，编译探测已支持 | [BUG-033](archive/work-items/BUG-033.md) 的常量存在/缺失夹具已通过，修复与安装闭环见 [DEV-028](archive/work-items/DEV-028.md)；第三方 [Creo 9 SDK 编译反馈](validation/2026-10-15_CREO_0.3.0_旧版ToolkitSDK原生编译失败.md) 与 [0.3.2 报告](validation/FEEDBACK-0.3.2.md) 保留原环境结论 | 本机无 Creo 9 SDK；0.3.5 外部环境编译与安装已通过（见 2026-10-18 补录），其中 1 个单元测试失败登记 [BUG-057](work-items/BUG-057.md)；建模运行时仍未验收，不外推为已通过 |
 | 其他 Creo、SDK 或操作系统 | 尚未承诺 | 单元检查与安装成功不能推导原生兼容 | 未验收 |
 
 安装要求保留匹配 SDK、公制模板、MSVC x64 和许可。升级 SDK 或维护版本后要按本机环境重新构建与验证。后续矩阵按工具家族、具体参数分支、环境、源码、命令和结果细化；“接口存在”“已测代表用例”和“全部参数覆盖”分别记录。
@@ -367,7 +367,7 @@ BUG-001/FEAT-018 已实现正式协调与普通写保护，284项单元及四动
 
 ## 2026-10-17：0.3.4主干交付范围
 
-0.3.4汇总恢复与回调实现及原始反馈，BUG-001按用户决定关闭；FEAT-018/029继续验收中。本版仅重新执行适用离线、单元、构建与分发检查，不新增Creo连接或原生/WorkBuddy验收。原始卡死及根因未定事实保持，旧证据不外推为最新集成实机通过。见[本版说明](RELEASE_NOTES_0.3.4.md)和[发布检查](validation/RELEASE-0.3.4.md)。
+0.3.4汇总恢复与回调实现及原始反馈，BUG-001按用户决定关闭；FEAT-018/029继续验收中。本版仅重新执行适用离线、单元、构建与分发检查，不新增Creo连接或原生/WorkBuddy验收。原始卡死及根因未定事实保持，旧证据不外推为最新集成实机通过。见[本版说明](release-notes/RELEASE_NOTES_0.3.4.md)和[发布检查](validation/RELEASE-0.3.4.md)。
 
 ## 2026-10-17：0.3.5 已测范围与已知通道问题
 
@@ -381,7 +381,7 @@ BUG-054/DEV-033的本机Creo12.4实体extrude/revolve cut开发、保存重载/�
 
 [Creo 10 反馈](validation/FEEDBACK-0.3.5-CREO10-2026-10-18.md)（Windows 10 / VS2022 BuildTools 14.44 / Python 3.13）按"停止新的 Toolkit 连接"约束未连实机：源码/种子包 sha256 与发布说明双一致，覆盖 546 文件零真实差异，编译经三键 `vcvars64_env` 一次成功；**文件层实证 0.3.4→0.3.5 升级（含 worker 重编）完全不触碰回调注册**（protk.dat、exec_file、loader 指纹/sha、两个 DLL 大小、payload 指纹均未变），补上"每次重编译注册失效已解决"的升级场景一环；cut 守卫仅读码核对一致，未实机。vcvars64_env 三键限制第三次未修（DEV-030），payload 目录保持 6 个未新增但清理机制仍不存在（DEV-027）；实机建模、cut 行为、恢复契约、回调加载与通道稳定性全部未验证，不作通过结论。该反馈引用的发布说明"BUG-056 未修"已被当日后续 DEV-036 调查取代（nmsd 根因、复测通过、关闭归档）。
 
-[Creo 9 实机反馈](validation/FEEDBACK-0.3.5-CREO9-2026-10-18.md)（9.0.0.0 / release 41 / stdio）：**BUG-054 切除守卫与 BUG-055 恢复契约（含 restore_baseline 与三条空值路径）实机验收通过**，数值精确（去料 π×5²×10、revision/体积保持），补齐两卡外部 Creo 9 未测项；孔、参数、关系、工程图 PDF、翼型、UDF、种子清单与运行身份指纹核对全部通过。通道稳定性出现新现象：上一请求成功约 33 秒后 `connect_creo` 返回 **-11**，Creo 进程存活但无主窗口，自动重连不能自愈，人工结束残留进程后恢复——与已关闭 BUG-056（nmsd 层 -4）为不同层失败，登记 [BUG-058](work-items/BUG-058.md)；恢复执行前拒绝被标 `unknown_outcome` 的问题登记 [BUG-059](work-items/BUG-059.md)。历史未修项第六轮确认：种子加载仍 -16（BUG-034）、筋材料侧仍失败（BUG-017）、loft 仍需人工注册（FEAT-029）、component_constraints 仍不求解（BUG-036）、round 参数名仍未统一（BUG-019）；这些不因上述通过项而改变范围。
+[Creo 9 实机反馈](validation/FEEDBACK-0.3.5-CREO9-2026-10-18.md)（9.0.0.0 / release 41 / stdio）：**BUG-054 切除守卫与 BUG-055 恢复契约（含 restore_baseline 与三条空值路径）实机验收通过**，数值精确（去料 π×5²×10、revision/体积保持），补齐两卡外部 Creo 9 未测项；孔、参数、关系、工程图 PDF、翼型、UDF、种子清单与运行身份指纹核对全部通过。通道稳定性出现新现象：上一请求成功约 33 秒后 `connect_creo` 返回 **-11**，Creo 进程存活但无主窗口，自动重连不能自愈，人工结束残留进程后恢复——与已关闭 BUG-056（nmsd 层 -4）为不同层失败，登记 [BUG-058](work-items/BUG-058.md)；恢复执行前拒绝被标 `unknown_outcome` 的问题登记 [BUG-059](archive/work-items/BUG-059.md)。历史未修项第六轮确认：种子加载仍 -16（BUG-034）、筋材料侧仍失败（BUG-017）、loft 仍需人工注册（FEAT-029）、component_constraints 仍不求解（BUG-036）、round 参数名仍未统一（BUG-019）；这些不因上述通过项而改变范围。
 
 ## 2026-10-18：0.3.5 外部建模能力边界反馈补录
 

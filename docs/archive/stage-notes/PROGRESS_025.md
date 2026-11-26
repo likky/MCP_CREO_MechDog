@@ -24,4 +24,4 @@
 - 扫掠：恒定截面，四个代表性组合；不据此宣称所有轨迹、框架和相交情形通过。
 - 种子：数量和模式必须匹配。九个组合通过验收不代表接口 2～20 的每种组合均已实测。
 
-使用说明见 [直接混合](DIRECT_BLEND_0.2.5.md)、[草图策略](SKETCH_STABILITY_0.2.5.md)、[种子库](SEED_LIBRARY.md) 及 [发布说明](RELEASE_NOTES_0.2.5.md)。
+使用说明见 [直接混合](DIRECT_BLEND_0.2.5.md)、[草图策略](SKETCH_STABILITY_0.2.5.md)、[种子库](SEED_LIBRARY.md) 及 [发布说明](release-notes/RELEASE_NOTES_0.2.5.md)。

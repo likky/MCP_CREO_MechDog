@@ -337,7 +337,7 @@ flowchart LR
 
 **ID/优先级：** DEV-053 与本批 ID，P1 交付门槛。**依赖：** P04/P14；每批重复执行。
 
-**文件：** `version.py`、README、双 `seed_manifest.json`、受信种子摘要入口、本版 `docs/RELEASE_NOTES_<version>.md` 与发布记录、台账/开发入口/工作卡、PR模板。
+**文件：** `version.py`、README、双 `seed_manifest.json`、受信种子摘要入口、本版 `release-notes/RELEASE_NOTES_<version>.md` 与发布记录、台账/开发入口/工作卡、PR模板。
 
 - [ ] 先核远端未发布版本。建议兼容修复/文档/工程批用0.10.1，新增公开结果/预览状态/候选边或其他接口变化用后续MINOR（候选0.11.0）；含新接口的工作不得为方便塞PATCH。
 - [ ] 逐ID确定本版交付与剩余范围，五处状态核对；工作分支提交按 ID+具体改变，PR沿仓库模板，目标版本在合入前冻结。

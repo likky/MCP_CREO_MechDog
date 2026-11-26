@@ -4,7 +4,7 @@
 
 来源与关联：[装配按零件族上色功能计划](../superpowers/plans/2026-10-31-assembly-recolor-plan.md) 全文（建议包 `creo_recolor_assembly_proposal` 作为技术参考及外部测试资料保存，其测试回执不替代本项目验收）。关联 [FEAT-012](FEAT-012.md)（装配矩阵与位姿）、[FEAT-023](FEAT-023.md)（组件身份与 `source_model_id` 投影）、[FEAT-031](FEAT-031.md)（装配导出）、[FEAT-045](FEAT-045.md)（装配只读检查）、[DEV-002](DEV-002.md)（Python 包迁移）。
 
-当前状态：已随 0.11.0 正式发布，详见 [版本说明](../RELEASE_NOTES_0.11.0.md)与[发布记录](../validation/RELEASE-0.11.0.md)。WorkBuddy、真实 busy/并发及 Creo 9/10 未验；以下分类依据是登记时的历史状态。
+当前状态：已随 0.11.0 正式发布，详见 [版本说明](../release-notes/RELEASE_NOTES_0.11.0.md)与[发布记录](../validation/RELEASE-0.11.0.md)。WorkBuddy、真实 busy/并发及 Creo 9/10 未验；以下分类依据是登记时的历史状态。
 
 历史分类依据：范围与接口已在计划文件中明确固定（目标、参数、预览/执行语义、验收项），按模板「修改范围明确后填『待开发』」进入「开发中」。当时为**离线开发中**：未连接 Creo、未编译、未实机验收。
 

@@ -1,6 +1,6 @@
 # FEAT-019 开发与实机验证记录
 
-日期：2026-10-13。任务卡：[FEAT-019](../work-items/FEAT-019.md)。状态：已完成，用户接受 WorkBuddy / Creo 12.4 最终 MCP 验收。服务版本保持 0.2.5，无新标签或发布。
+日期：2026-10-13。任务卡：[FEAT-019](../archive/work-items/FEAT-019.md)。状态：已完成，用户接受 WorkBuddy / Creo 12.4 最终 MCP 验收。服务版本保持 0.2.5，无新标签或发布。
 
 ## 最终 MCP 验收
 

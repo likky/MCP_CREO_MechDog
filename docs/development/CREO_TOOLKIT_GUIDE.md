@@ -4,9 +4,9 @@
 
 项目规则以 [AGENTS](../../AGENTS.md) 为准，开发流程见 [DEVELOPMENT](../DEVELOPMENT.md)，职责与源码布局见 [ARCHITECTURE](ARCHITECTURE.md)，资源、错误、单位与编码要求见 [CODING_STANDARD](CODING_STANDARD.md)。本文补充查证方法，不另建规则或能力清单。当前支持边界以 [COMPATIBILITY](../COMPATIBILITY.md)、包内能力登记和相关工作卡为准。
 
-向维护者说明改动时，先读 [给软件工程师看的改动说明](CREO_CHANGE_EXPLANATION.md)：把目标、关键判断和独立验收证据说清，技术追溯随后提供；使用白话不代表降低几何或工程证据要求。该补充的记录见 [DEV-087](../work-items/DEV-087.md)。
+向维护者说明改动时，先读 [给软件工程师看的改动说明](CREO_CHANGE_EXPLANATION.md)：把目标、关键判断和独立验收证据说清，技术追溯随后提供；使用白话不代表降低几何或工程证据要求。该补充的记录见 [DEV-087](../archive/work-items/DEV-087.md)。
 
-2026-11-12：本机资料路径按 Creo **12.4.0.0** 离线核对；这只证明资料可定位，不是本次编译或建模验收。初版实施与验证记录见 [DEV-084](../work-items/DEV-084.md)；外部 skill 评估后的 API 模式补充见 [DEV-085](../work-items/DEV-085.md)，2026-11-13 的验收/交付方法补充见 [DEV-086](../work-items/DEV-086.md)。各阶段指纹仅证明当时受测的文档版本。
+2026-11-12：本机资料路径按 Creo **12.4.0.0** 离线核对；这只证明资料可定位，不是本次编译或建模验收。初版实施与验证记录见 [DEV-084](../archive/work-items/DEV-084.md)；外部 skill 评估后的 API 模式补充见 [DEV-085](../archive/work-items/DEV-085.md)，2026-11-13 的验收/交付方法补充见 [DEV-086](../archive/work-items/DEV-086.md)。各阶段指纹仅证明当时受测的文档版本。
 
 ## 1. 下次如何使用
 
@@ -106,7 +106,7 @@ rg -n 'ProFeatureWithoptionsCreate|ProArrayFree|ProSelectionFree' native/geometr
 
 本项目尚有单翻译单元文本包含：`native/worker.cpp` 包含实现，`generic.cpp` 再包含特征 `.cpp`。新增文件应先核对实际包含与分派链，不能假定放进 `native/` 就参与构建，也不能在功能任务中顺手全量拆分；迁移方向见 ARCHITECTURE。新增依赖还需核对构建指纹和源码身份覆盖。
 
-保持现有 busy 立即拒绝、已接受任务仅轮询、revision、失败回滚与 unknown 保护。不要引入隐含队列或自动重交；详细边界引用 AGENTS 和 [BUG-009](../work-items/BUG-009.md)。
+保持现有 busy 立即拒绝、已接受任务仅轮询、revision、失败回滚与 unknown 保护。不要引入隐含队列或自动重交；详细边界引用 AGENTS 和 [BUG-009](../archive/work-items/BUG-009.md)。
 
 ## 5. 元素树、常量和版本兼容
 
@@ -138,7 +138,7 @@ rg -n 'ProFeatureWithoptionsCreate|ProArrayFree|ProSelectionFree' native/geometr
 
 官方依据：[XML 重用说明](https://support.ptc.com/help/creo_toolkit/protoolkit_pma/r12/usascii/creo_toolkit/user_guide/Tips_for_Recycling_XML_Output_of_Element_Trees.html)、[特征树提取及释放说明](https://support.ptc.com/help/creo_toolkit/protoolkit_pma/r12/usascii/creo_toolkit/user_guide/Feature_Inquiry_1.html)。官方不保证跨版本 XML 可直接使用；验证哪个环境就报告哪个环境，不由 Creo 12.4 的一致性试验推出 Creo 10 可用，也不额外引入全项目双版本放行门槛。
 
-本项目已有 BUG-123 的 3 截面/3 导线样本与模板重建记录，可作为该形态的查证起点；不把这份固定样本当作所有曲面/扫描的通用模板。本流程责任与情境试用记录见 [DEV-088](../work-items/DEV-088.md)。
+本项目已有 BUG-123 的 3 截面/3 导线样本与模板重建记录，可作为该形态的查证起点；不把这份固定样本当作所有曲面/扫描的通用模板。本流程责任与情境试用记录见 [DEV-088](../archive/work-items/DEV-088.md)。
 
 ### 与当前曲面开发直接相关的记录
 
@@ -149,7 +149,7 @@ rg -n 'ProFeatureWithoptionsCreate|ProArrayFree|ProSelectionFree' native/geometr
 | [REFERENCE-TREES](REFERENCE-TREES.md) | 2026-11-05 自建特征读回的树，以及当时的缺口；属于历史观察，不是对所有特征/版本的普遍结论 |
 | [DEV-082](../work-items/DEV-082.md) | `Probbl.h` 存在性门控曾不足，需核对 `ProElemId.h` 中实际依赖的符号；当前源码是核实具体门控的入口 |
 | [BUG-120](../work-items/BUG-120.md) | 外部 Creo 10 的元素树抽取失败与诊断范围；不能以本机声明存在替代目标环境运行证据 |
-| [BUG-119](../work-items/BUG-119.md)、[BUG-118](../work-items/BUG-118.md) | 几何判定应对照操作前后变化，回执还要核对 compact 结果；旧交接的“已有实体一律失败”等描述不作为当前能力真值 |
+| [BUG-119](../work-items/BUG-119.md)、[BUG-118](../archive/work-items/BUG-118.md) | 几何判定应对照操作前后变化，回执还要核对 compact 结果；旧交接的“已有实体一律失败”等描述不作为当前能力真值 |
 
 这些记录只提供开发线索。查引用是否仍适用时，同时核对工作卡当前摘要、实际源码与 COMPATIBILITY，不改写历史原件。
 

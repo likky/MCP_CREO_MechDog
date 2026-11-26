@@ -34,7 +34,7 @@ MCP_CREO_MechDog-0.10.0-source.zip        1850dc03d4d129ed28eaf2f37844833d686f3e
 MCP_CREO_MechDog-0.10.0-seed-library.zip  99e3b9ec92593fbd5c34b91504134fd015a5e2142ab36f7e7ab4226d50b819c3
 ```
 
-源码包（由标签 `v0.10.0` 指向的主干提交源码构建；本记录随该提交入库，附件哈希按两段式流程在打包后回填进 Release body 与本文件，回填提交不属于标签内容）。构建说明：打包在工作树位于 `17a36b9` 时进行；本机专用的 `docs/validation/RELEASE-0.8.5.md` 发布后核验段（该段设计上不进 main）在打包期间临时移出（打包后已字节级恢复，SHA256 `36deDDD1…235` 前后一致），其余内容与标签提交的树一致。种子包按 0.10.0 确定性重建，四次构建（两次独立、回填 `seeds.py expected_digest` 后两次复核）SHA256 均为上值；9 枚种子原字节不变，仅清单版本标记随版。解压检查（`build/release-0.10.0/xcheck`）：源码包 1089 文件、`version.py`/README 标题/双 `seed_manifest.json` 均 0.10.0、双清单字节一致、`seeds.py` expected_digest == 种子包实测哈希、`RELEASE_NOTES_0.10.0.md` 与第三方许可在包、无 `constants.inc`/真实 config/client-config/`seed_registry.json`/`toolkit.lock` 及 `build`/`jobs`/`models`/`.venv` 混入（`config.example.json`、`client-config.example.json` 为随包分发模板，属预期）；种子包 24 文件/9 种子，逐种子 SHA256 与清单一致。
+源码包（由标签 `v0.10.0` 指向的主干提交源码构建；本记录随该提交入库，附件哈希按两段式流程在打包后回填进 Release body 与本文件，回填提交不属于标签内容）。构建说明：打包在工作树位于 `17a36b9` 时进行；本机专用的 `docs/validation/RELEASE-0.8.5.md` 发布后核验段（该段设计上不进 main）在打包期间临时移出（打包后已字节级恢复，SHA256 `36deDDD1…235` 前后一致），其余内容与标签提交的树一致。种子包按 0.10.0 确定性重建，四次构建（两次独立、回填 `seeds.py expected_digest` 后两次复核）SHA256 均为上值；9 枚种子原字节不变，仅清单版本标记随版。解压检查（`build/release-0.10.0/xcheck`）：源码包 1089 文件、`version.py`/README 标题/双 `seed_manifest.json` 均 0.10.0、双清单字节一致、`seeds.py` expected_digest == 种子包实测哈希、`release-notes/RELEASE_NOTES_0.10.0.md` 与第三方许可在包、无 `constants.inc`/真实 config/client-config/`seed_registry.json`/`toolkit.lock` 及 `build`/`jobs`/`models`/`.venv` 混入（`config.example.json`、`client-config.example.json` 为随包分发模板，属预期）；种子包 24 文件/9 种子，逐种子 SHA256 与清单一致。
 
 发布候选验收结论：按上表范围通过（N07 反例与 N01 材料场景按实际状态披露，不改判）；开放项随版本说明披露。打包与解压检查通过（见上小节），两包均可复现构建。
 
@@ -59,7 +59,7 @@ GitHub Release 链接与发布状态：https://github.com/wudahua/MCP_CREO_MechD
 
 | ID | 技术状态 | 交付版本 | 剩余范围 | 卡首页 | 主台账 | 版本说明 | 开发入口 | 实际 Release |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| DEV-052 | 本批交付（N01—N13 集成） | 0.10.0 | N13 发布流程由 Phase B 收尾 | DEV-052 | BACKLOG | RELEASE_NOTES_0.10.0 | DEVELOPMENT | https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.10.0 （正式发布） |
+| DEV-052 | 本批交付（N01—N13 集成） | 0.10.0 | N13 发布流程由 Phase B 收尾 | DEV-052 | BACKLOG | release-notes/RELEASE_NOTES_0.10.0 | DEVELOPMENT | https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.10.0 （正式发布） |
 | FEAT-051 | 已交付（run2 七夹具实机通过） | 0.10.0 | `zero_delta` 离线专属；单位矩阵仅离线 | FEAT-051 | BACKLOG | 同上 | 同上 | 同上 |
 | FEAT-035/T12 | 已交付（tip 口径，六例实机通过） | 0.10.0 | 通孔口径、出口沉头/双端沉孔、螺纹孔 | FEAT-035 | BACKLOG | 同上 | 同上 | 同上 |
 | FEAT-034/T02 | 已交付（创建 5/5+编辑 3/3 实机） | 0.10.0 | `illegal_dir_zero` 反例待查（BUG-093）、恢复编辑未执行 | FEAT-034 | BACKLOG | 同上 | 同上 | 同上 |

@@ -10,7 +10,7 @@
 
 ## 契约（用户 2026-10-18 确认）
 
-受管副本：接管对象为 Creo 当前窗口模型（`ProMdlCurrentGet`）；apply 以 `ProMdlnameCopy` 复制当前会话状态为受管对象，保存到新 `models/<id>/output/`，erase/load/regenerate 后 `verify_recovery` 全量比对；用户磁盘原件与会话中原模型不修改、不擦除、不改名。首批独立 part + sheetmetal；mm 主单位、无外部依赖（`ProMdlDependenciesDataList` 为空）、无不健康特征；assembly/drawing/非 mm/带依赖明确拒绝。身份 = origin 路径 + 磁盘文件 sha256 + live inspection 全量结构 + 会话指纹；显示名乱码（[BUG-070](work-items/BUG-070.md) 形态，本次实机 current_model 为 `▩FEAT042_SEED_PART0001`）不影响身份判定。
+受管副本：接管对象为 Creo 当前窗口模型（`ProMdlCurrentGet`）；apply 以 `ProMdlnameCopy` 复制当前会话状态为受管对象，保存到新 `models/<id>/output/`，erase/load/regenerate 后 `verify_recovery` 全量比对；用户磁盘原件与会话中原模型不修改、不擦除、不改名。首批独立 part + sheetmetal；mm 主单位、无外部依赖（`ProMdlDependenciesDataList` 为空）、无不健康特征；assembly/drawing/非 mm/带依赖明确拒绝。身份 = origin 路径 + 磁盘文件 sha256 + live inspection 全量结构 + 会话指纹；显示名乱码（[BUG-070](archive/work-items/BUG-070.md) 形态，本次实机 current_model 为 `▩FEAT042_SEED_PART0001`）不影响身份判定。
 
 ## 工具协议
 

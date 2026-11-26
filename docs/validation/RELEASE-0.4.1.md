@@ -4,8 +4,8 @@
 
 ## 本轮变更清单
 
-- 代码（详见 [RELEASE_NOTES_0.4.1.md](../RELEASE_NOTES_0.4.1.md)）：native（generic.cpp adopt 第二阶段/inspection_units.h 单位查询/feature_id 规范化与 alias_entry、worker.cpp）；Python（adoption.py、model_queries.py、session_models.py、schema.py SketchRef、bridge/generic_bridge 分发、server.py 86 工具）；测试（test_adoption、test_model_queries、test_session_models、test_sketch_references 5 例、test_inspection_units 8 例）。
-- 文档：README 版本段与标题、RELEASE_NOTES_0.4.1、RELEASING/INSTALL/ADOPTION 版本行、WORKBUDDY_ADOPTION 提示词、BACKLOG、任务卡（FEAT-042、BUG-072、BUG-073）、验证记录（ADOPTION-WorkBuddy-2026-10-19 三轮）。
+- 代码（详见 [release-notes/RELEASE_NOTES_0.4.1.md](../release-notes/RELEASE_NOTES_0.4.1.md)）：native（generic.cpp adopt 第二阶段/inspection_units.h 单位查询/feature_id 规范化与 alias_entry、worker.cpp）；Python（adoption.py、model_queries.py、session_models.py、schema.py SketchRef、bridge/generic_bridge 分发、server.py 86 工具）；测试（test_adoption、test_model_queries、test_session_models、test_sketch_references 5 例、test_inspection_units 8 例）。
+- 文档：README 版本段与标题、release-notes/RELEASE_NOTES_0.4.1、RELEASING/INSTALL/ADOPTION 版本行、WORKBUDDY_ADOPTION 提示词、BACKLOG、任务卡（FEAT-042、BUG-072、BUG-073）、验证记录（ADOPTION-WorkBuddy-2026-10-19 三轮）。
 - 种子链：两份 seed_manifest `compatible_server_version` → 0.4.1（字节级同步）；种子包重建；seeds.py expected_digest 同步（9 枚种子身份不变，仅清单版本标记）。
 
 ## 检查与实机证据（Windows x64 / Python 3.12.14 / Creo 12.4.0.0 / 匹配 SDK）

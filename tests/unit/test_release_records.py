@@ -607,6 +607,20 @@ class UnitReportGateTest(unittest.TestCase):
             problems = validate_release_records(VERSION, root=root)
         self.assertFalse(any("全量 unittest 通过" in p for p in problems), problems)
 
+    def test_release_notes_in_release_notes_subdir_are_accepted(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            files = _fixture_files()
+            del files[NOTES]
+            files[f"docs/release-notes/RELEASE_NOTES_{VERSION}.md"] = (
+                f"# {VERSION} 版本说明\n\n"
+                f"- [BUG-119](../work-items/BUG-119.md)\n"
+                f"- [发布记录](../validation/RELEASE-{VERSION}.md)\n"
+                f"- [版本文件](../../version.py)\n"
+            )
+            _write_tree(root, files)
+            self.assertEqual(validate_release_records(VERSION, root=root), [])
+
 
 if __name__ == "__main__":
     unittest.main()

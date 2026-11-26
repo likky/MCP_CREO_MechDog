@@ -1,6 +1,6 @@
 # MCP_CREO_MechDog 0.11.3 发布记录
 
-发布日期：2026-11-02。版本：`0.11.3`（PATCH，公开工具仍 95）。条目：[DEV-062](work-items/DEV-062.md)（R11 归档与登记）、[BUG-104](work-items/BUG-104.md)、[BUG-105](work-items/BUG-105.md)、[FEAT-056](work-items/FEAT-056.md)；[BUG-106](work-items/BUG-106.md)、[DEV-063](work-items/DEV-063.md) 仅登记。版本说明：[RELEASE_NOTES_0.11.3.md](../RELEASE_NOTES_0.11.3.md)。
+发布日期：2026-11-02。版本：`0.11.3`（PATCH，公开工具仍 95）。条目：[DEV-062](archive/work-items/DEV-062.md)（R11 归档与登记）、[BUG-104](archive/work-items/BUG-104.md)、[BUG-105](work-items/BUG-105.md)、[FEAT-056](work-items/FEAT-056.md)；[BUG-106](work-items/BUG-106.md)、[DEV-063](work-items/DEV-063.md) 仅登记。版本说明：[release-notes/RELEASE_NOTES_0.11.3.md](../release-notes/RELEASE_NOTES_0.11.3.md)。
 
 ## 交付内容
 

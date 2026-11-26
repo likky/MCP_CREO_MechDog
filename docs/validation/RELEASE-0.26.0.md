@@ -2,7 +2,7 @@
 
 - 版本：`0.26.0`（MINOR，部分交付）
 - 日期：2026-11-16
-- 版本说明：[RELEASE_NOTES_0.26.0](../RELEASE_NOTES_0.26.0.md)
+- 版本说明：[release-notes/RELEASE_NOTES_0.26.0](../release-notes/RELEASE_NOTES_0.26.0.md)
 - 主台账：[BACKLOG](../BACKLOG.md)
 - 工作卡：[DEV-091](../work-items/DEV-091.md)
 - 受测提交：本记录所在 `main` 提交（标签 `v0.26.0` 的对象与提交号只登记在 `main` 的[POSTCHECK](../development/RELEASE-POSTCHECK-2026-11-07.md) `## v0.26.0` 段）

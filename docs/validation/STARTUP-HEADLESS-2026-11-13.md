@@ -1,6 +1,6 @@
 # 0.24.1 启动参数、桌面复核与无图形建模证据（2026-11-13）
 
-来源报告：`C:\Users\Administrator\Downloads\0.23.1\2026-11-12-Creo13.4.0.0-MCP0.23.1-Toolkit连接-4与驱动蓝屏.md`。报告基于 0.23.1（107 工具）；本轮在 0.24.0 代码线上重新实施并验收，条目见 [BUG-125](../work-items/BUG-125.md)、[BUG-126](../work-items/BUG-126.md)、[BUG-127](../work-items/BUG-127.md)、[BUG-128](../work-items/BUG-128.md) 与 [DEV-089](../work-items/DEV-089.md)。
+来源报告：`C:\Users\Administrator\Downloads\0.23.1\2026-11-12-Creo13.4.0.0-MCP0.23.1-Toolkit连接-4与驱动蓝屏.md`。报告基于 0.23.1（107 工具）；本轮在 0.24.0 代码线上重新实施并验收，条目见 [BUG-125](../archive/work-items/BUG-125.md)、[BUG-126](../archive/work-items/BUG-126.md)、[BUG-127](../archive/work-items/BUG-127.md)、[BUG-128](../archive/work-items/BUG-128.md) 与 [DEV-089](../archive/work-items/DEV-089.md)。
 
 环境：Windows x64 / Creo 12.4.0.0（`release_numeric=44`）/ 匹配 SDK，编译器由 `vcvars64_local.cmd` 提供；`.venv` Python 3.13.14。受测源码为 0.24.0 提交 `03b884d` 加本轮工作树改动（dirty=true），指纹与提交号以 [发布记录](RELEASE-0.24.1.md)为准。
 

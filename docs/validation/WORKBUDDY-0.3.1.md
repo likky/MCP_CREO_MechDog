@@ -1,6 +1,6 @@
 # WorkBuddy 0.3.1 全量实测补录
 
-补录日期：2026-10-15；整理条目：[DEV-017](../work-items/DEV-017.md)。[原始报告](MCP_CREO_MechDog_0.3.1_全量实测问题报告.md)按原字节归档。来源：`E:\Projects\workcreo\MCP_CREO_MechDog_0.3.1_全量实测问题报告.md`；SHA256：`d3bae967c6b58978a5eb1e862a178e5aeccb8f82cca02ec14a444747db001ee1`。
+补录日期：2026-10-15；整理条目：[DEV-017](../archive/work-items/DEV-017.md)。[原始报告](MCP_CREO_MechDog_0.3.1_全量实测问题报告.md)按原字节归档。来源：`E:\Projects\workcreo\MCP_CREO_MechDog_0.3.1_全量实测问题报告.md`；SHA256：`d3bae967c6b58978a5eb1e862a178e5aeccb8f82cca02ec14a444747db001ee1`。
 
 ## 环境与证据边界
 

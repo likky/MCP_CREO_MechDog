@@ -341,7 +341,7 @@ XZ 的法向是 negative Y，因此 `direction="positive"` 会让实体向更小
 
 这些集合和坐标包装承载不同的参数含义，不能简单地给所有裸引用增加同一层包装。此修复兼容报告中的轴标签、补齐引用契约，不更改原生执行器或创建额外几何。
 
-实现与当前验收范围见 [BUG-006](work-items/BUG-006.md) 和 [本次证据](validation/BUG-006.md)。
+实现与当前验收范围见 [BUG-006](archive/work-items/BUG-006.md) 和 [本次证据](validation/BUG-006.md)。
 
 ## 选择性切除作用域（DEV-081/F08）
 

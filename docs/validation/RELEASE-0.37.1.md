@@ -6,7 +6,7 @@
 
 ## 验收范围
 
-本版收口 [BUG-151](../work-items/BUG-151.md) 并归档 0.35.8 外部反馈原件 [test-mcp-capabilities-drift.md](feedback-0.35.8-2026-11-22/originals/test-mcp-capabilities-drift.md)（SHA256 `5944044677c36c089f182590881ee9710de44144390c57a7dd298e17698732ee`）：
+本版收口 [BUG-151](../archive/work-items/BUG-151.md) 并归档 0.35.8 外部反馈原件 [test-mcp-capabilities-drift.md](feedback-0.35.8-2026-11-22/originals/test-mcp-capabilities-drift.md)（SHA256 `5944044677c36c089f182590881ee9710de44144390c57a7dd298e17698732ee`）：
 
 - `tools/test_mcp.py`：实机模式在调用 `creo_session_status` 前通过 `wait_for_startup` 等待启动就绪（修复 0.36.1 未验实机时必然撞 `building_worker` 失败的问题）；新增 `--offline` 模式（内部 `--serve-offline` 隔离 `startup.start` 与 `updates.start` 副作用，不拉起 Creo、不触网，走真实 stdio）；显式打印异常回溯防止被 `TaskGroup` 遮蔽；自动创建报告输出目录；补齐 `cancelled` 终态与 `detail="full"` 分页 `result_entries` 兜底；核对 `tool_count` 与 `enabled_tool_count` 一致。
 - `tools/dev_check.py`：将 `("test_mcp", ["tools/test_mcp.py", "--offline"])` 纳入 `OFFLINE_ACCEPTANCE_SCRIPTS`，每次 `dev_check` 均自动执行三项离线 stdio 验收。
@@ -58,7 +58,7 @@
 
 | ID | 交付版本 | 实际 Release | 技术状态 | 卡首页 | 主台账 | 差异说明 |
 | --- | --- | --- | --- | --- | --- | --- |
-| [BUG-151](../work-items/BUG-151.md) | 0.37.1 | v0.37.1 | 已完成 | 已完成（0.36.1 协议契约修复；0.37.1 补齐实机启动等待、离线门禁、全模式实机验收与其余脚本分页漂移清理） | 已完成（0.36.1 协议契约修复；0.37.1 实机与全链路收口） | 0.36.1 与 0.37.1 合并收口；Creo 9/12 与 WorkBuddy 未测 |
+| [BUG-151](../archive/work-items/BUG-151.md) | 0.37.1 | v0.37.1 | 已完成 | 已完成（0.36.1 协议契约修复；0.37.1 补齐实机启动等待、离线门禁、全模式实机验收与其余脚本分页漂移清理） | 已完成（0.36.1 协议契约修复；0.37.1 实机与全链路收口） | 0.36.1 与 0.37.1 合并收口；Creo 9/12 与 WorkBuddy 未测 |
 
 ## 远端核对
 

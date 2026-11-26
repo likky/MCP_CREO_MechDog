@@ -2,7 +2,7 @@
 
 - 版本：`0.33.0`（MINOR，部分交付）
 - 日期：2026-11-20
-- 版本说明：[RELEASE_NOTES_0.33.0](../RELEASE_NOTES_0.33.0.md)
+- 版本说明：[release-notes/RELEASE_NOTES_0.33.0](../release-notes/RELEASE_NOTES_0.33.0.md)
 - 主台账：[BACKLOG](../BACKLOG.md) · 工作卡：[BUG-134](../work-items/BUG-134.md) · [BUG-135](../work-items/BUG-135.md) · [BUG-136](../work-items/BUG-136.md) · [DEV-095](../work-items/DEV-095.md) · [DEV-096](../work-items/DEV-096.md) · 交付快照：[0.33.0](../releases/0.33.0.json)
 - 受测提交：`613cc4bc3424ce066fb255d5781aa157b23f35a3`（`main`），标签对象 `629f5db8acc9c09bb68f2bd4486d751a1d45cbca` 指向该提交
 - 与上一版本的关系：上一版本：0.32.0（`v0.32.0`，提交 `539a6b0145d84a9c15e538df6601d9538ecfd035`），本版在其之上交付 0.31.1 反馈批的面板 -8 修复、元素树完成旁路、装配约束类型文案、面板可信度披露与发布记录门禁交叉校验

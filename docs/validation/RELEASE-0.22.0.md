@@ -13,7 +13,7 @@
 
 ## 版本号说明
 
-- 仓库存在历史标签 `v0.22` 与 `docs/RELEASE_NOTES_0.22.md`（旧编号体系），本版一律不动；新版本用 `v0.22.0`、版本说明为 `docs/RELEASE_NOTES_0.22.0.md`。
+- 仓库存在历史标签 `v0.22` 与 `release-notes/RELEASE_NOTES_0.22.md`（旧编号体系），本版一律不动；新版本用 `v0.22.0`、版本说明为 `release-notes/RELEASE_NOTES_0.22.0.md`。
 - `src/creo_mechdog/update_check.py` 只接受三段式 SemVer，`v0.22` 不参与比较，两者不冲突。
 
 ## 验证
@@ -78,5 +78,5 @@
 
 - 种子包：先在回填前构建一次（exit 2，保留归档并打印应回填摘要 `9fe456f2…`），回填 `docs/seed_package.json` 后重建确认哈希不变（`docs/seed_package.json matches this rebuild`），再以该归档制作源码包。
 - 源码包解压门禁：解压到短路径 `E:\r220\MCP_CREO_MechDog`、`pip install --no-deps -e .` 后 `python -m unittest discover -s tests` → `Ran 3413 tests in 394.264s ... OK (skipped=6)`（exit 0）。跳过项为源码包无 `.git/` 的 git 依赖用例；与工作树 `dev_check` 的 3413 项同口径。核完已把可编辑安装恢复回 `E:\Projects\MCP_CREO_MechDog`，临时目录已删除。
-- 历史标签 `v0.22` 与 `docs/RELEASE_NOTES_0.22.md` 未改动。
+- 历史标签 `v0.22` 与 `release-notes/RELEASE_NOTES_0.22.md` 未改动。
 - 本段在标签提交之后回填，不改变已发布包内容；源码包内的本文件为打包时点快照。

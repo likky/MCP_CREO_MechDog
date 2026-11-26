@@ -2,7 +2,7 @@
 
 - 版本：**0.11.6**（PATCH），`version.py` 唯一来源。
 - 条目：[DEV-065](../work-items/DEV-065.md)（0.11.5 第十三轮反馈批 R13），关联 [BUG-108](../work-items/BUG-108.md)、[BUG-109](../work-items/BUG-109.md)、[BUG-110](../work-items/BUG-110.md)、[BUG-111](../work-items/BUG-111.md)。
-- 版本说明：[RELEASE_NOTES_0.11.6.md](../RELEASE_NOTES_0.11.6.md)（已作为 Release 正文发布）。
+- 版本说明：[release-notes/RELEASE_NOTES_0.11.6.md](../release-notes/RELEASE_NOTES_0.11.6.md)（已作为 Release 正文发布）。
 - 标签：`v0.11.6` → 提交 `2d548dae042f6975b4dae8ebd43ecdec76a16c21`（`main`，合并提交 `DEV-065: R13 stability and failure closeout for 0.11.6`）。
 - Release：<https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.11.6>（`draft=false`、`prerelease=false`，发布 2026-11-03T06:07:38Z）。
 
@@ -22,11 +22,11 @@ python tools/package_seeds.py --output build\dist\release\MCP_CREO_MechDog-0.11.
 python tools/package.py --seed-archive build\dist\release\MCP_CREO_MechDog-0.11.6-seed-library.zip `
     --output build\dist\release\MCP_CREO_MechDog-0.11.6-source.zip
 git tag -a v0.11.6 -m "MCP_CREO_MechDog 0.11.6: R13 stability and failure closeout"
-gh release create v0.11.6 <两个附件> --title "MCP_CREO_MechDog 0.11.6" --notes-file docs/RELEASE_NOTES_0.11.6.md
+gh release create v0.11.6 <两个附件> --title "MCP_CREO_MechDog 0.11.6" --notes-file release-notes/RELEASE_NOTES_0.11.6.md
 gh release download v0.11.6 --dir build\verify --clobber; Get-FileHash build\verify\*.zip -Algorithm SHA256
 ```
 
-源码包内容核验：1263 个文件；不含 `native/constants.inc`、`jobs/`、`models/`、`build/`、`.venv/`、`toolkit.lock`、`session_activity.json`、`config.json`、`client-config.json`、`__pycache__`；含 `version.py`=`0.11.6`、`docs/RELEASE_NOTES_0.11.6.md`、`docs/validation/feedback-0.11.5-2026-11-03/MAPPING.md` 与 5 份原件。
+源码包内容核验：1263 个文件；不含 `native/constants.inc`、`jobs/`、`models/`、`build/`、`.venv/`、`toolkit.lock`、`session_activity.json`、`config.json`、`client-config.json`、`__pycache__`；含 `version.py`=`0.11.6`、`release-notes/RELEASE_NOTES_0.11.6.md`、`docs/validation/feedback-0.11.5-2026-11-03/MAPPING.md` 与 5 份原件。
 
 ## 验收摘要
 

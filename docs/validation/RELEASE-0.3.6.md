@@ -1,6 +1,6 @@
 # 0.3.6 发布候选与主干交付核对
 
-日期：2026-10-18（Asia/Shanghai）。条目：[DEV-041](../work-items/DEV-041.md)。阶段：候选检查通过；实际 main / v0.3.6 / Release / 附件核验在交付 PR 回填，不另加未发布主干提交。
+日期：2026-10-18（Asia/Shanghai）。条目：[DEV-041](../archive/work-items/DEV-041.md)。阶段：候选检查通过；实际 main / v0.3.6 / Release / 附件核验在交付 PR 回填，不另加未发布主干提交。
 
 用户 2026-10-18 确认 DEV-040 收尾后发布 0.3.6。分支 `codex/dev-040-offline-recovery`，自远端 main `8ce644f` 起包含五笔：`64a7485`（0.3.5 四份反馈补录）、`2907e34`（DEV-038/039 台账重构）、`f879673`（DEV-040 建卡）、`2c9409e`（DEV-040 实施：BUG-059 修复与诊断脚本）、`a6c1334`（钣金/曲面反馈补录）。
 
@@ -19,7 +19,7 @@
 ## 本次发布检查
 
 - 命令：`.\.venv\Scripts\python.exe tools\dev_check.py` → `success: true`、`unit_tests: passed`（356/356，与 DEV-040 收尾复核受测源码集合 SHA256 `92002a70…` 一致口径）；存量基线 35 条 lint / 25 个未格式化文件保持，无新增语言问题；`native_validation: not_run`（无 C++ 改动，符合联调约束）。
-- 版本元数据：`version.py` → 0.3.6；[RELEASE_NOTES_0.3.6.md](../RELEASE_NOTES_0.3.6.md)；本记录。
+- 版本元数据：`version.py` → 0.3.6；[release-notes/RELEASE_NOTES_0.3.6.md](../release-notes/RELEASE_NOTES_0.3.6.md)；本记录。
 - 候选提交为包含版本元数据的工作区提交（见 PR）；dirty 状态在本记录生成时仅剩版本/发布文档本身。
 
 ## 附件与发布（PR 回填）

@@ -2,7 +2,7 @@
 
 本文保留为版本总结和未来能力建议快照。后续工作已纳入 [统一台账](BACKLOG.md)，先处理 P1 稳定性；本建议顺序不再作为当前开发排期。
 
-基于 [RELEASE_NOTES_0.2.5.md](RELEASE_NOTES_0.2.5.md)、[PROGRESS_025.md](PROGRESS_025.md) 及 [capabilities.py](../capabilities.py) 的能力边界整理。记录日期：2026-10-13。
+基于 [release-notes/RELEASE_NOTES_0.2.5.md](release-notes/RELEASE_NOTES_0.2.5.md)、[PROGRESS_025.md](PROGRESS_025.md) 及 [capabilities.py](../capabilities.py) 的能力边界整理。记录日期：2026-10-13。
 
 ## 一、v0.2.5 文档总结
 

@@ -1,6 +1,6 @@
 # Release 0.7.2 发布验收记录
 
-版本与条目：`0.7.2`（PATCH），[DEV-049](../work-items/DEV-049.md) 0.6.1 两份反馈后续批次（T00 基线与原件归档、T01 断连离线核对（BUG-085，结论证据不足、根因未定）、T02 `dev_check` 超时修复（DEV-050）、T03/T08 安装误报修复（BUG-086，含 T08 批内补充）、T04 原斜槽六例（BUG-087）与 Right 面回归、T05 多环/预览查缺、T06 种子 15+2（FEAT-030）、T07 文档收口、T08 集成与交付）。本版同时覆盖 0.7.1 发布后的主干回填提交 `d2e37b0`（DEV-049 T08 交付差异清单 GAP-1/GAP-2）。公开工具数 94，与 0.7.1 相同，不新增工具。
+版本与条目：`0.7.2`（PATCH），[DEV-049](../archive/work-items/DEV-049.md) 0.6.1 两份反馈后续批次（T00 基线与原件归档、T01 断连离线核对（BUG-085，结论证据不足、根因未定）、T02 `dev_check` 超时修复（DEV-050）、T03/T08 安装误报修复（BUG-086，含 T08 批内补充）、T04 原斜槽六例（BUG-087）与 Right 面回归、T05 多环/预览查缺、T06 种子 15+2（FEAT-030）、T07 文档收口、T08 集成与交付）。本版同时覆盖 0.7.1 发布后的主干回填提交 `d2e37b0`（DEV-049 T08 交付差异清单 GAP-1/GAP-2）。公开工具数 94，与 0.7.1 相同，不新增工具。
 
 日期与环境：2026-10-28（Asia/Shanghai）；Windows 11 Enterprise x64、Python 3.12.14、Creo Parametric 12.4.0.0（`release_numeric=44`）、匹配 Toolkit SDK、MSVC x64、Windows PowerShell 5.1.26100.9711、ruff 0.17.0、clang-format 23.1.3。
 
@@ -68,10 +68,10 @@
 
 | ID | 技术状态 | 交付版本 | 剩余范围 | 卡首页 |
 | --- | --- | --- | --- | --- |
-| DEV-049 | 已完成（T00—T08，随本版交付并移入完成档案） | 0.7.2 | WorkBuddy、外部 Creo 9/10 未做；T05 差项实机未跑 | [DEV-049](../work-items/DEV-049.md) |
-| BUG-086 | 已修复（含 T08 批内补充；新目录安装验证通过） | 0.7.2 | `pwsh` 7 / PowerShell 5.0 未测 | [BUG-086](../work-items/BUG-086.md) |
-| BUG-087 | 已修复（六例 6/6 + Right 面回归） | 0.7.2 | 外部环境未复测；BUG-064/084 原构型范围保留 | [BUG-087](../work-items/BUG-087.md) |
-| DEV-050 | 已完成（`--unit-timeout-seconds` 默认 900 秒，全量 1128 项通过） | 0.7.2 | 无 | [DEV-050](../work-items/DEV-050.md) |
+| DEV-049 | 已完成（T00—T08，随本版交付并移入完成档案） | 0.7.2 | WorkBuddy、外部 Creo 9/10 未做；T05 差项实机未跑 | [DEV-049](../archive/work-items/DEV-049.md) |
+| BUG-086 | 已修复（含 T08 批内补充；新目录安装验证通过） | 0.7.2 | `pwsh` 7 / PowerShell 5.0 未测 | [BUG-086](../archive/work-items/BUG-086.md) |
+| BUG-087 | 已修复（六例 6/6 + Right 面回归） | 0.7.2 | 外部环境未复测；BUG-064/084 原构型范围保留 | [BUG-087](../archive/work-items/BUG-087.md) |
+| DEV-050 | 已完成（`--unit-timeout-seconds` 默认 900 秒，全量 1128 项通过） | 0.7.2 | 无 | [DEV-050](../archive/work-items/DEV-050.md) |
 | FEAT-030 | 已验收（未收口；15+2 实机全过） | 0.7.2 | 生产版本可追溯记录、其他环境加载证据 | [FEAT-030](../work-items/FEAT-030.md) |
 | BUG-085 | 待复现（根因未定） | 未排期 | 13 正例 + 2 负例编辑闭环缺口、关键证据缺失 | [BUG-085](../work-items/BUG-085.md) |
 

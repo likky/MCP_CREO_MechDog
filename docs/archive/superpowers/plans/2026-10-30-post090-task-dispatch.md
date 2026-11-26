@@ -8,7 +8,7 @@
 
 **Tech Stack:** Windows x64、PowerShell、Python 3.12+/unittest、C++17/MSVC、Creo 12.4.0.0/匹配 Toolkit SDK；Creo 10 本次兼容问题做定向 SDK 验证。
 
-**Spec:** [已确认基线与范围](../specs/2026-10-30-post090-feedback-design.md)；[0.9.0 版本说明](../../RELEASE_NOTES_0.9.0.md)；[发布记录](../../validation/RELEASE-0.9.0.md)。
+**Spec:** [已确认基线与范围](../specs/2026-10-30-post090-feedback-design.md)；[0.9.0 版本说明](../../release-notes/RELEASE_NOTES_0.9.0.md)；[发布记录](../../validation/RELEASE-0.9.0.md)。
 
 ## Global Constraints
 

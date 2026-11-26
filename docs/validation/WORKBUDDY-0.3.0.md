@@ -1,6 +1,6 @@
 # WorkBuddy 0.3.0 全量实测补录
 
-补录日期：2026-10-14。整理条目：[DEV-014](../work-items/DEV-014.md)。[原始报告](MCP_CREO_MechDog_0.3.0_全量实测问题报告.md) 已交付并归档，原文不改写。来源：`E:\Projects\workcreo\MCP_CREO_MechDog_0.3.0_全量实测问题报告.md`；SHA256：`83dbac0673a8a4a2fb3bf62c846d68ce09ebd28556c4453eb4fd6018f2e6e06a`。
+补录日期：2026-10-14。整理条目：[DEV-014](../archive/work-items/DEV-014.md)。[原始报告](MCP_CREO_MechDog_0.3.0_全量实测问题报告.md) 已交付并归档，原文不改写。来源：`E:\Projects\workcreo\MCP_CREO_MechDog_0.3.0_全量实测问题报告.md`；SHA256：`83dbac0673a8a4a2fb3bf62c846d68ce09ebd28556c4453eb4fd6018f2e6e06a`。
 
 ## 完成情况与范围
 
@@ -31,9 +31,9 @@
 
 | 现象 / 本轮材料 | 台账去向 | 当前结论 |
 | --- | --- | --- |
-| t30_loft2：sk_a=R10@Z0、sk_b=R6@Z25，loft add/straight 停在 activate_blend_context，报告称约 600 s 后 unknown_outcome；种子放样 40650 mm³ 通过 | [BUG-007](../work-items/BUG-007.md) | 挂死与通道占用待开发者复现；不能用种子新建件通过替代已有件追加放样通过 |
-| transform 失败后 new_part 已保存但无终态，后续 -38；startup retry 长时间无进展，重启 Creo 后恢复 | [BUG-008](../work-items/BUG-008.md) | 断开、通道失效与协调器恢复待核实；涉及用户会话的恢复方式须保护现有模型 |
-| running 时 refresh_model 等被 busy 拒绝，succeeded 后立即提交偶发仍 busy | [BUG-009](../work-items/BUG-009.md) | 占用诊断和收尾竞态待复现；没有真实并发通过证据 |
+| t30_loft2：sk_a=R10@Z0、sk_b=R6@Z25，loft add/straight 停在 activate_blend_context，报告称约 600 s 后 unknown_outcome；种子放样 40650 mm³ 通过 | [BUG-007](../archive/work-items/BUG-007.md) | 挂死与通道占用待开发者复现；不能用种子新建件通过替代已有件追加放样通过 |
+| transform 失败后 new_part 已保存但无终态，后续 -38；startup retry 长时间无进展，重启 Creo 后恢复 | [BUG-008](../archive/work-items/BUG-008.md) | 断开、通道失效与协调器恢复待核实；涉及用户会话的恢复方式须保护现有模型 |
+| running 时 refresh_model 等被 busy 拒绝，succeeded 后立即提交偶发仍 busy | [BUG-009](../archive/work-items/BUG-009.md) | 占用诊断和收尾竞态待复现；没有真实并发通过证据 |
 | drawing_view_update(scale=2) 失败，toolkit_code=-1、operations=[]、rollback_succeeded=true | BUG-010 | 缩放更新失败待复现；位置更新仍须另测 |
 | session_status 空错误、startup_status 缓存仍 connected=true | BUG-011 | 用户可见诊断/缓存新鲜度问题待核实，异常捕获方案仅为建议 |
 | t30_probe 的 transform：feature_id=478，保存返回 -1；体积 9646.19、revision 未推进，模型被标 failed；干净件 t30_rb 成功 | BUG-012 / BUG-015 | 回滚语义和模型可用性、复杂件保存分别立项，不把几何完好等同于保存检查点已验证 |

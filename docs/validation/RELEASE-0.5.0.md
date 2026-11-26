@@ -2,7 +2,7 @@
 
 ## 交付内容
 
-0.4.6 反馈整合计划第二批（MINOR，新增公开工具，按现行 MINOR 规则不延用 0.4.6 的 PATCH 例外）：FEAT-045 装配只读检查 `creo_inspect_session_assembly`。见[版本说明](../RELEASE_NOTES_0.5.0.md)与[实施与验收记录](FEAT045-ASSEMBLY-INSPECT-2026-10-22.md)。
+0.4.6 反馈整合计划第二批（MINOR，新增公开工具，按现行 MINOR 规则不延用 0.4.6 的 PATCH 例外）：FEAT-045 装配只读检查 `creo_inspect_session_assembly`。见[版本说明](../release-notes/RELEASE_NOTES_0.5.0.md)与[实施与验收记录](FEAT045-ASSEMBLY-INSPECT-2026-10-22.md)。
 
 ## 版本链
 

@@ -23,7 +23,7 @@ Windows x64、Python 3.12.10、Creo 10.0.0.0（release 42）、匹配 Toolkit SD
 
 ## 逐 ID 状态核对
 
-主台账的状态保留各工作卡历史余项，交付版本对应下表的本次范围。 [主台账](../BACKLOG.md) · [开发入口](../DEVELOPMENT.md) · [版本说明](../RELEASE_NOTES_0.45.0.md)
+主台账的状态保留各工作卡历史余项，交付版本对应下表的本次范围。 [主台账](../BACKLOG.md) · [开发入口](../DEVELOPMENT.md) · [版本说明](../release-notes/RELEASE_NOTES_0.45.0.md)
 
 | ID | 交付版本 | 实际 Release | 技术状态 | 卡首页 | 主台账 | 差异说明 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -45,4 +45,4 @@ Windows x64、Python 3.12.10、Creo 10.0.0.0（release 42）、匹配 Toolkit SD
 
 ## 远端核对
 
-2026-11-25 发布后执行。标签 `v0.45.0` 指向提交 `378990cc16d75ea2a86417619c3fefce1ef2a972`，远端 `main` 为同一提交。从 Release 直链重新下载四件附件，按 `tools/check_release_assets.py --tag v0.45.0 --version 0.45.0 --dir build/release-assets/v0.45.0 --body-file docs/RELEASE_NOTES_0.45.0.md` 核验：四件齐全，两份 sidecar 与对应 ZIP 摘要一致，Release 正文自证通过。首次创建的正文未通过正文自证门禁，已用修订后的版本说明更新 Release 正文；标签内源码保留首次发布文本，四件附件字节未变。源码 ZIP SHA256 为 `f7e9e69a855459a6f1f5f7479bf059e7f8e530fa8db48711ad7c14c91ab42576`，种子包为 `1ab6d9892f764a019642a1595f59c4f8de64f04933f6657da8597abab80fa73f`，下载件与本地打包件逐字节相同。解包后的重新安装未执行，原因见上一节。前版身份比较和下载记录见[发布后附件核对记录](../development/RELEASE-POSTCHECK-2026-11-07.md)。
+2026-11-25 发布后执行。标签 `v0.45.0` 指向提交 `378990cc16d75ea2a86417619c3fefce1ef2a972`，远端 `main` 为同一提交。从 Release 直链重新下载四件附件，按 `tools/check_release_assets.py --tag v0.45.0 --version 0.45.0 --dir build/release-assets/v0.45.0 --body-file release-notes/RELEASE_NOTES_0.45.0.md` 核验：四件齐全，两份 sidecar 与对应 ZIP 摘要一致，Release 正文自证通过。首次创建的正文未通过正文自证门禁，已用修订后的版本说明更新 Release 正文；标签内源码保留首次发布文本，四件附件字节未变。源码 ZIP SHA256 为 `f7e9e69a855459a6f1f5f7479bf059e7f8e530fa8db48711ad7c14c91ab42576`，种子包为 `1ab6d9892f764a019642a1595f59c4f8de64f04933f6657da8597abab80fa73f`，下载件与本地打包件逐字节相同。解包后的重新安装未执行，原因见上一节。前版身份比较和下载记录见[发布后附件核对记录](../development/RELEASE-POSTCHECK-2026-11-07.md)。

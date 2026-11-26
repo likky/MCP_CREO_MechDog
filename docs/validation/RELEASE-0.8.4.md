@@ -28,9 +28,9 @@ Windows 2026-10-29 19:51:03 记录 `xtop.exe` `AppHangB1`。后续重启几分�
 
 | ID | 技术状态 | 交付版本与开放范围 | 当前入口 |
 | --- | --- | --- | --- |
-| DEV-051 | 首壁修复及本轮证据纳入；整体未收口 | 0.8.4；四壁及列明实机未测 | [工作卡](../work-items/DEV-051.md)、[主台账](../BACKLOG.md)、[版本说明](../RELEASE_NOTES_0.8.4.md)、[开发入口](../DEVELOPMENT.md) |
-| BUG-032 | 本机 T03 五组首壁通过 | 0.8.4；外部环境及下游范围未外推 | [工作卡](../work-items/BUG-032.md)、[主台账](../BACKLOG.md)、[版本说明](../RELEASE_NOTES_0.8.4.md) |
-| FEAT-014 | 两道折边创建，但几何平铺；新截面未实测 | 未收口；四壁、relief、真实折弯待验 | [工作卡](../work-items/FEAT-014.md)、[主台账](../BACKLOG.md)、[版本说明](../RELEASE_NOTES_0.8.4.md) |
-| BUG-046 | 普通件 add 与钣金 cut 对照通过；钣金 add `-1` | 未收口；修正基体后隔离待验 | [工作卡](../work-items/BUG-046.md)、[主台账](../BACKLOG.md)、[版本说明](../RELEASE_NOTES_0.8.4.md) |
+| DEV-051 | 首壁修复及本轮证据纳入；整体未收口 | 0.8.4；四壁及列明实机未测 | [工作卡](../work-items/DEV-051.md)、[主台账](../BACKLOG.md)、[版本说明](../release-notes/RELEASE_NOTES_0.8.4.md)、[开发入口](../DEVELOPMENT.md) |
+| BUG-032 | 本机 T03 五组首壁通过 | 0.8.4；外部环境及下游范围未外推 | [工作卡](../work-items/BUG-032.md)、[主台账](../BACKLOG.md)、[版本说明](../release-notes/RELEASE_NOTES_0.8.4.md) |
+| FEAT-014 | 两道折边创建，但几何平铺；新截面未实测 | 未收口；四壁、relief、真实折弯待验 | [工作卡](../work-items/FEAT-014.md)、[主台账](../BACKLOG.md)、[版本说明](../release-notes/RELEASE_NOTES_0.8.4.md) |
+| BUG-046 | 普通件 add 与钣金 cut 对照通过；钣金 add `-1` | 未收口；修正基体后隔离待验 | [工作卡](../work-items/BUG-046.md)、[主台账](../BACKLOG.md)、[版本说明](../release-notes/RELEASE_NOTES_0.8.4.md) |
 
 附注标签 `v0.8.4`、正式 Release 与四附件必须由最终 main 提交生成并逐件下载核对；完整 SHA256 直接列在 Release body。发布后不追加自指的 main 提交。

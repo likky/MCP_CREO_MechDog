@@ -2,7 +2,7 @@
 
 - 版本：`0.31.0`（MINOR，部分交付）
 - 日期：2026-11-19
-- 版本说明：[RELEASE_NOTES_0.31.0](../RELEASE_NOTES_0.31.0.md)
+- 版本说明：[release-notes/RELEASE_NOTES_0.31.0](../release-notes/RELEASE_NOTES_0.31.0.md)
 - 主台账：[BACKLOG](../BACKLOG.md) · 工作卡：[BUG-120](../work-items/BUG-120.md) · 交付快照：[0.31.0](../releases/0.31.0.json)
 - 受测提交：本记录所在开发分支的提交（标签 `v0.31.0` 的对象与提交号只在合入 `main` 后登记到 `main` 的 [POSTCHECK](../development/RELEASE-POSTCHECK-2026-11-07.md) `## v0.31.0` 段）
 - 与上一版本的关系：上一版本 0.30.0（`v0.30.0`，提交 `1c20f550571f15820dba6816f4efbab060197a4d`），本版在其之上补齐 BUG-120 的导线预检与建面回执，并把任务 5 接缝单独排期

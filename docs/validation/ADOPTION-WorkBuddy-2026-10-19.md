@@ -100,7 +100,7 @@ WorkBuddy 报告 prepare 任务 `result.adopted=true`，同时 `result.adoption.
 
 - prepare输入：`{"mode":"prepare","model_name":"wb_managed_03","idempotency_key":"adopt-prep-20261019-03"}`；job `b7293ef8c6224cfbb47688b288a8699e`、model `37377d420244b91612bc5671164b5e60`。终态succeeded/snapshot_prepared/adopt_pending/revision=0，报告完成时间部分为08:08:39.799276Z。快照SHA256 `f2fdbdbed026ea28e0ebc71baa31e3a00aff622929370102915ccda059c67c75`、87615字节、体积约6000，保存重载verified。
 - reconcile inspect：pending_job=null、original_job_id为上述prepare job、候选哈希一致；runner pid=23032与worker pid=12220均stopped=true。仅abandon_new可用，restore_baseline/accept_saved/accept_live均不可用。
-- 第一次apply将expected_pending_job_id显式null传入后，服务错误回显received ''，拒绝空串；省略该可选参数后成功。该现象与[BUG-055](../work-items/BUG-055.md)已记录的WorkBuddy空值序列化行为一致，不据此认定服务新出现null转空串或放宽空串校验。当前报告未提供原始传输包，转换位置本次未独立重验。
+- 第一次apply将expected_pending_job_id显式null传入后，服务错误回显received ''，拒绝空串；省略该可选参数后成功。该现象与[BUG-055](../archive/work-items/BUG-055.md)已记录的WorkBuddy空值序列化行为一致，不据此认定服务新出现null转空串或放宽空串校验。当前报告未提供原始传输包，转换位置本次未独立重验。
 - 成功apply使用action=abandon_new、上述model、expected_revision=0、inspect令牌、幂等键reconcile-abandon-20261019-03；job/recovery_id `2782a9e2b93f4ae98621add9d6ff8b5e`，succeeded/reconciliation_committed/revision=0，报告完成时间部分08:09:02.279000Z。success=true、saved_file_reloaded_and_verified=false、rollback_succeeded=false；放弃未执行保存重载或回滚，两个false不作为失败或对应动作验收通过。
 - 后续creo_inspect_model返回abandoned/revision=0/adopted=false/part_file=null；对账保留recovery_id、action、original_job_id、original_plan_completion_confirmed=false及resolved_at。shell与regenerate均被Model is not ready保护拒绝。
 - 会话total=1，仅原件WB_UNSAVED_03仍当前、origin空、modified=true、model_id=null；受管副本已从会话移除。放弃、后续编辑保护与原件保留有公开通过报告。磁盘快照文件仍保留及完整审计文件内容未在本段通过公开接口证明，不从会话移除推断文件删除或保留。

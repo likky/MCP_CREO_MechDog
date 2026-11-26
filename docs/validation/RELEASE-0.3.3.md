@@ -1,8 +1,8 @@
 # 0.3.3 集成与发布验收
 
-日期：2026-10-16（Asia/Shanghai）。条目：[DEV-029](../work-items/DEV-029.md)。结论：合入前发布候选验收通过；本记录不提前宣称已经公开发布，正式交付信息在本次合并 PR 回填。
+日期：2026-10-16（Asia/Shanghai）。条目：[DEV-029](../archive/work-items/DEV-029.md)。结论：合入前发布候选验收通过；本记录不提前宣称已经公开发布，正式交付信息在本次合并 PR 回填。
 
-以已发布的 main / 0.3.2 为基础集成 DEV-028 和 WorkBuddy 补录，保留原实现提交及 main 的 DEV-025 测试与分发修复。Creo 9 真实 SDK/运行时未验收，WorkBuddy 底板快捷入口未覆盖，FEAT-029 独立实现不在本次范围。版本与变更见 [发布说明](../RELEASE_NOTES_0.3.3.md)。
+以已发布的 main / 0.3.2 为基础集成 DEV-028 和 WorkBuddy 补录，保留原实现提交及 main 的 DEV-025 测试与分发修复。Creo 9 真实 SDK/运行时未验收，WorkBuddy 底板快捷入口未覆盖，FEAT-029 独立实现不在本次范围。版本与变更见 [发布说明](../release-notes/RELEASE_NOTES_0.3.3.md)。
 
 ## 源码与环境
 
