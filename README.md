@@ -60,6 +60,8 @@ Creo 软件、SDK、模板与许可需自行取得；MIT 只覆盖本项目原�
 }
 ```
 
+> **已接入的 AI Agent 可以继续用原来的配置和提示词。** 旧配置里的根目录 `server.py` 仍可启动服务。新安装使用上面的 `-m creo_mechdog`。两种入口提供相同的 MCP 工具和输入参数，共用同一安装目录下的模型和任务。写死入口路径或直接导入内部 Python 模块的脚本，见 [Agent 迁移说明](docs/MIGRATION.md#自动化脚本的兼容性)。
+
 服务启动后，让 AI 调用 `creo_startup_status` 等 `state == "ready"`、`creo_session_status` 确认连接，再调用 `creo_execute_plan`，例如创建 Ø20×30 的圆柱：
 
 ```json

@@ -25,6 +25,12 @@ MCP_CREO_MechDog 0.3.0 在安装 Creo 的 Windows 电脑上运行，通过本地
 
 多个客户端可共用同一安装目录和种子库。同目录的 `models/`、`jobs/` 保存受管模型及任务；继续修改时调用 `creo_list_models` / `creo_inspect_model` 查询最新模型 ID 和 revision，再顺序提交。不要沿用旧聊天里可能过期的 revision。打开一个 Creo 会话，确认 `creo_session_status.connected == true`。
 
+### 自动化脚本的兼容性
+
+- **通过 MCP 调用。** 现有提示词、工具名、输入参数和 `creo_get_job` 轮询方式可以沿用。新旧入口使用同一安装目录时，读取同一份模型和任务数据。
+- **校验启动路径。** `creo_capabilities` 的 runtime 分区中，`server_entry` 会随实际启动方式报告安装根的 `server.py` 或 `src/creo_mechdog/__main__.py`。如果脚本写死了入口文件名，改为接受预期安装根下的两个入口。
+- **直接使用 Python 导入。** 维护直接导入内部模块的脚本时，将原来的顶层 `generic_bridge`、`creo_startup` 或 `desktop_worker` 导入改为 `creo_mechdog` 包下的同名模块，例如 `from creo_mechdog import generic_bridge`。
+
 ## 换到另一台电脑
 
 1. 在目标 Windows x64 电脑准备 Creo 9、10 或 12、匹配 Toolkit SDK、MSVC x64 / Windows SDK、Python 3.12+ x64 和可用的 Toolkit 运行许可。当前开发与发布使用本机 Creo 12.4.0.0 验收，不要求 Creo 10 独立复测；Creo 9 与 Toolkit 9 已纳入支持/要求范围，[BUG-033](work-items/BUG-033.md) 编译探测修复已实现，本机无 Creo 9 SDK，实机编译及运行时均未验收。其他环境收到具体测试反馈后再跟进，具体范围见 [兼容矩阵](COMPATIBILITY.md)。
