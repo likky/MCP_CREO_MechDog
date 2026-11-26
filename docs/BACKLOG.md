@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-26（0.46.1 PATCH，公开工具 111）：交付 [BUG-193](work-items/BUG-193.md) 的提交前零锁 callback 预检——`callback_admission_status()` 零锁判定 `loft` / `surface_loft` 准入，未就绪时在建 job 与取 Toolkit 锁之前直接拒绝；Creo 10.0.0.0（`release_numeric=42`）未加载零锁/零作业拦截、启动回调自动准入与加载态建模保存重载全链路实机通过。另交付 [DEV-103](work-items/DEV-103.md) 文档目录治理。 [版本说明](RELEASE_NOTES_0.46.1.md) · [发布记录](validation/RELEASE-0.46.1.md)
+
 2026-11-26（Creo 10 / MCP 0.45.2，外部 WorkBuddy）：补录[独立曲面回归](validation/CREO10-PANEL-LOFT-JOIN-0.45.2-2026-11-26.md)。两段放样、合并、保存重载通过；X=80 共享边 G1 负对照为 22.4332°，合并前 0.01 mm 间隙未验收。另见 [BUG-193](work-items/BUG-193.md) 的 [0.46.0 黑盒补验](validation/BUG-193-CREO10-WORKBUDDY-0.46.0-2026-11-26.md)：未加载态两入口前置拒绝，加载后 resident_panel 成功并重载；Creo 9 / 12.4、加载态普通放样建模与瞬时通道锁未测。
 
 2026-11-26（0.46.0 MINOR，台账 272→276，公开工具 111）：逐字节归档 0.45.1 外部反馈原件至 [feedback-0.45.1-2026-11-26](validation/feedback-0.45.1-2026-11-26/SOURCE_MANIFEST.json)，交付 [BUG-192](work-items/BUG-192.md)（`draft` 基准面/实体面方向说明与 `material_effect`）、[FEAT-090](work-items/FEAT-090.md)（近容差 `arc-arc` 端点焊接与草图公开工具参数）、[BUG-193](work-items/BUG-193.md)（`loft`/`surface_loft` 统一 `runtime_ready` 披露与 before-job callback 预检）、[DEV-102](work-items/DEV-102.md)（`creo_capabilities` 操作列表口径与 `region.interior_point_yz_mm` 文档）。 [版本说明](RELEASE_NOTES_0.46.0.md) · [发布记录](validation/RELEASE-0.46.0.md)
@@ -268,12 +270,12 @@ DEV-073 以 `1cf9d3f` 为基点整理台账，随后并入 0.18.0 发布提交�
 | --- | --- |
 | 仍需修复 | 6 |
 | 待复现/待核实 | 37 |
-| 已有修复但待验收 | 88 |
+| 已有修复但待验收 | 87 |
 | 观察中 | 3 |
 | 其它 agent 处理范围 | 20 |
 | 开发中 | 9 |
 | 部分交付，剩余待验收 | 50 |
-| 部分交付，剩余待规划 | 7 |
+| 部分交付，剩余待规划 | 8 |
 | 待规划 | 56 |
 
 BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与真实缺口，勿重复派工。
@@ -339,7 +341,7 @@ BUG 分类是互斥主分类；“其它 agent”行仍写明已完成子项与�
 | --- | --- | --- | --- | --- |
 | [BUG-192](work-items/BUG-192.md) | P1 | 已有修复但待验收 | 0.46.0 | 修正 `draft` 基准面/实体面方向说明并新增 `material_effect`，Creo 10 实机 8/8 通过。剩：Creo 9/12.4 与 WorkBuddy 黑盒。 |
 | [FEAT-090](work-items/FEAT-090.md) | P1 | 已有修复但待验收 | 0.46.0 | 暴露草图端点焊接参数并支持 `arc-arc` 近容差共点吸附，Creo 10 实机 40 弧微间隙拉伸通过。剩：外部原件 gear10.json、Creo 9/12.4 与 WorkBuddy 黑盒。 |
-| [BUG-193](work-items/BUG-193.md) | P1 | 已有修复但待验收 | 0.46.0 | [Creo 10 / 0.46.0 黑盒补验](validation/BUG-193-CREO10-WORKBUDDY-0.46.0-2026-11-26.md)与开发分支零锁预检实机全链路（Creo 10 PID `11504` 未加载零锁/零作业拦截、启动回调自动准入、`loft` `26dae706` 与 `resident_panel` `c68cef0f` 仅取 `submit` 锁且保存重载通过，`dev_check` 4543 单测全过）均已通过。剩：合入发版与 Creo 9 / 12.4。 |
+| [BUG-193](work-items/BUG-193.md) | P1 | 部分交付 | 0.46.1 | 零锁预检已随 0.46.1 合入并发布（`callback_admission_status()` 零锁/零作业拦截、启动回调自动准入、`loft` `26dae706` 与 `resident_panel` `c68cef0f` 仅取 `submit` 锁且保存重载通过）。已交付 0.46.1 子项；Creo 9 / Creo 12.4 实机与本版零锁预检提交后的外部 WorkBuddy 黑盒复测未排期。 |
 | [DEV-102](work-items/DEV-102.md) | P2 | 已有修复但待验收 | 0.46.0 | `creo_capabilities` 新增 `registered_but_unavailable_operations` 并补全 `region.interior_point_yz_mm` 文档。剩：WorkBuddy 黑盒。 |
 | [BUG-036](work-items/BUG-036.md) | P1 | 已有修复但待验收 | 0.44.1 | 本版交付平面配合位姿校验。本机 Creo 10 复现约束写入成功而位姿未更新，冲突请求明确拒绝并验证回滚。外部 Creo 9 原案、Creo 12.4 与 WorkBuddy 待验证。 |
 | [BUG-187](work-items/BUG-187.md) | P0 | 已有修复但待验收 | 0.44.0 | 偏移基准面 `flip` 与草图显式 `v_axis`（`u_axis × v_axis` 确定法线），本机 Creo 10 正反例（`1000.0 mm³`、Z `[0,20]`、保存重载与回滚）通过。剩：Creo 9/12、WorkBuddy 黑盒。 |

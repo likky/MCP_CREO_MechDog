@@ -1,8 +1,8 @@
-# MCP_CREO_MechDog 0.46.0
+# MCP_CREO_MechDog 0.46.1
 
-![version](https://img.shields.io/badge/version-0.46.0-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
+![version](https://img.shields.io/badge/version-0.46.1-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![Creo](https://img.shields.io/badge/Creo-9%20%2F%2010%20%2F%2012-orange) ![MCP](https://img.shields.io/badge/MCP-stdio-purple)
 
-当前正式版 **0.46.0**（MINOR）。交付拔模基准面方向说明与 `material_effect`、近容差圆弧端点焊接与草图参数公开、放样统一 `runtime_ready` 与提交前 callback 预检，以及能力页操作列表口径整理。公开工具以 `creo_capabilities` 的 `tool_count` 为准。 [版本说明](docs/RELEASE_NOTES_0.46.0.md) · [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.46.0)
+当前正式版 **0.46.1**（PATCH）。交付放样 `loft` / `surface_loft` 提交前零锁 callback 预检（[BUG-193](docs/work-items/BUG-193.md) 追加）：未就绪时在建 job 与取 Toolkit 锁之前直接拒绝，不再为拒绝本身占用通道；另交付文档目录治理（[DEV-103](docs/work-items/DEV-103.md)）。公开工具以 `creo_capabilities` 的 `tool_count` 为准。 [版本说明](docs/RELEASE_NOTES_0.46.1.md) · [下载页](https://github.com/wudahua/MCP_CREO_MechDog/releases/tag/v0.46.1)
 
 > 让 AI 客户端通过 MCP，直接在 Creo Parametric 里创建**原生可编辑的参数化特征**——不是导出网格，也不是脚本模拟。
 

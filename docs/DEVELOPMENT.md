@@ -1,6 +1,6 @@
 # 开发入口
 
-2026-11-26（0.46.0 MINOR）交付 [BUG-192](work-items/BUG-192.md)、[FEAT-090](work-items/FEAT-090.md)、[BUG-193](work-items/BUG-193.md) 与 [DEV-102](work-items/DEV-102.md)。覆盖拔模基准面方向说明与 `material_effect`、近容差 `arc-arc` 端点焊接与草图参数公开、`loft`/`surface_loft` 统一 `runtime_ready` 与提交前 callback 预检，以及 `creo_capabilities` 操作列表口径。 [版本说明](RELEASE_NOTES_0.46.0.md) · [发布记录](validation/RELEASE-0.46.0.md)
+2026-11-26（0.46.1 PATCH）交付 [BUG-193](work-items/BUG-193.md) 的提交前零锁 callback 预检：`callback_admission_status()` 零锁判定 `loft` / `surface_loft` 准入，未就绪时在建 job 与取 Toolkit 锁之前直接拒绝；Creo 10.0.0.0（`release_numeric=42`）未加载零锁/零作业拦截、启动回调自动准入与加载态建模保存重载全链路实机通过。另交付 [DEV-103](work-items/DEV-103.md) 文档目录治理。 [版本说明](RELEASE_NOTES_0.46.1.md) · [发布记录](validation/RELEASE-0.46.1.md)
 
 2026-11-26（0.45.2 PATCH）交付 [DEV-002](work-items/DEV-002.md) 第四、五批。服务、桥接和启动实现集中到 Python 包，新安装使用包入口，旧 MCP 配置仍可使用。 [版本说明](RELEASE_NOTES_0.45.2.md) · [发布记录](validation/RELEASE-0.45.2.md)
 
