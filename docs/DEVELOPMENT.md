@@ -1,6 +1,8 @@
 # 开发入口
 
-2026-11-26（0.46.1 PATCH）交付 [BUG-193](work-items/BUG-193.md) 的提交前零锁 callback 预检：`callback_admission_status()` 零锁判定 `loft` / `surface_loft` 准入，未就绪时在建 job 与取 Toolkit 锁之前直接拒绝；Creo 10.0.0.0（`release_numeric=42`）未加载零锁/零作业拦截、启动回调自动准入与加载态建模保存重载全链路实机通过。另交付 [DEV-103](work-items/DEV-103.md) 文档目录治理。 [版本说明](release-notes/RELEASE_NOTES_0.46.1.md) · [发布记录](validation/RELEASE-0.46.1.md)
+2026-11-26（0.47.0 MINOR）交付 [BUG-194](work-items/BUG-194.md)（`auto` 求解器恢复将 `b_spline`/`arc`/`spline`/`ellipse` 路由到 `autodim`，失败回执补 `dimensioning='autodim'`/`geometry_tolerance_mm=<cap>` 自助提示）、[BUG-195](work-items/BUG-195.md)（`bounding_box_status` 披露面细分内缩误差界、空件平面报错指向 `datum_plane`、边选择器歧义附 `adjacent_surfaces` 与新出口）、[FEAT-091](work-items/FEAT-091.md)（`round` 期望凹凸/加减料断言与 `sheetmetal_base_flange` `envelope_mm`）与 [FEAT-092](work-items/FEAT-092.md)（只读 `creo_server_info` 与 `region.closed_chain`）；Creo 10.0.0.0（`release_numeric=42`）10 项实机与 4548 项单测全过。 [版本说明](release-notes/RELEASE_NOTES_0.47.0.md) · [发布记录](validation/RELEASE-0.47.0.md)
+
+2026-11-26（0.46.1 PATCH）交付 [BUG-193](work-items/BUG-193.md) 的提交前零锁 callback 预检——`callback_admission_status()` 零锁判定 `loft` / `surface_loft` 准入，未就绪时在建 job 与取 Toolkit 锁之前直接拒绝；Creo 10.0.0.0（`release_numeric=42`）未加载零锁/零作业拦截、启动回调自动准入与加载态建模保存重载全链路实机通过。另交付 [DEV-103](work-items/DEV-103.md) 文档目录治理。 [版本说明](release-notes/RELEASE_NOTES_0.46.1.md) · [发布记录](validation/RELEASE-0.46.1.md)
 
 2026-11-26（0.45.2 PATCH）交付 [DEV-002](work-items/DEV-002.md) 第四、五批。服务、桥接和启动实现集中到 Python 包，新安装使用包入口，旧 MCP 配置仍可使用。 [版本说明](release-notes/RELEASE_NOTES_0.45.2.md) · [发布记录](validation/RELEASE-0.45.2.md)
 
