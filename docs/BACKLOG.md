@@ -1,5 +1,7 @@
 # 统一开发台账
 
+2026-11-26（Creo 10 / MCP 0.45.2，外部 WorkBuddy）：补录[独立曲面回归](validation/CREO10-PANEL-LOFT-JOIN-0.45.2-2026-11-26.md)。两段放样、合并、保存重载通过；X=80 共享边 G1 负对照为 22.4332°，合并前 0.01 mm 间隙未验收。该记录不关闭 [BUG-193](work-items/BUG-193.md) 的 0.46.0 黑盒待验项。
+
 2026-11-26（0.46.0 MINOR，台账 272→276，公开工具 111）：逐字节归档 0.45.1 外部反馈原件至 [feedback-0.45.1-2026-11-26](validation/feedback-0.45.1-2026-11-26/SOURCE_MANIFEST.json)，交付 [BUG-192](work-items/BUG-192.md)（`draft` 基准面/实体面方向说明与 `material_effect`）、[FEAT-090](work-items/FEAT-090.md)（近容差 `arc-arc` 端点焊接与草图公开工具参数）、[BUG-193](work-items/BUG-193.md)（`loft`/`surface_loft` 统一 `runtime_ready` 披露与 before-job callback 预检）、[DEV-102](work-items/DEV-102.md)（`creo_capabilities` 操作列表口径与 `region.interior_point_yz_mm` 文档）。 [版本说明](RELEASE_NOTES_0.46.0.md) · [发布记录](validation/RELEASE-0.46.0.md)
 
 2026-11-26（0.45.2 PATCH，公开工具 111）。[DEV-002](work-items/DEV-002.md) 第四、五批交付 Python 服务包化、新安装入口与 AI Agent 兼容说明。 [版本说明](RELEASE_NOTES_0.45.2.md) · [发布记录](validation/RELEASE-0.45.2.md)
