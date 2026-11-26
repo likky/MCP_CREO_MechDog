@@ -17,6 +17,9 @@ docs/templates/** text eol=lf
 docs/superpowers/** text eol=lf
 docs/work-items/** text eol=lf
 docs/validation/** text eol=lf
+# DEV-103: archived notes keep the eol=lf checkout they had under docs/superpowers/,
+# so formatter checks and byte-for-byte archival stay stable across checkouts.
+docs/archive/** text eol=lf
 docs/validation/feedback-0.35.5-2026-11-22/originals/save-and-loft.md -text
 docs/BACKLOG.md text eol=lf
 docs/DEVELOPMENT.md text eol=lf
